@@ -95,7 +95,7 @@ test('signup avatar previews use the configured Kordi API origin', () => {
       'signup_seed',
       'http://127.0.0.1:17081',
     ),
-    'http://127.0.0.1:17081/v1/avatars/preview/lorelei/signup_seed.png',
+    'http://127.0.0.1:17081/v1/avatars/preview/boring-marble-v1/signup_seed.png',
   );
 });
 

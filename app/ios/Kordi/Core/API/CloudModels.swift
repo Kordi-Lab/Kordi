@@ -40,6 +40,8 @@ struct CanonicalAvatarMutation: Codable, Hashable {
 enum CanonicalAvatarSystem {
     static let rendererVersion = "dicebear-rust-10.6.0-styles-10.5.0"
     static let humanStyle = "lorelei"
+    // Stored descriptors stay compatible; new image URLs avoid old immutable caches.
+    static let humanPresentationStyle = "boring-marble-v1"
     static let agentStyle = "thumbs"
     static let defaultAgentId = "cloud-local-agent"
     static func agentID(_ raw: String?, ownerAccountID: String) -> String {
@@ -100,6 +102,9 @@ enum CanonicalAvatarSystem {
                 .appendingPathComponent("256.jpg")
         }
         guard let marker = marker(from: value) else { return nil }
+        if marker.style == humanStyle {
+            return previewURL(style: humanStyle, seed: marker.seed, baseURL: baseURL)
+        }
         return baseURL
             .appendingPathComponent("v1/avatars")
             .appendingPathComponent(rendererVersion)
@@ -112,8 +117,24 @@ enum CanonicalAvatarSystem {
         guard [humanStyle, agentStyle].contains(style), validSeed(seed) else { return nil }
         return baseURL
             .appendingPathComponent("v1/avatars/preview")
-            .appendingPathComponent(style)
+            .appendingPathComponent(style == humanStyle ? humanPresentationStyle : style)
             .appendingPathComponent("\(seed).png")
+    }
+
+    static func humanPresentationURL(from url: URL) -> URL? {
+        guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let range = components.path.range(
+                of: #"/v1/avatars/[^/]+/lorelei/[A-Za-z0-9_-]+\.png$"#,
+                options: .regularExpression
+              ) else { return nil }
+        let seed = String(url.deletingPathExtension().lastPathComponent)
+        guard validSeed(seed) else { return nil }
+        components.path = String(components.path[..<range.lowerBound])
+            + "/v1/avatars/preview/\(humanPresentationStyle)/\(seed).png"
+        components.query = nil
+        components.fragment = nil
+        return components.url
     }
 
     static func newSeed() -> String {

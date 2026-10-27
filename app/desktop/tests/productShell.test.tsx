@@ -154,7 +154,7 @@ test('signup mode previews only the canonical Lorelei avatar', () => {
   assert.match(markup, /data-cloud-login-mode-copy="signup"/);
   assert.match(markup, /data-cloud-login-mode-form="signup"/);
   assert.match(markup, /Upload avatar/);
-  assert.match(markup, /\/v1\/avatars\/preview\/lorelei\/[a-z0-9]+\.png/);
+  assert.match(markup, /\/v1\/avatars\/preview\/boring-marble-v1\/[a-z0-9]+\.png/);
   assert.doesNotMatch(markup, /data-cloud-signup-avatar-placeholder/);
   assert.doesNotMatch(markup, />KO<\/span>/);
   assert.match(markup, /data-cloud-signup-avatar-upload="true"/);
@@ -182,7 +182,7 @@ test('signup mode renders the canonical DiceBear avatar', () => {
   assert.doesNotMatch(markup, /viewBox="0 0 64 64"/);
   assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.72 0\.16 211\)/);
   assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.66 0\.26 355\)/);
-  assert.match(markup, /\/v1\/avatars\/preview\/lorelei\//);
+  assert.match(markup, /\/v1\/avatars\/preview\/boring-marble-v1\//);
 });
 
 test('social buttons surface provider sign-in affordances', () => {

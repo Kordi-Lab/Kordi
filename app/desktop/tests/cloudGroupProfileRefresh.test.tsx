@@ -169,7 +169,7 @@ test("a collaborator's open group redraws the owner's agent on the next director
         served = { ...picked, avatar: { ...picked.avatar, seed: 'priya-new-photo', version: 2 } };
         await step(() => publishCloudDeviceEvents([directoryChanged(PRIYA)], ALEX, undefined));
         assert.deepEqual(upserts.map((request) => request.id), [`human:${PRIYA}`]);
-        assert.match(upserts[0].profileImageUrl ?? '', /\/lorelei\/priya-new-photo\.png\?v=2$/);
+        assert.match(upserts[0].profileImageUrl ?? '', /\/boring-marble-v1\/priya-new-photo\.png$/);
       } finally {
         setMessageLayout('chat');
         if (nodeCustomEvent) Object.defineProperty(globalThis, 'CustomEvent', nodeCustomEvent);

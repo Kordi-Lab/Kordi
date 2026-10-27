@@ -2,6 +2,8 @@ import { cloudApiBaseUrl } from './cloudApiEnvironment';
 
 export const CANONICAL_AVATAR_RENDERER_VERSION = 'dicebear-rust-10.6.0-styles-10.5.0';
 export const HUMAN_CANONICAL_AVATAR_STYLE = 'lorelei';
+// Keep stored descriptors compatible; the presentation style has its own cache identity.
+export const HUMAN_AVATAR_PRESENTATION_STYLE = 'boring-marble-v1';
 export const LEGACY_AGENT_CANONICAL_AVATAR_STYLE = 'thumbs';
 export const BIRD_CANONICAL_AVATAR_STYLE = 'kordi-birds';
 export const AGENT_CANONICAL_AVATAR_STYLE = BIRD_CANONICAL_AVATAR_STYLE;
@@ -90,6 +92,9 @@ export function generatedAvatarMarker(
 export function generatedAvatarRenderUrl(value: string | null | undefined): string | null {
   const marker = parseGeneratedAvatarMarker(value);
   if (!marker) return null;
+  if (marker.style === HUMAN_CANONICAL_AVATAR_STYLE) {
+    return generatedAvatarPreviewUrl(HUMAN_CANONICAL_AVATAR_STYLE, marker.seed);
+  }
   // Agents still on the legacy style draw as the bird their seed hashes to. Only the preview
   // route renders a seed the account never stored under the bird style.
   if (marker.style === LEGACY_AGENT_CANONICAL_AVATAR_STYLE) {
@@ -142,13 +147,25 @@ export function generatedAvatarPreviewUrl(
 ): string | null {
   if (!supportedStyle(style) || !validSeed(seed)) return null;
   try {
-    return `${baseUrl ?? cloudApiBaseUrl()}/v1/avatars/preview/${style}/${encodeURIComponent(seed)}.png`;
+    const presentationStyle = style === HUMAN_CANONICAL_AVATAR_STYLE ? HUMAN_AVATAR_PRESENTATION_STYLE : style;
+    return `${baseUrl ?? cloudApiBaseUrl()}/v1/avatars/preview/${presentationStyle}/${encodeURIComponent(seed)}.png`;
   } catch {
     return null;
   }
 }
 
 const LEGACY_AGENT_AVATAR_URL = /^(https?:\/\/[^?#]+?)\/v1\/avatars\/[^/?#]+\/thumbs\/([^/?#]+)\.png(?:[?#].*)?$/iu;
+const LEGACY_HUMAN_AVATAR_URL = /^(https?:\/\/[^?#]+?)\/v1\/avatars\/[^/?#]+\/lorelei\/([^/?#]+)\.png(?:[?#].*)?$/iu;
+
+function humanAvatarMarbleUrl(value: string): string | null {
+  const match = LEGACY_HUMAN_AVATAR_URL.exec(value);
+  if (!match) return null;
+  try {
+    return generatedAvatarPreviewUrl(HUMAN_CANONICAL_AVATAR_STYLE, decodeURIComponent(match[2]), match[1]);
+  } catch {
+    return null;
+  }
+}
 
 /** A server-rendered legacy agent URL (`/v1/avatars/<renderer or preview>/thumbs/<seed>.png`) as its bird. */
 function legacyAgentAvatarBirdUrl(value: string): string | null {
@@ -167,7 +184,7 @@ export function canonicalAvatarImageUrl(value: string | null | undefined): strin
   if (trimmed.startsWith(CANONICAL_AVATAR_URL_PREFIX)) {
     return uploadedAvatarRenderUrl(trimmed) ?? generatedAvatarRenderUrl(trimmed);
   }
-  return legacyAgentAvatarBirdUrl(trimmed) ?? trimmed;
+  return humanAvatarMarbleUrl(trimmed) ?? legacyAgentAvatarBirdUrl(trimmed) ?? trimmed;
 }
 
 export function avatarDataUrlBlob(value: string): Blob {
