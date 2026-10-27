@@ -349,6 +349,7 @@ final class AppModel: ObservableObject {
     private var cloudSyncCursor = "0"
     private var cloudSyncLastStreamSequence: Int64 = 0
     private var cloudSyncHasCurrentSequence = false
+    private var hasPendingDirectoryRefresh = false
     private var cloudRealtimeLastReceivedSequence: Int64 = 0
     private var hasHydratedWireSnapshot = false
     private var hasHydratedSessionVisibility = false
@@ -782,6 +783,7 @@ final class AppModel: ObservableObject {
         messageSyncState = .syncing
         token = nil
         isRefreshing = false
+        hasPendingDirectoryRefresh = false
         currentDeviceId = nil
         account = nil
         contacts = []
@@ -879,8 +881,11 @@ final class AppModel: ObservableObject {
         if let oldToken { try? await api.logout(token: oldToken) }
     }
 
-    func refreshWorkspace(showSyncActivity: Bool = true) async {
-        guard !previewMode, let token, let account, !isRefreshing else { return }
+    /// Returns whether this request applied a current account/contact directory.
+    @discardableResult
+    func refreshWorkspace(showSyncActivity: Bool = true) async -> Bool {
+        guard !previewMode, let token, let account, !isRefreshing else { return false }
+        var didRefreshDirectory = false
         let callSnapshotGenerationAtStart = callSnapshotGeneration
         let sessionVisibilityRevisionAtStart = sessionVisibilityMutationRevision
         let previousOwnedAgents = Dictionary(
@@ -903,16 +908,17 @@ final class AppModel: ObservableObject {
             async let fetchedActiveCalls = try? api.activeCalls(token: token)
             async let fetchedPersonalAgents = try? api.listPersonalAgents(token: token)
             let (canonicalAccount, contactList) = try await (refreshedAccount, fetchedContacts)
-            guard self.token == token, self.account?.accountId == canonicalAccount.accountId else { return }
+            guard self.token == token, self.account?.accountId == canonicalAccount.accountId else { return false }
             self.account = canonicalAccount.preservingEmailVerification(from: self.account)
             contacts = contactList.sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
+            didRefreshDirectory = true
             // Profile updates must not be discarded if unrelated workspace data fails.
             let (presence, requests, owned, visibility, authProfiles, deviceList, latestCanonical, activeCalls, listedPersonalAgents) = try await (
                 fetchedPresence, fetchedRequests, ownedAgents,
                 fetchedVisibility, fetchedAuth, fetchedDevices, canonicalLatestMessages,
                 fetchedActiveCalls, fetchedPersonalAgents
             )
-            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return }
+            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
             let sharedAgentOwnerIDs = Set(
                 contactList.map(\.accountId)
                     + (await api.cachedChatConversations()).flatMap(\.members).map(\.accountId)
@@ -921,7 +927,7 @@ final class AppModel: ObservableObject {
                 token: token,
                 ownerAccountIds: Array(sharedAgentOwnerIDs)
             )
-            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return }
+            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
             contacts = contactList.sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
             if let presence {
                 applyContactPresenceSnapshot(presence)
@@ -964,7 +970,7 @@ final class AppModel: ObservableObject {
                 + shared.map(\.ownerAccountId)
             )
             let history = await loadMessageHistories(token: token, peerAccountIds: peerAccountIds)
-            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return }
+            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
             let canonicalGroupSessionIds = await api.cachedChatConversations()
                 .filter { $0.kind == "group" && $0.latestMessageSequence > 0 }
                 .compactMap { $0.legacySessionId?.nonEmpty ?? $0.id.nonEmpty }
@@ -972,7 +978,7 @@ final class AppModel: ObservableObject {
                 token: token,
                 sessionIds: canonicalGroupSessionIds
             )
-            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return }
+            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
             let groupParticipantIds = Set(cloudMessagesByPeer.values.flatMap { messages in
                 messages.flatMap { CloudGroupMessageCodec.parse($0.body)?.participants.map(\.accountId) ?? [] }
             })
@@ -985,7 +991,7 @@ final class AppModel: ObservableObject {
                     token: token,
                     ownerAccountIds: Array(additionalOwners)
                 )
-                guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return }
+                guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
                 shared = normalizedSharedCloudAgents(shared + additional)
                 sharedCloudAgents = shared
             }
@@ -1003,13 +1009,14 @@ final class AppModel: ObservableObject {
             await persistCloudSnapshot(accountId: account.accountId)
             errorMessage = nil
         } catch {
-            if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
-            guard self.token == token, self.account?.accountId == account.accountId else { return }
+            if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return false }
+            guard self.token == token, self.account?.accountId == account.accountId else { return false }
             await rebuildConversationCatalog()
             recordCloudConnectionFailure(error)
             messageSyncState = .offline
             errorMessage = userFacing(error, fallback: "Could not refresh conversations.")
         }
+        return didRefreshDirectory
     }
 
     func refreshContactRequests() async {
@@ -6670,6 +6677,7 @@ final class AppModel: ObservableObject {
                     cloudSyncLastStreamSequence = response.lastStreamSequence
                     if response.hasMore { continue }
 
+                    var shouldRefreshProjections = !pendingEvents.isEmpty
                     if !pendingEvents.isEmpty {
                         let hasProviderAuthenticationChanges = pendingEvents.contains {
                             $0.eventType == "provider-auth.updated"
@@ -6686,14 +6694,25 @@ final class AppModel: ObservableObject {
                                 && $0.eventType != "message.read"
                                 && $0.eventType != "provider-auth.updated"
                         }
-                        if hasDirectoryChanges { await refreshWorkspace(showSyncActivity: false) }
-                        // Conversation snapshots are independently canonical.
-                        // Always project them even when a best-effort directory
-                        // refresh failed or was already in progress.
-                        await rebuildConversationCatalog()
-                        await refreshLoadedConversationProjections()
+                        if hasDirectoryChanges { hasPendingDirectoryRefresh = true }
                         pendingEvents.removeAll(keepingCapacity: true)
                     }
+                    // A concurrent older refresh cannot satisfy a new directory event.
+                    // Coalesce changes and retry on the next poll when busy or failed,
+                    // without replaying message, call or device effects.
+                    if hasPendingDirectoryRefresh {
+                        let refreshed = await refreshWorkspace(showSyncActivity: false)
+                        guard self.token == token, !Task.isCancelled else { return }
+                        if refreshed {
+                            hasPendingDirectoryRefresh = false
+                            shouldRefreshProjections = true
+                        }
+                    }
+                    if shouldRefreshProjections {
+                        await rebuildConversationCatalog()
+                        await refreshLoadedConversationProjections()
+                    }
+                    guard self.token == token, !Task.isCancelled else { return }
                     cloudSyncCursor = nextCursor
                     cloudSyncHasCurrentSequence = true
                     hasHydratedWireSnapshot = true
