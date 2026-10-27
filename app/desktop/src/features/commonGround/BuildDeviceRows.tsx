@@ -21,7 +21,7 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded, chi
   const [status, setStatus] = useState<CgDeviceStatuses | null>(null);
   const [errors, setErrors] = useState<Partial<Record<CgDeviceSource, string>>>({});
   const generation = useRef<object | null>(null);
-  const refresh = useCallback(async (requested?: CgDeviceSource, onGranted?: () => void) => {
+  const refresh = useCallback(async (requested?: CgDeviceSource) => {
     if (!device) return;
     const current = {};
     generation.current = current;
@@ -40,7 +40,7 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded, chi
           const items = await device.titles(id);
           if (!active()) return;
           setTitles((previous) => active() ? { ...previous, [id]: items } : previous);
-          if (id === requested) onGranted?.();
+          if (id === requested) setIncluded((current) => [...new Set([...current, id])]);
         } catch {
           if (active()) setErrors((previous) => ({ ...previous, [id]: `Could not read ${name}.` }));
         }
@@ -48,7 +48,7 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded, chi
     } catch {
       if (active()) setErrors({ calendar: 'Could not check access.', reminders: 'Could not check access.' });
     }
-  }, [device, setTitles]);
+  }, [device, setTitles, setIncluded]);
   useEffect(() => {
     const recheck = () => { void refresh(); };
     recheck();
@@ -59,7 +59,7 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded, chi
     };
   }, [refresh]);
   const rows = device ? DEVICE_SOURCES.filter(({ id }) => status?.[id] !== 'unavailable') : [];
-  if (!device || !rows.length) return children ? <CgSection title="On this Mac"><CgGroup>{children}</CgGroup></CgSection> : null;
+  if (!rows.length && !children) return null;
   return (
     <CgSection title="On this Mac">
       <CgGroup>
@@ -67,18 +67,17 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded, chi
           const value = status?.[id];
           const count = titles[id]?.length;
           let sub = status ? 'Reading…' : 'Checking access…';
-          let trailing = <SettingsSwitch label={name} enabled={included.includes(id)} disabled onChange={() => {}} />;
+          let trailing = <SettingsSwitch label={name} enabled={included.includes(id)} disabled={value !== 'granted' || !count}
+            onChange={(on) => setIncluded((current) => on ? [...new Set([...current, id])] : current.filter((item) => item !== id))} />;
           if (errors[id] || (value === 'granted' && count === 0)) {
             sub = errors[id] ?? (id === 'calendar' ? 'No titles in the past 180 or next 60 days.' : 'No reminder titles found.');
             trailing = <CgButton quiet label={`Retry ${name}`} onClick={() => { void refresh(); }}>Retry</CgButton>;
           } else if (value === 'granted' && count !== undefined) {
             sub = `${count} titles`;
-            trailing = <SettingsSwitch label={name} enabled={included.includes(id)}
-              onChange={(on) => setIncluded((current) => on ? [...new Set([...current, id])] : current.filter((item) => item !== id))} />;
           } else if (value === 'not_determined') {
             sub = 'Titles and dates only';
             trailing = <CgButton label={`Allow ${name}`} onClick={() => {
-              void refresh(id, () => setIncluded((current) => [...new Set([...current, id])]));
+              void refresh(id);
             }}>Allow</CgButton>;
           } else if (value && value !== 'granted') {
             sub = 'Access is off';
