@@ -465,3 +465,27 @@ test('nearby polling backs off after two minutes without progress and restarts a
   await nearby.setFilters({ range: 500 });
   assert.equal(nearby.pollDelay(), NEARBY_FAST_POLL_MS);
 });
+
+test('switching cards clears old results and ignores a late search and settings response', async () => {
+  const { nearby, client } = nearbyFor({
+    'PUT nearby': { status: 200, body: settings({ profileId: 'cgp_running' }) },
+    'GET nearby/people': { status: 200, body: people([entry('runner')]) },
+  });
+  nearby.set({ settings: settings(), loaded: true });
+  let finishOldSearch!: (value: Awaited<ReturnType<typeof client.nearbyPeople>>) => void;
+  let finishOldSettings!: (value: CgNearbySettings) => void;
+  const search = client.nearbyPeople;
+  client.nearbyPeople = () => new Promise((resolve) => { finishOldSearch = resolve; });
+  client.nearby = () => new Promise((resolve) => { finishOldSettings = resolve; });
+  const oldSearch = nearby.loadPeople();
+  const oldSettings = nearby.loadSettings();
+  client.nearbyPeople = search;
+  const switching = nearby.setProfile('cgp_running');
+  assert.equal(nearby.getSnapshot().results, null);
+  assert.equal(await switching, true);
+  finishOldSearch(await mockServer({ 'GET nearby/people': { status: 200, body: people([entry('workmate')]) } }).client.nearbyPeople());
+  finishOldSettings(settings());
+  await Promise.all([oldSearch, oldSettings]);
+  assert.equal(nearby.getSnapshot().settings?.profileId, 'cgp_running');
+  assert.deepEqual(nearby.getSnapshot().results?.people.map((row) => row.person.accountId), ['runner']);
+});

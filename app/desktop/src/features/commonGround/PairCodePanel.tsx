@@ -165,7 +165,7 @@ export function PairCodePanel({ state, store, nearby = false }: { state: CgState
         )}
       </div>
       {error ? <div className="cg-pair-error" role="alert">{error}</div> : null}
-      {nearby ? <NearbyRow store={store} /> : null}
+      {nearby ? <NearbyRow state={state} store={store} /> : null}
       {creating ? (
         <CreateCodePopover
           cards={(state.profilesOn ? shareable : []).map((item): CgShareChoice => ({ id: item.profileId, name: item.name, design: profileDesign(item), icon: item.icon, kind: item.kind }))

@@ -18,13 +18,13 @@ import { useNearby } from './useNearby';
 import { WalletShell } from './WalletShell';
 
 /** "Sharing: Work" for the card Nearby shares; it opens the cards that can be shared. */
-function NearbyChip({ state, nb, nearby }: { state: CgState; nb: CgNearbyState; nearby: CgNearbyStore }) {
+function NearbyChip({ state, store, nb, nearby }: { state: CgState; store: CommonGroundStore; nb: CgNearbyState; nearby: CgNearbyStore }) {
   const profile = state.profiles.find((item) => item.profileId === nb.settings?.profileId);
   if (!profile) return null;
   const cards = nearbyCards(state.profiles);
   const choices = (cards.some((card) => card.profileId === profile.profileId) ? cards : [profile, ...cards]).map((card): [string, string] => [card.profileId, card.name]);
   return (
-    <NbMenuButton id="card" label="Card" className="cg-share-chip is-menu" align="right" items={checkItems(choices, profile.profileId, (id) => void nearby.setProfile(id))}>
+    <NbMenuButton id="card" label="Card" className="cg-share-chip is-menu" align="right" items={checkItems(choices, profile.profileId, (id) => void nearby.setProfile(id).then((saved) => { if (saved) void store.selectProfile(id); }))}>
       <CardSwatch design={profileDesign(profile)} className="is-chip" />
       <span>Sharing: <b>{profile.name}</b></span>
       <ChevronDown className="cg-nb-caret" aria-hidden="true" />
@@ -93,7 +93,7 @@ export function NearbyScreen({ state, store, host }: { state: CgState; store: Co
       owner={host.self}
       title="Nearby"
       onBack={() => store.back()}
-      chip={on ? <NearbyChip state={state} nb={nb} nearby={nearby} /> : undefined}
+      chip={on ? <NearbyChip state={state} store={store} nb={nb} nearby={nearby} /> : undefined}
       actions={on ? <MoreMenu nearby={nearby} /> : null}
       center={!on}
     >
@@ -110,7 +110,7 @@ export function NearbyScreen({ state, store, host }: { state: CgState; store: Co
   const consentDialog = consent ? (
     <NearbyConsentDialog
       profiles={state.profiles}
-      initialProfileId={settings.profileId ?? state.profileId}
+      initialProfileId={state.profileId ?? settings.profileId}
       busy={nb.busy === 'enable'}
       notice={consent.failed ? nb.notice : null}
       onCancel={() => setConsent(null)}
