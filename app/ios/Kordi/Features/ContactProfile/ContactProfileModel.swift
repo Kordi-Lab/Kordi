@@ -39,6 +39,25 @@ struct ContactProfileSubject: Identifiable, Hashable {
     }
 }
 
+/// A sheet keeps its original subject, so observe saved directory changes separately.
+struct ContactProfileRefreshID: Equatable {
+    let accountId: String
+    let viewerAccountId: String?
+    let avatarUrl: String?
+
+    init(subject: ContactProfileSubject, viewer: CloudAccount?, contacts: [CloudContact]) {
+        accountId = subject.accountId
+        viewerAccountId = viewer?.accountId
+        if let viewer, viewer.accountId == subject.accountId {
+            avatarUrl = viewer.avatarUrl
+        } else if let contact = contacts.first(where: { $0.accountId == subject.accountId }) {
+            avatarUrl = contact.avatarUrl
+        } else {
+            avatarUrl = subject.avatarUrl
+        }
+    }
+}
+
 enum ContactProfileTile: String, Identifiable, Hashable {
     case message, call, video, mute, share, settings, more
 
@@ -230,8 +249,8 @@ struct ContactProfilePresentation: Equatable {
     }
 }
 
-/// Loads the profile once the sheet appears. `loader` is nil when the server
-/// does not report `contactProfileVersion`, which shows the fallback at once.
+/// Loads profile details on appearance and when the saved avatar changes.
+/// A server without `contactProfileVersion` uses a nil loader and the fallback.
 @MainActor
 final class ContactProfileModel: ObservableObject {
     typealias Loader = () async throws -> CloudContactProfile
@@ -243,6 +262,9 @@ final class ContactProfileModel: ObservableObject {
     @Published private(set) var isDeleting = false
     private let loader: Loader?
     private let remover: Remover?
+    private var refreshID: ContactProfileRefreshID?
+    private var loadID: UUID?
+    private var needsRefresh = false
 
     var canDelete: Bool { remover != nil }
 
@@ -254,15 +276,31 @@ final class ContactProfileModel: ObservableObject {
         isLoading = loader != nil && profile == nil
     }
 
-    func load() async {
-        guard let loader, profile == nil else { return }
+    func load(refreshID nextRefreshID: ContactProfileRefreshID? = nil) async {
+        guard let loader, profile == nil || nextRefreshID != refreshID || needsRefresh else { return }
+        if let refreshID, let nextRefreshID,
+           refreshID.viewerAccountId != nextRefreshID.viewerAccountId
+            || refreshID.accountId != nextRefreshID.accountId {
+            profile = nil
+            isFallback = false
+        }
+        refreshID = nextRefreshID
+        needsRefresh = true
+        let requestID = UUID()
+        loadID = requestID
         isLoading = true
-        defer { isLoading = false }
+        defer { if loadID == requestID { isLoading = false } }
         do {
-            profile = try await loader()
+            let loaded = try await loader()
+            try Task.checkCancellation()
+            guard loadID == requestID else { return }
+            profile = loaded
+            needsRefresh = false
             isFallback = false
         } catch {
-            if !(error is CancellationError) { isFallback = true }
+            guard loadID == requestID else { return }
+            needsRefresh = true
+            if !(error is CancellationError) { isFallback = profile == nil }
         }
     }
 
@@ -294,8 +332,13 @@ extension AppModel {
         return ContactProfileModel(
             loader: { [weak self] in
                 guard let self else { throw CancellationError() }
-                let (api, token, _) = try self.digestContext()
-                return try await api.fetchContactProfile(token: token, accountId: accountId)
+                let (api, token, viewerAccountId) = try self.digestContext()
+                let profile = try await api.fetchContactProfile(token: token, accountId: accountId)
+                let (_, currentToken, currentViewerAccountId) = try self.digestContext()
+                guard currentToken == token, currentViewerAccountId == viewerAccountId else {
+                    throw CancellationError()
+                }
+                return profile
             },
             remover: { [weak self] in
                 guard let self else { throw CancellationError() }

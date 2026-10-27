@@ -43,6 +43,10 @@ struct ContactProfileView: View {
         _profileModel = StateObject(wrappedValue: profileModel())
     }
 
+    private var profileRefreshID: ContactProfileRefreshID {
+        ContactProfileRefreshID(subject: subject, viewer: model.account, contacts: model.contacts)
+    }
+
     private var presentation: ContactProfilePresentation {
         ContactProfilePresentation(
             subject: subject,
@@ -99,7 +103,7 @@ struct ContactProfileView: View {
                 .presentationDragIndicator(.visible)
             }
         }
-        .task(id: subject.accountId) { await profileModel.load() }
+        .task(id: profileRefreshID) { await profileModel.load(refreshID: profileRefreshID) }
         .task(id: sharedConversation?.id) {
             if let sharedConversation { await model.loadContactProfileHistory(for: sharedConversation) }
         }
