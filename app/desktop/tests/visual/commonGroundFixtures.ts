@@ -1,22 +1,19 @@
 // Fictional people and server replies for the login-free Common ground preview.
 
+import { generatedAvatarMarker, HUMAN_CANONICAL_AVATAR_STYLE } from '../../src/features/cloud/canonicalAvatar';
 import type { CgAgentFile, CgPerson, CgProfile, CgProfileTag, CgRelationship, CgRoutedMemory } from '../../src/features/commonGround/types';
 import type { ConnectorProviderId, ConnectorState } from '../../src/features/connectors/connectorsModel';
 
-export function initialsAvatar(name: string, theme: 'light' | 'dark') {
-  const initials = name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-  const [fill, ink] = theme === 'light' ? ['#e4e6eb', '#5f6672'] : ['#3a3f48', '#c3c8d1'];
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><rect width="80" height="80" fill="${fill}"/>`
-    + `<text x="40" y="40" dy="0.35em" text-anchor="middle" font-family="-apple-system, system-ui, sans-serif" font-size="30" font-weight="500" fill="${ink}">${initials}</text></svg>`;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+export function generatedPersonAvatar(accountId: string) {
+  return generatedAvatarMarker(HUMAN_CANONICAL_AVATAR_STYLE, accountId, 1);
 }
 
 const stranger: CgRelationship = { contact: false, request: null, requestId: null, conversationId: null };
 
-export function commonGroundFixtures(theme: 'light' | 'dark') {
+export function commonGroundFixtures(_theme: 'light' | 'dark') {
   const workTag = (accountId: string): CgProfileTag => ({ profileId: `cgp_${accountId}_work`, kind: 'work', name: 'Work' });
   const person = (accountId: string, name: string, relationship: CgRelationship = stranger, profile = workTag(accountId)): CgPerson => (
-    { accountId, name, avatarUrl: initialsAvatar(name, theme), hasCard: true, relationship, profile }
+    { accountId, name, avatarUrl: generatedPersonAvatar(accountId), hasCard: true, relationship, profile }
   );
   // Three profiles: Work with a card, a custom Workshops card, Health without one yet.
   const profiles: CgProfile[] = [
@@ -24,7 +21,7 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
     { profileId: 'cgp_ws', kind: 'custom', name: 'Workshops', design: 'workshop', icon: null, focus: 'Poster on memory benchmarks', position: 1, hasCard: true, sharing: true, builtAt: '2026-10-18T09:00:00Z', topicCount: 3 },
     { profileId: 'cgp_health', kind: 'health', name: 'Health', design: null, icon: null, focus: 'Running and sleep', position: 2, hasCard: false, sharing: true, builtAt: null, topicCount: 0 },
   ];
-  const self = { accountId: 'acct_you', name: 'Alex Rivera', avatarUrl: initialsAvatar('Alex Rivera', theme), handle: 'alexrivera' };
+  const self = { accountId: 'acct_you', name: 'Alex Rivera', avatarUrl: generatedPersonAvatar('acct_you'), handle: 'alexrivera' };
   const documents = [
     { attachmentId: 'att_plan', title: 'Eval plan', updatedAt: '2026-10-18T09:00:00Z', sizeBytes: 2400 },
     { attachmentId: 'att_notes', title: 'Reading notes', updatedAt: '2026-10-12T09:00:00Z', sizeBytes: 5100 },

@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Copy, LogOut, Users } from 'lucide-react';
+import { Copy, LogOut } from 'lucide-react';
 
 import { DetailTile, DetailTiles } from '@/kordi-app/contacts/ContactDetailParts';
 import type { CgHost } from './host';
 import { groupLine, peopleCount, roomTitle, topicGroupDraft, type CgGroupDraft } from './format';
-import { CgAvatar, CgAvatarGrid, CgAvatarStack, CgBack, CgButton, CgGroup, CgHero, CgNotice, CgProgress, CgRow, CgScore, CgSection, CgSegmented, CgTopicDot } from './parts';
+import { CgAvatar, CgAvatarGrid, CgBack, CgButton, CgGroup, CgHero, CgNotice, CgProgress, CgRow, CgScore, CgSection, CgSegmented, CgTopicDot } from './parts';
 import { personTitle } from './profiles';
 import { RoomSharing } from './ShareProfileDialog';
 import { StartGroupDialog } from './StartGroupDialog';
@@ -35,9 +35,7 @@ function GroupsSection({ code, results, state, store, host }: { code: string; re
         {groups.map((group) => (
           <CgRow
             key={group.groupSpaceId}
-            lead={group.members?.length
-              ? <CgAvatarStack people={group.members} total={group.memberCount} size={26} />
-              : <span className="cg-icon" aria-hidden="true"><Users className="h-4 w-4" /></span>}
+            lead={<CgAvatarGrid people={group.members ?? []} size={30} />}
             title={group.name}
             sub={groupLine(group) || undefined}
             trailing={group.joined ? <CgButton onClick={() => host.openGroup(group.groupSpaceId)}>Open</CgButton> : null}

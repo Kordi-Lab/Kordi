@@ -47,6 +47,9 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ### Fixed
 
+- Matched Grounding group avatars to the square collages used in Chats and
+  Contacts, and kept iPhone Grounding pages on the selected Classic background
+  ([#2151]).
 - Refreshed saved avatars in iPhone contact profiles and chat lists even when
   an older refresh was still running or a request failed. Cancelled or delayed
   profile requests no longer replace newer saved details ([#2153]).
@@ -1148,3 +1151,4 @@ This release is the comparison baseline for beta.8. See the
 [#2149]: https://github.com/Kordi-Lab/Kordi/pull/2149
 [#2150]: https://github.com/Kordi-Lab/Kordi/pull/2150
 [#2153]: https://github.com/Kordi-Lab/Kordi/pull/2153
+[#2151]: https://github.com/Kordi-Lab/Kordi/pull/2151

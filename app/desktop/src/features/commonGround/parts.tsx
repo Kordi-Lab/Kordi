@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { ChevronLeft } from 'lucide-react';
 
 import { KordiFlyingBird } from '@/features/cloud/KordiFlyingBird';
+import { GroupAvatar } from '@/kordi-app/components/GroupAvatar';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { cn } from '@/lib/utils';
 import { topicTone } from './format';
@@ -25,31 +26,14 @@ export function CgAvatar({ person, size, ring = false, isSelf = false }: { perso
   );
 }
 
-/** Up to nine people in a circle, like a group avatar. */
+/** Use the same square member collage as the main conversation and Contacts lists. */
 export function CgAvatarGrid({ people, size }: { people: AvatarPerson[]; size: number }) {
-  const shown = people.slice(0, 9);
-  const columns = shown.length <= 1 ? 1 : shown.length <= 4 ? 2 : 3;
-  const gap = columns === 1 ? 0 : 2;
-  const tile = (size - gap * (columns - 1)) / columns;
   return (
-    <span
-      className="cg-avatar-grid"
-      style={{ width: size, height: size, gap, gridTemplateColumns: `repeat(${columns}, ${tile}px)`, gridAutoRows: `${tile}px` }}
-      aria-hidden="true"
-    >
-      {shown.map((person) => <CgAvatar key={person.accountId} person={person} size={tile} />)}
-    </span>
-  );
-}
-
-/** Up to three overlapping avatars, then "+N" for the rest of the members. */
-export function CgAvatarStack({ people, total, size }: { people: AvatarPerson[]; total: number; size: number }) {
-  const shown = people.slice(0, 3);
-  const extra = Math.max(0, total - shown.length);
-  return (
-    <span className="cg-stack" style={{ height: size }} aria-hidden="true">
-      {shown.map((person) => <CgAvatar key={person.accountId} person={person} size={size} ring />)}
-      {extra ? <span className="cg-stack-more" style={{ height: size, minWidth: size }}>+{extra}</span> : null}
+    <span className="cg-avatar-grid" style={{ width: size, height: size }} aria-hidden="true">
+      <GroupAvatar
+        avatars={people.map((person) => ({ kind: 'human', seed: person.accountId, imageUrl: person.avatarUrl }))}
+        className="h-full w-full"
+      />
     </span>
   );
 }

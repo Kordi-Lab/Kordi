@@ -147,12 +147,16 @@ struct CommonGroundPage<Content: View>: View {
             VStack(spacing: 16) {
                 content
             }
+            .frame(maxWidth: .infinity)
             .padding(.top, 56)
             .padding(.bottom, 28)
         }
         .scrollDismissesKeyboard(.interactively)
         .background {
-            SessionDetailBackground(tint: chatTheme.accent).ignoresSafeArea()
+            Group {
+                if chatTheme == .classic { chatTheme.canvas }
+                else { SessionDetailBackground(tint: chatTheme.accent) }
+            }.ignoresSafeArea()
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -178,7 +182,12 @@ struct CommonGroundWaitPage: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .background { SessionDetailBackground(tint: chatTheme.accent).ignoresSafeArea() }
+        .background {
+            Group {
+                if chatTheme == .classic { chatTheme.canvas }
+                else { SessionDetailBackground(tint: chatTheme.accent) }
+            }.ignoresSafeArea()
+        }
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .topLeading) {
             SessionDetailBackButton { if let onBack { onBack() } else { dismiss() } }
