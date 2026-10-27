@@ -37,46 +37,33 @@ pub(crate) fn permission(entity: EKEntityType) -> MacLocalPermission {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum AccessApi {
-    FullAccess,
-    ExistingLegacyGrant,
-}
-
-fn access_api(modern: bool, authorization: EKAuthorizationStatus) -> Result<AccessApi, String> {
-    if modern {
-        Ok(AccessApi::FullAccess)
-    } else if authorization == EKAuthorizationStatus::FullAccess {
-        Ok(AccessApi::ExistingLegacyGrant)
-    } else {
-        Err("Calendar connection requires macOS 14 or later. You can import ICS instead.".into())
-    }
-}
-
-/// Initializes access on this store. New grants use the modern API; macOS
-/// 12/13 can only reuse an existing grant through its legacy completion API.
+/// Asks for full access with the completion-handler API (macOS 14 or later).
+/// Returns whether access is granted; the system prompt appears only while
+/// the status is still not determined.
 pub(crate) fn request_full_access(
     store: &EKEventStore,
     entity: EKEntityType,
 ) -> Result<bool, String> {
-    // A global grant does not initialize a newly created store. Complete the
-    // access request on this instance even when macOS already granted access.
+    if status(entity) == EKAuthorizationStatus::FullAccess {
+        return Ok(true);
+    }
     let events = entity == EKEntityType::Event;
     let selector = if events {
         sel!(requestFullAccessToEventsWithCompletion:)
     } else {
         sel!(requestFullAccessToRemindersWithCompletion:)
     };
-    let api = access_api(store.respondsToSelector(selector), status(entity))?;
+    if !store.respondsToSelector(selector) {
+        return Err(
+            "Calendar connection requires macOS 14 or later. You can import ICS instead.".into(),
+        );
+    }
     let (tx, rx) = std::sync::mpsc::channel();
     let callback = block2::RcBlock::new(move |granted: Bool, _error: *mut NSError| {
         let _ = tx.send(granted.as_bool());
     });
     unsafe {
-        if api == AccessApi::ExistingLegacyGrant {
-            #[allow(deprecated)]
-            store.requestAccessToEntityType_completion(entity, &*callback as *const _ as *mut _);
-        } else if events {
+        if events {
             store.requestFullAccessToEventsWithCompletion(&*callback as *const _ as *mut _);
         } else {
             store.requestFullAccessToRemindersWithCompletion(&*callback as *const _ as *mut _);
@@ -84,38 +71,6 @@ pub(crate) fn request_full_access(
     }
     rx.recv_timeout(Duration::from_secs(120))
         .map_err(|_| "Calendar permission request timed out.".to_string())
-}
-
-/// Refreshes never ask for a new grant. Only an already-authorized entity may
-/// initialize a store, and revocation during initialization prevents a read.
-fn initialize_for_read<T>(
-    authorization: impl Fn() -> EKAuthorizationStatus,
-    create: impl FnOnce() -> T,
-    initialize: impl FnOnce(&T) -> Result<bool, String>,
-    denied: &str,
-) -> Result<T, String> {
-    if authorization() != EKAuthorizationStatus::FullAccess {
-        return Err(denied.into());
-    }
-    let store = create();
-    if !initialize(&store)? || authorization() != EKAuthorizationStatus::FullAccess {
-        return Err(denied.into());
-    }
-    Ok(store)
-}
-
-fn authorized_store(entity: EKEntityType) -> Result<Retained<EKEventStore>, String> {
-    let denied = if entity == EKEntityType::Event {
-        "Calendar access is off. Allow Kordi in System Settings > Privacy & Security > Calendars."
-    } else {
-        "Reminders access is off. Allow Kordi in System Settings > Privacy & Security > Reminders."
-    };
-    initialize_for_read(
-        || status(entity),
-        store,
-        |store| request_full_access(store, entity),
-        denied,
-    )
 }
 
 fn timestamp(date: &NSDate) -> Option<chrono::DateTime<chrono::Local>> {
@@ -170,7 +125,10 @@ fn map_event(event: &EKEvent) -> Option<(i64, Value)> {
 
 pub(crate) fn read_events(request: &MacCalendarEventsRequest) -> Result<Value, String> {
     let (from, to) = request.window().map_err(|error| error.to_string())?;
-    let store = authorized_store(EKEntityType::Event)?;
+    if status(EKEntityType::Event) != EKAuthorizationStatus::FullAccess {
+        return Err("Calendar access is off. Allow Kordi in System Settings > Privacy & Security > Calendars.".into());
+    }
+    let store = store();
     let calendars = unsafe { store.calendarsForEntityType(EKEntityType::Event) };
     let selected = if request.calendar_ids.is_empty() {
         None
@@ -235,7 +193,10 @@ fn map_reminder(reminder: &EKReminder) -> Value {
 }
 
 pub(crate) fn read_reminders(request: &MacRemindersRequest) -> Result<Value, String> {
-    let store = authorized_store(EKEntityType::Reminder)?;
+    if status(EKEntityType::Reminder) != EKAuthorizationStatus::FullAccess {
+        return Err("Reminders access is off. Allow Kordi in System Settings > Privacy & Security > Reminders.".into());
+    }
+    let store = store();
     let predicate = unsafe {
         if request.include_completed {
             store.predicateForRemindersInCalendars(None)
@@ -277,113 +238,4 @@ pub(crate) fn read_reminders(request: &MacRemindersRequest) -> Result<Value, Str
     let truncated = reminders.len() > MAX_REMINDERS;
     reminders.truncate(MAX_REMINDERS);
     Ok(json!({ "reminders": reminders, "truncated": truncated }))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::cell::{Cell, RefCell};
-
-    #[test]
-    fn legacy_api_is_only_used_for_an_existing_full_access_grant() {
-        assert_eq!(
-            access_api(false, EKAuthorizationStatus::FullAccess),
-            Ok(AccessApi::ExistingLegacyGrant)
-        );
-        for authorization in [
-            EKAuthorizationStatus::FullAccess,
-            EKAuthorizationStatus::NotDetermined,
-            EKAuthorizationStatus::Denied,
-            EKAuthorizationStatus::Restricted,
-            EKAuthorizationStatus::WriteOnly,
-        ] {
-            assert_eq!(access_api(true, authorization), Ok(AccessApi::FullAccess));
-            if authorization != EKAuthorizationStatus::FullAccess {
-                assert!(access_api(false, authorization).is_err());
-            }
-        }
-    }
-
-    #[test]
-    fn granted_access_initializes_each_store_before_it_can_be_read() {
-        let operations = RefCell::new(Vec::new());
-        for _ in 0..2 {
-            let initialized = initialize_for_read(
-                || EKAuthorizationStatus::FullAccess,
-                || {
-                    operations.borrow_mut().push("create");
-                    Cell::new(false)
-                },
-                |store| {
-                    operations.borrow_mut().push("initialize");
-                    store.set(true);
-                    Ok(true)
-                },
-                "Access is off",
-            )
-            .unwrap();
-            assert!(initialized.get());
-            operations.borrow_mut().push("read");
-        }
-        assert_eq!(
-            *operations.borrow(),
-            [
-                "create",
-                "initialize",
-                "read",
-                "create",
-                "initialize",
-                "read"
-            ]
-        );
-    }
-
-    #[test]
-    fn refresh_never_initializes_a_store_or_requests_access_without_full_access() {
-        for status in [
-            EKAuthorizationStatus::NotDetermined,
-            EKAuthorizationStatus::Denied,
-            EKAuthorizationStatus::Restricted,
-            EKAuthorizationStatus::WriteOnly,
-        ] {
-            let result = initialize_for_read(
-                || status,
-                || panic!("A refresh must not create an unauthorized store"),
-                |_: &()| panic!("A refresh must never request a new grant"),
-                "Access is off",
-            );
-            assert_eq!(result, Err("Access is off".into()));
-        }
-    }
-
-    #[test]
-    fn initialization_failure_or_revocation_prevents_returning_a_readable_store() {
-        let status = Cell::new(EKAuthorizationStatus::FullAccess);
-        let revoked = initialize_for_read(
-            || status.get(),
-            || (),
-            |_| {
-                status.set(EKAuthorizationStatus::Denied);
-                Ok(true)
-            },
-            "Access is off",
-        );
-        assert_eq!(revoked, Err("Access is off".into()));
-        for result in [Ok(false), Err("Initialization failed".into())] {
-            let expected = if result.is_err() {
-                "Initialization failed"
-            } else {
-                "Access is off"
-            };
-            assert_eq!(
-                initialize_for_read(
-                    || EKAuthorizationStatus::FullAccess,
-                    || (),
-                    |_| result,
-                    "Access is off",
-                ),
-                Err(expected.into())
-            );
-        }
-    }
 }
