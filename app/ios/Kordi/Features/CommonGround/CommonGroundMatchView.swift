@@ -28,7 +28,16 @@ struct CommonGroundMatchView: View {
                     .padding(.horizontal, 20)
             }
         } else {
-            CommonGroundWaitPage(steps: ["Reading cards", "Finding overlap"]) {
+            CommonGroundPage {
+                CommonGroundMatchingAnimation(
+                    yours: model.profile(model.viewerProfiles[personID] ?? model.currentProfileID)?.cardDesign ?? .work,
+                    theirs: model.person(personID)?.profile?.cardDesign ?? .custom)
+                    .padding(.top, 64)
+                Text("Finding common ground").font(.title2.weight(.semibold))
+                Text("Comparing your shared cards")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            .task {
                 if model.matches[personID] == nil { await model.loadMatch(personID) }
                 if model.matches[personID] == nil {
                     dismiss()
@@ -37,6 +46,31 @@ struct CommonGroundMatchView: View {
                 await model.waitForMatch(personID)
             }
         }
+    }
+}
+
+/// Two shared cards moving toward each other only while the real match is
+/// pending. Reduce Motion keeps the same visual without movement.
+struct CommonGroundMatchingAnimation: View {
+    let yours: CommonGroundCardDesign
+    let theirs: CommonGroundCardDesign
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var together = false
+
+    var body: some View {
+        HStack(spacing: 18) {
+            CommonGroundCardSwatch(design: yours, width: 100, height: 63, cornerRadius: 8)
+                .rotationEffect(.degrees(reduceMotion ? 0 : together ? -3 : -9))
+                .offset(x: reduceMotion ? 0 : together ? 8 : -8)
+            CommonGroundCardSwatch(design: theirs, width: 100, height: 63, cornerRadius: 8)
+                .rotationEffect(.degrees(reduceMotion ? 0 : together ? 3 : 9))
+                .offset(x: reduceMotion ? 0 : together ? -8 : 8)
+        }
+        .frame(height: 120)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: together)
+        .onAppear { together = true }
+        .onDisappear { together = false }
+        .accessibilityHidden(true)
     }
 }
 

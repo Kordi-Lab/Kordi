@@ -6,6 +6,7 @@ import SwiftUI
 struct CommonGroundLobbyView: View {
     @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: CommonGroundModel
+    @Environment(\.scenePhase) private var scenePhase
     let code: String
     @Binding var path: [CommonGroundRoute]
 
@@ -49,12 +50,17 @@ struct CommonGroundLobbyView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
         }
-        .task {
+        .refreshable { _ = await model.refreshRoom(code) }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
             while !Task.isCancelled {
-                guard await model.refreshRoom(code) else {
+                let exists = await model.refreshRoom(code)
+                guard !Task.isCancelled else { return }
+                guard exists else {
                     path = []
                     return
                 }
+                guard !Task.isCancelled, !model.isClosed(code) else { return }
                 try? await Task.sleep(for: CommonGroundModel.lobbyPollInterval)
             }
         }

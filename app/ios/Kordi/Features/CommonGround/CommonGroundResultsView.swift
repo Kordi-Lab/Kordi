@@ -27,6 +27,7 @@ struct CommonGroundResultsView: View {
     @EnvironmentObject private var model: CommonGroundModel
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.commonGroundOpenConversation) private var openConversation
+    @Environment(\.scenePhase) private var scenePhase
     let code: String
     @Binding var path: [CommonGroundRoute]
     @State private var tab = CommonGroundRoomTab.people
@@ -69,11 +70,13 @@ struct CommonGroundResultsView: View {
             }
             .padding(.horizontal, 16)
         }
-        .task(id: results?.status) {
-            if results == nil { await model.loadResults(code, quiet: true) }
-            await model.waitForResults(code)
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await model.followRoomResults(code)
         }
-        .task { if room == nil { await model.refreshRoom(code) } }
+        .refreshable {
+            if await model.refreshRoom(code) { await model.loadResults(code, quiet: true) }
+        }
         .sheet(item: $draft) { draft in
             CommonGroundStartGroupSheet(
                 defaultName: draft.name,
