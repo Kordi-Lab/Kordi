@@ -21,7 +21,7 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded, chi
   const [status, setStatus] = useState<CgDeviceStatuses | null>(null);
   const [errors, setErrors] = useState<Partial<Record<CgDeviceSource, string>>>({});
   const generation = useRef<object | null>(null);
-  const refresh = useCallback(async (requested?: CgDeviceSource) => {
+  const refresh = useCallback(async (requested?: CgDeviceSource, onGranted?: () => void) => {
     if (!device) return;
     const current = {};
     generation.current = current;
@@ -40,7 +40,7 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded, chi
           const items = await device.titles(id);
           if (!active()) return;
           setTitles((previous) => active() ? { ...previous, [id]: items } : previous);
-          if (id === requested) setIncluded((current) => [...new Set([...current, id])]);
+          if (id === requested) onGranted?.();
         } catch {
           if (active()) setErrors((previous) => ({ ...previous, [id]: `Could not read ${name}.` }));
         }
@@ -48,7 +48,7 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded, chi
     } catch {
       if (active()) setErrors({ calendar: 'Could not check access.', reminders: 'Could not check access.' });
     }
-  }, [device, setTitles, setIncluded]);
+  }, [device, setTitles]);
   useEffect(() => {
     const recheck = () => { void refresh(); };
     recheck();
@@ -77,7 +77,7 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded, chi
           } else if (value === 'not_determined') {
             sub = 'Titles and dates only';
             trailing = <CgButton label={`Allow ${name}`} onClick={() => {
-              void refresh(id);
+              void refresh(id, () => setIncluded((current) => [...new Set([...current, id])]));
             }}>Allow</CgButton>;
           } else if (value && value !== 'granted') {
             sub = 'Access is off';

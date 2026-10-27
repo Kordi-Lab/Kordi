@@ -14,15 +14,17 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-async function mount(device: CgDeviceAccess, initial: CgDeviceSource[] = []) {
+async function mount(device: CgDeviceAccess, initial: CgDeviceSource[] = [], inlineSelection = false) {
   const environment = installDom();
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
   let snapshot!: { titles: CgDeviceTitles; included: CgDeviceSource[] };
   let writes = 0;
+  let renders = 0;
   const host = { device, openUrl: () => {} } as unknown as CgHost;
   function Harness() {
+    assert.ok(++renders < 50, 'device reads must settle instead of causing a parent render loop');
     const [titles, setTitles] = useState<CgDeviceTitles>({});
     const [included, setIncluded] = useState(initial);
     const trackTitles = useCallback((update: (current: CgDeviceTitles) => CgDeviceTitles) => {
@@ -30,7 +32,8 @@ async function mount(device: CgDeviceAccess, initial: CgDeviceSource[] = []) {
       setTitles(update);
     }, []);
     snapshot = { titles, included };
-    return <DeviceRows host={host} titles={titles} setTitles={trackTitles} included={included} setIncluded={setIncluded} />;
+    return <DeviceRows host={host} titles={titles} setTitles={trackTitles} included={included}
+      setIncluded={inlineSelection ? (update) => setIncluded(update) : setIncluded} />;
   }
   await act(async () => root.render(<Harness />));
   return {
@@ -44,6 +47,28 @@ async function mount(device: CgDeviceAccess, initial: CgDeviceSource[] = []) {
 
 const statuses = (calendar: CgDeviceStatuses['calendar']): CgDeviceStatuses => ({ calendar, reminders: 'granted' });
 const items: CgDeviceItem[] = [{ title: 'Gym', date: '2026-10-26' }];
+
+test('inline parent selection callbacks do not restart device reads on render', async () => {
+  let checks = 0;
+  const reads: CgDeviceSource[] = [];
+  const view = await mount({
+    status: async () => { ++checks; return statuses('granted'); },
+    request: async () => statuses('granted'),
+    titles: async (source) => { reads.push(source); return items; },
+  }, [], true);
+  try {
+    assert.equal(checks, 1);
+    assert.deepEqual(reads, ['calendar', 'reminders']);
+    assert.deepEqual(view.snapshot().titles.calendar, items);
+    await act(async () => view.button('Calendar').click());
+    assert.deepEqual(view.snapshot().included, ['calendar']);
+    assert.equal(checks, 1, 'selection rerender must not recheck permissions');
+    assert.equal(reads.length, 2, 'selection rerender must retain loaded titles');
+    await view.focus();
+    assert.equal(checks, 2, 'focus still explicitly refreshes permissions');
+    assert.equal(reads.length, 4);
+  } finally { await view.unmount(); view.restore(); }
+});
 
 test('device read errors stay distinct from empty results and retry preserves source choices', async () => {
   let fail = true;
