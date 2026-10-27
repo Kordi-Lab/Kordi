@@ -40,6 +40,32 @@ export type WhatsNewRuntime = {
 };
 
 const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighlight[]>> = {
+  '0.0.2-beta.6': [
+    {
+      category: 'Grounding',
+      title: 'Build cards and find common ground',
+      detail: 'Choose sources and share cards in rooms or Nearby.',
+      kind: 'collaboration',
+    },
+    {
+      category: 'People',
+      title: 'Explore profiles and group channels',
+      detail: 'See shared media and choose channels from Contacts.',
+      kind: 'collaboration',
+    },
+    {
+      category: 'Memory',
+      title: 'Organize memories by source and card',
+      detail: 'Import instruction files on Mac.',
+      kind: 'general',
+    },
+    {
+      category: 'Chats',
+      title: 'Share videos and personalize chats',
+      detail: 'Try Classic and keep avatars consistent.',
+      kind: 'general',
+    },
+  ],
   '0.0.2-beta.5.2': [
     {
       category: 'Shared documents',
