@@ -127,14 +127,38 @@ final class AvatarIdentityTests: XCTestCase {
         )
     }
 
-    func testGeneratedAgentUsesThePinnedThumbsRenderer() throws {
+    func testGeneratedAgentUsesTheBirdStyle() throws {
         let seed = CanonicalAvatarSystem.defaultAgentId
         let preview = try XCTUnwrap(CanonicalAvatarSystem.previewURL(
             style: CanonicalAvatarSystem.agentStyle,
             seed: seed,
             baseURL: URL(string: "https://avatars.example")!
         ))
-        XCTAssertTrue(preview.absoluteString.contains("/preview/thumbs/"))
+        XCTAssertTrue(preview.absoluteString.contains("/preview/kordi-birds/"))
+    }
+
+    func testBirdAndLegacyStylesParseAndUnknownStyleDoesNot() throws {
+        let base = URL(string: "https://avatars.example")!
+        let version = CanonicalAvatarSystem.rendererVersion
+        let bird = "kordi-avatar://\(version)/kordi-birds/bird-owl-color-paper?version=3"
+        XCTAssertEqual(CanonicalAvatarSystem.marker(from: bird)?.style, "kordi-birds")
+        XCTAssertEqual(
+            CanonicalAvatarSystem.renderURL(from: bird, baseURL: base)?.absoluteString,
+            "https://avatars.example/v1/avatars/\(version)/kordi-birds/bird-owl-color-paper.png?v=3"
+        )
+        let legacy = "kordi-avatar://\(version)/thumbs/seed1?version=1"
+        XCTAssertEqual(CanonicalAvatarSystem.marker(from: legacy)?.style, "thumbs")
+        XCTAssertNil(CanonicalAvatarSystem.marker(
+            from: "kordi-avatar://\(version)/unknown/seed1?version=1"
+        ))
+        XCTAssertNil(CanonicalAvatarSystem.marker(style: "unknown", seed: "seed1", version: 1))
+        XCTAssertNil(CanonicalAvatarSystem.previewURL(style: "unknown", seed: "seed1", baseURL: base))
+        XCTAssertEqual(
+            CanonicalAvatarSystem.previewURL(
+                style: "kordi-birds", seed: "bird-owl-color-paper", baseURL: base
+            )?.absoluteString,
+            "https://avatars.example/v1/avatars/preview/kordi-birds/bird-owl-color-paper.png"
+        )
     }
 
     func testDirectConversationKeepsTheExactProfileImageSource() {
