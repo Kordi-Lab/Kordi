@@ -43,8 +43,8 @@ export type ContactsPageProps = {
   onOpenAgentSettings?: () => void;
   /** Chat spaces; the joined groups among them list under Groups. */
   groupSpaces?: ParticipantSpaceViewModel[];
-  /** Opens a group's chat, as selecting it in the chat list does. */
-  onOpenGroup?: (space: ParticipantSpaceViewModel) => void;
+  /** Opens only the channel explicitly chosen from a group's channel picker. */
+  onOpenGroup?: (space: ParticipantSpaceViewModel, sessionId: string) => void;
   /** Optional rows pinned above the request inbox at the top of the list column. */
   leadingListItems?: ReactNode;
   /**

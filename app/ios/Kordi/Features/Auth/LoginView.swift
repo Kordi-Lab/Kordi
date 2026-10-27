@@ -51,12 +51,6 @@ struct LoginView: View {
                         divider
                         modePicker
                         form
-
-                        Text("Use the same Kordi account on iPhone and Mac.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.horizontal, 24)
                     .padding(.vertical, 28)

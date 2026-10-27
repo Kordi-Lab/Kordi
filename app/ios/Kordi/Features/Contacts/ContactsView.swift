@@ -7,20 +7,23 @@ struct ContactsView<PinnedRows: View>: View {
     @State private var showsCommonGround = false
     @State private var profileSubject: ContactProfileSubject?
     var onOpenConversation: ((ConversationSummary) -> Void)? = nil
+    var onOpenGroup: ((GroupSpaceSummary) -> Void)? = nil
     /// Pushes Common ground on the main stack; without it the screen opens full screen.
     var onOpenCommonGround: (() -> Void)? = nil
     /// Rows shown above requests and contacts, for entries that live outside this screen.
     private let pinnedRows: PinnedRows
 
-    private var showsCommonGroundEntry: Bool { model.isCommonGroundAvailable }
+    private var showsCommonGroundEntry: Bool { model.phase == .signedIn }
     private var commonGroundInvitationWaiting: Bool { CommonGroundAvailability.hasWaitingInvitation() }
 
     init(
         onOpenConversation: ((ConversationSummary) -> Void)? = nil,
+        onOpenGroup: ((GroupSpaceSummary) -> Void)? = nil,
         onOpenCommonGround: (() -> Void)? = nil,
         @ViewBuilder pinnedRows: () -> PinnedRows
     ) {
         self.onOpenConversation = onOpenConversation
+        self.onOpenGroup = onOpenGroup
         self.onOpenCommonGround = onOpenCommonGround
         self.pinnedRows = pinnedRows()
     }
@@ -82,7 +85,7 @@ struct ContactsView<PinnedRows: View>: View {
                 }
 
                 if !groupSpaces.isEmpty {
-                    ContactsGroupsSection(spaces: groupSpaces, isSearching: !searchText.isEmpty, onOpenConversation: onOpenConversation)
+                    ContactsGroupsSection(spaces: groupSpaces, isSearching: !searchText.isEmpty, onOpenGroup: onOpenGroup)
                 }
 
                 // With groups listed, the empty-contacts state is noise; it shows only on an empty page.
@@ -123,6 +126,9 @@ struct ContactsView<PinnedRows: View>: View {
         .background(Color(uiColor: .systemBackground))
         .navigationTitle("Contacts")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: GroupSpaceSummary.self) { space in
+            GroupSessionListView(space: space, onOpenConversation: onOpenConversation)
+        }
         .navigationDestination(for: ConversationSummary.self) { conversation in
             ConversationView(conversation: conversation)
                 .task { _ = await model.restoreConversationIfNeeded(conversation) }
@@ -142,7 +148,7 @@ struct ContactsView<PinnedRows: View>: View {
         .sheet(isPresented: $showAddContact) { AddContactSheet() }
         .contactProfileSheet(subject: $profileSubject, onOpenConversation: onOpenConversation)
         .fullScreenCover(isPresented: $showsCommonGround) {
-            CommonGroundView(appModel: model, onClose: { showsCommonGround = false }) { showsCommonGround = false; onOpenConversation?($0) }
+            CommonGroundDestinationView(appModel: model, onClose: { showsCommonGround = false }) { showsCommonGround = false; onOpenConversation?($0) }
         }
         .task { await model.refreshContactRequests() }
     }
@@ -186,9 +192,10 @@ struct ContactsView<PinnedRows: View>: View {
 extension ContactsView where PinnedRows == EmptyView {
     init(
         onOpenConversation: ((ConversationSummary) -> Void)? = nil,
+        onOpenGroup: ((GroupSpaceSummary) -> Void)? = nil,
         onOpenCommonGround: (() -> Void)? = nil
     ) {
-        self.init(onOpenConversation: onOpenConversation, onOpenCommonGround: onOpenCommonGround) { EmptyView() }
+        self.init(onOpenConversation: onOpenConversation, onOpenGroup: onOpenGroup, onOpenCommonGround: onOpenCommonGround) { EmptyView() }
     }
 }
 

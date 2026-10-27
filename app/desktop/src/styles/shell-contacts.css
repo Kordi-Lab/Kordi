@@ -48,6 +48,8 @@
   color: var(--utility-muted-text);
 }
 
+.app-contact-request-select:focus-visible::after,
+.app-group-show-all:focus-visible,
 .app-contacts-icon-button:focus-visible,
 .app-contacts-tile:focus-visible,
 .app-contacts-card-action:focus-visible,
@@ -79,6 +81,8 @@
   border-color: var(--app-quiet-control-focus-ring);
 }
 
+.app-contacts-card,
+.app-contacts-tile,
 .app-contacts-lookup-result {
   background: color-mix(in oklab, var(--utility-foreground) 5%, transparent);
 }
@@ -169,11 +173,6 @@
   outline: none;
 }
 
-.app-contact-request-select:focus-visible::after {
-  outline: 2px solid var(--app-quiet-control-focus-ring);
-  outline-offset: -2px;
-}
-
 .kordi-app :is(.app-contacts-page, .app-contacts-list-column) .app-contact-row.app-contact-row-selected,
 .kordi-app :is(.app-contacts-page, .app-contacts-list-column) .app-contact-row.app-contact-row-selected:hover {
   background: var(--app-sidebar-selected-bg);
@@ -196,7 +195,6 @@
 
 /* Action tiles: equal width (grid columns), icon over label, on a subtle surface. */
 .app-contacts-tile {
-  background: color-mix(in oklab, var(--utility-foreground) 5%, transparent);
   color: var(--app-accent);
 }
 
@@ -205,10 +203,6 @@
 }
 
 /* Grouped info and action cards. */
-.app-contacts-card {
-  background: color-mix(in oklab, var(--utility-foreground) 5%, transparent);
-}
-
 .app-contact-detail-dialog .app-contacts-card,
 .app-contact-detail-dialog .app-contacts-tile:not(.is-primary) {
   background: color-mix(in oklab, var(--app-transient-text) 6%, transparent);
@@ -291,10 +285,14 @@
   box-shadow: 0 0 0 2px var(--app-main-bg);
 }
 
-/* Group rows: one initial tile per group, coloured from a fixed muted palette by group id. */
+/* Group rows stay flat on pointer hover; keyboard focus remains visible. */
 
 :is(.app-contacts-page, .app-contacts-list-column) .app-contact-row.app-group-row {
   min-height: 46px;
+  border: 0;
+  background: transparent;
+  color: var(--utility-foreground);
+  box-shadow: none;
 }
 
 
@@ -310,8 +308,6 @@
 }
 
 .app-group-show-all:focus-visible {
-  outline: 2px solid var(--app-quiet-control-focus-ring);
-  outline-offset: -2px;
   border-radius: 8px;
 }
 

@@ -301,6 +301,14 @@ enum CloudConversationCatalog {
                 ?? sorted.reversed().compactMap { normalizedGroupSpaceId($0.1.groupSpaceId) }.first
                 ?? normalizedGroupSpaceId(groupId)
                 ?? groupId
+            let root = canonicalConversations.first {
+                $0.kind == "group" && normalizedGroupSpaceId($0.legacySessionId ?? $0.id) == groupSpaceId
+            }
+            let creator = root?.createdByAccountId.nonEmpty
+                ?? canonical?.createdByAccountId.nonEmpty
+                ?? sorted.first {
+                    $0.1.kind == "group-invite" && normalizedGroupSpaceId($0.1.groupId) == groupSpaceId
+                }?.1.createdByAccountId.nonEmpty
             let groupTitle = groupTitlesBySpaceId[groupSpaceId]
                 ?? localGroupTitle
             let title = canonical?.sharedTitle.nonEmpty
@@ -379,6 +387,7 @@ enum CloudConversationCatalog {
                 isGroundingGroup: GroupOriginCatalog.isGrounding(groupSpaceId: groupSpaceId, canonical: canonicalConversations), agentActivity: nil,
                 sessionId: groupId,
                 groupSpaceId: groupSpaceId,
+                groupCreatorAccountId: creator,
                 groupParticipants: participants,
                 messageCount: Set(
                     groupMessages.map(\.id)

@@ -2,11 +2,12 @@ import SwiftUI
 
 enum MainNavigationRoute: Hashable {
     case conversation(ConversationSummary)
+    case group(GroupSpaceSummary)
     case message(KordiMessageNotificationRoute)
     case sessionDetails(ConversationSummary)
     case newChat(NewChatMode)
     case archived(ChatChannel)
-    /// Shown when the server reports Common ground; see CommonGroundAvailability.
+    /// Always discoverable from Contacts; service availability is checked on entry.
     case commonGround
 }
 
@@ -27,7 +28,7 @@ struct MainNavigationDestination: View {
 
     /// Common ground brings its own stack and round glass back button.
     @ViewBuilder private var commonGround: some View {
-        CommonGroundView(
+        CommonGroundDestinationView(
             appModel: model,
             onClose: { if path.last == .commonGround { path.removeLast() } },
             onOpenConversation: { path.append(.conversation($0)) }
@@ -65,6 +66,8 @@ struct MainNavigationDestination: View {
                         _ = await model.restoreConversationIfNeeded(conversation)
                     }
                 }
+        case .group(let space):
+            GroupSessionListView(space: space, onOpenConversation: { path.append(.conversation($0)) })
         case .message(let route):
             ConversationView(conversation: route.conversation, initialMessageID: route.messageID,
                 onOpenSessionDetails: openSessionDetails)

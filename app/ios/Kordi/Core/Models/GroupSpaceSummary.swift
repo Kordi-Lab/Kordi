@@ -93,7 +93,7 @@ enum GroupSpaceCatalog {
             }
             let latest = membershipSessions[0]
             let participants = mergedParticipants(from: membershipSessions)
-            let groupTitle = membershipSessions
+            let titleSources = membershipSessions
                 .sorted {
                     let leftPriority = groupTitlePriority($0)
                     let rightPriority = groupTitlePriority($1)
@@ -101,14 +101,9 @@ enum GroupSpaceCatalog {
                         ? leftPriority > rightPriority
                         : $0.id < $1.id
                 }
-                .compactMap { $0.ownerDisplayName?.nonEmpty }
-                .first
-            let participantTitle = participants
-                .filter { $0.accountId != ownAccountId }
-                .map(\.displayName)
-                .filter { !$0.isEmpty }
-                .prefix(3)
-                .joined(separator: ", ")
+            let groupTitle = titleSources.compactMap { $0.ownerDisplayName?.nonEmpty }.first
+            let creator = titleSources.compactMap { $0.groupCreatorAccountId?.nonEmpty }.first
+            let participantTitle = participantTitle(participants, creatorAccountId: creator)
             return GroupSpaceSummary(
                 id: key,
                 displayName: groupTitle ?? participantTitle.nonEmpty ?? "Group",
@@ -132,6 +127,25 @@ enum GroupSpaceCatalog {
                 lastActivityAt: $1.lastActivityAt
             )
         }
+    }
+
+    /// Matches the desktop fallback: exclude the shared creator, never the
+    /// current viewer, and use a stable account anchor for legacy groups.
+    static func participantTitle(_ participants: [CloudGroupParticipant], creatorAccountId: String? = nil) -> String {
+        let ordered = participants.sorted {
+            $0.accountId.compare($1.accountId, options: [.caseInsensitive, .diacriticInsensitive, .numeric], locale: Locale(identifier: "en")) == .orderedAscending
+        }
+        let anchor = creatorAccountId?.nonEmpty ?? ordered.first?.accountId
+        let peers = ordered.filter { $0.accountId != anchor }
+        let candidates = peers.isEmpty ? ordered : peers
+        var seen = Set<String>()
+        let names = candidates.compactMap { participant -> String? in
+            guard let name = participant.displayName.nonEmpty,
+                  seen.insert(participant.accountId).inserted else { return nil }
+            return name
+        }
+        let title = names.prefix(2).joined(separator: ", ")
+        return names.count > 2 ? "\(title) +\(names.count - 2) more" : title
     }
 
     private static func conversationPrecedes(

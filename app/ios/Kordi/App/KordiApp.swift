@@ -727,6 +727,7 @@ struct MainTabView: View {
         NavigationStack {
             ContactsView(
                 onOpenConversation: { path.append(.conversation($0)) },
+                onOpenGroup: { path.append(.group($0)) },
                 onOpenCommonGround: { path.append(.commonGround) }
             )
         }

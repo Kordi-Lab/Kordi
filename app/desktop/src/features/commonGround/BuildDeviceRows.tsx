@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { DEVICE_SOURCES, privacySettingsUrl } from './deviceAccess';
 import type { CgDeviceStatuses, CgHost } from './host';
-import { CgButton, CgGroup, CgIcon, CgNotice, CgRow, CgSection } from './parts';
+import { CgButton, CgGroup, CgIcon, CgRow, CgSection } from './parts';
 import type { CgDeviceItem, CgDeviceSource } from './types';
 
 export type CgDeviceTitles = Partial<Record<CgDeviceSource, CgDeviceItem[]>>;
@@ -19,57 +19,67 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded, chi
 }) {
   const device = host.device;
   const [status, setStatus] = useState<CgDeviceStatuses | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const read = useCallback(async (source: CgDeviceSource) => {
+  const [errors, setErrors] = useState<Partial<Record<CgDeviceSource, string>>>({});
+  const generation = useRef<object | null>(null);
+  const refresh = useCallback(async (requested?: CgDeviceSource, onGranted?: () => void) => {
     if (!device) return;
-    const items = await device.titles(source).catch(() => []);
-    setTitles((current) => ({ ...current, [source]: items }));
+    const current = {};
+    generation.current = current;
+    const active = () => generation.current === current;
+    // Clear evidence while rechecking access, including after returning from Settings.
+    setTitles(() => ({}));
+    setStatus(null);
+    setErrors({});
+    try {
+      const next = await (requested ? device.request(requested) : device.status());
+      if (!active()) return;
+      setStatus(next);
+      await Promise.all(DEVICE_SOURCES.map(async ({ id, name }) => {
+        if (next[id] !== 'granted') return;
+        try {
+          const items = await device.titles(id);
+          if (!active()) return;
+          setTitles((previous) => active() ? { ...previous, [id]: items } : previous);
+          if (id === requested) onGranted?.();
+        } catch {
+          if (active()) setErrors((previous) => ({ ...previous, [id]: `Could not read ${name}.` }));
+        }
+      }));
+    } catch {
+      if (active()) setErrors({ calendar: 'Could not check access.', reminders: 'Could not check access.' });
+    }
   }, [device, setTitles]);
   useEffect(() => {
-    if (!device) return;
-    let cancelled = false;
-    void device.status().then((next) => {
-      if (cancelled) return;
-      setStatus(next);
-      DEVICE_SOURCES.forEach(({ id }) => { if (next[id] === 'granted') void read(id); });
-    }, () => undefined);
-    return () => { cancelled = true; };
-  }, [device, read]);
-  const rows = device && status ? DEVICE_SOURCES.filter(({ id }) => status[id] !== 'unavailable') : [];
-  if (!device || !rows.length) return children ? <CgSection title="On this Mac"><CgGroup>{children}</CgGroup></CgSection> : null;
+    const recheck = () => { void refresh(); };
+    recheck();
+    window.addEventListener('focus', recheck);
+    return () => {
+      generation.current = null;
+      window.removeEventListener('focus', recheck);
+    };
+  }, [refresh]);
+  const rows = device ? DEVICE_SOURCES.filter(({ id }) => status?.[id] !== 'unavailable') : [];
+  if (!rows.length && !children) return null;
   return (
     <CgSection title="On this Mac">
       <CgGroup>
         {rows.map(({ id, name, tone, Icon }) => {
           const value = status?.[id];
           const count = titles[id]?.length;
-          let sub = 'Titles and dates only';
-          let trailing = (
-            <CgButton onClick={() => {
-              setError(null);
-              void device.request(id).then(async (next) => {
-                setStatus(next);
-                if (next[id] === 'granted') {
-                  await read(id);
-                  setIncluded((current) => [...new Set([...current, id])]);
-                }
-              }, (caught: unknown) => setError(caught instanceof Error ? caught.message : 'Could not ask for access.'));
-            }}
-            >
-              Allow
-            </CgButton>
-          );
-          if (value === 'granted') {
-            sub = count === undefined ? 'Reading…' : count === 0 ? 'Nothing found' : `${count} titles`;
-            trailing = (
-              <SettingsSwitch
-                label={name}
-                enabled={included.includes(id) && Boolean(count)}
-                disabled={!count}
-                onChange={(on) => setIncluded((current) => (on ? [...new Set([...current, id])] : current.filter((item) => item !== id)))}
-              />
-            );
-          } else if (value !== 'not_determined') {
+          let sub = status ? 'Reading…' : 'Checking access…';
+          let trailing = <SettingsSwitch label={name} enabled={included.includes(id)} disabled={value !== 'granted' || !count}
+            onChange={(on) => setIncluded((current) => on ? [...new Set([...current, id])] : current.filter((item) => item !== id))} />;
+          if (errors[id] || (value === 'granted' && count === 0)) {
+            sub = errors[id] ?? (id === 'calendar' ? 'No titles in the past 180 or next 60 days.' : 'No reminder titles found.');
+            trailing = <CgButton quiet label={`Retry ${name}`} onClick={() => { void refresh(); }}>Retry</CgButton>;
+          } else if (value === 'granted' && count !== undefined) {
+            sub = `${count} titles`;
+          } else if (value === 'not_determined') {
+            sub = 'Titles and dates only';
+            trailing = <CgButton label={`Allow ${name}`} onClick={() => {
+              void refresh(id, () => setIncluded((current) => [...new Set([...current, id])]));
+            }}>Allow</CgButton>;
+          } else if (value && value !== 'granted') {
             sub = 'Access is off';
             trailing = <CgButton quiet onClick={() => host.openUrl(privacySettingsUrl(id))}>Settings</CgButton>;
           }
@@ -77,7 +87,6 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded, chi
         })}
         {children}
       </CgGroup>
-      <CgNotice text={error} />
     </CgSection>
   );
 }

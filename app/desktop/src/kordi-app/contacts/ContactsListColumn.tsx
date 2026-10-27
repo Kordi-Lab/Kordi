@@ -6,7 +6,7 @@ import { SidebarListAction, SidebarListHeader, SidebarSearchField } from '@/comp
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { ContactRow } from '../components';
-import type { ContactClass } from '../types';
+import type { ContactClass, ParticipantSpaceViewModel } from '../types';
 import { ContactsAddForm } from './ContactsAddForm';
 import { ContactsGroupsSection } from './ContactsGroupsSection';
 import { ContactsListSection } from './ContactsListSection';
@@ -32,8 +32,8 @@ type ContactsListColumnProps = Pick<ContactsPageProps,
   | 'contactOverlayMode'
   | 'leadingListItems'
   | 'groupSpaces'
-  | 'onOpenGroup'
 > & {
+  onOpenGroup?: (space: ParticipantSpaceViewModel) => void;
   requests: PartitionedContactRequests;
   requestActions: ContactRequestActions;
   fullWidth: boolean;

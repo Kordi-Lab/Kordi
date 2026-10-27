@@ -1,6 +1,7 @@
 import { MainContentSwitch } from '@/app/MainContentSwitch';
 import { buildChatsPageProps } from '@/app/mainContentShellBuilders';
 import { openLocalAgentChatFromArgs, usesDefaultLocalAgentSession } from '@/app/openLocalAgentChat';
+import { requestParticipantSpaceExpansion } from '@/features/chat/participantSpaceNavigation';
 import { collaborationAgentForChatStart } from '@/features/chat/chatCreateFlows';
 import { isCollaborationSelfContactId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
@@ -91,10 +92,10 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         },
         onOpenAgentSettings: () => args.setActiveNav('agents'),
         groupSpaces: args.participantSpaces,
-        onOpenGroup: (space) => {
-          const sessionId = space.sessions[0]?.id;
-          if (!sessionId) return;
+        onOpenGroup: (space, sessionId) => {
+          if (!space.sessions.some((session) => session.id === sessionId)) return;
           args.setActiveNav('chats');
+          requestParticipantSpaceExpansion(space.id);
           void args.handleSelectChatSession(sessionId);
         },
         onMessageContact: (contact) => {

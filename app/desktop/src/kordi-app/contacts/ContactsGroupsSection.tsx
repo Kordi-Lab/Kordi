@@ -24,7 +24,7 @@ function ContactsGroupRow({ space, onOpen }: { space: ParticipantSpaceViewModel;
     <button
       type="button"
       onClick={onOpen}
-      className="app-contact-row app-list-item app-group-row flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1 text-left transition-none"
+      className="app-contact-row app-group-row flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1 text-left transition-none"
     >
       <GroupTile space={space} />
       <div className="min-w-0 flex-1">
