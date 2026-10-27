@@ -38,17 +38,9 @@
 
 .cg-avatar { display: inline-flex; flex: none; overflow: hidden; border-radius: 999px; }
 .cg-avatar.is-ring { box-shadow: 0 0 0 3px var(--app-main-bg); }
-.cg-avatar-grid { display: inline-grid; flex: none; align-content: center; justify-content: center; overflow: hidden; border-radius: 999px; }
+.cg-avatar-grid { display: inline-flex; flex: none; }
 .cg-pair { display: inline-flex; }
 .cg-pair > .cg-avatar + .cg-avatar { margin-left: -12px; }
-.cg-stack { display: inline-flex; flex: none; align-items: center; justify-content: flex-start; width: 66px; }
-.cg-stack > .cg-avatar.is-ring { box-shadow: 0 0 0 2px var(--app-main-bg); }
-.cg-stack > .cg-avatar + .cg-avatar { margin-left: -8px; }
-.cg-stack-more {
-  display: inline-flex; align-items: center; justify-content: center; margin-left: -8px; padding: 0 6px; border-radius: 999px;
-  font-size: 11px; font-weight: 600; background: var(--app-hover-bg); color: var(--app-text-muted);
-  box-shadow: 0 0 0 2px var(--app-main-bg);
-}
 .cg-badge {
   position: relative; margin-top: -10px; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700;
   background: var(--app-accent); color: var(--app-button-primary-text); box-shadow: 0 0 0 2px var(--app-main-bg);
