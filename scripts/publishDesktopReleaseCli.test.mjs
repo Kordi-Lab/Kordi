@@ -213,3 +213,13 @@ test('shared-session routing prompt passes the shipped-artifact privacy scan', a
   });
   assert.equal(scan.status, 1, 'the shipped prompt must pass the unchanged artifact privacy guard');
 });
+
+test('publisher compatibility probes forward their explicit OS version header', async () => {
+  const adapter = createPublicHttpAdapter({
+    async fetchImpl(_url, options) {
+      assert.equal(options.headers['X-Kordi-OS-Version'], '13.0');
+      return { status: 204, headers: new Headers(), async arrayBuffer() { return new ArrayBuffer(0); } };
+    },
+  });
+  await adapter.get('https://kordi.ai/updates/desktop/darwin/aarch64/0.0.0', { osVersion: '13.0' });
+});

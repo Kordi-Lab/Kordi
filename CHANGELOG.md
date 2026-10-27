@@ -29,6 +29,10 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ### Changed
 
+- Kordi Desktop now requires macOS 13 or later, matching the bundled agent
+  runtime. Automatic updates check the Mac version; older clients should
+  download the new version manually after checking compatibility.
+
 - Gave Kordi a paper-cut bird icon and an app-icon picker, consistent bird
   avatars for agents, and marble avatars for people ([#1932], [#2063],
   [#2086], [#2149]).

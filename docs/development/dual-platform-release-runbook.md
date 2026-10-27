@@ -384,7 +384,9 @@ Require before storage access:
 - production prerequisite gate for `RELEASE_COMMIT`;
 - Developer ID signature, Apple acceptance, stapling, and Gatekeeper;
 - DMG layout with `Kordi.app` and `/Applications` drag target;
-- macOS 12 minimum and correct product/update origins;
+- macOS 13 minimum, every shipped Mach-O compatible with that minimum, and correct product/update origins;
+- explicit updater eligibility for the supported macOS versions; clients whose OS
+  version is unknown must not receive an incompatible automatic update;
 - exact version parity across app, archive, DMG, and repository metadata;
 - full privacy scan of app, archive, mounted DMG, and native binaries;
 - updater signature verification and one-byte tamper rejection;

@@ -40,6 +40,8 @@ test('generates deterministic beta.6 metadata, keys, checksums, and product URLs
   assert.deepEqual(first.release, second.release);
   assert.deepEqual(first.pointer, second.pointer);
   assert.equal(first.release.version, VERSION);
+  assert.equal(first.release.platforms['darwin-aarch64'].minimumSystemVersion, '13.0');
+  assert.equal(first.release.manual.minimumSystemVersion, undefined);
   assert.equal(first.release.pubDate, PUB_DATE);
   assert.match(first.release.notes, /^### (?:Added|Changed|Fixed)$/m);
   assert.match(first.release.notes, /^- /m);
@@ -376,6 +378,10 @@ test('profile-aware verifiers apply one bundle contract to every artifact copy',
       const options = {
         repoRoot,
         run,
+        checkMacOSRuntimeMinimumImpl(app, { expectedMinimum }) {
+          assert.equal(expectedMinimum, '13.0');
+          calls.push(`[minimum macOS] ${app}`);
+        },
         env: {
           TAURI_SIGNING_PRIVATE_KEY: 'updater-private-key',
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: 'updater-password',
@@ -418,6 +424,7 @@ test('profile-aware verifiers apply one bundle contract to every artifact copy',
       });
 
       const count = (pattern) => calls.filter((command) => pattern.test(command)).length;
+      assert.equal(count(/^\[minimum macOS\]/), 3);
       assert.equal(count(/^security find-identity /), releaseProfile === 'production' ? 1 : 0);
       assert.equal(count(/^plutil -extract CFBundleShortVersionString /), 3);
       assert.equal(count(/^plutil -extract CFBundleIdentifier /), 3);
@@ -481,4 +488,19 @@ test('ad-hoc verifier rejects a changed acceptance overlay before artifact inspe
     /Acceptance Tauri configuration does not match the ad-hoc preview contract/i,
   );
   assert.equal(calls.some((command) => command.startsWith('codesign ')), false);
+});
+
+
+test('publishing requires a verified numeric minimum before any storage mutation', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  for (const minimumSystemVersion of [undefined, '13', '13.0 ', '013.0', '0.0', '65536.0']) {
+    const store = new MemoryStore();
+    await assert.rejects(publishDesktopRelease(optionsFor(fixture), {
+      verifier: { async verify() { return { minimumSystemVersion }; } },
+      store,
+      publicHttp: {},
+    }), /Invalid macOS/);
+    assert.equal(store.actions.length, 0);
+  }
 });

@@ -233,10 +233,28 @@ function isTauriRuntime() {
   return typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
 }
 
+export async function checkNativeDesktopUpdate(
+  readMetadata: () => Promise<{ platform: string; osVersion: string }>,
+  check: (options: { headers: Record<string, string> }) => Promise<DesktopUpdaterUpdate | null>,
+): Promise<DesktopUpdaterUpdate | null> {
+  const metadata = await readMetadata();
+  const parts = metadata.osVersion.split('.');
+  if (metadata.platform !== 'macos'
+    || !/^[1-9][0-9]*\.(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))?$/.test(metadata.osVersion)
+    || parts.some((part) => Number(part) > 65535)) {
+    throw new Error('Unable to determine this Mac’s compatibility with updates.');
+  }
+  return check({ headers: { 'X-Kordi-OS-Version': metadata.osVersion } });
+}
+
 export const tauriDesktopUpdaterAdapter: DesktopUpdaterAdapter = {
   async check() {
     const updater = await import('@tauri-apps/plugin-updater');
-    return updater.check();
+    const { invoke } = await import('@tauri-apps/api/core');
+    return checkNativeDesktopUpdate(
+      () => invoke('cloud_device_system_metadata'),
+      (options) => updater.check(options),
+    );
   },
   async currentVersion() {
     const app = await import('@tauri-apps/api/app');

@@ -63,7 +63,7 @@ Start with the [community contributor guide](docs/community-contributor-guide.md
 
 Kordi is under active development. macOS beta builds are published on the [Releases page](https://github.com/Kordi-AI/Kordi/releases).
 
-Kordi Desktop requires macOS 12 or later. Kordi for iPhone requires iOS 17 or later.
+Kordi Desktop requires macOS 13 or later. Kordi for iPhone requires iOS 17 or later.
 
 ### Run from source
 

@@ -1,3 +1,4 @@
+import { versionParts } from '../check-macos-runtime-minimum.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -123,6 +124,7 @@ export async function makeVerifierRepoFixture() {
     writeFile(join(desktopRoot, 'package-lock.json'), JSON.stringify(packageLock)),
     writeFile(join(tauriRoot, 'tauri.conf.json'), JSON.stringify({
       version: VERSION,
+      bundle: { macOS: { minimumSystemVersion: '13.0' } },
       plugins: { updater: { pubkey: TAURI_UPDATER_PUBLIC_KEY, endpoints: [PRODUCTION_ENDPOINT] } },
     })),
     writeFile(join(tauriRoot, 'tauri.cloud.conf.json'), JSON.stringify({ identifier: 'io.kordi.cloud' })),
@@ -241,6 +243,7 @@ export function passingVerifier(calls = []) {
   return {
     async verify(input) {
       calls.push(input);
+      return { minimumSystemVersion: '13.0' };
     },
   };
 }
@@ -392,8 +395,20 @@ export function makePublicHttp(prepared, {
         }
         const selected = postPromotionFailed ? previousPrepared : prepared;
         if (!selected) return { status: 204, headers: {}, body: Buffer.alloc(0) };
+        const minimum = selected.release.platforms['darwin-aarch64'].minimumSystemVersion;
+        const headers = { 'cache-control': 'no-store', vary: 'X-Kordi-OS-Version' };
+        if (minimum) {
+          let eligible = false;
+          try {
+            const requested = versionParts(options.osVersion);
+            const required = versionParts(minimum);
+            const difference = requested.findIndex((part, index) => part !== required[index]);
+            eligible = difference === -1 || requested[difference] > required[difference];
+          } catch {}
+          if (!eligible) return { status: 204, headers, body: Buffer.alloc(0) };
+        }
         const updateBody = updateResponse(selected);
-        return { status: 200, headers: { 'content-length': String(updateBody.length) }, body: updateBody };
+        return { status: 200, headers: { ...headers, 'content-length': String(updateBody.length) }, body: updateBody };
       }
       if (
         url === `${PRODUCT_ORIGIN}/updates/releases/version`
