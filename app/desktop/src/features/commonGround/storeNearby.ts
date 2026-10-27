@@ -108,7 +108,7 @@ export class CgNearbyStore {
   }
 
   async loadSettings(): Promise<boolean> {
-    if (this.state.busy === 'profile') return false;
+    if (this.state.busy) return false;
     const revision = this.profileRevision;
     try {
       const settings = await this.client.nearby();
@@ -263,7 +263,7 @@ export class CgNearbyStore {
 
   /** Shares another card through Nearby. */
   async setProfile(profileId: string): Promise<boolean> {
-    if (this.state.busy === 'profile') return false;
+    if (this.state.busy) return false;
     this.profileRevision += 1;
     this.peopleRequest += 1;
     this.set({ results: null, persons: {}, personNotices: {} });
