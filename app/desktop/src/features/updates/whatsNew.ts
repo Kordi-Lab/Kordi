@@ -40,6 +40,32 @@ export type WhatsNewRuntime = {
 };
 
 const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighlight[]>> = {
+  '0.0.2-beta.6': [
+    {
+      category: 'Grounding',
+      title: 'Build cards and find common ground',
+      detail: 'Choose sources for your profile cards, review their references, and share a card in rooms or with people nearby.',
+      kind: 'collaboration',
+    },
+    {
+      category: 'People and groups',
+      title: 'Know more before you start a conversation',
+      detail: 'Richer contact profiles bring About lines, shared files, and Grounding matches together. Groups in Contacts open a channel chooser.',
+      kind: 'collaboration',
+    },
+    {
+      category: 'Memory',
+      title: 'Organize memories and choose where they belong',
+      detail: 'Review memory categories and sources, assign memories to Grounding cards, and import instruction files on Mac.',
+      kind: 'general',
+    },
+    {
+      category: 'Everyday conversations',
+      title: 'Share videos and keep chats in sync',
+      detail: 'Send videos from your iPhone photo library, use the Classic chat theme, and see consistent avatars across Mac and iPhone.',
+      kind: 'general',
+    },
+  ],
   '0.0.2-beta.5.2': [
     {
       category: 'Shared documents',

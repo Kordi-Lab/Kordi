@@ -1,7 +1,7 @@
 [package]
 license = "Apache-2.0"
 name = "kordi-desktop"
-version = "0.0.2-beta.5.2"
+version = "0.0.2-beta.6"
 description = "Kordi macOS desktop application"
 authors = ["Kordi contributors"]
 edition = "2021"

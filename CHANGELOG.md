@@ -4,6 +4,75 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
 
+## [0.0.2-beta.6] - 2026-10-26
+
+### Added
+
+- Added Grounding on Mac and iPhone: build a wallet of profile cards from
+  selected sources, including Kordi documents, review references and timelines,
+  find shared interests, and join rooms through short codes, QR codes, or phone
+  pairing ([#1930], [#1936], [#1983], [#1997], [#2005]).
+- Added opt-in Nearby discovery in Grounding, with a chosen shared card,
+  distance and compatibility filters, and requests with optional time windows
+  and matching alerts ([#2124]).
+- Added richer contact profiles with Kordi IDs, About lines, shared photos,
+  files and links, and Grounding matches. Groups are listed in Contacts on
+  both platforms ([#1960], [#1963], [#1964], [#1999], [#2000]).
+- Added Cooperative and Personal agent controls for approved group assistance
+  and owner updates from granted connectors ([#2065], [#2078], [#2120]).
+- Added memory categories, sources and card assignments, instruction-file
+  imports on Mac, and conversation memories for Grounding cards ([#2071]).
+- Added resumable workspace tours and permission recovery guidance on Mac,
+  and project creation with a chosen local save location ([#2108], [#2110]).
+- Added video sharing from the iPhone photo picker, full-screen playback, and
+  drag-to-close ([#2122], [#2126]).
+
+### Changed
+
+- Gave Kordi a paper-cut bird icon and an app-icon picker, consistent bird
+  avatars for agents, and marble avatars for people ([#1932], [#2063],
+  [#2086], [#2149]).
+- Prefer a ready owner's Mac for agent requests, digests and scheduled tasks,
+  with cloud fallback. Digest refreshes incrementally and responds to urgent
+  changes ([#1861], [#1862], [#1863], [#1879], [#1882], [#1884]).
+- Simplified model and reasoning controls and improved fallback when a saved
+  provider account or model is unavailable ([#1839], [#1897], [#2067]).
+- Renamed PiP to System, clarified system notices, and moved Kordi Support and
+  Grounding to the hosted Google Cloud model service ([#1976], [#2112],
+  [#2136]).
+- Added the Classic chat theme, coordinated iPhone colors with the selected
+  theme, and moved Mac update controls into Help with an availability badge
+  ([#1948], [#2048], [#2056], [#2144]).
+- Licensed the repository under Apache 2.0 ([#2131]).
+
+### Fixed
+
+- Opening a group from Contacts now presents its channels, and selecting one
+  switches immediately. Grounding stays discoverable on iPhone, with retry
+  and foreground refresh. Mac source errors are distinguished from empty
+  Calendar or Reminders results ([#2138]).
+- Kept Grounding card selection, meeting activities, pairing pages and room
+  membership current, and corrected sharing-off behavior in both directions
+  ([#2115], [#2150]).
+- Kept queued requests and replies in stable rows, prevented duplicate
+  processing rows, and made forks follow copied replies until completion
+  ([#2090]).
+- Improved long-running and background agent requests, recovery after a Mac
+  webview reload, and handoff when a Mac cannot start a run ([#1813], [#1872],
+  [#1881], [#1904], [#1914]).
+- Preserved provider accounts across device refreshes, kept hosted sign-ins
+  current, and allowed people chats to send when an agent's provider route
+  is unavailable ([#1803], [#1805], [#2021]).
+- Attached agent-created documents to replies and Artifacts, preserved
+  document access in owner background sessions, and stopped opening a
+  document from saving it unnecessarily ([#1822], [#1827], [#1891], [#1900],
+  [#1916]).
+- Stabilized iPhone photo viewers, sheets and pinned-message bars during chat
+  updates, corrected quoted-message avatars, and fixed Mac resize and sign-in
+  transition rendering ([#2092], [#2105], [#2106], [#2118], [#2077], [#2133]).
+- Restored hosted service-model authentication for Support and Grounding
+  ([#2145]).
+
 ## [0.0.2-beta.5.2] - 2026-10-14
 
 This release replaces `0.0.2-beta.4`, `0.0.2-beta.5`, and `0.0.2-beta.5.1`,
@@ -719,7 +788,8 @@ which were built but never released.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta4...HEAD
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta6...HEAD
+[0.0.2-beta.6]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta5.2...V0.0.2.beta6
 [0.0.2-beta.5.2]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta3...V0.0.2.beta5.2
 [0.0.2-beta.3]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta2...V0.0.2.beta3
 [0.0.2-beta.2]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta1...V0.0.2.beta2
@@ -1010,3 +1080,67 @@ This release is the comparison baseline for beta.8. See the
 [#1790]: https://github.com/Kordi-Lab/Kordi/pull/1790
 [#1791]: https://github.com/Kordi-Lab/Kordi/pull/1791
 [#1792]: https://github.com/Kordi-Lab/Kordi/pull/1792
+[#1803]: https://github.com/Kordi-Lab/Kordi/pull/1803
+[#1805]: https://github.com/Kordi-Lab/Kordi/pull/1805
+[#1813]: https://github.com/Kordi-Lab/Kordi/pull/1813
+[#1822]: https://github.com/Kordi-Lab/Kordi/pull/1822
+[#1827]: https://github.com/Kordi-Lab/Kordi/pull/1827
+[#1839]: https://github.com/Kordi-Lab/Kordi/pull/1839
+[#1861]: https://github.com/Kordi-Lab/Kordi/pull/1861
+[#1862]: https://github.com/Kordi-Lab/Kordi/pull/1862
+[#1863]: https://github.com/Kordi-Lab/Kordi/pull/1863
+[#1872]: https://github.com/Kordi-Lab/Kordi/pull/1872
+[#1879]: https://github.com/Kordi-Lab/Kordi/pull/1879
+[#1881]: https://github.com/Kordi-Lab/Kordi/pull/1881
+[#1882]: https://github.com/Kordi-Lab/Kordi/pull/1882
+[#1884]: https://github.com/Kordi-Lab/Kordi/pull/1884
+[#1891]: https://github.com/Kordi-Lab/Kordi/pull/1891
+[#1897]: https://github.com/Kordi-Lab/Kordi/pull/1897
+[#1900]: https://github.com/Kordi-Lab/Kordi/pull/1900
+[#1904]: https://github.com/Kordi-Lab/Kordi/pull/1904
+[#1914]: https://github.com/Kordi-Lab/Kordi/pull/1914
+[#1916]: https://github.com/Kordi-Lab/Kordi/pull/1916
+[#1930]: https://github.com/Kordi-Lab/Kordi/pull/1930
+[#1932]: https://github.com/Kordi-Lab/Kordi/pull/1932
+[#1936]: https://github.com/Kordi-Lab/Kordi/pull/1936
+[#1948]: https://github.com/Kordi-Lab/Kordi/pull/1948
+[#1960]: https://github.com/Kordi-Lab/Kordi/pull/1960
+[#1963]: https://github.com/Kordi-Lab/Kordi/pull/1963
+[#1964]: https://github.com/Kordi-Lab/Kordi/pull/1964
+[#1976]: https://github.com/Kordi-Lab/Kordi/pull/1976
+[#1983]: https://github.com/Kordi-Lab/Kordi/pull/1983
+[#1997]: https://github.com/Kordi-Lab/Kordi/pull/1997
+[#1999]: https://github.com/Kordi-Lab/Kordi/pull/1999
+[#2000]: https://github.com/Kordi-Lab/Kordi/pull/2000
+[#2005]: https://github.com/Kordi-Lab/Kordi/pull/2005
+[#2021]: https://github.com/Kordi-Lab/Kordi/pull/2021
+[#2048]: https://github.com/Kordi-Lab/Kordi/pull/2048
+[#2056]: https://github.com/Kordi-Lab/Kordi/pull/2056
+[#2063]: https://github.com/Kordi-Lab/Kordi/pull/2063
+[#2065]: https://github.com/Kordi-Lab/Kordi/pull/2065
+[#2067]: https://github.com/Kordi-Lab/Kordi/pull/2067
+[#2071]: https://github.com/Kordi-Lab/Kordi/pull/2071
+[#2077]: https://github.com/Kordi-Lab/Kordi/pull/2077
+[#2078]: https://github.com/Kordi-Lab/Kordi/pull/2078
+[#2086]: https://github.com/Kordi-Lab/Kordi/pull/2086
+[#2090]: https://github.com/Kordi-Lab/Kordi/pull/2090
+[#2092]: https://github.com/Kordi-Lab/Kordi/pull/2092
+[#2105]: https://github.com/Kordi-Lab/Kordi/pull/2105
+[#2106]: https://github.com/Kordi-Lab/Kordi/pull/2106
+[#2108]: https://github.com/Kordi-Lab/Kordi/pull/2108
+[#2110]: https://github.com/Kordi-Lab/Kordi/pull/2110
+[#2112]: https://github.com/Kordi-Lab/Kordi/pull/2112
+[#2115]: https://github.com/Kordi-Lab/Kordi/pull/2115
+[#2118]: https://github.com/Kordi-Lab/Kordi/pull/2118
+[#2120]: https://github.com/Kordi-Lab/Kordi/pull/2120
+[#2122]: https://github.com/Kordi-Lab/Kordi/pull/2122
+[#2124]: https://github.com/Kordi-Lab/Kordi/pull/2124
+[#2126]: https://github.com/Kordi-Lab/Kordi/pull/2126
+[#2131]: https://github.com/Kordi-Lab/Kordi/pull/2131
+[#2133]: https://github.com/Kordi-Lab/Kordi/pull/2133
+[#2136]: https://github.com/Kordi-Lab/Kordi/pull/2136
+[#2138]: https://github.com/Kordi-Lab/Kordi/pull/2138
+[#2144]: https://github.com/Kordi-Lab/Kordi/pull/2144
+[#2145]: https://github.com/Kordi-Lab/Kordi/pull/2145
+[#2149]: https://github.com/Kordi-Lab/Kordi/pull/2149
+[#2150]: https://github.com/Kordi-Lab/Kordi/pull/2150
