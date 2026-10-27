@@ -172,7 +172,7 @@ fn clean(items: Vec<CommonGroundDeviceItem>) -> Vec<CommonGroundDeviceItem> {
     let mut out: Vec<CommonGroundDeviceItem> = Vec::new();
     for item in items {
         let title = item.title.trim().to_string();
-        if title.chars().count() < 4 {
+        if title.is_empty() {
             continue;
         }
         if let Some(&index) = seen.get(&title.to_lowercase()) {
@@ -296,12 +296,16 @@ mod tests {
             item("Lab meeting", Some("2026-05-01")),
             item("lab meeting", Some("2026-09-01")),
             item("Gym", None),
+            item("\u{4f1a}\u{8bae}", None),
+            item("  ", None),
             item(" Paper review ", None),
         ];
         assert_eq!(
             clean(items),
             vec![
                 item("Lab meeting", Some("2026-09-01")),
+                item("Gym", None),
+                item("\u{4f1a}\u{8bae}", None),
                 item("Paper review", None)
             ]
         );
