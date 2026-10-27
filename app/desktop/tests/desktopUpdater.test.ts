@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   createDesktopUpdaterController,
+  checkNativeDesktopUpdate,
   manualUpdateUrlForVersion,
   type DesktopUpdaterAdapter,
   type DesktopUpdaterDownloadEvent,
@@ -318,4 +319,41 @@ test('disposing closes the held updater resource', async () => {
   await controller.dispose();
   assert.equal(closeCalls, 1);
   assert.equal(controller.getCheckedUpdate(), null);
+});
+
+
+test('native updater reports only the actual numeric Mac OS version', async () => {
+  const expected = fakeUpdate();
+  const result = await checkNativeDesktopUpdate(
+    async () => ({ platform: 'macos', osVersion: '13.0.1', machineId: 'synthetic-private-device' }),
+    async (options) => {
+      assert.deepEqual(options, { headers: { 'X-Kordi-OS-Version': '13.0.1' } });
+      return expected;
+    },
+  );
+  assert.equal(result, expected);
+  for (const osVersion of ['13', '013.0', '13.00', '13.0 ', 'macOS 13.0', '13.0.0.0', '13.0,14.0', '65536.0', '13.65536', '0.0', '']) {
+    await assert.rejects(checkNativeDesktopUpdate(
+      async () => ({ platform: 'macos', osVersion }),
+      async () => { assert.fail('unknown OS must not check for an installable update'); },
+    ), /compatibility/);
+  }
+  await assert.rejects(checkNativeDesktopUpdate(
+    async () => { throw new Error('native metadata unavailable'); },
+    async () => { assert.fail('native failure must not check for an update'); },
+  ), /unavailable/);
+});
+
+
+test('native updater accepts version bounds and rejects other platforms', async () => {
+  for (const osVersion of ['1.0', '13.0', '13.0.0', '65535.65535.65535']) {
+    await checkNativeDesktopUpdate(async () => ({ platform: 'macos', osVersion }), async (options) => {
+      assert.equal(options.headers['X-Kordi-OS-Version'], osVersion);
+      return null;
+    });
+  }
+  await assert.rejects(checkNativeDesktopUpdate(
+    async () => ({ platform: 'windows', osVersion: '13.0' }),
+    async () => { assert.fail('a non-Mac must not claim macOS eligibility'); },
+  ), /compatibility/);
 });

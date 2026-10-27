@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { verifyPromotedRelease } from './lib/desktop-release-public.mjs';
 import {
   assert,
   rm,
@@ -14,7 +16,7 @@ import {
   preparedFixture,
 } from './test_support/publishDesktopReleaseFixtures.mjs';
 
-test('failed post-promotion verification restores exact prior pointer bytes', async (t) => {
+test('failed post-promotion verification restores a legacy manifest without an OS minimum', async (t) => {
   const fixture = await makeFixture();
   const previousFixture = await makeFixture(PREVIOUS_VERSION);
   t.after(() => Promise.all([
@@ -23,6 +25,11 @@ test('failed post-promotion verification restores exact prior pointer bytes', as
   ]));
   const prepared = await preparedFixture(fixture);
   const previous = await preparedFixture(previousFixture, { version: PREVIOUS_VERSION });
+  delete previous.release.platforms['darwin-aarch64'].minimumSystemVersion;
+  previous.releaseBytes = Buffer.from(`${JSON.stringify(previous.release, null, 2)}\n`);
+  previous.pointer.releaseManifestSha256 = createHash('sha256').update(previous.releaseBytes).digest('hex');
+  previous.pointerBytes = Buffer.from(`${JSON.stringify(previous.pointer, null, 2)}\n`);
+  previous.immutableObjects.find((object) => object.key.endsWith('/release.json')).bytes = previous.releaseBytes;
   const store = new MemoryStore(storedReleaseEntries(previous));
   const priorEtag = (await store.getObject(prepared.pointerKey)).etag;
   store.actions.length = 0;
@@ -99,7 +106,7 @@ test('promotion waits through the full public pointer convergence window before 
   const publicHttp = {
     head: (...args) => baseHttp.head(...args),
     async get(url, options) {
-      if (url === prepared.urls.updaterEndpoint && attempts++ < 9) {
+      if (url === prepared.urls.updaterEndpoint && options?.osVersion === '13.0' && attempts++ < 9) {
         return { status: 503, headers: {}, body: Buffer.from('not converged') };
       }
       return baseHttp.get(url, options);
@@ -424,4 +431,33 @@ test('a failed publisher cannot roll back a newer concurrent promotion', async (
     /rollback also failed|concurrent|precondition/i,
   );
   assert.deepEqual(store.bytes(prepared.pointerKey), concurrentPointer);
+});
+
+
+test('post-promotion gates reject OS eligibility or cache-policy regressions', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  const prepared = await preparedFixture(fixture);
+  for (const broken of ['missing', 'unknown', 'old', 'cache', 'vary']) {
+    const http = makePublicHttp(prepared);
+    const seen = [];
+    const publicHttp = {
+      head: (...args) => http.head(...args),
+      async get(url, options = {}) {
+        if (url !== prepared.urls.updaterEndpoint) return http.get(url, options);
+        seen.push(options.osVersion);
+        if ((broken === 'missing' && options.osVersion === undefined)
+          || (broken === 'unknown' && options.osVersion === 'unknown')
+          || (broken === 'old' && options.osVersion === '12.65535.65535')) {
+          return http.get(url, { osVersion: '13.0' });
+        }
+        const result = await http.get(url, options);
+        if (broken === 'cache') result.headers['cache-control'] = 'public, max-age=60';
+        if (broken === 'vary') delete result.headers.vary;
+        return result;
+      },
+    };
+    await assert.rejects(verifyPromotedRelease(prepared, publicHttp), /incompatible|uncached/);
+    assert.equal(seen[0], '13.0');
+  }
 });

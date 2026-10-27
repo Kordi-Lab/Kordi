@@ -155,7 +155,10 @@ export function createPublicHttpAdapter({ fetchImpl = globalThis.fetch } = {}) {
   return {
     head(url) { return request(url, 'HEAD'); },
     get(url, options = {}) {
-      return request(url, 'GET', options.range ? { Range: options.range } : {});
+      return request(url, 'GET', {
+        ...(options.range ? { Range: options.range } : {}),
+        ...(options.osVersion ? { 'X-Kordi-OS-Version': options.osVersion } : {}),
+      });
     },
     waitForPropagation(delayMs) {
       return new Promise((resolve) => setTimeout(resolve, delayMs));

@@ -48,3 +48,12 @@ test('the real updater adapter delegates installation to Tauri and relaunch to t
   assert.deepEqual([...new Set(literalOrigins)], ['https://kordi.ai']);
   assert.doesNotMatch(controller, /http:\/\//);
 });
+
+
+test('updater OS eligibility is backed by the native product version, not a web user agent', () => {
+  const updater = source('../src/features/updates/desktopUpdater.ts');
+  const native = source('../src-tauri/src/cloud_session.rs');
+  assert.match(updater, /invoke\('cloud_device_system_metadata'\)/);
+  assert.match(native, /command_output\("\/usr\/bin\/sw_vers", &\["-productVersion"\]\)/);
+  assert.doesNotMatch(updater, /navigator\.(userAgent|platform)/);
+});

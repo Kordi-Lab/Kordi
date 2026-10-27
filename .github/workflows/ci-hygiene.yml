@@ -67,6 +67,11 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Install artifact privacy scanner
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ripgrep
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

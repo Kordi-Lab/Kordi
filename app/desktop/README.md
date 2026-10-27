@@ -2,7 +2,7 @@
 
 Kordi Desktop is the macOS product shell for Kordi.
 
-Kordi Desktop requires macOS 12 or later.
+Kordi Desktop requires macOS 13 or later.
 
 ## Role in Kordi
 

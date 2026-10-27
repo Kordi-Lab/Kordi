@@ -173,11 +173,12 @@ Do not commit local cache paths to the repository.
 The beta.9 toolchain produced malformed build-time Rust proc-macro dylibs when
 they were linked with a macOS 12 minimum on the current linker. Beta.14
 temporarily targeted macOS 15; beta.15 restores the supported application
-minimum to macOS 12. The failure affected build-time proc macros, not the
+minimum to macOS 12. Starting with 0.0.2-beta.6, the declared minimum is macOS 13
+to match the pinned [Bun runtime requirement](https://github.com/oven-sh/bun/blob/bun-v1.4.2/docs/installation.mdx). The failure affected build-time proc macros, not the
 supported application runtime.
 
 The desktop release commands run through `scripts/build-macos-desktop.sh`. It
-sets the application and sidecar deployment target to macOS 12 and uses
+sets the application and sidecar deployment target to macOS 13 and uses
 `scripts/macos-proc-macro-linker.sh` to link only build-time proc-macro dylibs
 with macOS 11. Do not bypass this wrapper in release builds.
 
@@ -188,9 +189,9 @@ If that failure recurs:
 2. Inspect the failing dylib with `otool -l` or `vtool -show-build`.
 3. Confirm `scripts/macos-proc-macro-linker.sh` scoped macOS 11 only to those
    proc-macro dylibs.
-4. Keep the application deployment target at macOS 12.
+4. Keep the application deployment target at macOS 13.
 5. Verify the final app executable and sidecars still report the intended
-   macOS 12 minimum.
+   macOS 13 minimum or lower for individual dependencies.
 
 Do not broaden this workaround beyond build-time proc macros. Record the exact
 linker command and toolchain with the release artifacts.
@@ -393,3 +394,33 @@ The following values provide a known-good comparison point:
 Beta.9 was explicitly approved as ad-hoc signed and non-notarized. It was
 published to the acceptance updater channel and mirrored as a GitHub
 prerelease; it was not promoted to the normal signed beta updater channel.
+
+
+## Minimum macOS and updater eligibility
+
+The app, archive, and mounted DMG must declare macOS 13.0. The publisher reads
+this value from the pinned source, checks every bundled Mach-O deployment
+minimum, and writes `minimumSystemVersion` on the `darwin-aarch64` platform
+asset. A dependency that requires a newer OS blocks publication. Run the same
+gate independently with:
+
+```bash
+node scripts/check-macos-runtime-minimum.mjs "$KORDI_APP_BUNDLE"
+```
+
+Deploy OS-aware updater eligibility before promoting this release. Beta 6 reads
+the actual native OS version and sends `X-Kordi-OS-Version`; the server must
+return HTTP 204 for missing, malformed, or older OS versions when a platform
+minimum is present. Legacy manifests without this field retain their previous
+behavior. The older app updater cannot distinguish macOS 12 from macOS 13, so
+those clients receive no automatic Beta 6 update. Users on macOS 13 or later
+can install the signed manual download while preserving their app data.
+
+Do not rely on `LSMinimumSystemVersion` or a Tauri response field to protect
+older clients: the shipped updater replaces the bundle without this check.
+Do not infer the OS version from a browser user agent. Do not promote the normal
+beta pointer until compatible-OS responses return the candidate and missing,
+invalid, and older-OS probes return 204 with `Cache-Control: no-store` and
+`Vary: X-Kordi-OS-Version`. The latest DMG remains available independently of
+eligibility. Channel-clear verification uses a maximum valid synthetic OS
+version so OS-based withholding cannot masquerade as successful unpublication.

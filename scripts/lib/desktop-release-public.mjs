@@ -190,7 +190,9 @@ export async function verifyPublicReleaseArtifacts(prepared, publicHttp) {
 }
 
 export async function verifyPromotedRelease(prepared, publicHttp) {
-  const response = await publicHttp.get(prepared.urls.updaterEndpoint);
+  const updaterAsset = prepared.release.platforms['darwin-aarch64'];
+  const minimum = updaterAsset.minimumSystemVersion;
+  const response = await publicHttp.get(prepared.urls.updaterEndpoint, minimum ? { osVersion: minimum } : {});
   if (response?.status !== 200) {
     throw new Error(
       `Updater endpoint post-promotion verification failed with status ${response?.status ?? 'unknown'}`,
@@ -202,7 +204,6 @@ export async function verifyPromotedRelease(prepared, publicHttp) {
   } catch {
     throw new Error('Updater endpoint returned invalid JSON after promotion');
   }
-  const updaterAsset = prepared.release.platforms['darwin-aarch64'];
   if (
     manifest.version !== prepared.version
     || manifest.notes !== prepared.release.notes
@@ -211,6 +212,22 @@ export async function verifyPromotedRelease(prepared, publicHttp) {
     || manifest.signature !== updaterAsset.signature
   ) {
     throw new Error('Updater endpoint returned unexpected release metadata after promotion');
+  }
+  if (minimum) {
+    const checkCachePolicy = (result) => {
+      if (headerValue(result, 'cache-control') !== 'no-store'
+        || !String(headerValue(result, 'vary')).toLowerCase().split(/,\s*/).includes('x-kordi-os-version')) {
+        throw new Error('Updater OS eligibility response must be uncached and vary by OS version');
+      }
+    };
+    checkCachePolicy(response);
+    const major = Number(minimum.split('.')[0]);
+    const ineligible = [undefined, 'unknown', ...(major > 1 ? [`${major - 1}.65535.65535`] : [])];
+    for (const osVersion of ineligible) {
+      const withheld = await publicHttp.get(prepared.urls.updaterEndpoint, { osVersion });
+      if (withheld?.status !== 204) throw new Error('Updater offered an incompatible or unknown OS an automatic update');
+      checkCachePolicy(withheld);
+    }
   }
   await verifyPublicAsset(
     publicHttp,
@@ -239,7 +256,9 @@ export async function verifyUnpublishedChannel(
   const endpoint = channel === 'acceptance'
     ? `${PRODUCT_ORIGIN}/updates/desktop/acceptance/darwin/aarch64/0.0.0`
     : `${PRODUCT_ORIGIN}/updates/desktop/darwin/aarch64/0.0.0`;
-  const response = await publicHttp.get(endpoint);
+  // This read-only probe must remain eligible for every valid minimum; otherwise
+  // OS-based withholding could look like a successfully cleared channel.
+  const response = await publicHttp.get(endpoint, { osVersion: '65535.65535.65535' });
   if (response?.status !== 204) {
     throw new Error(
       `Cleared updater endpoint returned status ${response?.status ?? 'unknown'} instead of 204`,

@@ -119,6 +119,15 @@ pub(super) fn seed_release(
     version: &str,
     channel: &str,
 ) -> ReleaseManifest {
+    seed_release_with_minimum(backend, version, channel, None)
+}
+
+pub(super) fn seed_release_with_minimum(
+    backend: &MemoryBackend,
+    version: &str,
+    channel: &str,
+    minimum: Option<&str>,
+) -> ReleaseManifest {
     let dmg = format!("dmg:{version}").into_bytes();
     let updater = format!("updater:{version}").into_bytes();
     let prefix = format!("desktop/releases/{version}/macos/aarch64");
@@ -129,6 +138,7 @@ pub(super) fn seed_release(
         sha256: sha256(&dmg),
         size_bytes: dmg.len() as u64,
         signature: None,
+        minimum_system_version: None,
     };
     let updater_asset = ReleaseAsset {
         object_key: format!("{prefix}/Kordi.app.tar.gz"),
@@ -137,6 +147,7 @@ pub(super) fn seed_release(
         sha256: sha256(&updater),
         size_bytes: updater.len() as u64,
         signature: Some(signature()),
+        minimum_system_version: minimum.map(str::to_owned),
     };
     let release = ReleaseManifest {
         schema_version: 1,

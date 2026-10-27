@@ -40,7 +40,8 @@ test('desktop release metadata is set for V0.0.2.beta6 and iOS 0.0.2 build 8', (
   assert.equal(packageLock.packages[''].version, appVersion);
   assert.equal(tauri.version, appVersion);
   assert.equal(tauri.productName, 'Kordi');
-  assert.equal(tauri.bundle.macOS.minimumSystemVersion, '12.0');
+  assert.equal(tauri.bundle.macOS.minimumSystemVersion, '13.0');
+  assert.match(readText('../../../scripts/build-macos-desktop.sh'), /export MACOSX_DEPLOYMENT_TARGET=13\.0/);
   assert.equal(cloudTauri.productName, 'Kordi');
   assert.match(cargoToml, /name = "kordi-desktop"\nversion = "0\.0\.2-beta\.6"/);
   assert.match(cargoLock, /name = "kordi-desktop"\nversion = "0\.0\.2-beta\.6"/);
