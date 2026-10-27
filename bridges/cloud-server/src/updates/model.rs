@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
 
+use super::system_version::parse_system_version;
+
 const SCHEMA_VERSION: u32 = 1;
 const ALLOWED_PLATFORMS: &[&str] = &["darwin-aarch64"];
 
@@ -20,6 +22,8 @@ pub struct ReleaseAsset {
     pub size_bytes: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_system_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -85,6 +89,8 @@ pub enum MetadataError {
     Unpublished,
     #[error("current client version must be semantic")]
     CurrentVersion,
+    #[error("release minimum system version is invalid")]
+    MinimumSystemVersion,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,7 +140,27 @@ fn valid_updater_signature(value: &str) -> bool {
 }
 
 impl ReleaseAsset {
+    pub(super) fn supports_system_version(&self, current: Option<&str>) -> bool {
+        let Some(minimum) = self.minimum_system_version.as_deref() else {
+            return true;
+        };
+        match (
+            parse_system_version(minimum),
+            current.and_then(parse_system_version),
+        ) {
+            (Some(minimum), Some(current)) => current >= minimum,
+            _ => false,
+        }
+    }
+
     fn validate(&self, version: &str, requires_signature: bool) -> Result<(), MetadataError> {
+        if self
+            .minimum_system_version
+            .as_deref()
+            .is_some_and(|minimum| !requires_signature || parse_system_version(minimum).is_none())
+        {
+            return Err(MetadataError::MinimumSystemVersion);
+        }
         if !valid_path_component(&self.file_name) {
             return Err(MetadataError::FileName);
         }
