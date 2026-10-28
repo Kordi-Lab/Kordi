@@ -45,6 +45,7 @@ managed Key Value in Oregon. Automatic deploys are disabled.
    stream if absent, preserves existing stream settings, then starts the server
    on Render's `PORT`. New streams retain up to seven days or 7 GiB of events.
    NATS has a 10 GB persistent disk and a generated token shared only with the API.
+   The API reads `KORDI_NATS_TOKEN` explicitly; keep credentials out of `NATS_URL`.
    NATS restarts interrupt event delivery; this single-instance setup is not HA.
 
 `/health` is liveness only. `/ready` has a three-second deadline and checks

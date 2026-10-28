@@ -56,11 +56,20 @@ impl EventBus {
     /// the cloud-server image free of admin-level stream config and lets
     /// operators tune retention without redeploying.
     pub async fn connect(url: &str) -> Result<Self, EventBusError> {
-        let client = async_nats::ConnectOptions::new()
-            .request_timeout(Some(Duration::from_secs(5)))
-            .connect(url)
-            .await
-            .map_err(EventBusError::Connect)?;
+        let token = std::env::var("KORDI_NATS_TOKEN")
+            .ok()
+            .filter(|value| !value.is_empty());
+        Self::connect_with_token(url, token.as_deref()).await
+    }
+
+    /// Authenticate explicitly: this client version does not read URL credentials.
+    pub async fn connect_with_token(url: &str, token: Option<&str>) -> Result<Self, EventBusError> {
+        let mut options =
+            async_nats::ConnectOptions::new().request_timeout(Some(Duration::from_secs(5)));
+        if let Some(token) = token {
+            options = options.token(token.to_owned());
+        }
+        let client = options.connect(url).await.map_err(EventBusError::Connect)?;
         let js = jetstream::new(client.clone());
         Ok(Self {
             inner: Some(EventBusInner { js, client }),

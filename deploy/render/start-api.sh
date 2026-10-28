@@ -25,7 +25,7 @@ if [ -n "${KORDI_AUTH_LEGACY_SIGNUP_UNTIL:-}" ]; then
   echo 'Legacy signup bypass is not supported by this deployment' >&2
   exit 1
 fi
-export NATS_URL="nats://$KORDI_NATS_TOKEN@$KORDI_NATS_HOSTPORT"
+export NATS_URL="nats://$KORDI_NATS_HOSTPORT"
 export KORDI_OMP_ROUTE_WORKER_URL="http://$KORDI_OMP_HOSTPORT"
 export KORDI_CLOUD_PUBLIC_BASE_URL="${KORDI_CLOUD_PUBLIC_BASE_URL:-${RENDER_EXTERNAL_URL:-}}"
 : "${KORDI_CLOUD_PUBLIC_BASE_URL:?Set the public HTTPS API origin}"

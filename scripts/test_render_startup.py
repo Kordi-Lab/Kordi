@@ -21,6 +21,7 @@ class RenderStartupTests(unittest.TestCase):
 import json, os, sys
 with open(os.environ['TEST_CALLS'], 'a') as f:
     f.write(json.dumps({'args': sys.argv[1:], 'nats': os.environ.get('NATS_URL'),
+      'nats_token': os.environ.get('KORDI_NATS_TOKEN'),
       'worker': os.environ.get('KORDI_OMP_ROUTE_WORKER_URL'),
       'origin': os.environ.get('KORDI_CLOUD_PUBLIC_BASE_URL'),
       'strict': os.environ.get('KORDI_REQUIRE_CORE_SERVICES')}) + '\\n')
@@ -56,7 +57,8 @@ if sys.argv[1] == 'initialize-event-stream' and os.environ.get('TEST_INIT_FAIL')
         init, serve = self.calls()
         self.assertEqual(init['args'], ['initialize-event-stream'])
         self.assertEqual(serve['args'], ['serve', '--port', '12345'])
-        self.assertEqual(serve['nats'], 'nats://syntheticTestToken@events.internal:4222')
+        self.assertEqual(serve['nats'], 'nats://events.internal:4222')
+        self.assertEqual(serve['nats_token'], 'syntheticTestToken')
         self.assertEqual(serve['worker'], 'http://providers.internal:17331')
         self.assertEqual(serve['origin'], 'https://validation.example.com')
         self.assertEqual(serve['strict'], 'true')

@@ -13,6 +13,7 @@ struct TestServer {
     binary: String,
     directory: PathBuf,
     port: u16,
+    token: String,
 }
 impl TestServer {
     fn start(&mut self) {
@@ -20,6 +21,8 @@ impl TestServer {
             Command::new(&self.binary)
                 .args([
                     "--jetstream",
+                    "--auth",
+                    &self.token,
                     "--addr",
                     "127.0.0.1",
                     "--port",
@@ -42,7 +45,7 @@ impl TestServer {
     async fn connect(&self) -> EventBus {
         let url = format!("nats://127.0.0.1:{}", self.port);
         for _ in 0..50 {
-            if let Ok(bus) = EventBus::connect(&url).await {
+            if let Ok(bus) = EventBus::connect_with_token(&url, Some(&self.token)).await {
                 return bus;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -71,10 +74,27 @@ async fn bootstrap_preserves_configuration_and_survives_restart() {
         binary,
         directory,
         port,
+        token: "synthetic-nats-test-token".to_string(),
     };
     server.start();
     let bus = server.connect().await;
     assert!(!bus.is_ready().await, "a connection alone is not readiness");
+    let url = format!("nats://127.0.0.1:{}", server.port);
+    assert!(EventBus::connect_with_token(&url, None).await.is_err());
+    assert!(EventBus::connect_with_token(&url, Some("wrong-token"))
+        .await
+        .is_err());
+    let bootstrap = Command::new(env!("CARGO_BIN_EXE_kordi-cloud-server"))
+        .arg("initialize-event-stream")
+        .env("NATS_URL", &url)
+        .env("KORDI_NATS_TOKEN", &server.token)
+        .output()
+        .unwrap();
+    assert!(
+        bootstrap.status.success(),
+        "Authenticated CLI bootstrap failed"
+    );
+    assert!(bus.is_ready().await, "CLI bootstrap must create the stream");
     bus.initialize_stream().await.unwrap();
     let js = async_nats::jetstream::new(bus.nats_client().unwrap());
     let mut config = js
