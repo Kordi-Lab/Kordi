@@ -55,3 +55,22 @@ test('renders the owner tag while the viewer-owned agent is still working', () =
   assert.match(markup, /Owner · You/);
   assert.match(markup, /aria-label="Owner: You"/);
 });
+
+for (const role of ['owned-agent', 'external-agent'] as const) {
+  test(`${role} preserves full structured agent mentions in Markdown replies`, () => {
+    const text = '@Lab agent Please coordinate with @Hana’s agent before the pilot.';
+    const names = ['Lab agent', 'Hana’s agent'];
+    const message: Message = {
+      role, sender: 'Research agent', senderType: 'agent', text, time: '14:30',
+      mentions: names.map((label, index) => ({
+        label, targetKind: 'agent', targetIdentityId: `agent:${index}`,
+        startUtf16: text.indexOf(`@${label}`), lengthUtf16: label.length + 1,
+        displayText: `@${label}`, displayLabel: label,
+      })),
+    };
+    const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+    assert.match(markup, /data-mention-kind="agent"[^>]*data-mention-identity="agent:0"[^>]*>@Lab agent<\/span>/);
+    assert.match(markup, /data-mention-kind="agent"[^>]*data-mention-identity="agent:1"[^>]*>@Hana’s agent<\/span>/);
+    assert.doesNotMatch(markup, /data-mention-kind="person"/);
+  });
+}
