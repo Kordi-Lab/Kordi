@@ -20,7 +20,11 @@ use crate::updates::store::{
     MinioReleaseStore, ReleaseCatalogStore, ReleaseStoreConfig, ReleaseStoreError,
 };
 
+mod logging;
+mod readiness;
 mod workers;
+
+use logging::redact_url_credentials;
 
 pub struct ServerState {
     pool: PgPool,
@@ -194,6 +198,8 @@ pub fn router_with_shared_rate_limiter(
         .allow_methods(Any)
         .allow_headers(Any);
 
+    let readiness_state = state.clone();
+    let readiness_limiter = rate_limiter.clone();
     let ws_router = Router::new()
         .route("/v1/cloud/ws", axum::routing::get(crate::ws::ws_handler))
         .route(
@@ -247,6 +253,12 @@ pub fn router_with_shared_rate_limiter(
         .merge(crate::updates::routes::routes(state.clone()))
         .merge(ws_router)
         .route("/health", axum::routing::get(health))
+        .route(
+            "/ready",
+            axum::routing::get(move || {
+                readiness::ready(readiness_state.clone(), readiness_limiter.clone())
+            }),
+        )
         .layer(cors)
 }
 
@@ -256,6 +268,7 @@ async fn health() -> axum::Json<serde_json::Value> {
 
 #[derive(Debug)]
 pub enum RunError {
+    Configuration(&'static str),
     Pool(PgPoolError),
     Events(EventBusError),
     RateLimiter(RateLimiterError),
@@ -270,6 +283,7 @@ pub enum RunError {
 impl std::fmt::Display for RunError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Configuration(err) => write!(f, "{err}"),
             Self::Pool(err) => write!(f, "{err}"),
             Self::Events(err) => write!(f, "{err}"),
             Self::RateLimiter(err) => write!(f, "{err}"),
@@ -291,38 +305,26 @@ impl std::error::Error for RunError {}
 /// required; `nats_url` and `redis_url` are optional — when unset the
 /// server falls back to no-op events and an in-memory limiter so
 /// dev/CI work without those dependencies.
-fn redact_url_credentials(value: &str) -> String {
-    let Some(scheme_end) = value.find("://") else {
-        return value.to_string();
-    };
-    let scheme_prefix_end = scheme_end + 3;
-    let after_scheme = &value[scheme_prefix_end..];
-    let Some(at_index) = after_scheme.find('@') else {
-        return value.to_string();
-    };
-    let credentials = &after_scheme[..at_index];
-    let Some(password_separator) = credentials.find(':') else {
-        return value.to_string();
-    };
-
-    format!(
-        "{}{}:***@{}",
-        &value[..scheme_prefix_end],
-        &credentials[..password_separator],
-        &after_scheme[at_index + 1..]
-    )
-}
-
 pub async fn run(
     port: u16,
     database_url: &str,
     nats_url: Option<&str>,
     redis_url: Option<&str>,
 ) -> Result<(), RunError> {
+    if std::env::var("KORDI_REQUIRE_CORE_SERVICES").as_deref() == Ok("true")
+        && (nats_url.is_none()
+            || redis_url.is_none()
+            || S3Config::from_env().is_none()
+            || crate::auth::signup_email::SignupEmailService::from_env().is_none())
+    {
+        return Err(RunError::Configuration(
+            "Hosted deployment requires NATS, Redis, S3, and signup email configuration",
+        ));
+    }
     let pool = init_pool(database_url).await.map_err(RunError::Pool)?;
     let events = match nats_url {
         Some(url) => {
-            println!("Kordi cloud server connecting to NATS at {url}");
+            println!("Kordi cloud server connecting to NATS");
             EventBus::connect(url).await.map_err(RunError::Events)?
         }
         None => {
@@ -459,29 +461,4 @@ pub async fn run(
     .await
     .map_err(RunError::Serve)?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::redact_url_credentials;
-
-    #[test]
-    fn redacts_credentials_from_logged_urls() {
-        assert_eq!(
-            redact_url_credentials(
-                "redis://default:secret-password@redis.kordi-cloud.svc.cluster.local:6379/0"
-            ),
-            "redis://default:***@redis.kordi-cloud.svc.cluster.local:6379/0"
-        );
-        assert_eq!(
-            redact_url_credentials(
-                "redis://default:secret/with+reserved=chars@redis.kordi-cloud.svc.cluster.local:6379/0"
-            ),
-            "redis://default:***@redis.kordi-cloud.svc.cluster.local:6379/0"
-        );
-        assert_eq!(
-            redact_url_credentials("nats://nats.kordi-cloud.svc.cluster.local:4222"),
-            "nats://nats.kordi-cloud.svc.cluster.local:4222"
-        );
-    }
 }

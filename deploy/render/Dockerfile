@@ -1,0 +1,41 @@
+# Build inside the same Debian release used by the runtime image. Building the
+# server directly on the deployment VM can link it against a newer glibc than
+# bookworm provides, causing a crash loop before the process reaches main().
+FROM docker.io/library/rust:1.97-slim-bookworm AS builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential cmake pkg-config ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+COPY Cargo.toml Cargo.lock ./
+COPY agent ./agent
+COPY app ./app
+COPY bridges ./bridges
+COPY shared ./shared
+
+RUN cargo build --release -p kordi-cloud-server
+
+FROM --platform=linux/amd64 debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 1000 kordi \
+    && useradd --system --uid 1000 --gid kordi --home /var/lib/kordi-cloud --shell /usr/sbin/nologin kordi \
+    && install -d -o kordi -g kordi /var/lib/kordi-cloud
+
+COPY --from=builder /workspace/target/release/kordi-cloud-server /usr/local/bin/kordi-cloud-server
+COPY --from=builder /workspace/shared/blob-emoji/assets /usr/local/share/kordi/blob-emoji
+
+ENV KORDI_BLOB_EMOJI_DIR=/usr/local/share/kordi/blob-emoji
+
+COPY deploy/render/start-api.sh /usr/local/bin/kordi-render-start
+
+USER kordi
+WORKDIR /var/lib/kordi-cloud
+
+EXPOSE 17081
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/bin/sh", "/usr/local/bin/kordi-render-start"]

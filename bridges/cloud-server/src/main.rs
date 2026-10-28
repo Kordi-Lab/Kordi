@@ -36,6 +36,8 @@ enum Commands {
         #[arg(long)]
         redis_url: Option<String>,
     },
+    /// Initialize the event stream for a new self-hosted deployment.
+    InitializeEventStream,
     /// Migrate legacy inline uploaded avatars into reference-backed assets.
     BackfillAvatarAssets {
         /// Postgres connection string. Falls back to the DATABASE_URL env var.
@@ -66,6 +68,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 redis_url.as_deref(),
             )
             .await?;
+        }
+        Commands::InitializeEventStream => {
+            let url = std::env::var("NATS_URL").map_err(|_| "NATS_URL is required")?;
+            kordi_cloud_server::events::EventBus::connect(&url)
+                .await?
+                .initialize_stream()
+                .await?;
+            println!("Event stream is available");
         }
         Commands::BackfillAvatarAssets { database_url } => {
             let database_url = database_url

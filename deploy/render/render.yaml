@@ -1,0 +1,123 @@
+# Isolated validation stack. Supply a test-only SMTP sender and private S3 bucket.
+# All services must stay in one region. Review pricing before applying.
+services:
+  - type: web
+    name: kordi-validation-api
+    runtime: docker
+    region: oregon
+    plan: 1c-2g
+    numInstances: 1
+    dockerfilePath: ./deploy/render/Dockerfile
+    dockerContext: .
+    healthCheckPath: /ready
+    autoDeployTrigger: off
+    envVars:
+      - key: PORT
+        value: '10000'
+      - key: DATABASE_URL
+        fromDatabase:
+          name: kordi-validation-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: kordi-validation-cache
+          property: connectionString
+      - key: KORDI_NATS_HOSTPORT
+        fromService:
+          type: pserv
+          name: kordi-validation-events
+          property: hostport
+      - key: KORDI_NATS_TOKEN
+        fromService:
+          type: pserv
+          name: kordi-validation-events
+          envVarKey: KORDI_NATS_TOKEN
+      - key: KORDI_OMP_HOSTPORT
+        fromService:
+          type: pserv
+          name: kordi-validation-providers
+          property: hostport
+      - key: KORDI_OMP_ROUTE_WORKER_TOKEN
+        fromService:
+          type: pserv
+          name: kordi-validation-providers
+          envVarKey: KORDI_OMP_ROUTE_WORKER_TOKEN
+      - key: KORDI_CHAT_SYNC_CURSOR_SECRET
+        generateValue: true
+      - key: KORDI_AUTH_EMAIL_CODE_SECRET
+        generateValue: true
+      - key: KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY
+        generateValue: true
+      - key: KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY_ID
+        value: render-validation:v1
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: KORDI_AUTH_SMTP_HOST
+        sync: false
+      - key: KORDI_AUTH_SMTP_PORT
+        value: '587'
+      - key: KORDI_AUTH_SMTP_USERNAME
+        sync: false
+      - key: KORDI_AUTH_SMTP_PASSWORD
+        sync: false
+      - key: KORDI_AUTH_SMTP_FROM
+        sync: false
+  - type: pserv
+    name: kordi-validation-providers
+    runtime: docker
+    region: oregon
+    plan: 0.5c-512mb
+    dockerfilePath: ./experiments/omp-provider-routing/Dockerfile
+    dockerContext: .
+    autoDeployTrigger: off
+    envVars:
+      - key: PORT
+        value: '17331'
+      - key: KORDI_OMP_ROUTE_WORKER_PORT
+        value: '17331'
+      - key: KORDI_OMP_ROUTE_WORKER_HOST
+        value: 0.0.0.0
+      - key: KORDI_OMP_ROUTE_WORKER_TOKEN
+        generateValue: true
+  - type: pserv
+    name: kordi-validation-events
+    runtime: docker
+    region: oregon
+    plan: 0.5c-512mb
+    dockerfilePath: ./deploy/render/nats.Dockerfile
+    dockerContext: .
+    autoDeployTrigger: off
+    disk:
+      name: events
+      mountPath: /var/lib/nats
+      sizeGB: 10
+    envVars:
+      - key: PORT
+        value: '4222'
+      - key: KORDI_NATS_TOKEN
+        generateValue: true
+  - type: keyvalue
+    name: kordi-validation-cache
+    region: oregon
+    plan: 1g
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+
+databases:
+  - name: kordi-validation-db
+    region: oregon
+    plan: 0.5c-1g
+    postgresMajorVersion: '17'
+    diskSizeGB: 20
+    databaseName: kordi_cloud
+    user: kordi
+    ipAllowList: []

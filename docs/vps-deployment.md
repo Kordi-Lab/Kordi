@@ -219,3 +219,5 @@ Review migrations before image upgrades; old images may not support a new schema
 Adding a second API domain is not a second server. Both aliases share this VPS's
 availability. If an old installation later becomes accessible, migrate its data
 through a separately scoped and verified restore/merge operation.
+
+For an isolated managed-platform validation, see [Render deployment](render-deployment.md).

@@ -67,6 +67,40 @@ impl EventBus {
         })
     }
 
+    /// Explicit bootstrap for a new deployment. Existing retention is preserved.
+    pub async fn initialize_stream(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let inner = self.inner.as_ref().ok_or("NATS is not configured")?;
+        let stream = inner
+            .js
+            .get_or_create_stream(jetstream::stream::Config {
+                name: "KORDI_EVENTS".into(),
+                subjects: vec!["kordi.events.>".into()],
+                storage: jetstream::stream::StorageType::File,
+                max_bytes: 7 * 1024 * 1024 * 1024,
+                max_age: Duration::from_secs(7 * 24 * 60 * 60),
+                ..Default::default()
+            })
+            .await?;
+        if !stream
+            .cached_info()
+            .config
+            .subjects
+            .iter()
+            .any(|s| s == "kordi.events.>")
+        {
+            return Err("Existing event stream does not cover kordi.events.>".into());
+        }
+        Ok(())
+    }
+
+    /// Check JetStream itself, not just a live TCP connection.
+    pub async fn is_ready(&self) -> bool {
+        match &self.inner {
+            Some(inner) => inner.js.get_stream("KORDI_EVENTS").await.is_ok(),
+            None => false,
+        }
+    }
+
     /// Drop-in fallback when NATS isn't configured. Every publish
     /// becomes a no-op. Keeps tests + local dev working.
     pub fn noop() -> Self {

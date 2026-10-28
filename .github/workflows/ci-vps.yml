@@ -1,9 +1,11 @@
-name: VPS deployment checks
+name: Self-hosted deployment checks
 
 on:
   pull_request:
     paths:
       - 'deploy/vps/**'
+      - 'deploy/render/**'
+      - 'scripts/test_render_startup.py'
       - 'bridges/cloud-server/deploy/k3s/**'
       - 'scripts/vps*'
       - 'scripts/test_vps_config.py'
@@ -28,3 +30,5 @@ jobs:
           "$RUNNER_TEMP/vps-tests/bin/pip" install PyYAML==6.0.2
           "$RUNNER_TEMP/vps-tests/bin/python" -m unittest discover -s scripts -p test_vps_config.py -v
           bash -n scripts/build-vps-images.sh
+          sh -n deploy/render/start-api.sh
+          python3 -m unittest discover -s scripts -p test_render_startup.py -v
