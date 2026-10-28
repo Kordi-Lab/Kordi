@@ -279,7 +279,8 @@ export function ChatSessionPane({
 
   return (
     <>
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* Keep animated emoji, media receipts, and row controls below composer popovers. */}
+      <div className="relative isolate flex min-h-0 flex-1 flex-col">
       {isInitialTranscriptLoading ? (
         <div className="contents" data-transcript-initial-loading="true">
           <TranscriptLoadingSkeleton

@@ -2,6 +2,38 @@ import XCTest
 
 @MainActor
 final class MessageLayoutUITests: ProviderUITestCase {
+    func testMediaPickerStaysUsableBesideConversationEmoji() {
+        let app = launch("--preview-contact-chat", "--preview-rich-message-actions", "-kordi.appearance", "light")
+        let openPicker = app.buttons["Open emoji and media picker"]
+        XCTAssertTrue(openPicker.waitForExistence(timeout: 15))
+        openPicker.tap()
+        capture("Opened media picker", app: app)
+        let tabs = app.segmentedControls.containing(.button, identifier: "Stickers").firstMatch
+        XCTAssertTrue(tabs.waitForExistence(timeout: 5))
+        for tab in ["Stickers", "GIFs", "Emoji", "Stickers"] {
+            let button = tabs.buttons[tab]
+            XCTAssertTrue(button.isHittable)
+            button.tap()
+            XCTAssertTrue(button.isSelected)
+            if tab != "Emoji" {
+                XCTAssertTrue(app.staticTexts["My \(tab)"].waitForExistence(timeout: 5))
+                XCTAssertTrue(app.buttons["Add"].isHittable)
+            }
+        }
+        capture("Media picker above the emoji conversation", app: app)
+        tabs.buttons["Emoji"].tap()
+        let emoji = app.buttons["Smile"].firstMatch
+        XCTAssertTrue(emoji.waitForExistence(timeout: 5))
+        XCTAssertTrue(emoji.isHittable)
+        emoji.tap()
+        let editor = app.textViews["Message Maya Chen"]
+        XCTAssertEqual(editor.value as? String, "\u{1F600}")
+        app.buttons["Hide emoji and media picker"].tap()
+        XCTAssertTrue(tabs.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(editor.isHittable)
+        app.terminate()
+    }
+
     func testAskAgentUsesNativeHeaderAndPreservesSessionActions() {
         let app = launch("--preview-contact-chat", "-kordi.appearance", "light")
         let parentTitle = app.buttons["conversation-title"]
