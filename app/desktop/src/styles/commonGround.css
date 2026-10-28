@@ -162,6 +162,8 @@ button.cg-tag-text { cursor: pointer; }
 
 .cg-progress { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 0; color: var(--utility-muted-text); }
 .cg-mark { --app-kordi-bird: var(--utility-foreground); --app-kordi-bird-cut: var(--utility-background); width: 72px; height: 72px; }
+.cg-progress.is-inline { flex-direction: row; justify-content: center; gap: 8px; padding: 14px 0 4px; font-size: 12.5px; }
+.cg-progress.is-inline .cg-mark { width: 20px; height: 20px; }
 
 
 .cg-notice { margin-top: 10px; color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 12.5px; }
