@@ -17,6 +17,8 @@ export type CloudAgentSubsession = Omit<NativeAgentSubsession, 'parentRequestId'
   hasFollowupExecution?: boolean;
   live?: boolean; queued?: boolean; startedAtMs?: number | null;
   participants?: Array<{accountId:string;displayName:string;avatarUrl?:string|null;avatarSeed?:string|null}>;
+  /** The route the next run uses; sent only to the owner. */
+  runtimeRoute?: unknown;
 };
 
 export type AgentSubsessionTask = Pick<CloudAgentSubsession, 'sessionId' | 'parentSessionId' | 'parentRequestId' | 'agentId' | 'ownerAccountId' | 'ownerDisplayName' | 'agentDisplayName' | 'agentAvatarUrl' | 'title' | 'status'> & {

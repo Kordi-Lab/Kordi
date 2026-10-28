@@ -105,6 +105,9 @@ struct Snapshot {
     version: i64,
     messages: Vec<Value>,
     updated_at: String,
+    /// Only the owner sees the route their Agent's next run uses.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime_route: Option<crate::cloud_agent_runtime::runs::AgentRuntimeRoute>,
 }
 
 fn validate(request: &WriteRequest) -> bool {
@@ -307,7 +310,21 @@ async fn snapshot(
         .bind(id).fetch_one(pool).await.map_err(db_error)?;
     let participants:Vec<(String,String,Option<String>,String)>=query_as("SELECT a.account_id,a.display_name,a.avatar_url,a.avatar_seed FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.membership_state='active' JOIN cloud_accounts a ON a.account_id=m.account_id WHERE s.subsession_id=$1 ORDER BY a.account_id")
         .bind(id).fetch_all(pool).await.map_err(db_error)?;
+    let runtime_route = if account == owner_account_id {
+        conversation::thread_route(
+            pool,
+            id,
+            &parent_session_id,
+            &parent_request_id,
+            &owner_account_id,
+            &agent_id,
+        )
+        .await?
+    } else {
+        None
+    };
     Ok(Snapshot {
+        runtime_route,
         activity,
         has_followup_execution,
         live,
