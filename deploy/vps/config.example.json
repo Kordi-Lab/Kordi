@@ -1,0 +1,28 @@
+{
+  "public_origin": "https://chat.example.com",
+  "additional_origins": [],
+  "object_origin": "https://files.example.com",
+  "images": {
+    "cloud-server": "registry.example.com/kordi/cloud-server@sha256:REPLACE_WITH_IMAGE_DIGEST",
+    "cloud-agent-runner": "registry.example.com/kordi/cloud-agent-runner@sha256:REPLACE_WITH_IMAGE_DIGEST",
+    "omp-route-worker": "registry.example.com/kordi/omp-route-worker@sha256:REPLACE_WITH_IMAGE_DIGEST"
+  },
+  "server": {
+    "KORDI_SERVICE_MODEL_PROVIDER": "openai-compatible",
+    "KORDI_SERVICE_MODEL_BASE_URL": "https://api.openai.com/v1",
+    "KORDI_SERVICE_MODEL_MODEL": "",
+    "KORDI_SERVICE_MODEL_API_KEY": "",
+    "KORDI_SYSTEM_AGENT_ENABLED": "false",
+    "KORDI_SUPPORT_ENABLED": "false",
+    "KORDI_SUPPORT_OWNER_EMAIL": "",
+    "KORDI_OAUTH_GOOGLE_CLIENT_ID": "",
+    "KORDI_OAUTH_GOOGLE_CLIENT_SECRET": "",
+    "KORDI_OAUTH_GITHUB_CLIENT_ID": "",
+    "KORDI_OAUTH_GITHUB_CLIENT_SECRET": "",
+    "KORDI_AUTH_SMTP_HOST": "",
+    "KORDI_AUTH_SMTP_PORT": "587",
+    "KORDI_AUTH_SMTP_USERNAME": "",
+    "KORDI_AUTH_SMTP_PASSWORD": "",
+    "KORDI_AUTH_SMTP_FROM": ""
+  }
+}

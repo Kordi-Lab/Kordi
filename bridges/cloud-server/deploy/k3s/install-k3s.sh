@@ -45,9 +45,10 @@ else
 	echo "[k3s] downloading + installing k3s server (single-node)"
 	# --disable traefik:                Caddy is the public TLS terminator.
 	# --disable servicelb:              we don't need klipper-lb on a single node.
-	# --write-kubeconfig-mode 644:      so non-root kubectl works.
+	# --write-kubeconfig-mode 600:      keep cluster credentials private; a
+	#                                 separate operator-owned copy is made below.
 	# INSTALL_K3S_EXEC env carries the args because the installer respects it.
-	export INSTALL_K3S_EXEC="server --disable traefik --disable servicelb --write-kubeconfig-mode 644"
+	export INSTALL_K3S_EXEC="server --disable traefik --disable servicelb --write-kubeconfig-mode 600"
 	curl -sfL https://get.k3s.io | sh -
 fi
 

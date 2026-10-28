@@ -1,6 +1,7 @@
 use std::{env, fmt};
 
 use crate::service_model::{vertex_configuration, ServiceCredential};
+use crate::service_model_config::{shared_setting, validate_base_url};
 
 pub const DEFAULT_SUPPORT_ACCOUNT_ID: &str = "acct_kordi_support";
 pub const DEFAULT_SUPPORT_AGENT_ID: &str = "cloud_agent_kordi_support";
@@ -153,6 +154,10 @@ fn optional(get: &mut impl FnMut(&str) -> Option<String>, key: &str) -> Option<S
     get(key)
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+        .or_else(|| {
+            key.strip_prefix("KORDI_SUPPORT_")
+                .and_then(|suffix| shared_setting(get, suffix))
+        })
 }
 
 fn required_or_default(
@@ -204,7 +209,7 @@ impl PendingSupportConfig {
                     model,
                 }
             }
-            None | Some("openai") => {
+            None | Some("openai" | "openai-compatible") => {
                 let api_key = optional(&mut get, "KORDI_SUPPORT_OPENAI_API_KEY").ok_or(
                     SupportConfigError::Invalid("KORDI_SUPPORT_OPENAI_API_KEY is required"),
                 )?;
@@ -213,11 +218,16 @@ impl PendingSupportConfig {
                     "KORDI_SUPPORT_OPENAI_MODEL",
                     DEFAULT_SUPPORT_OPENAI_MODEL,
                 );
-                SupportProviderAuth::openai_api_key(api_key, model)?
+                let mut auth = SupportProviderAuth::openai_api_key(api_key, model)?;
+                if let Some(base_url) = optional(&mut get, "KORDI_SUPPORT_OPENAI_BASE_URL") {
+                    auth.base_url =
+                        validate_base_url(&base_url).map_err(SupportConfigError::Invalid)?;
+                }
+                auth
             }
             Some(_) => {
                 return Err(SupportConfigError::Invalid(
-                    "KORDI_SUPPORT_PROVIDER must be openai or vertex-ai",
+                    "KORDI_SUPPORT_PROVIDER must be openai, openai-compatible, or vertex-ai",
                 ))
             }
         };
@@ -264,6 +274,45 @@ impl SupportConfig {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn support_uses_operator_gateway_and_per_service_overrides() {
+        let mut values = HashMap::from([
+            ("KORDI_SUPPORT_ENABLED", "true"),
+            ("KORDI_SUPPORT_OWNER_EMAIL", "operator@example.test"),
+            ("KORDI_SERVICE_MODEL_PROVIDER", "openai-compatible"),
+            ("KORDI_SERVICE_MODEL_API_KEY", "synthetic-shared-key"),
+            ("KORDI_SERVICE_MODEL_MODEL", "operator-model"),
+            (
+                "KORDI_SERVICE_MODEL_BASE_URL",
+                "https://models.example.test/v1/",
+            ),
+        ]);
+        let resolve = |values: &HashMap<&str, &str>| {
+            PendingSupportConfig::from_lookup(|key| values.get(key).map(|value| value.to_string()))
+        };
+        let config = resolve(&values).unwrap().unwrap();
+        assert_eq!(
+            config.provider_auth.base_url(),
+            "https://models.example.test/v1"
+        );
+        assert_eq!(config.provider_auth.model(), "operator-model");
+        assert!(!config.provider_auth.credential().is_google_cloud());
+        assert!(!format!("{config:?}").contains("synthetic-shared-key"));
+        values.insert(
+            "KORDI_SUPPORT_OPENAI_BASE_URL",
+            "https://support.example.test/v1",
+        );
+        assert_eq!(
+            resolve(&values).unwrap().unwrap().provider_auth.base_url(),
+            "https://support.example.test/v1"
+        );
+        values.insert(
+            "KORDI_SUPPORT_OPENAI_BASE_URL",
+            "https://user:secret@support.example.test/v1",
+        );
+        assert!(resolve(&values).is_err());
+    }
 
     #[test]
     fn support_feature_requires_an_explicit_enable_flag() {
