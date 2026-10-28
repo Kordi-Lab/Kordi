@@ -44,7 +44,7 @@ import {
   VideoRecordingSurface,
 } from './chatsPage.videoComposer';
 import { useAttachedVideoReviews } from './chatsPage.videoAttachmentReviews';
-import { useComposerMentionMenu } from './useComposerReferenceOptions';
+import { composerParticipantMentions, useComposerMentionMenu } from './useComposerReferenceOptions';
 import type { MainComposerProps } from './chatsPage.mainComposer.types';
 
 export type { MainComposerProps } from './chatsPage.mainComposer.types';
@@ -247,6 +247,7 @@ export function MainComposer({
               <BlobEmojiComposerInput
                 ref={composerInputRef}
                 value={composerText}
+                mentions={composerParticipantMentions(conversation.canonicalParticipants)}
                 readOnly={editingMessage && messageEditBusy}
                 ariaBusy={editingMessage && messageEditBusy}
                 onPointerDownCapture={() => {

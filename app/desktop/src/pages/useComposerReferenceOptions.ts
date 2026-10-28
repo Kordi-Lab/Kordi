@@ -16,8 +16,17 @@ import {
 } from '@/app/useKordiAppModelHelpers';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import { orderedComposerMentionOptions } from '@/kordi-app/components/composerMentionOptions';
-import type { DesktopArtifactDirectoryEntry } from '@/kordi-app/types';
+import type { Conversation, MessageMention, DesktopArtifactDirectoryEntry } from '@/kordi-app/types';
 import { fetchDesktopChatArtifactDirectory } from '@/lib/desktop';
+
+export function composerParticipantMentions(participants: Conversation['canonicalParticipants']): MessageMention[] | undefined {
+  return participants?.map((participant) => ({
+    label: participant.name,
+    displayLabel: participant.name,
+    targetKind: participant.kind === 'agent' ? 'agent' : 'person',
+    targetIdentityId: participant.id,
+  }));
+}
 
 export function composerReferenceDirectorySearch(raw: string) {
   if (/^https?:\/\//i.test(raw) || !/[\\/]/.test(raw)) return null;

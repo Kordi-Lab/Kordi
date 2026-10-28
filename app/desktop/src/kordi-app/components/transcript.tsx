@@ -689,7 +689,7 @@ function MessageBubbleView({
         <>
           <div className={cn('flex flex-col', hasAttachments && !hasDetachedImageGroup && hasText ? 'gap-2.5' : 'gap-0')}>{msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
             {hasAttachments && !hasDetachedImageGroup ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}{msg.planCard ? <PlanCardContent card={msg.planCard} conversationId={msg.reactionConversationId} /> : null}
-            {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MarkdownContent text={msg.text} showLinkIcons copySurface="message" />) : null}
+            {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MarkdownContent text={msg.text} mentions={msg.mentions} showLinkIcons copySurface="message" />) : null}
           </div>
           {(msg.statusChips?.length || footerDetail) ? (
             <div className={cn('app-message-status-bar border-t border-white/10 pt-2 text-[11px] text-slate-300', hasAttachments || hasText ? 'mt-2' : '')}>

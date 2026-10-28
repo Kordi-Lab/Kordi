@@ -17,7 +17,7 @@ import '../../src/index.css';
 
 // Login-free preview of Common ground in the real Contacts page. A fetch stub answers the
 // `/v1/cloud/common-ground` routes from fixtures, with three profiles (`commonGroundVersion` 3).
-// Query: ?screen=home|build|card|look|lobby|results|match|meet|pair|pair-off, ?theme=light|dark.
+// Query: ?screen=home|build|card|look|lobby|results|match|meet|pair|pair-off, ?theme=light|dark, ?status=matching|matching-empty (results).
 // "look" is the card page with the background and icon popover open; "pair" is Home with the
 // Pair popover open, and "pair-off" the same with sharing off.
 const params = new URLSearchParams(location.search);
@@ -40,7 +40,12 @@ const ROUTES: Record<string, (query: string, body: Record<string, unknown>) => u
   'GET rooms/5160/preview': () => fx.preview,
   'POST rooms/5160/join': () => ({ ...fx.room, roomId: 'room_5160', code: '5160', name: 'Poster session 2026' }),
   'POST rooms': () => ({ ...fx.room, roomId: 'room_7319', code: '7319', name: 'Agents meetup', members: [] }),
-  'POST rooms/4821/results': () => fx.results,
+  // ?status=matching|matching-empty shows results still being matched.
+  'POST rooms/4821/results': () => {
+    const status = params.get('status');
+    if (status === 'matching-empty') return { ...fx.results, status: 'matching', people: [], topics: [], suggestion: null };
+    return status === 'matching' ? { ...fx.results, status: 'matching' } : fx.results;
+  },
   'POST pairings/code': () => fx.pairCode(),
   'POST pairings/redeem': () => fx.paired,
   'PUT profiles/cgp_work': (_query, body) => (fx.profiles[0] = { ...fx.profiles[0], ...body }),
