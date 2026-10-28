@@ -1,4 +1,4 @@
-name: Self-hosted deployment checks
+name: Cloud deployment checks
 
 on:
   pull_request:
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-      - name: Validate self-hosted configuration without cloud credentials
+      - name: Validate deployment configuration without cloud credentials
         run: |
           python3 -m venv "$RUNNER_TEMP/vps-tests"
           "$RUNNER_TEMP/vps-tests/bin/pip" install PyYAML==6.0.2
