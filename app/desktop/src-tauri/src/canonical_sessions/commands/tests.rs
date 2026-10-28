@@ -38,7 +38,7 @@ fn cloud_message_cleanup_covers_versions_self_agent_and_authoritative_pruning() 
         "INSERT INTO sessions (
             id, kind, title, status, created_by_identity_id,
             created_at_ms, updated_at_ms, last_message_at_ms
-         ) VALUES ('session:cleanup', 'group', 'Cleanup', 'active', 'human:me', 1, 1, 6)",
+         ) VALUES ('session:cleanup', 'group', 'Cleanup', 'active', 'human:me', 1, 1, 8)",
         [],
     )
     .expect("seed session");
@@ -58,6 +58,18 @@ fn cloud_message_cleanup_covers_versions_self_agent_and_authoritative_pruning() 
             "cloud-group-agent-offline",
             "cloud-group-agent-offline:request-1:acct_agent",
             6,
+        ),
+        (
+            "local-fork-snapshot",
+            "canonical-fork-snapshot",
+            "fork-snapshot:session:fork:a:parent-session:msg-1",
+            7,
+        ),
+        (
+            "stale-cloud-fork-snapshot",
+            "canonical-fork-snapshot",
+            "cloud-snapshot-stale",
+            8,
         ),
     ] {
         conn.execute(
@@ -90,6 +102,7 @@ fn cloud_message_cleanup_covers_versions_self_agent_and_authoritative_pruning() 
             "stale-group-v1".to_string(),
             "stale-group-v2".to_string(),
             "stale-self".to_string(),
+            "stale-cloud-fork-snapshot".to_string(),
         ])
     );
     let remaining = conn
@@ -101,7 +114,12 @@ fn cloud_message_cleanup_covers_versions_self_agent_and_authoritative_pruning() 
         .unwrap();
     assert_eq!(
         remaining,
-        vec!["derived-offline", "keep-group", "keep-self"]
+        vec![
+            "derived-offline",
+            "keep-group",
+            "keep-self",
+            "local-fork-snapshot"
+        ]
     );
 
     let deleted_group =
