@@ -3,7 +3,7 @@
   "version": "0.0.18",
   "ompRuntimeVersion": "18.12.6",
   "description": "Kordi — a Rust-native AI coding agent for the terminal",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/Kordi-AI/Kordi.git"
@@ -31,6 +31,7 @@
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
+    "historical-licenses/",
     "NOTICE"
   ],
   "scripts": {

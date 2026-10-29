@@ -22,7 +22,7 @@ members = [
 [workspace.package]
 version = "0.0.18"
 edition = "2024"
-license = "Apache-2.0"
+license = "MIT"
 authors = ["Kordi Contributors"]
 repository = "https://github.com/Kordi-AI/Kordi"
 homepage = "https://github.com/Kordi-AI/Kordi"

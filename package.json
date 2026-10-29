@@ -1,6 +1,6 @@
 {
   "name": "kordi",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "private": true,
   "packageManager": "pnpm@10.29.3",
   "scripts": {
