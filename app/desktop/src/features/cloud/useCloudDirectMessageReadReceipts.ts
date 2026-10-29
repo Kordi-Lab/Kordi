@@ -7,6 +7,7 @@ import {
 } from '@/features/collaboration/conversationIds';
 import type { CloudAccount, CloudAuthClient, CloudMessage } from './authClient';
 import { cloudDirectPersonMessagesForPeer } from './cloudCollaborationMemo';
+import { isTerminalCloudAgentResponse } from './cloudAgentMessages';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import { addReadInboundMessageIds, rollbackReadInboundMessageIds } from './cloudReadTracking';
 import { loadSession } from './session';
@@ -22,16 +23,27 @@ function directReadTarget(account: CloudAccount, activeId: string, index: CloudM
   const sessionId = cloudDirectPersonSessionId(account.accountId, peerId);
   const explicitSessionId = cloudSessionIdFromConversationId(activeId);
   if (explicitSessionId && explicitSessionId !== sessionId) return null;
-  const messageIds = cloudDirectPersonMessagesForPeer(account, peerId, index.byPeerId.get(peerId) ?? [])
+  const unreadMessages = cloudDirectPersonMessagesForPeer(account, peerId, index.byPeerId.get(peerId) ?? [])
     .filter(message => (
-      message.fromAccountId === peerId
-      && message.toAccountId === account.accountId
-      && message.direction === 'incoming'
-      && !message.readAt
-      && !index.groupRowByWireMessageId.has(message.messageId)
-    ))
-    .map(message => message.messageId);
-  return messageIds.length ? { peerId, sessionId, messageIds } : null;
+      !index.groupRowByWireMessageId.has(message.messageId)
+      && ((message.fromAccountId === peerId
+        && message.toAccountId === account.accountId
+        && message.direction === 'incoming'
+        && !message.readAt)
+        // The owner's agent is authored by the owner on the wire, but its
+        // completed reply still needs to be read by that owner. Outgoing
+        // readAt records the peer's receipt and cannot gate this read.
+        || (message.fromAccountId === account.accountId
+          && (message.toAccountId === peerId || message.toAccountId === account.accountId)
+          && isTerminalCloudAgentResponse(message.body)))
+    ));
+  const messageIds = unreadMessages.map(message => message.messageId);
+  const observedSequence = Math.max(0, ...unreadMessages.flatMap(message => (
+    Number.isSafeInteger(message.conversationSequence) && message.conversationSequence! > 0
+      ? [message.conversationSequence!]
+      : []
+  )));
+  return messageIds.length ? { peerId, sessionId, messageIds, observedSequence } : null;
 }
 
 type ReadRequest = { messageIds: ReadonlySet<string> };
@@ -62,7 +74,7 @@ export function useCloudDirectMessageReadReceipts({
     const scope = scopeRef.current;
     const target = directReadTarget(account, activeConversationId, messageIndex);
     if (!scope || !target) return;
-    const { peerId, sessionId, messageIds } = target;
+    const { peerId, sessionId, messageIds, observedSequence } = target;
     const pending = scope.requests.get(sessionId);
     if (pending && messageIds.every(id => pending.messageIds.has(id))) return;
     const request = { messageIds: new Set(messageIds) };
@@ -74,7 +86,9 @@ export function useCloudDirectMessageReadReceipts({
     void loadSession().then(async session => {
       if (scopeRef.current !== scope) return;
       if (!session?.token || session.accountId !== account.accountId) throw new Error('Cloud session is unavailable.');
-      await client.markSessionMessagesRead(session.token, sessionId);
+      // Native sync can display a newer message than this client's cached head.
+      // Acknowledge the observed sequence so the durable cursor catches up too.
+      await client.markSessionMessagesRead(session.token, sessionId, observedSequence);
       if (scopeRef.current !== scope) return;
       for (const messageId of messageIds) scope.acknowledgedIds.add(messageId);
       setReadInboundMessageIdsByPeer(current => scopeRef.current === scope
@@ -86,7 +100,7 @@ export function useCloudDirectMessageReadReceipts({
         if (scopeRef.current !== scope) return current;
         let changed = false;
         const messages = (current[peerId] ?? []).map(message => {
-          if (!coveredIds.has(message.messageId) || message.readAt) return message;
+          if (!coveredIds.has(message.messageId) || message.fromAccountId !== peerId || message.readAt) return message;
           changed = true;
           return { ...message, readAt };
         });

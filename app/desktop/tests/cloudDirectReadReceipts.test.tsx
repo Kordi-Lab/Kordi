@@ -6,8 +6,9 @@ import test from 'node:test';
 import { JSDOM } from 'jsdom';
 import React, { act, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { CloudAccount, CloudAuthClient, CloudMessage } from '../src/features/cloud/authClient';
+import { CloudAuthClient, type CloudAccount, type CloudMessage } from '../src/features/cloud/authClient';
 import { cloudCollaborationConversationId, cloudDirectPersonSessionId } from '../src/features/collaboration/conversationIds';
+import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex';
 import { useCloudMessageReadReceipts } from '../src/features/cloud/useCloudMessageReadReceipts';
 import { __setSessionBackendForTests } from '../src/features/cloud/session';
@@ -24,7 +25,7 @@ const incoming: CloudMessage = {
   deliveredAt: null, readAt: null,
 };
 
-async function mount(activeId = cloudCollaborationConversationId(peerId, 'person')) {
+async function mount(activeId = cloudCollaborationConversationId(peerId, 'person'), clientOverride?: CloudAuthClient) {
   const dom = new JSDOM('<!doctype html><div id="root"></div>');
   const values = { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(values).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -34,7 +35,7 @@ async function mount(activeId = cloudCollaborationConversationId(peerId, 'person
     save: async () => {}, clear: async () => {},
   });
   const requests: Array<{ sessionId: string; resolve: () => void; reject: () => void }> = [];
-  const client = {
+  const client = clientOverride ?? {
     markSessionMessagesRead: (_token: string, target: string) => new Promise<void>((resolve, reject) => {
       requests.push({ sessionId: target, resolve, reject: () => reject(new Error('Synthetic read failure')) });
     }),
@@ -236,5 +237,76 @@ test('a newer failed read preserves an older acknowledgment through stale transp
     assert.equal(h.ids()[peerId]?.has('direct-2'), false);
     await h.update([incoming, newer]);
     assert.equal(h.host.querySelector('[data-unread-count]')?.getAttribute('data-unread-count'), '1');
+  } finally { await h.close(); }
+});
+
+
+for (const ownAgent of [false, true]) {
+test(`a visible ${ownAgent ? 'own-agent reply' : 'direct message'} advances the server read cursor beyond a stale client head`, async () => {
+  const sequences: number[] = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = input.toString();
+    if (url.endsWith('/sync/bootstrap')) {
+      return new Response(JSON.stringify({
+        protocol_version: 2,
+        conversations: [{
+          id: 'conversation-direct', kind: 'direct', legacy_session_id: sessionId,
+          latest_message_sequence: 1, preferences: { account_id: account.accountId },
+          members: [],
+        }],
+        latest_messages: [], next_cursor: 'synthetic-cursor', last_stream_seq: 1,
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    assert.ok(url.endsWith('/conversations/conversation-direct/read'));
+    sequences.push(JSON.parse(String(init?.body)).sequence);
+    return new Response(JSON.stringify({ cursor: {} }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    });
+  };
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+  const h = await mount(sessionId, client);
+  try {
+    // A native snapshot can hydrate newer messages without updating the
+    // renderer API client's cached conversation metadata.
+    const message: CloudMessage = ownAgent ? {
+      ...incoming, messageId: 'own-agent-2', conversationSequence: 2,
+      fromAccountId: account.accountId, toAccountId: peerId, direction: 'outgoing',
+      body: encodeCloudAgentResponse({ requestId: 'request', text: 'Synthetic reply', deliveryState: 'complete' }),
+      readAt: '2026-09-10T10:00:01Z',
+    } : { ...incoming, messageId: 'direct-2', conversationSequence: 2 };
+    await h.update([message]);
+    await h.render({ presented: true });
+    assert.deepEqual(sequences, [2]);
+    assert.equal(h.ids()[peerId]?.has(message.messageId), true);
+    if (ownAgent) assert.equal(h.messages()[peerId][0].readAt, message.readAt);
+    assert.equal(h.host.querySelectorAll('[data-unread-count]').length, 0);
+  } finally { await h.close(); }
+});
+}
+
+
+test('own-agent reads exclude own human messages, processing replies, and other sessions', async () => {
+  const h = await mount();
+  const own: CloudMessage = { ...incoming, fromAccountId: account.accountId, toAccountId: peerId, direction: 'outgoing' };
+  const reply = (deliveryState: 'processing' | 'complete') => encodeCloudAgentResponse({
+    requestId: 'request', text: 'Synthetic reply', deliveryState,
+  });
+  try {
+    const processing = { ...own, messageId: 'own-agent', body: reply('processing'), conversationSequence: 2 };
+    await h.update([
+      { ...own, messageId: 'own-human', body: 'Synthetic human message' },
+      processing,
+      { ...own, messageId: 'other-session', body: reply('complete'), sessionId: 'session:agent:other' },
+      { ...own, messageId: 'other-group', body: reply('complete'), sessionId: 'session:group:other' },
+    ]);
+    await h.render({ presented: true });
+    assert.equal(h.requests.length, 0);
+    await h.update([{ ...processing, body: reply('complete') }]);
+    assert.deepEqual([...h.ids()[peerId]], ['own-agent']);
+    assert.equal(h.requests.length, 1);
+    await act(async () => h.requests[0].resolve());
+    assert.equal(h.messages()[peerId][0].readAt, null, 'reading an own-agent reply must not fabricate the peer receipt');
+    await h.update([{ ...processing, body: reply('complete') }]);
+    assert.equal(h.requests.length, 1, 'a stale reply snapshot must not repeat the acknowledged read');
   } finally { await h.close(); }
 });

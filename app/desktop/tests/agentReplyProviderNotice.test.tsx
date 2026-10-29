@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import { cloudAgentTurnReplyText, isCloudAgentProviderFailureNoticeText, isFailedReplyTextOnlyItsError } from '../src/features/cloud/cloudAgentReplyText';
-import { LiveChatTurnCard } from '../src/kordi-app/components/transcript';
+import { LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
 import type { CanonicalIdentity, CanonicalSessionMessage, DesktopChatToolSnapshot } from '../src/kordi-app/types';
 
 // A group agent run that created a document about earlier "No provider configured" failures
@@ -146,3 +146,26 @@ test('a turn that ends on a document tool call replies with the document title',
   assert.equal(cloudAgentTurnReplyText({ ...base, tools: [{ ...documentTool, isError: true }] }), '');
   assert.equal(cloudAgentTurnReplyText({ ...base, tools: [{ ...documentTool, name: 'read_session' }] }), '');
 });
+
+for (const viewerOwnsAgent of [true, false]) {
+  test(`provider authentication is actionable only for the agent owner (${viewerOwnsAgent ? 'owner' : 'other participant'})`, () => {
+    for (const sourceTransport of ['cloud-group-agent', 'cloud-direct-agent']) {
+      const message = agentReply({
+        contentText: 'No provider configured yet.',
+        status: 'failed',
+        content: { deliveryState: 'failed', error: 'No provider configured yet.' },
+      });
+      const mapped = mapCanonicalMessage({ ...message, sourceTransport, senderRole: 'external-agent' }, identities,
+        viewerOwnsAgent ? 'human:acct_owner' : 'human:acct_other');
+      assert.ok(mapped?.turn);
+      assert.equal(mapped.role, viewerOwnsAgent ? 'owned-agent' : 'external-agent');
+      const markup = renderToStaticMarkup(createElement(MessageBubble, {
+        msg: mapped,
+        onOpenAuthSettings: () => undefined,
+      }));
+      assert.match(markup, /No provider configured yet/);
+      if (viewerOwnsAgent) assert.match(markup, />Open authentication</);
+      else assert.doesNotMatch(markup, />Open authentication<|<button[^>]*class="app-live-turn-auth-action/);
+    }
+  });
+}
