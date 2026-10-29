@@ -37,12 +37,13 @@ function directReadTarget(account: CloudAccount, activeId: string, index: CloudM
           && (message.toAccountId === peerId || message.toAccountId === account.accountId)
           && isTerminalCloudAgentResponse(message.body)))
     ));
-  const messageIds = unreadMessages.map(message => message.messageId);
-  const observedSequence = Math.max(0, ...unreadMessages.flatMap(message => (
-    Number.isSafeInteger(message.conversationSequence) && message.conversationSequence! > 0
-      ? [message.conversationSequence!]
-      : []
-  )));
+  let observedSequence = 0;
+  const messageIds = unreadMessages.map(({ messageId, conversationSequence }) => {
+    if (Number.isSafeInteger(conversationSequence)) {
+      observedSequence = Math.max(observedSequence, conversationSequence!);
+    }
+    return messageId;
+  });
   return messageIds.length ? { peerId, sessionId, messageIds, observedSequence } : null;
 }
 
