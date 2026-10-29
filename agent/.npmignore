@@ -23,4 +23,4 @@ ROLLING-MERGE-QUEUE.md
 PLAN.md
 BB_AGENT_TREE.txt
 
-# Keep: bin/, scripts/, README.md, LICENSE, NOTICE, historical-licenses/, package.json, docs/, CHANGELOG.md
+# Keep: bin/, scripts/, README.md, LICENSE, NOTICE, package.json, docs/, CHANGELOG.md

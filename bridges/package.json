@@ -9,7 +9,6 @@
   },
   "files": [
     "LICENSE",
-    "historical-licenses/",
     "NOTICE",
     "bin",
     "index.cjs",

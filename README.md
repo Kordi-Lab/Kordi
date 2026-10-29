@@ -171,4 +171,4 @@ Kordi currently targets macOS and iPhone and is in beta. Product behavior, hoste
 
 ## License
 
-Kordi is licensed under the [MIT License](LICENSE), except for third-party components and assets that carry their own licenses. See [NOTICE](NOTICE) for preserved copyright and historical licensing notices.
+Kordi is licensed under the [MIT License](LICENSE), except for third-party components and assets that carry their own licenses. See [NOTICE](NOTICE) for preserved copyright and attribution notices.

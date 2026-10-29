@@ -31,7 +31,6 @@
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
-    "historical-licenses/",
     "NOTICE"
   ],
   "scripts": {
