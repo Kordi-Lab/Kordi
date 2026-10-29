@@ -109,11 +109,12 @@ until the following checks have passed against the deployed commit:
 - Test a database restore plus matching attachment and encryption-secret recovery
   before using the stack for irreplaceable user data.
 
-## Next phase: Fly sandboxes
+## Fly sandbox validation
 
 This Blueprint intentionally contains no cloud-agent runner or sandbox executor.
-After the core gates pass, add a Fly execution adapter behind the existing runner
-contract. Scope tokens to a dedicated sandbox app. Sandboxes must not receive the
+The opt-in Fly adapter and separate runner deployment are described in
+[Fly sandbox validation](fly-sandbox-validation.md). Validate the core gates first.
+Scope tokens to a dedicated sandbox app. Sandboxes must not receive the
 Postgres, Redis, NATS, SMTP, or object-store administration credentials.
 
 Before enabling hosted Agent execution, validate cancellation of the owning

@@ -37,6 +37,17 @@ async fn main() -> Result<()> {
         }
     }
 
+    match kordi_cloud_agent_runner::runtime::sandbox_backend_mode_from_env() {
+        kordi_cloud_agent_runner::runtime::SandboxBackendMode::Invalid => {
+            anyhow::bail!("Unknown sandbox backend; expected local, k8s, or fly");
+        }
+        kordi_cloud_agent_runner::runtime::SandboxBackendMode::Fly => {
+            kordi_cloud_agent_runner::fly_sandbox::FlySandboxConfig::from_env()
+                .context("Fly sandbox configuration must be valid before leasing runs")?;
+        }
+        _ => {}
+    }
+
     // Boot the OMP worker ahead of the first turn; it takes seconds on small hosts.
     kordi_cloud_agent_runner::omp_pool::prewarm();
 
@@ -54,6 +65,14 @@ async fn main() -> Result<()> {
         "starting kordi cloud agent runner"
     );
 
+    let concurrency = std::env::var("KORDI_CLOUD_RUNNER_CONCURRENCY")
+        .unwrap_or_else(|_| "4".into())
+        .parse::<usize>()
+        .context("KORDI_CLOUD_RUNNER_CONCURRENCY must be an integer")?;
+    anyhow::ensure!(
+        (1..=4).contains(&concurrency),
+        "Runner concurrency must be between 1 and 4"
+    );
     let mut workers = tokio::task::JoinSet::new();
     let mut poll = tokio::time::interval(Duration::from_millis(poll_ms));
     poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -64,7 +83,7 @@ async fn main() -> Result<()> {
                 Ok(Ok(_)) => tracing::info!("cloud agent run finished"),
                 _ => tracing::warn!("cloud agent runner step failed"),
             },
-            _ = poll.tick(), if workers.len() < 4 => {
+            _ = poll.tick(), if workers.len() < concurrency => {
                 let execution = client.for_execution();
                 workers.spawn(async move { process_one_run(&execution).await });
             },

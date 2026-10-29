@@ -35,6 +35,8 @@ pub enum RunnerStepOutcome {
 pub enum SandboxBackendMode {
     Local,
     K8s,
+    Fly,
+    Invalid,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +65,10 @@ fn cloud_model_engine_from_setting(
 pub fn sandbox_backend_mode_from_env() -> SandboxBackendMode {
     match std::env::var("KORDI_CLOUD_SANDBOX_BACKEND") {
         Ok(value) if value.trim().eq_ignore_ascii_case("k8s") => SandboxBackendMode::K8s,
+        Ok(value) if value.trim().eq_ignore_ascii_case("fly") => SandboxBackendMode::Fly,
+        Ok(value) if !value.trim().is_empty() && !value.trim().eq_ignore_ascii_case("local") => {
+            SandboxBackendMode::Invalid
+        }
         _ => SandboxBackendMode::Local,
     }
 }
@@ -122,6 +128,13 @@ pub fn sandbox_backend_for_run(
     local_root: PathBuf,
 ) -> Result<SandboxBackendHandle, &'static str> {
     match sandbox_backend_mode_from_env() {
+        SandboxBackendMode::Invalid => Err("invalid_sandbox_backend"),
+        SandboxBackendMode::Fly => {
+            let sandbox_id = run.sandbox_id.as_deref().ok_or("missing_sandbox")?;
+            crate::fly_sandbox::FlySandboxBackend::from_env(sandbox_id)
+                .map(|backend| std::sync::Arc::new(backend) as SandboxBackendHandle)
+                .map_err(|_| "invalid_fly_sandbox_configuration")
+        }
         SandboxBackendMode::Local => {
             let id = run.sandbox_id.as_deref().unwrap_or(&run.run_id);
             if id.is_empty()
@@ -387,13 +400,23 @@ where
         loop {
             tokio::select! {
                 result = &mut generation => break result,
-                _ = heartbeat.tick() => if client.heartbeat(&run.run_id).await? {
-                    break Ok(GenerationResult::Stopped);
+                _ = heartbeat.tick() => match async {
+                    sandbox.renew_lease().await.map_err(|_| RunnerClientError::Request("Sandbox lease renewal failed".into()))?;
+                    client.heartbeat(&run.run_id).await
+                }.await {
+                    Ok(true) => break Ok(GenerationResult::Stopped),
+                    Ok(false) => {},
+                    Err(_) => break Err(crate::model_loop::ModelLoopError::Provider("Cloud execution lease could not be renewed".into())),
                 },
                 _ = &mut deadline => break Err(crate::model_loop::ModelLoopError::Provider("Cloud execution timed out".into())),
             }
         }
     };
+    // Await VM shutdown before recording a successful or stopped execution.
+    // The persistent volume survives; a failed stop keeps its lease fenced.
+    sandbox.shutdown().await.map_err(|_| {
+        RunnerClientError::Request("Sandbox shutdown could not be confirmed".into())
+    })?;
     let response = match result {
         Ok(response) => response,
         Err(err) => {

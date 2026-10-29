@@ -1,0 +1,30 @@
+# Optional isolated Fly executor. Configure the same runner token on the API.
+services:
+  - type: worker
+    name: kordi-validation-runner
+    runtime: docker
+    region: oregon
+    plan: 0.5c-512mb
+    numInstances: 1
+    dockerfilePath: ./deploy/render/Dockerfile.runner
+    dockerContext: .
+    autoDeployTrigger: off
+    envVars:
+      - key: KORDI_CLOUD_API_BASE
+        sync: false
+      - key: KORDI_CLOUD_RUNNER_TOKEN
+        sync: false
+      - key: KORDI_CLOUD_SANDBOX_BACKEND
+        value: fly
+      - key: KORDI_CLOUD_RUNNER_CONCURRENCY
+        value: '1'
+      - key: KORDI_FLY_SANDBOX_APP
+        sync: false
+      - key: KORDI_FLY_SANDBOX_TOKEN
+        sync: false
+      - key: KORDI_FLY_SANDBOX_REGION
+        sync: false
+      - key: KORDI_FLY_SANDBOX_IMAGE
+        sync: false
+      - key: KORDI_FLY_MAX_WORKSPACES
+        value: '4'

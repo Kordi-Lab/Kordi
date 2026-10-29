@@ -1,0 +1,52 @@
+# Build inside the same Debian release used by the runtime image. Building the
+# runner directly on the deployment VM can link it against a newer glibc than
+# bookworm provides, causing a crash loop before the process reaches main().
+FROM docker.io/library/rust:1.97-slim-bookworm AS builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential cmake pkg-config ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+COPY Cargo.toml Cargo.lock ./
+COPY agent ./agent
+COPY app ./app
+COPY bridges ./bridges
+COPY shared ./shared
+
+RUN cargo build --release -p kordi-cloud-agent-runner
+
+# Build the same pinned standalone OMP worker used by the Mac sidecar. OMP is
+# the default engine; KORDI_CLOUD_AGENT_ENGINE=rust is an explicit rollback.
+FROM docker.io/oven/bun:1.4.2 AS omp-builder
+ARG TARGETARCH
+WORKDIR /workspace/shared/omp-runtime
+COPY shared/omp-runtime/package.json shared/omp-runtime/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY shared/omp-runtime ./
+RUN case "$TARGETARCH" in \
+      amd64) triple=x86_64-unknown-linux-gnu ;; \
+      arm64) triple=aarch64-unknown-linux-gnu ;; \
+      *) echo 'Unsupported OMP runner architecture' >&2; exit 1 ;; \
+    esac \
+    && bun scripts/build-standalone.mjs /omp-out "$triple" \
+    && cp "/omp-out/kordi-omp-$triple" /omp-out/kordi-omp
+
+FROM docker.io/library/debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tini libstdc++6 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 1000 kordi \
+    && useradd --system --uid 1000 --gid kordi --home /var/lib/kordi-runner kordi \
+    && install -d -o kordi -g kordi /var/lib/kordi-runner
+
+COPY --from=builder /workspace/target/release/kordi-cloud-agent-runner /usr/local/bin/kordi-cloud-agent-runner
+COPY --from=omp-builder /omp-out/kordi-omp /usr/local/bin/kordi-omp
+COPY --from=omp-builder /omp-out/pi_natives.*.node /usr/local/bin/
+
+ENV KORDI_OMP_WORKER_ENTRY=/usr/local/bin/kordi-omp
+
+USER kordi
+WORKDIR /var/lib/kordi-runner
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/kordi-cloud-agent-runner"]
