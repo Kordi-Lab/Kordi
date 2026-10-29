@@ -8,6 +8,7 @@
 use std::{env, fmt};
 
 use crate::service_model::{vertex_configuration, ServiceCredential};
+use crate::service_model_config::{shared_setting, validate_base_url};
 
 // Stored ids (account, agent, owner email, auth choice, snapshot) keep the
 // old name so existing rows stay valid.
@@ -190,27 +191,16 @@ fn setting(get: &mut impl FnMut(&str) -> Option<String>, suffix: &str) -> Option
         .filter_map(|prefix| get(&format!("{prefix}{suffix}")))
         .map(|value| value.trim().to_string())
         .find(|value| !value.is_empty())
+        .or_else(|| shared_setting(get, suffix))
 }
 
 fn validated_base_url(raw: Option<String>) -> Result<String, SystemAgentConfigError> {
     let Some(raw) = raw else {
         return Ok(DEFAULT_SYSTEM_AGENT_OPENAI_BASE_URL.to_string());
     };
-    let url = raw.trim().trim_end_matches('/');
-    let loopback = ["http://127.0.0.1", "http://localhost"]
-        .iter()
-        .any(|prefix| {
-            url.strip_prefix(prefix).is_some_and(|rest| {
-                rest.is_empty() || rest.starts_with(':') || rest.starts_with('/')
-            })
-        });
-    if url.len() > "https://".len() && url.starts_with("https://") || loopback {
-        Ok(url.to_string())
-    } else {
-        Err(SystemAgentConfigError::Invalid(
-            "KORDI_SYSTEM_AGENT_OPENAI_BASE_URL must be an https URL",
-        ))
-    }
+    validate_base_url(&raw).map_err(|_| {
+        SystemAgentConfigError::Invalid("KORDI_SYSTEM_AGENT_OPENAI_BASE_URL must be an https URL")
+    })
 }
 
 fn required_or_default(
@@ -244,41 +234,40 @@ impl PendingSystemAgentConfig {
         if switched_off(switch.as_deref()) {
             return Ok(None);
         }
-        let provider_auth = match setting(&mut get, "PROVIDER").as_deref() {
-            Some("vertex-ai") => {
-                let model = setting(&mut get, "VERTEX_MODEL");
-                let (credential, base_url, model) = vertex_configuration(&mut get, model)
-                    .map_err(SystemAgentConfigError::Invalid)?;
-                SystemAgentProviderAuth {
-                    credential,
-                    base_url,
-                    model,
+        let provider_auth =
+            match setting(&mut get, "PROVIDER").as_deref() {
+                Some("vertex-ai") => {
+                    let model = setting(&mut get, "VERTEX_MODEL");
+                    let (credential, base_url, model) = vertex_configuration(&mut get, model)
+                        .map_err(SystemAgentConfigError::Invalid)?;
+                    SystemAgentProviderAuth {
+                        credential,
+                        base_url,
+                        model,
+                    }
                 }
-            }
-            None | Some("openai") => {
-                let Some(api_key) = setting(&mut get, "OPENAI_API_KEY") else {
-                    return if enabled(switch.as_deref()) {
-                        Err(SystemAgentConfigError::Invalid(
-                            "KORDI_SYSTEM_AGENT_OPENAI_API_KEY is required",
-                        ))
-                    } else {
-                        Ok(None)
+                None | Some("openai" | "openai-compatible") => {
+                    let Some(api_key) = setting(&mut get, "OPENAI_API_KEY") else {
+                        return if enabled(switch.as_deref()) {
+                            Err(SystemAgentConfigError::Invalid(
+                                "KORDI_SYSTEM_AGENT_OPENAI_API_KEY is required",
+                            ))
+                        } else {
+                            Ok(None)
+                        };
                     };
-                };
-                let model = required_or_default(
-                    &mut get,
-                    "OPENAI_MODEL",
-                    DEFAULT_SYSTEM_AGENT_OPENAI_MODEL,
-                );
-                let base_url = validated_base_url(setting(&mut get, "OPENAI_BASE_URL"))?;
-                SystemAgentProviderAuth::openai_api_key(api_key, model)?.with_base_url(base_url)
-            }
-            Some(_) => {
-                return Err(SystemAgentConfigError::Invalid(
-                    "KORDI_SYSTEM_AGENT_PROVIDER must be openai or vertex-ai",
-                ))
-            }
-        };
+                    let model = required_or_default(
+                        &mut get,
+                        "OPENAI_MODEL",
+                        DEFAULT_SYSTEM_AGENT_OPENAI_MODEL,
+                    );
+                    let base_url = validated_base_url(setting(&mut get, "OPENAI_BASE_URL"))?;
+                    SystemAgentProviderAuth::openai_api_key(api_key, model)?.with_base_url(base_url)
+                }
+                Some(_) => return Err(SystemAgentConfigError::Invalid(
+                    "KORDI_SYSTEM_AGENT_PROVIDER must be openai, openai-compatible, or vertex-ai",
+                )),
+            };
         let owner_email =
             required_or_default(&mut get, "OWNER_EMAIL", DEFAULT_SYSTEM_AGENT_OWNER_EMAIL);
         if !owner_email.contains('@') {

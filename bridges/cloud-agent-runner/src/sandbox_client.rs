@@ -27,6 +27,16 @@ pub type SandboxBackendHandle = Arc<dyn SandboxBackend>;
 
 #[async_trait]
 pub trait SandboxBackend: Send + Sync {
+    /// Keep remote workspace ownership alive while a model is generating.
+    async fn renew_lease(&self) -> Result<(), SandboxClientError> {
+        Ok(())
+    }
+
+    /// End remote execution while retaining the durable workspace.
+    async fn shutdown(&self) -> Result<(), SandboxClientError> {
+        Ok(())
+    }
+
     fn root_for_tests(&self) -> Option<&Path> {
         None
     }

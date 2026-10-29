@@ -30,6 +30,7 @@ pub mod projects;
 pub mod scheduled_tasks;
 pub mod server;
 pub(crate) mod service_model;
+mod service_model_config;
 pub mod support;
 pub mod system_account;
 pub mod system_agent;

@@ -153,6 +153,7 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 | [Community contributor guide](docs/community-contributor-guide.md) | Contribution areas, issues, safe setup, testing, bug reports, and review expectations |
 | [Development environment isolation](docs/development-environments.md) | Local, IAP-tunneled development, production preview, OAuth, and fail-closed environment selection |
 | [Local development](docs/self-hosted-debug.md) | Isolated Docker backend, desktop launch, multi-user testing, safety, and cleanup |
+| [Deploy on a VPS](docs/vps-deployment.md) | SSH-based self-hosting, shared API domains, persistent storage, and operator-owned model configuration |
 | [Run Kordi Desktop](docs/run-cloud-desktop.md) | Local startup, API selection, multi-user testing, and troubleshooting |
 | [Develop Kordi for iPhone](docs/ios-development.md) | Xcode setup, previews, tests, physical devices, architecture, and TestFlight |
 | [Development commands](docs/development.md) | Full command map and package-specific workflows |

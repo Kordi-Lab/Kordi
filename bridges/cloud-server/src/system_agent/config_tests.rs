@@ -2,6 +2,48 @@ use super::*;
 use std::collections::HashMap;
 
 #[test]
+fn self_hosted_model_defaults_work_without_google_credentials() {
+    let mut values = HashMap::from([
+        ("KORDI_SERVICE_MODEL_PROVIDER", "openai-compatible"),
+        ("KORDI_SERVICE_MODEL_API_KEY", "synthetic-shared-key"),
+        ("KORDI_SERVICE_MODEL_MODEL", "operator-selected-model"),
+        (
+            "KORDI_SERVICE_MODEL_BASE_URL",
+            "https://models.example.test/v1/",
+        ),
+    ]);
+    let resolve = |values: &HashMap<&str, &str>| {
+        PendingSystemAgentConfig::from_lookup(|key| values.get(key).map(|value| value.to_string()))
+            .unwrap()
+            .unwrap()
+    };
+    let config = resolve(&values);
+    assert_eq!(config.provider_auth.api_key(), "synthetic-shared-key");
+    assert_eq!(config.provider_auth.model(), "operator-selected-model");
+    assert_eq!(
+        config.provider_auth.base_url(),
+        "https://models.example.test/v1"
+    );
+    assert!(!config.provider_auth.credential().is_google_cloud());
+    values.insert(
+        "KORDI_SYSTEM_AGENT_OPENAI_API_KEY",
+        "synthetic-dedicated-key",
+    );
+    values.insert("KORDI_SYSTEM_AGENT_OPENAI_MODEL", "dedicated-model");
+    assert_eq!(
+        resolve(&values).provider_auth.api_key(),
+        "synthetic-dedicated-key"
+    );
+    assert_eq!(resolve(&values).provider_auth.model(), "dedicated-model");
+    values.insert("KORDI_SYSTEM_AGENT_ENABLED", "false");
+    assert!(PendingSystemAgentConfig::from_lookup(|key| values
+        .get(key)
+        .map(|value| value.to_string()))
+    .unwrap()
+    .is_none());
+}
+
+#[test]
 fn system_agent_is_off_without_a_key() {
     let values: HashMap<&str, &str> = HashMap::new();
     let config =

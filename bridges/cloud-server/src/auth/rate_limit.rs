@@ -209,6 +209,20 @@ impl CloudRateLimiter {
         })
     }
 
+    /// Readiness for hosted deployments that require shared rate limits.
+    pub async fn is_ready(&self) -> bool {
+        match &self.backend {
+            Backend::Redis(store) => {
+                let mut conn = store.conn.clone();
+                redis::cmd("PING")
+                    .query_async::<String>(&mut conn)
+                    .await
+                    .is_ok_and(|reply| reply == "PONG")
+            }
+            Backend::Memory(_) => false,
+        }
+    }
+
     /// Returns `Allowed` and tracks the attempt, or `Limited` with a
     /// retry hint, based on the per-IP window. On unknown peers (`None`)
     /// the limiter still applies — keyed by `0.0.0.0` so unauthenticated

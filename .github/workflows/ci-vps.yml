@@ -1,0 +1,34 @@
+name: Cloud deployment checks
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/vps/**'
+      - 'deploy/render/**'
+      - 'scripts/test_render_startup.py'
+      - 'bridges/cloud-server/deploy/k3s/**'
+      - 'scripts/vps*'
+      - 'scripts/test_vps_config.py'
+      - 'scripts/build-vps-images.sh'
+      - '.github/workflows/ci-vps.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  configuration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Validate deployment configuration without cloud credentials
+        run: |
+          python3 -m venv "$RUNNER_TEMP/vps-tests"
+          "$RUNNER_TEMP/vps-tests/bin/pip" install PyYAML==6.0.2
+          "$RUNNER_TEMP/vps-tests/bin/python" -m unittest discover -s scripts -p test_vps_config.py -v
+          bash -n scripts/build-vps-images.sh
+          sh -n deploy/render/start-api.sh
+          python3 -m unittest discover -s scripts -p test_render_startup.py -v
