@@ -1,5 +1,5 @@
 [package]
-license = "Apache-2.0"
+license = "MIT"
 name = "kordi-desktop"
 version = "0.0.2-beta.6"
 description = "Kordi macOS desktop application"

@@ -4,6 +4,10 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
 
+### Changed
+
+- Licensed Kordi first-party code and future contributions under MIT ([#2172]).
+
 ## [0.0.2-beta.6] - 2026-10-26
 
 ### Added
@@ -47,7 +51,6 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 - Added the Classic chat theme, coordinated iPhone colors with the selected
   theme, and moved Mac update controls into Help with an availability badge
   ([#1948], [#2048], [#2056], [#2144]).
-- Licensed the repository under Apache 2.0 ([#2131]).
 
 ### Fixed
 
@@ -1146,7 +1149,7 @@ This release is the comparison baseline for beta.8. See the
 [#2122]: https://github.com/Kordi-Lab/Kordi/pull/2122
 [#2124]: https://github.com/Kordi-Lab/Kordi/pull/2124
 [#2126]: https://github.com/Kordi-Lab/Kordi/pull/2126
-[#2131]: https://github.com/Kordi-Lab/Kordi/pull/2131
+[#2172]: https://github.com/Kordi-Lab/Kordi/pull/2172
 [#2133]: https://github.com/Kordi-Lab/Kordi/pull/2133
 [#2136]: https://github.com/Kordi-Lab/Kordi/pull/2136
 [#2138]: https://github.com/Kordi-Lab/Kordi/pull/2138

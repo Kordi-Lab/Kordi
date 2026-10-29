@@ -1,12 +1,11 @@
 Kordi
 Copyright 2025-2026 Kordi Contributors
 
-Kordi is licensed under the Apache License, Version 2.0. Third-party
-components and assets retain their own licenses and copyright notices.
+Kordi first-party code is licensed under the MIT License in LICENSE.
+Third-party components and assets retain their own licenses and copyright
+notices; the repository license does not replace those terms.
 
-The MIT notices below are preserved for code incorporated from earlier
-versions. They do not grant MIT rights to subsequent Apache-2.0-only
-contributions. Previously granted MIT rights are not revoked.
+The original MIT copyright and permission notices below are preserved.
 
 Agent components
 ----------------
