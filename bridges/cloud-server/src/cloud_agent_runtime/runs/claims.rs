@@ -237,7 +237,11 @@ async fn claim_run_with_executor(
         .filter(|_| desktop_executor.is_none())
         .map(|binding| binding.project_name);
     let prompt = fallback_prompt_for_claim(pool, input, offline_project.as_deref()).await?;
-    let mut runtime_route = runtime_route_for_claim(pool, input).await?;
+    let mut runtime_route = if desktop_executor.is_some() {
+        runtime_route_for_desktop_claim(pool, input).await?
+    } else {
+        runtime_route_for_claim(pool, input).await?
+    };
     if desktop_executor.is_none() {
         runtime_route = super::route_fill::fill_cloud_route(
             pool,
@@ -316,9 +320,25 @@ pub(crate) fn claimed_route_json(route: Option<&AgentRuntimeRoute>) -> Option<se
     serde_json::to_value(route).ok()
 }
 
-/// The route a claimed run executes with: the owner's own request route, or
-/// for any other requester the route stored on the targeted agent. A
-/// requester's route never selects the owner's saved account.
+/// The desktop endpoint authenticates the agent owner before admitting the
+/// claim. Its route is the owner's selection even when a contact wrote the
+/// request. Cloud claims continue to ignore a different requester's route.
+pub(super) async fn runtime_route_for_desktop_claim(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> Result<AgentRuntimeRoute, sqlx_core::Error> {
+    if let Some(route) = input
+        .runtime_route
+        .as_ref()
+        .and_then(AgentRuntimeRoute::normalized)
+    {
+        return Ok(route);
+    }
+    runtime_route_for_claim(pool, input).await
+}
+
+/// Cloud claims use the owner's own request route, or the targeted agent's
+/// stored route for another requester. A peer never selects the owner's account.
 pub(crate) async fn runtime_route_for_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
