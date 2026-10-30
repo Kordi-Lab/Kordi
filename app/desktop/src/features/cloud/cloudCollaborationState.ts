@@ -1,3 +1,4 @@
+import { agentExchangeProgressTurn } from './agentExchangePresentation';
 import { agentExchangeTurnIsWaiting, agentExchangeTurnIsYielding } from './agentExchangeOutcome';
 import {
   cloudCollaborationConversationId,
@@ -204,12 +205,9 @@ export function cloudMessageToCollaborationMessage(
     attachments: cloudMessageAttachmentsForPresentation(message.attachments, message.voiceMessage),
     mentions: agentResponse ? undefined : cloudDirectMessageMentions(message.body),
     messageAction: directMessageAction,
-    messageKind: message.messageKind ?? null, voiceMessage: message.voiceMessage ? cloudVoiceMessageToMessageVoice(message.voiceMessage) : null, planCard: message.planCard ?? null, reactionConversationId: message.conversationId ?? null, reactionTargetMessageId: message.messageId, cloudMessageVersion: message.version ?? null, editedAt: message.editedAt ?? null, reactions: message.reactions ?? [],
-    localTurn: agentResponse?.requestId
-      ? options.localAgentTurnsByRequestId?.[agentResponse.requestId]
-        ?? syncedExecutionTurn
-        ?? syncedBackgroundTurn
-      : null,
+    messageKind: message.messageKind ?? null, voiceMessage: message.voiceMessage ? cloudVoiceMessageToMessageVoice(message.voiceMessage) : null, planCard: message.planCard ?? null, reactionConversationId: message.conversationId ?? null, reactionTargetMessageId: message.messageId, cloudMessageVersion: message.version ?? null, editedAt: agentResponse?.agentExchangeStatus ? null : message.editedAt ?? null, reactions: message.reactions ?? [],
+    localTurn: agentExchangeProgressTurn(agentResponse?.agentExchangeStatus, displayText, message.messageId, message.sessionId ?? '',
+      agentResponse?.requestId ? options.localAgentTurnsByRequestId?.[agentResponse.requestId] ?? syncedExecutionTurn ?? syncedBackgroundTurn : null),
   };
 }
 

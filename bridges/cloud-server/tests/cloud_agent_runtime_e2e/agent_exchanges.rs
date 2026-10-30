@@ -260,6 +260,7 @@ async fn exchange_membership_revocation_cancels_delivery_and_resume() {
             .await
             .unwrap();
     assert_eq!(status, "cancelled");
+    assert_eq!(f.question_progress().await.0, "cancelled");
 }
 
 #[tokio::test]
@@ -357,6 +358,7 @@ async fn exchange_cloud_fallback_and_root_cancellation_use_the_same_run() {
             .await
             .unwrap();
     assert_eq!(state, "cancelled");
+    assert_eq!(f.question_progress().await.0, "cancelled");
 }
 
 #[path = "agent_exchange_quiet.rs"]

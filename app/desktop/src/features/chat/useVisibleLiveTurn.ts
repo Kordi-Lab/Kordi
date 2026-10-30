@@ -1,10 +1,11 @@
+import { publicAgentExchangeTurn } from '@/features/cloud/agentExchangePresentation';
 import { useState } from 'react';
 import type { DesktopChatTurnSnapshot } from '@/kordi-app/types';
 import { cloudAgentPublicBackgroundToolsFromTurn } from '../cloud/cloudAgentBackgroundSessions';
 import { mergeDesktopTurnSnapshot } from './desktopLiveTurns';
 
 function visibleExecution(turn: DesktopChatTurnSnapshot, showReasoning: boolean) {
-  return showReasoning ? turn : { ...turn, thinkingText: '', segments: undefined, tools: cloudAgentPublicBackgroundToolsFromTurn(turn) };
+  return showReasoning ? publicAgentExchangeTurn(turn) : publicAgentExchangeTurn({ ...turn, thinkingText: '', segments: undefined, tools: cloudAgentPublicBackgroundToolsFromTurn(turn) });
 }
 
 /** Keep one owner's visible trace through the live-to-history handoff. */

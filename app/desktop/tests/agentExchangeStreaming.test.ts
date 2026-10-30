@@ -59,3 +59,22 @@ test('direct owner overlays and peer progress never expose streaming control tex
     }
   }
 });
+
+test('durable exchange status survives canonical and direct replay on the existing question', () => {
+  for (const status of ['waiting', 'processing', 'completed']) {
+    const text = '@Peer What is 12 + 7?';
+    const row = { id: 'question', createdAtMs: 1, sessionId: 'group', senderIdentityId: 'agent', messageKind: 'agent-turn', senderRole: 'owned-agent', status: 'complete', contentText: text, content: { deliveryState: 'complete', agentExchangeStatus: status } } as CanonicalSessionMessage;
+    const mapped = mapCanonicalMessage(row, new Map())!;
+    assert.equal(mapped.turn?.assistantText || mapped.text, text);
+    assert.equal(mapped.turn?.completed, status === 'completed');
+    assert.equal(mapped.turn?.agentExchangeStatus, status === 'completed' ? undefined : status);
+    const wire = { kind: 'agent-response', requestId: 'agent-exchange:synthetic:sent', text, deliveryState: 'complete', agentExchangeStatus: status };
+    const question = { messageId: 'question', fromAccountId: owner.accountId, toAccountId: peer.accountId, createdAt: new Date().toISOString(), body: `kordi-cloud-agent-response:${Buffer.from(JSON.stringify(wire)).toString('base64url')}` } as CloudMessage;
+    for (const viewer of [owner, peer]) {
+      const conversation = buildCloudCollaborationConversation({ account: viewer, contact: cloudContactToContact({ ...(viewer === owner ? peer : owner), createdAt: question.createdAt }), messages: [question], runtime: 'person' });
+      assert.equal(conversation.messages.length, 1);
+      assert.equal(conversation.messages[0].text, text);
+      assert.equal(conversation.messages[0].localTurn?.agentExchangeStatus, status === 'completed' ? undefined : status);
+    }
+  }
+});

@@ -388,6 +388,7 @@ export type DesktopBackgroundFollowUp = {
 };
 
 export type DesktopChatTurnSnapshot = {
+  agentExchangeStatus?: 'waiting' | 'processing';
   localExecutionStarted?: boolean;
   /** Server-confirmed state of a hosted request; never a local execution handle. */
   hostedRunStatus?: 'queued' | 'leased' | 'running';

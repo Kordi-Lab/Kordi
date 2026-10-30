@@ -71,6 +71,29 @@ impl Fixture {
         )
         .await
     }
+    pub(super) async fn question_progress(&self) -> (String, i64, String) {
+        let (content, sequence): (Value, i64) = query_as("SELECT m.content,m.conversation_sequence FROM cloud_agent_exchanges e JOIN cloud_chat_messages m ON m.message_id=e.request_message_id WHERE e.parent_run_id=$1 ORDER BY e.created_at LIMIT 1")
+            .bind(&self.root).fetch_one(&self.pool).await.unwrap();
+        let body = content["blocks"][0]["text"]
+            .as_str()
+            .unwrap()
+            .split_once(':')
+            .unwrap()
+            .1;
+        let value: Value = serde_json::from_slice(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(body)
+                .unwrap(),
+        )
+        .unwrap();
+        let message = value.get("message").unwrap_or(&value);
+        let metadata = message.get("structuredContent").unwrap_or(message);
+        (
+            metadata["agentExchangeStatus"].as_str().unwrap().into(),
+            sequence,
+            message["text"].as_str().unwrap().into(),
+        )
+    }
     async fn public_texts(&self) -> Vec<String> {
         let rows: Vec<(Value,)> = query_as("SELECT m.content FROM cloud_chat_messages m JOIN cloud_chat_conversations c USING(conversation_id) WHERE c.legacy_session_id=$1 ORDER BY m.conversation_sequence")
             .bind(&self.session).fetch_all(&self.pool).await.unwrap();
@@ -101,6 +124,8 @@ async fn shared_question_silently_finishes_after_a_reply_on_mac_and_cloud() {
             return;
         };
         f.send("quiet", 1).await;
+        let (state, sequence, question) = f.question_progress().await;
+        assert_eq!(state, "waiting");
         let parent = f.complete_parent(cloud).await;
         {
             let body = parent["body"].as_str().unwrap().split_once(':').unwrap().1;
@@ -136,6 +161,10 @@ async fn shared_question_silently_finishes_after_a_reply_on_mac_and_cloud() {
         f.finish(1, target_run, target_claim, "Synthetic status: ready")
             .await;
         let resume = f.pending(0).await.remove(0);
+        assert_eq!(
+            f.question_progress().await,
+            ("processing".into(), sequence, question.clone())
+        );
         assert!(resume["prompt"]
             .as_str()
             .unwrap()
@@ -188,6 +217,10 @@ async fn shared_question_silently_finishes_after_a_reply_on_mac_and_cloud() {
         assert_eq!(state, "completed");
         assert!(processed);
         assert!(message.is_none());
+        assert_eq!(
+            f.question_progress().await,
+            ("completed".into(), sequence, question)
+        );
         assert!(f.pending(0).await.is_empty());
         let texts = f.public_texts().await;
         assert_eq!(

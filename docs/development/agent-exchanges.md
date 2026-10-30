@@ -97,3 +97,5 @@ reusing a person's chat read cursor. Polling discovers pending work; a fenced
 Mac-first lease controls execution. Completion acknowledgements are idempotent,
 and recovery republishes no question or reply that already has a durable ID.
 Terminal synchronization metadata retires UI progress without assistant text.
+
+The public question carries durable waiting, processing, and terminal metadata. State changes update that same canonical message and sync version; they never append another acknowledgement. The UI shows waiting/processing on the question until the continuation is acknowledged, including after history replay. Ordered text segments are sanitized after live/history merging, because they may arrive before the aggregate assistant text.

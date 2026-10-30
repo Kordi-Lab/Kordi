@@ -82,6 +82,18 @@ pub(crate) async fn finish(
         query("UPDATE cloud_agent_exchanges SET status=$2,processed_at=now() WHERE exchange_id=$1 AND status='resuming'")
             .bind(id).bind(if success {"completed"} else {"failed"}).execute(&mut *tx).await?;
     }
+    progress::update(
+        &mut tx,
+        id,
+        if target {
+            "processing"
+        } else if success {
+            "completed"
+        } else {
+            "failed"
+        },
+    )
+    .await?;
     tx.commit().await?;
     Ok(true)
 }
@@ -110,6 +122,7 @@ pub(crate) async fn reconcile(pool: &PgPool) -> RunResult<()> {
                 query("UPDATE cloud_agent_exchanges SET status='cancelled',processed_at=now() WHERE exchange_id=$1").bind(id).execute(&mut *tx).await?;
                 query("UPDATE cloud_agent_fallback_runs SET cancel_requested_at=now(),status='cancelled',lease_expires_at=NULL WHERE run_id IN ($1,$2) AND status IN ('queued','leased','running')")
                     .bind(&target).bind(&resume).execute(&mut *tx).await?;
+                progress::update(&mut tx, id, "cancelled").await?;
                 tx.commit().await?;
                 continue;
             }
@@ -127,6 +140,7 @@ pub(crate) async fn reconcile(pool: &PgPool) -> RunResult<()> {
         if !target_allowed {
             query("UPDATE cloud_agent_exchanges SET status='cancelled',processed_at=now() WHERE exchange_id=$1").bind(id).execute(&mut *tx).await?;
             query("UPDATE cloud_agent_fallback_runs SET cancel_requested_at=now(),status='cancelled',lease_expires_at=NULL WHERE run_id IN ($1,$2) AND status IN ('queued','leased','running')").bind(&target).bind(&resume).execute(&mut *tx).await?;
+            progress::update(&mut tx, id, "cancelled").await?;
             tx.commit().await?;
             continue;
         }
@@ -141,7 +155,8 @@ pub(crate) async fn reconcile(pool: &PgPool) -> RunResult<()> {
                     .fetch_one(&mut *tx)
                     .await?;
             if matches!(state.as_str(), "failed" | "cancelled") {
-                query("UPDATE cloud_agent_exchanges SET status=$2,processed_at=now() WHERE exchange_id=$1").bind(id).bind(state).execute(&mut *tx).await?;
+                query("UPDATE cloud_agent_exchanges SET status=$2,processed_at=now() WHERE exchange_id=$1").bind(id).bind(&state).execute(&mut *tx).await?;
+                progress::update(&mut tx, id, &state).await?;
             }
             tx.commit().await?;
             continue;
@@ -196,6 +211,7 @@ pub(crate) async fn reconcile(pool: &PgPool) -> RunResult<()> {
         )
         .await?;
         query("UPDATE cloud_agent_exchanges SET resume_run_id=$2,status='resuming' WHERE exchange_id=$1").bind(id).bind(run).execute(&mut *tx).await?;
+        progress::update(&mut tx, id, "processing").await?;
         tx.commit().await?;
     }
     Ok(())

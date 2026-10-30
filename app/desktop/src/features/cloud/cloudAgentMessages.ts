@@ -1,3 +1,4 @@
+import { agentExchangeStatus, type AgentExchangeStatus } from './agentExchangePresentation';
 import { cloudAgentReplyEnding, type CloudAgentReplyEnding } from './cloudAgentReplyEnding';
 export { cloudAgentReplyEnding, type CloudAgentReplyEnding } from './cloudAgentReplyEnding';
 import { voiceAgentText } from '@/features/chat/voiceTranscription';
@@ -34,6 +35,7 @@ export type CloudAgentResponseEnvelope = {
   text: string;
   deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled';
   synchronizationOnly?: boolean;
+  agentExchangeStatus?: AgentExchangeStatus;
   ending?: CloudAgentReplyEnding;
   execution?: CloudAgentExecutionSnapshot;
   backgroundSessions?: CloudAgentBackgroundSession[];
@@ -237,6 +239,7 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       kind: 'agent-response',
       requestId: parsed.requestId,
       text: parsed.text,
+      agentExchangeStatus: agentExchangeStatus(parsed.agentExchangeStatus),
       ...(parsed.synchronizationOnly === true ? { synchronizationOnly: true } : {}),
       ...(deliveryState ? { deliveryState } : {}),
       ...(ending ? { ending } : {}),
