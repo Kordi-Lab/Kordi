@@ -15,6 +15,7 @@ use super::model::{select_update, ReleaseAsset, UpdateDecision};
 use super::store::{ReleaseCatalogStore, ReleaseStoreError};
 
 mod asset;
+mod sources;
 
 use asset::asset_response;
 
@@ -24,6 +25,10 @@ const IMMUTABLE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
 
 pub fn routes(state: Arc<ServerState>) -> Router {
     Router::new()
+        .route(
+            "/updates/releases/:version/sources/:asset",
+            get(sources::get).head(sources::head),
+        )
         .route(
             "/updates/desktop/:target/:arch/:current_version",
             get(beta_update),

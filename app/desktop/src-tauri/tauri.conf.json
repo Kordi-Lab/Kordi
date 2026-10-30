@@ -60,7 +60,10 @@
     },
     "externalBin": [
       "binaries/kordi"
-    ]
+    ],
+    "resources": {
+      "../../../legal/distribution/": "licenses/"
+    }
   },
   "plugins": {
     "updater": {

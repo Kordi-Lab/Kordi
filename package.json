@@ -77,7 +77,10 @@
     "debug:cloud:smoke": "bash scripts/dev-cloud-smoke.sh",
     "debug:cloud:reset": "bash scripts/dev-cloud-reset.sh",
     "deploy:dev": "node scripts/request-dev-deploy.mjs",
-    "check:omp": "cd shared/omp-runtime && bun install --frozen-lockfile && bun run typecheck && bun test"
+    "check:omp": "cd shared/omp-runtime && bun install --frozen-lockfile && bun run typecheck && bun test",
+    "licenses:refresh": "python3 scripts/licenses/refresh.py && node scripts/licenses.mjs stage legal/distribution",
+    "licenses:check": "node scripts/licenses.mjs check",
+    "licenses:verify": "node scripts/licenses.mjs verify"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.1085.0"

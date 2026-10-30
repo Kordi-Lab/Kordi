@@ -83,3 +83,10 @@ app/desktop/tests/visual/generated/live-photo/
 # Python deployment helper bytecode
 __pycache__/
 *.pyc
+
+# Package copies of reviewed legal/distribution material.
+app/desktop/public/licenses/
+agent/licenses/
+bridges/licenses/
+bridges/cloud-temporal-bridge/licenses/
+legal/distribution/sources/

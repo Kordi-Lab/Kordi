@@ -378,6 +378,7 @@ test('profile-aware verifiers apply one bundle contract to every artifact copy',
       const options = {
         repoRoot,
         run,
+        verifyReleaseLicenseEvidenceImpl(app) { calls.push(`[licenses] ${app}`); },
         checkMacOSRuntimeMinimumImpl(app, { expectedMinimum }) {
           assert.equal(expectedMinimum, '13.0');
           calls.push(`[minimum macOS] ${app}`);
@@ -425,6 +426,7 @@ test('profile-aware verifiers apply one bundle contract to every artifact copy',
 
       const count = (pattern) => calls.filter((command) => pattern.test(command)).length;
       assert.equal(count(/^\[minimum macOS\]/), 3);
+      assert.equal(count(/^\[licenses\]/), 3);
       assert.equal(count(/^security find-identity /), releaseProfile === 'production' ? 1 : 0);
       assert.equal(count(/^plutil -extract CFBundleShortVersionString /), 3);
       assert.equal(count(/^plutil -extract CFBundleIdentifier /), 3);

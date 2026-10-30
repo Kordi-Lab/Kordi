@@ -1,0 +1,25 @@
+// Run with the pinned Bun compiler on the reviewed target. No source paths are published.
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+import { workerSourceDigest } from './relink-evidence.mjs';
+const root = fileURLToPath(new URL('../../', import.meta.url));
+process.chdir(root);
+const runtime = JSON.parse(readFileSync('shared/omp-runtime/package.json', 'utf8'));
+if (process.platform !== 'darwin' || process.arch !== 'arm64' || runtime.packageManager !== `bun@${Bun.version}`) throw new Error('Use the reviewed Bun version on macOS arm64.');
+const result = await Bun.build({ entrypoints: ['shared/omp-runtime/src/worker.ts'], target: 'bun', compile: { outfile: '.build/omp-inspection-worker' }, external: ['omp-legacy-pi-modules'], metafile: true });
+if (!result.success || !result.metafile) throw new Error('Bundler evidence unavailable');
+const inputs = Object.keys(result.metafile.inputs);
+const matches = inputs.filter((name) => /(?:^|\/)(?:sharp|@img|@huggingface)(?:\/|@)/.test(name));
+if (matches.length) throw new Error('Review the optional image libraries before recording an exclusion.');
+const native = resolve('shared/omp-runtime/node_modules/@oh-my-pi/pi-natives-darwin-arm64/pi_natives.darwin-arm64.node');
+const identity = spawnSync('python3', ['-B', '-c', "import sys; from pathlib import Path; sys.path.insert(0,'scripts/licenses'); from macho_sections import section_digest; print(section_digest(Path(sys.argv[1]).read_bytes()))", native], { encoding: 'utf8' });
+const linked = spawnSync('otool', ['-L', native], { encoding: 'utf8' });
+if (identity.status !== 0 || linked.status !== 0) throw new Error('Native identity inspection failed');
+const libraries = linked.stdout.trim().split('\n').slice(2).map((line) => line.trim().split(' (')[0]);
+if (libraries.some((name) => !name.startsWith('/usr/lib/') && !name.startsWith('/System/Library/'))) throw new Error('Review additional dynamic native libraries.');
+const evidence = { schemaVersion: 1, targetTriple: 'aarch64-apple-darwin', bunVersion: Bun.version, ompVersion: runtime.dependencies['@oh-my-pi/pi-coding-agent'], workerSourceSha256: workerSourceDigest(root), inputCount: inputs.length, optionalLibvips: { present: false, matchingBundledInputCount: 0 }, nativeAddon: { sha256: createHash('sha256').update(readFileSync(native)).digest('hex'), sectionSha256: identity.stdout.trim(), linkedSystemLibraries: libraries, notices: 'Original OMP THIRD-PARTY-NOTICES and license texts are retained in the frozen catalog.' } };
+writeFileSync('legal/runtime-bundle-review.json', JSON.stringify(evidence, null, 2) + '\n');
+console.log(`Reviewed ${inputs.length} bundled inputs; optional image libraries are absent and native dynamic dependencies are system libraries.`);

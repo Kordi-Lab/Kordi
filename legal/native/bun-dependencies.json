@@ -1,0 +1,2724 @@
+{
+  "schemaVersion": 1,
+  "bunVersion": "1.4.2",
+  "scope": "Conservative source-build dependencies; runtime and build-only entries retain their own original notices.",
+  "packages": [
+    {
+      "ecosystem": "cargo",
+      "name": "aho-corasick",
+      "version": "1.1.4",
+      "license": "Unlicense OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Andrew Gallant <jamslam@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "allocator-api2",
+      "version": "0.2.21",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Zakarum <zaq.dev@icloud.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "anes",
+      "version": "0.1.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Robert Vojta <rvojta@me.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "anstyle",
+      "version": "1.0.14",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "anyhow",
+      "version": "1.0.102",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "arrayref",
+      "version": "0.3.9",
+      "license": "BSD-2-Clause",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Roundy <roundyd@physics.oregonstate.edu>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "arrayvec",
+      "version": "0.7.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "bluss"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "autocfg",
+      "version": "1.5.0",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Josh Stone <cuviper@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "base64",
+      "version": "0.22.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Marshall Pierce <marshall@mpierce.org>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "bcrypt",
+      "version": "0.19.0",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Vincent Prouillet <hello@prouilletvincent.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "bitflags",
+      "version": "2.11.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The Rust Project Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "blake2",
+      "version": "0.10.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "RustCrypto Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "blake2b_simd",
+      "version": "1.0.4",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Jack O'Connor"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "block-buffer",
+      "version": "0.10.4",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "RustCrypto Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "blowfish",
+      "version": "0.9.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "RustCrypto Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "bstr",
+      "version": "1.12.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Andrew Gallant <jamslam@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "bumpalo",
+      "version": "3.20.2",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Nick Fitzgerald <fitzgen@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "bytemuck",
+      "version": "1.25.0",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Lokathor <zefria@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "byteorder",
+      "version": "1.5.0",
+      "license": "Unlicense OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Andrew Gallant <jamslam@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "cast",
+      "version": "0.3.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Jorge Aparicio <jorge@japaric.io>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "cfg-if",
+      "version": "1.0.4",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Alex Crichton <alex@alexcrichton.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "ciborium",
+      "version": "0.2.2",
+      "license": "Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Nathaniel McCallum <npmccallum@profian.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "ciborium-io",
+      "version": "0.2.2",
+      "license": "Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Nathaniel McCallum <npmccallum@profian.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "ciborium-ll",
+      "version": "0.2.2",
+      "license": "Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Nathaniel McCallum <npmccallum@profian.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "cipher",
+      "version": "0.4.4",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "RustCrypto Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "clap",
+      "version": "4.6.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "clap_builder",
+      "version": "4.6.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "clap_lex",
+      "version": "1.1.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "const_format",
+      "version": "0.2.36",
+      "license": "Zlib",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "rodrimati1992 <rodrimatt1985@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "const_format_proc_macros",
+      "version": "0.2.34",
+      "license": "Zlib",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "rodrimati1992 <rodrimatt1985@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "constant_time_eq",
+      "version": "0.4.2",
+      "license": "CC0-1.0 OR MIT-0 OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Cesar Eduardo Barros <cesarb@cesarb.eti.br>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "cpufeatures",
+      "version": "0.2.17",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "RustCrypto Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "criterion",
+      "version": "0.5.1",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Jorge Aparicio <japaricious@gmail.com>",
+        "Brook Heisler <brookheisler@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "criterion-plot",
+      "version": "0.5.0",
+      "license": "MIT/Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Jorge Aparicio <japaricious@gmail.com>",
+        "Brook Heisler <brookheisler@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "crossbeam-deque",
+      "version": "0.8.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "crossbeam-epoch",
+      "version": "0.9.18",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "crossbeam-utils",
+      "version": "0.8.21",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "crunchy",
+      "version": "0.2.4",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Eira Fransham <jackefransham@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "crypto-common",
+      "version": "0.1.7",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "RustCrypto Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "cssparser",
+      "version": "0.36.0",
+      "license": "MPL-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Simon Sapin <simon.sapin@exyr.org>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "cssparser-macros",
+      "version": "0.6.1",
+      "license": "MPL-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Simon Sapin <simon.sapin@exyr.org>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "darling",
+      "version": "0.21.3",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Ted Driggs <ted.driggs@outlook.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "darling_core",
+      "version": "0.21.3",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Ted Driggs <ted.driggs@outlook.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "darling_macro",
+      "version": "0.21.3",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Ted Driggs <ted.driggs@outlook.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "derive_more",
+      "version": "2.1.1",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Jelte Fennema <github-tech@jeltef.nl>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "derive_more-impl",
+      "version": "2.1.1",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Jelte Fennema <github-tech@jeltef.nl>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "digest",
+      "version": "0.10.7",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "RustCrypto Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "dtoa",
+      "version": "1.0.11",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "dtoa-short",
+      "version": "0.3.5",
+      "license": "MPL-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Xidorn Quan <me@upsuper.org>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "either",
+      "version": "1.15.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "bluss"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "encoding_rs",
+      "version": "0.8.35",
+      "license": "(Apache-2.0 OR MIT) AND BSD-3-Clause",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Henri Sivonen <hsivonen@hsivonen.fi>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "enum-map",
+      "version": "2.7.3",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Kamila Borowska <kamila@borowska.pw>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "enum-map-derive",
+      "version": "0.17.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Kamila Borowska <kamila@borowska.pw>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "enumset",
+      "version": "1.1.10",
+      "license": "MIT/Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Alissa Rao <aura@aura.moe>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "enumset_derive",
+      "version": "0.14.0",
+      "license": "MIT/Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Alissa Rao <aura@aura.moe>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "equivalent",
+      "version": "1.0.2",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "errno",
+      "version": "0.3.14",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Chris Wong <lambda.fairy@gmail.com>",
+        "Dan Gohman <dev@sunfishcode.online>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "fastrand",
+      "version": "2.4.1",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Stjepan Glavina <stjepang@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "fnv",
+      "version": "1.0.7",
+      "license": "Apache-2.0 / MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Alex Crichton <alex@alexcrichton.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "foldhash",
+      "version": "0.1.5",
+      "license": "Zlib",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Orson Peters <orsonpeters@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "foldhash",
+      "version": "0.2.0",
+      "license": "Zlib",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Orson Peters <orsonpeters@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "futures-core",
+      "version": "0.3.32",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "futures-task",
+      "version": "0.3.32",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "futures-util",
+      "version": "0.3.32",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "generic-array",
+      "version": "0.14.7",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Bart\u0142omiej Kami\u0144ski <fizyk20@gmail.com>",
+        "Aaron Trent <novacrazy@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "getrandom",
+      "version": "0.4.2",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The Rand Project Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "half",
+      "version": "2.7.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Kathryn Long <squeeself@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "hashbrown",
+      "version": "0.15.5",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Amanieu d'Antras <amanieu@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "hashbrown",
+      "version": "0.16.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Amanieu d'Antras <amanieu@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "hashbrown",
+      "version": "0.17.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Amanieu d'Antras <amanieu@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "heck",
+      "version": "0.5.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "hermit-abi",
+      "version": "0.5.2",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Stefan Lankes"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "id-arena",
+      "version": "2.3.0",
+      "license": "MIT/Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Nick Fitzgerald <fitzgen@gmail.com>",
+        "Aleksey Kladov <aleksey.kladov@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "ident_case",
+      "version": "1.0.1",
+      "license": "MIT/Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Ted Driggs <ted.driggs@outlook.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "indexmap",
+      "version": "2.14.0",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "inout",
+      "version": "0.1.4",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "RustCrypto Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "is-terminal",
+      "version": "0.4.17",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "softprops <d.tangren@gmail.com>",
+        "Dan Gohman <dev@sunfishcode.online>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "itertools",
+      "version": "0.10.5",
+      "license": "MIT/Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "bluss"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "itoa",
+      "version": "1.0.18",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "js-sys",
+      "version": "0.3.98",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The wasm-bindgen Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "keccak",
+      "version": "0.1.6",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "RustCrypto Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "konst",
+      "version": "0.2.20",
+      "license": "Zlib",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "rodrimati1992 <rodrimatt1985@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "konst_macro_rules",
+      "version": "0.2.19",
+      "license": "Zlib",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "rodrimati1992 <rodrimatt1985@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "leb128fmt",
+      "version": "0.1.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Bryant Luk <code@bryantluk.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "libc",
+      "version": "0.2.186",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The Rust Project Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "linux-raw-sys",
+      "version": "0.4.15",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Dan Gohman <dev@sunfishcode.online>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "log",
+      "version": "0.4.29",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The Rust Project Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "memchr",
+      "version": "2.8.0",
+      "license": "Unlicense OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Andrew Gallant <jamslam@gmail.com>",
+        "bluss"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "mime",
+      "version": "0.3.17",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Sean McArthur <sean@seanmonstar.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "new_debug_unreachable",
+      "version": "1.0.6",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Matt Brubeck <mbrubeck@limpet.net>",
+        "Jonathan Reem <jonathan.reem@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "num-traits",
+      "version": "0.2.19",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The Rust Project Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "once_cell",
+      "version": "1.21.4",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Aleksey Kladov <aleksey.kladov@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "oorandom",
+      "version": "11.1.5",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Simon Heath <icefox@dreamquest.io>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "paste",
+      "version": "1.0.15",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "phf",
+      "version": "0.13.1",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Steven Fackler <sfackler@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "phf_codegen",
+      "version": "0.13.1",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Steven Fackler <sfackler@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "phf_generator",
+      "version": "0.13.1",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Steven Fackler <sfackler@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "phf_macros",
+      "version": "0.13.1",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Steven Fackler <sfackler@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "phf_shared",
+      "version": "0.13.1",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Steven Fackler <sfackler@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "pin-project-lite",
+      "version": "0.2.17",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "plotters",
+      "version": "0.3.7",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Hao Hou <haohou302@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "plotters-backend",
+      "version": "0.3.7",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Hao Hou <haohou302@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "plotters-svg",
+      "version": "0.3.7",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Hao Hou <haohou302@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "precomputed-hash",
+      "version": "0.1.1",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Emilio Cobos \u00c1lvarez <emilio@crisal.io>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "prettyplease",
+      "version": "0.2.37",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "proc-macro2",
+      "version": "1.0.106",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>",
+        "Alex Crichton <alex@alexcrichton.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "quick-xml",
+      "version": "0.38.4",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "quote",
+      "version": "1.0.45",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "r-efi",
+      "version": "6.0.0",
+      "license": "MIT OR Apache-2.0 OR LGPL-2.1-or-later",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rayon",
+      "version": "1.12.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rayon-core",
+      "version": "1.13.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "regex",
+      "version": "1.12.3",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The Rust Project Developers",
+        "Andrew Gallant <jamslam@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "regex-automata",
+      "version": "0.4.14",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The Rust Project Developers",
+        "Andrew Gallant <jamslam@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "regex-syntax",
+      "version": "0.8.10",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The Rust Project Developers",
+        "Andrew Gallant <jamslam@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "roxmltree",
+      "version": "0.20.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Yevhenii Reizner <razrfalcon@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustc-hash",
+      "version": "2.1.2",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The Rust Project Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustc_version",
+      "version": "0.4.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustix",
+      "version": "0.38.44",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Dan Gohman <dev@sunfishcode.online>",
+        "Jakub Konka <kubkon@jakubkonka.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustversion",
+      "version": "1.0.22",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "same-file",
+      "version": "1.0.6",
+      "license": "Unlicense/MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Andrew Gallant <jamslam@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "scopeguard",
+      "version": "1.2.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "bluss"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "selectors",
+      "version": "0.33.0",
+      "license": "MPL-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The Servo Project Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "semver",
+      "version": "1.0.28",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "serde",
+      "version": "1.0.228",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Erick Tryzelaar <erick.tryzelaar@gmail.com>",
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "serde_core",
+      "version": "1.0.228",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Erick Tryzelaar <erick.tryzelaar@gmail.com>",
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "serde_derive",
+      "version": "1.0.228",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Erick Tryzelaar <erick.tryzelaar@gmail.com>",
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "serde_json",
+      "version": "1.0.149",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Erick Tryzelaar <erick.tryzelaar@gmail.com>",
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "servo_arc",
+      "version": "0.4.3",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The Servo Project Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "sha3",
+      "version": "0.10.9",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "RustCrypto Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "siphasher",
+      "version": "1.0.3",
+      "license": "MIT/Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Frank Denis <github@pureftpd.org>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "slab",
+      "version": "0.4.12",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Carl Lerche <me@carllerche.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "smallvec",
+      "version": "1.15.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The Servo Project Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "stable_deref_trait",
+      "version": "1.2.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Robert Grosse <n210241048576@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "strum",
+      "version": "0.26.3",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Peter Glotfelty <peter.glotfelty@microsoft.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "strum_macros",
+      "version": "0.26.4",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Peter Glotfelty <peter.glotfelty@microsoft.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "subtle",
+      "version": "2.6.1",
+      "license": "BSD-3-Clause",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Isis Lovecruft <isis@patternsinthevoid.net>",
+        "Henry de Valence <hdevalence@hdevalence.ca>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "syn",
+      "version": "2.0.117",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "thiserror",
+      "version": "2.0.18",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "thiserror-impl",
+      "version": "2.0.18",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "tinytemplate",
+      "version": "1.2.1",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Brook Heisler <brookheisler@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "typed-arena",
+      "version": "2.0.2",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The typed-arena developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "typenum",
+      "version": "1.20.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Paho Lurie-Gregg <paho@paholg.com>",
+        "Andre Bogus <bogusandre@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "unicode-ident",
+      "version": "1.0.24",
+      "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "unicode-xid",
+      "version": "0.2.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "erick.tryzelaar <erick.tryzelaar@gmail.com>",
+        "kwantam <kwantam@gmail.com>",
+        "Manish Goregaokar <manishsmail@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "version_check",
+      "version": "0.9.5",
+      "license": "MIT/Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Sergio Benitez <sb@sergio.bz>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "walkdir",
+      "version": "2.5.0",
+      "license": "Unlicense/MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Andrew Gallant <jamslam@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wasip2",
+      "version": "1.0.3+wasi-0.2.9",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wasip3",
+      "version": "0.4.0+wasi-0.3.0-rc-2026-01-06",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wasm-bindgen",
+      "version": "0.2.121",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The wasm-bindgen Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wasm-bindgen-macro",
+      "version": "0.2.121",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The wasm-bindgen Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wasm-bindgen-macro-support",
+      "version": "0.2.121",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The wasm-bindgen Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wasm-bindgen-shared",
+      "version": "0.2.121",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The wasm-bindgen Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wasm-encoder",
+      "version": "0.244.0",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Nick Fitzgerald <fitzgen@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wasm-metadata",
+      "version": "0.244.0",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wasmparser",
+      "version": "0.244.0",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Yury Delendik <ydelendik@mozilla.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "web-sys",
+      "version": "0.3.98",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The wasm-bindgen Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "winapi-util",
+      "version": "0.1.11",
+      "license": "Unlicense OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Andrew Gallant <jamslam@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows-link",
+      "version": "0.2.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows-sys",
+      "version": "0.59.0",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Microsoft"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows-sys",
+      "version": "0.61.2",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": []
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows-targets",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Microsoft"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows_aarch64_gnullvm",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Microsoft"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows_aarch64_msvc",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Microsoft"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows_i686_gnu",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Microsoft"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows_i686_gnullvm",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Microsoft"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows_i686_msvc",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Microsoft"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows_x86_64_gnu",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Microsoft"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows_x86_64_gnullvm",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Microsoft"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows_x86_64_msvc",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Microsoft"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wit-bindgen",
+      "version": "0.51.0",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Alex Crichton <alex@alexcrichton.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wit-bindgen",
+      "version": "0.57.1",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Alex Crichton <alex@alexcrichton.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wit-bindgen-core",
+      "version": "0.51.0",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Alex Crichton <alex@alexcrichton.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wit-bindgen-rust",
+      "version": "0.51.0",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Alex Crichton <alex@alexcrichton.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wit-bindgen-rust-macro",
+      "version": "0.51.0",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Alex Crichton <alex@alexcrichton.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wit-component",
+      "version": "0.244.0",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Peter Huene <peter@huene.dev>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "wit-parser",
+      "version": "0.244.0",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Alex Crichton <alex@alexcrichton.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "xml-rs",
+      "version": "0.8.29",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Vladimir Matveev <vmatveev@citrine.cc>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "zerocopy",
+      "version": "0.8.48",
+      "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Joshua Liebow-Feeser <joshlf@google.com>",
+        "Jack Wrenn <jswrenn@amazon.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "zerocopy-derive",
+      "version": "0.8.48",
+      "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "Joshua Liebow-Feeser <joshlf@google.com>",
+        "Jack Wrenn <jswrenn@amazon.com>"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "zeroize",
+      "version": "1.8.2",
+      "license": "Apache-2.0 OR MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "The RustCrypto Project Developers"
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "zmij",
+      "version": "1.0.21",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "authors": [
+        "David Tolnay <dtolnay@gmail.com>"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "boringssl",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE",
+        "third_party/benchmark/LICENSE",
+        "third_party/fiat/LICENSE",
+        "third_party/googletest/LICENSE",
+        "third_party/wycheproof_testvectors/LICENSE"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "brotli",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "cares",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE.md"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "hdrhistogram",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "COPYING.txt",
+        "LICENSE.txt"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "highway",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE",
+        "debian/copyright"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "libarchive",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "COPYING"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "libdeflate",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "COPYING"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "libjpeg-turbo",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE.md",
+        "java/doc/legal/LICENSE",
+        "release/License.rtf"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "libspng",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "libwebp",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "COPYING"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "lolhtml",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "lshpack",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "lsqpack",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "lsquic",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE",
+        "LICENSE.chrome"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "mimalloc",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "picohttpparser",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": []
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "rust-argon2",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE-APACHE",
+        "LICENSE-MIT"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "zlib",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "LICENSE.md"
+      ]
+    },
+    {
+      "ecosystem": "native-source",
+      "name": "zstd",
+      "source": "Bun 1.4.2 pinned dependency source; see scripts/build/deps in the Bun source archive",
+      "noticeFiles": [
+        "COPYING",
+        "LICENSE",
+        "build/LICENSE"
+      ]
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "pako",
+      "version": "1.0.11",
+      "license": "(MIT AND Zlib)",
+      "source": "https://registry.npmjs.org/pako/-/pako-1.0.11.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "define-data-property",
+      "version": "1.1.4",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/define-data-property/-/define-data-property-1.1.4.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "browserify-rsa",
+      "version": "4.1.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/browserify-rsa/-/browserify-rsa-4.1.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "process-nextick-args",
+      "version": "2.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/process-nextick-args/-/process-nextick-args-2.0.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "create-hmac",
+      "version": "1.1.7",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/create-hmac/-/create-hmac-1.1.7.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "has-property-descriptors",
+      "version": "1.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/has-property-descriptors/-/has-property-descriptors-1.0.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "is-typed-array",
+      "version": "1.1.15",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/is-typed-array/-/is-typed-array-1.1.15.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "es-errors",
+      "version": "1.3.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/es-errors/-/es-errors-1.3.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "possible-typed-array-names",
+      "version": "1.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/possible-typed-array-names/-/possible-typed-array-names-1.1.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "call-bind",
+      "version": "1.0.8",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/call-bind/-/call-bind-1.0.8.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "minimalistic-crypto-utils",
+      "version": "1.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/minimalistic-crypto-utils/-/minimalistic-crypto-utils-1.0.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "browserify-cipher",
+      "version": "1.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/browserify-cipher/-/browserify-cipher-1.0.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "math-intrinsics",
+      "version": "1.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-1.1.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "create-hash",
+      "version": "1.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/create-hash/-/create-hash-1.2.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "has-tostringtag",
+      "version": "1.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/has-tostringtag/-/has-tostringtag-1.0.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "abort-controller",
+      "version": "3.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/abort-controller/-/abort-controller-3.0.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "elliptic",
+      "version": "6.6.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/elliptic/-/elliptic-6.6.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "punycode",
+      "version": "2.3.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/punycode/-/punycode-2.3.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "core-util-is",
+      "version": "1.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/core-util-is/-/core-util-is-1.0.3.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "pbkdf2",
+      "version": "3.1.5",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/pbkdf2/-/pbkdf2-3.1.5.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "evp_bytestokey",
+      "version": "1.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/evp_bytestokey/-/evp_bytestokey-1.0.3.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "buffer-xor",
+      "version": "1.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/buffer-xor/-/buffer-xor-1.0.3.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "call-bind-apply-helpers",
+      "version": "1.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/call-bind-apply-helpers/-/call-bind-apply-helpers-1.0.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "util",
+      "version": "0.12.5",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/util/-/util-0.12.5.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "base64-js",
+      "version": "1.5.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/base64-js/-/base64-js-1.5.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "object-is",
+      "version": "1.1.6",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/object-is/-/object-is-1.1.6.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "browserify-zlib",
+      "version": "0.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/browserify-zlib/-/browserify-zlib-0.2.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "is-nan",
+      "version": "1.3.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/is-nan/-/is-nan-1.3.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "is-generator-function",
+      "version": "1.1.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/is-generator-function/-/is-generator-function-1.1.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "string_decoder",
+      "version": "1.3.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/string_decoder/-/string_decoder-1.3.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "safe-buffer",
+      "version": "5.2.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/safe-buffer/-/safe-buffer-5.2.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "function-bind",
+      "version": "1.1.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/function-bind/-/function-bind-1.1.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "miller-rabin",
+      "version": "4.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/miller-rabin/-/miller-rabin-4.0.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "stream-http",
+      "version": "3.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/stream-http/-/stream-http-3.2.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "inherits",
+      "version": "2.0.4",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/inherits/-/inherits-2.0.4.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "builtin-status-codes",
+      "version": "3.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/builtin-status-codes/-/builtin-status-codes-3.0.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "public-encrypt",
+      "version": "4.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/public-encrypt/-/public-encrypt-4.0.3.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "es-define-property",
+      "version": "1.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/es-define-property/-/es-define-property-1.0.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "get-intrinsic",
+      "version": "1.3.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/get-intrinsic/-/get-intrinsic-1.3.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "diffie-hellman",
+      "version": "5.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/diffie-hellman/-/diffie-hellman-5.0.3.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "querystring-es3",
+      "version": "1.0.0-0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/querystring-es3/-/querystring-es3-1.0.0-0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "call-bound",
+      "version": "1.0.4",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/call-bound/-/call-bound-1.0.4.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "dunder-proto",
+      "version": "1.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/dunder-proto/-/dunder-proto-1.0.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "hasown",
+      "version": "2.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/hasown/-/hasown-2.0.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "react-refresh",
+      "version": "0.17.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/react-refresh/-/react-refresh-0.17.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "xtend",
+      "version": "4.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/xtend/-/xtend-4.0.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "assert",
+      "version": "2.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/assert/-/assert-2.1.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "browserify-des",
+      "version": "1.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/browserify-des/-/browserify-des-1.0.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "crypto-browserify",
+      "version": "3.12.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/crypto-browserify/-/crypto-browserify-3.12.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "util-deprecate",
+      "version": "1.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/util-deprecate/-/util-deprecate-1.0.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "has-symbols",
+      "version": "1.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/has-symbols/-/has-symbols-1.1.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "ripemd160",
+      "version": "2.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/ripemd160/-/ripemd160-2.0.3.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "ieee754",
+      "version": "1.2.1",
+      "license": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/ieee754/-/ieee754-1.2.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "define-properties",
+      "version": "1.2.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/define-properties/-/define-properties-1.2.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "to-buffer",
+      "version": "1.2.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/to-buffer/-/to-buffer-1.2.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "create-ecdh",
+      "version": "4.0.4",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/create-ecdh/-/create-ecdh-4.0.4.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "browserify-sign",
+      "version": "4.2.5",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/browserify-sign/-/browserify-sign-4.2.5.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "asn1.js",
+      "version": "4.10.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/asn1.js/-/asn1.js-4.10.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "parse-asn1",
+      "version": "5.1.9",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/parse-asn1/-/parse-asn1-5.1.9.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "browserify-aes",
+      "version": "1.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/browserify-aes/-/browserify-aes-1.2.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "hmac-drbg",
+      "version": "1.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/hmac-drbg/-/hmac-drbg-1.0.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "md5.js",
+      "version": "1.3.5",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/md5.js/-/md5.js-1.3.5.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "des.js",
+      "version": "1.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/des.js/-/des.js-1.1.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "set-function-length",
+      "version": "1.2.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/set-function-length/-/set-function-length-1.2.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "safe-regex-test",
+      "version": "1.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/safe-regex-test/-/safe-regex-test-1.1.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "randombytes",
+      "version": "2.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/randombytes/-/randombytes-2.1.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "minimalistic-assert",
+      "version": "1.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/minimalistic-assert/-/minimalistic-assert-1.0.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "get-proto",
+      "version": "1.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/get-proto/-/get-proto-1.0.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "generator-function",
+      "version": "2.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/generator-function/-/generator-function-2.0.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "event-target-shim",
+      "version": "5.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/event-target-shim/-/event-target-shim-5.0.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "is-regex",
+      "version": "1.2.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/is-regex/-/is-regex-1.2.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "sha.js",
+      "version": "2.4.12",
+      "license": "(MIT AND BSD-3-Clause)",
+      "source": "https://registry.npmjs.org/sha.js/-/sha.js-2.4.12.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "object-keys",
+      "version": "1.1.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/object-keys/-/object-keys-1.1.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "gopd",
+      "version": "1.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/gopd/-/gopd-1.2.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "for-each",
+      "version": "0.3.5",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/for-each/-/for-each-0.3.5.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "which-typed-array",
+      "version": "1.1.19",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/which-typed-array/-/which-typed-array-1.1.19.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "events",
+      "version": "3.3.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/events/-/events-3.3.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "is-callable",
+      "version": "1.2.7",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/is-callable/-/is-callable-1.2.7.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "isarray",
+      "version": "1.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/isarray/-/isarray-1.0.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "hash-base",
+      "version": "3.0.5",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/hash-base/-/hash-base-3.0.5.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "https-browserify",
+      "version": "1.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/https-browserify/-/https-browserify-1.0.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "hash.js",
+      "version": "1.1.7",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/hash.js/-/hash.js-1.1.7.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "domain-browser",
+      "version": "4.23.0",
+      "license": "Artistic-2.0",
+      "source": "https://registry.npmjs.org/domain-browser/-/domain-browser-4.23.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "available-typed-arrays",
+      "version": "1.0.7",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/available-typed-arrays/-/available-typed-arrays-1.0.7.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "cipher-base",
+      "version": "1.0.7",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/cipher-base/-/cipher-base-1.0.7.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "bn.js",
+      "version": "5.2.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/bn.js/-/bn.js-5.2.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "readable-stream",
+      "version": "4.7.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/readable-stream/-/readable-stream-4.7.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "typed-array-buffer",
+      "version": "1.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/typed-array-buffer/-/typed-array-buffer-1.0.3.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "randomfill",
+      "version": "1.0.4",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/randomfill/-/randomfill-1.0.4.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "object.assign",
+      "version": "4.1.7",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/object.assign/-/object.assign-4.1.7.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "process",
+      "version": "0.11.10",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/process/-/process-0.11.10.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "is-arguments",
+      "version": "1.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/is-arguments/-/is-arguments-1.2.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "buffer",
+      "version": "5.0.5",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/buffer/-/buffer-5.0.5.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "brorand",
+      "version": "1.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/brorand/-/brorand-1.1.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "es-object-atoms",
+      "version": "1.1.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "buffer",
+      "version": "6.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/buffer/-/buffer-6.0.3.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "bn.js",
+      "version": "4.12.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/bn.js/-/bn.js-4.12.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "readable-stream",
+      "version": "2.3.8",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/readable-stream/-/readable-stream-2.3.8.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "string_decoder",
+      "version": "1.1.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/string_decoder/-/string_decoder-1.1.1.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "safe-buffer",
+      "version": "5.1.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/safe-buffer/-/safe-buffer-5.1.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "isarray",
+      "version": "2.0.5",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/isarray/-/isarray-2.0.5.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "hash-base",
+      "version": "3.1.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/hash-base/-/hash-base-3.1.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "readable-stream",
+      "version": "3.6.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/readable-stream/-/readable-stream-3.6.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "preact",
+      "version": "10.27.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/preact/-/preact-10.27.2.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "test-utils",
+      "version": "0.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/test-utils/-/test-utils-0.1.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "preact-compat",
+      "version": "4.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/preact-compat/-/preact-compat-4.0.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "preact-devtools",
+      "version": "1.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/preact-devtools/-/preact-devtools-1.0.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "preact-hooks",
+      "version": "0.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/preact-hooks/-/preact-hooks-0.1.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "jsx-runtime",
+      "version": "1.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/jsx-runtime/-/jsx-runtime-1.0.0.tgz"
+    },
+    {
+      "ecosystem": "bundled-js",
+      "name": "preact-debug",
+      "version": "1.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/preact-debug/-/preact-debug-1.0.0.tgz"
+    }
+  ]
+}

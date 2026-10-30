@@ -1,3 +1,5 @@
+mod sources;
+
 use std::fmt;
 use std::pin::Pin;
 use std::sync::Arc;

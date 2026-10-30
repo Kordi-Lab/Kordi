@@ -13,7 +13,8 @@
     "bin",
     "index.cjs",
     "scripts",
-    "skills"
+    "skills",
+    "licenses/"
   ],
   "scripts": {
     "build": "npm run version:sync && cargo build --release --manifest-path cli/Cargo.toml && node scripts/copy-native.js && npm run plugin:preview",
@@ -21,7 +22,8 @@
     "smoke:tmux": "bash scripts/tmux-two-agent-smoke.sh",
     "version:sync": "node scripts/sync-version.js",
     "postinstall": "node scripts/postinstall.js",
-    "test": "cargo test --manifest-path cli/Cargo.toml"
+    "test": "cargo test --manifest-path cli/Cargo.toml",
+    "prepack": "node ../scripts/licenses.mjs check && node ../scripts/licenses.mjs stage licenses"
   },
   "repository": {
     "type": "git",
