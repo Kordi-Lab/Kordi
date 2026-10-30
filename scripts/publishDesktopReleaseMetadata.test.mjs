@@ -1,3 +1,4 @@
+import { PACKAGED_OMP_CHECK_SCRIPT } from './lib/macos-release-signing.mjs';
 import {
   assert,
   readFile,
@@ -181,6 +182,7 @@ test('application bundle contract enforces the ad-hoc profile in exact command o
     `codesign --verify --deep --strict --verbose=2 ${APP_CONTRACT_BUNDLE}`,
     `codesign --display --verbose=4 ${APP_CONTRACT_BUNDLE}`,
     `spctl --assess --type execute --verbose=2 ${APP_CONTRACT_BUNDLE}`,
+    `node ${PACKAGED_OMP_CHECK_SCRIPT} --app-bundle ${APP_CONTRACT_BUNDLE}`,
     [
       'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
       ACCEPTANCE_ENDPOINT, APP_CONTRACT_BUNDLE,
@@ -236,6 +238,7 @@ test('application bundle contract preserves the production Gatekeeper and endpoi
     `spctl --assess --type execute --verbose=2 ${APP_CONTRACT_BUNDLE}`,
     `codesign -d --entitlements :- ${APP_CONTRACT_BUNDLE}`,
     `plutil -extract NSCalendarsFullAccessUsageDescription raw -o - ${APP_CONTRACT_BUNDLE}/Contents/Info.plist`,
+    `node ${PACKAGED_OMP_CHECK_SCRIPT} --app-bundle ${APP_CONTRACT_BUNDLE}`,
     [
       'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
       PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,

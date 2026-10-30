@@ -1,3 +1,7 @@
+import { fileURLToPath } from 'node:url';
+
+export const PACKAGED_OMP_CHECK_SCRIPT = fileURLToPath(new URL('../check-packaged-omp.mjs', import.meta.url));
+
 export const RELEASE_PROFILES = Object.freeze({
   PRODUCTION: 'production',
   ADHOC_PREVIEW: 'adhoc-preview',
@@ -54,6 +58,13 @@ export function assertMacCalendarAccess(run, appBundle) {
   if (!usage.stdout?.trim()) throw new Error('Calendar access usage description must not be empty');
 }
 
+function verifyPackagedWorker(run, appBundle) {
+  requireSuccessful(
+    run('node', [PACKAGED_OMP_CHECK_SCRIPT, '--app-bundle', appBundle]),
+    'Packaged OMP startup/protocol check failed',
+  );
+}
+
 export function verifyMacAppSignature({ run, appBundle, profile }) {
   requireKnownProfile(profile);
 
@@ -69,6 +80,7 @@ export function verifyMacAppSignature({ run, appBundle, profile }) {
     );
 
     assertMacCalendarAccess(run, appBundle);
+    verifyPackagedWorker(run, appBundle);
     return {
       codesignVerified: true,
       gatekeeperVerified: true,
@@ -95,6 +107,7 @@ export function verifyMacAppSignature({ run, appBundle, profile }) {
     ['--assess', '--type', 'execute', '--verbose=2', appBundle],
   );
 
+  verifyPackagedWorker(run, appBundle);
   return {
     codesignVerified: true,
     gatekeeperVerified: gatekeeper.status === 0,
