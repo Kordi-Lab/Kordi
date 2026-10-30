@@ -17,7 +17,9 @@ use uuid::Uuid;
 
 mod lifecycle;
 mod outcome;
-pub(crate) use outcome::{is_control_response, parent_completion, parent_completion_body};
+pub(crate) use outcome::{
+    is_control_response, parent_completion, parent_completion_body, separate_control_outcome,
+};
 mod store;
 pub(crate) use lifecycle::{finish, reconcile};
 use store::{authorize, directory, send};

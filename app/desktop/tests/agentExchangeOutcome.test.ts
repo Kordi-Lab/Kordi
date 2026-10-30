@@ -5,6 +5,7 @@ import { cloudAgentTurnReplyText } from '../src/features/cloud/cloudAgentReplyTe
 import { selectVisibleCloudAgentResponses } from '../src/features/cloud/cloudAgentResponseSelection';
 import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 import { isInternalCloudAgentControlMessage } from '../src/features/canonical/readModel/messageVisibility';
+import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import { withLiveTurn } from '../src/features/cloud/cloudGroupLiveProjection';
 import type { CloudMessage } from '../src/features/cloud/authClient';
 import type { CanonicalSessionMessage, DesktopChatTurnSnapshot } from '../src/kordi-app/types';
@@ -20,6 +21,20 @@ test('only exact structured outcomes are internal; ordinary text and failures re
   assert.equal(isInternalCloudAgentControlMessage({ ...row, status: 'failed' }), false);
   assert.equal(isInternalCloudAgentControlMessage({ ...row, messageKind: 'text' }), false);
   assert.equal(isInternalCloudAgentControlMessage({ ...row, contentText: 'The total is 19.' }), false);
+});
+
+test('received group completions hide protocol outcomes for owners and peers after replay', () => {
+  for (const status of ['received', 'delivered', 'read', 'complete']) {
+    for (const text of [WAITING, SILENT]) {
+      const row = { messageKind: 'agent-turn', status, contentText: text,
+        content: { deliveryState: 'complete' } } as CanonicalSessionMessage;
+      assert.equal(mapCanonicalMessage(row, new Map()), null);
+      assert.equal(mapCanonicalMessage(JSON.parse(JSON.stringify(row)), new Map()), null);
+      assert.equal(isInternalCloudAgentControlMessage({ ...row, status: 'failed' }), false);
+      assert.equal(isInternalCloudAgentControlMessage({ ...row, status: 'cancelled' }), false);
+      assert.equal(isInternalCloudAgentControlMessage({ ...row, messageKind: 'text' }), false);
+    }
+  }
 });
 
 test('a successful durable receipt replaces redundant parent speech, never a failure', () => {
@@ -44,4 +59,13 @@ test('a waiting completion retires prior progress without a speech bubble or reo
     assert.equal(result.terminalResponseRequestIds.has('request'), true);
   }
   assert.equal(select([message('answer', 'The total is 19.', 'complete')]).visibleMessages.length, 1);
+  const metadata = { ...waiting, body: `kordi-cloud-agent-response:${Buffer.from(JSON.stringify({
+    kind: 'agent-response', requestId: 'request', text: '', deliveryState: 'complete',
+    synchronizationOnly: true, agentExchangeOutcome: 'waiting',
+  })).toString('base64url')}` };
+  for (const messages of [[progress, metadata], [metadata, progress]]) {
+    const result = select(messages);
+    assert.equal(result.visibleMessages.length, 0);
+    assert.equal(result.terminalResponseRequestIds.has('request'), true);
+  }
 });

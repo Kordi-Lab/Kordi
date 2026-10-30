@@ -17,7 +17,32 @@ pub(super) fn outcome(text: &str) -> Option<&'static str> {
 
 /// Notifications and unread accounting must not expose protocol completions.
 pub(crate) fn is_control_response(value: &Value) -> bool {
-    value["deliveryState"] == "complete" && value["text"].as_str().and_then(outcome).is_some()
+    value["deliveryState"] == "complete"
+        && (value["text"].as_str().and_then(outcome).is_some()
+            || value["synchronizationOnly"] == true
+            || value["structuredContent"]["synchronizationOnly"] == true)
+}
+
+/// Persist completion as synchronization metadata, never as assistant speech.
+/// The terminal event still retires progress and supports replay on every client.
+pub(crate) fn separate_control_outcome(reply: &mut Value, group: bool) {
+    if reply["deliveryState"] != "complete" {
+        return;
+    }
+    let Some(control) = reply["text"].as_str().and_then(outcome) else {
+        return;
+    };
+    reply["text"] = json!("");
+    if group {
+        if !reply["structuredContent"].is_object() {
+            reply["structuredContent"] = json!({});
+        }
+        reply["structuredContent"]["synchronizationOnly"] = json!(true);
+        reply["structuredContent"]["agentExchangeOutcome"] = json!(control);
+    } else {
+        reply["synchronizationOnly"] = json!(true);
+        reply["agentExchangeOutcome"] = json!(control);
+    }
 }
 
 /// Once a request is public, the initial run yields to its durable continuation.
@@ -52,6 +77,7 @@ pub(crate) async fn parent_completion_body(
     };
     reply["text"] =
         json!(parent_completion(pool, run, reply["text"].as_str().unwrap_or_default()).await?);
+    separate_control_outcome(reply, group);
     Ok(format!(
         "{}:{}",
         if group {
@@ -66,6 +92,31 @@ pub(crate) async fn parent_completion_body(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn synchronization_metadata_has_no_assistant_text() {
+        for group in [false, true] {
+            let mut reply =
+                json!({"text":WAITING,"deliveryState":"complete","requestId":"request"});
+            separate_control_outcome(&mut reply, group);
+            assert_eq!(reply["text"], "");
+            assert_eq!(reply["requestId"], "request");
+            assert!(is_control_response(&reply));
+            let metadata = if group {
+                &reply["structuredContent"]
+            } else {
+                &reply
+            };
+            assert_eq!(metadata["agentExchangeOutcome"], "waiting");
+            assert_eq!(metadata["synchronizationOnly"], true);
+            let stored = reply.clone();
+            separate_control_outcome(&mut reply, group);
+            assert_eq!(reply, stored);
+            let mut failure = json!({"text":"Provider failed","deliveryState":"failed"});
+            separate_control_outcome(&mut failure, group);
+            assert_eq!(failure["text"], "Provider failed");
+            assert!(!is_control_response(&failure));
+        }
+    }
     #[test]
     fn only_an_exact_structured_outcome_is_control() {
         assert_eq!(outcome(WAITING), Some("waiting"));

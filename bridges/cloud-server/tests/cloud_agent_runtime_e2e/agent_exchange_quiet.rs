@@ -30,7 +30,9 @@ impl Fixture {
                 "{}",
                 read_json(response).await
             );
-            return Value::Null;
+            let (body,): (String,) = query_as("SELECT m.content #>> '{blocks,0,text}' FROM cloud_agent_fallback_runs r JOIN cloud_chat_messages m ON m.message_id::text=r.response_message_id WHERE r.run_id=$1")
+                .bind(&self.root).fetch_one(&self.pool).await.unwrap();
+            return json!({"body":body});
         }
         let (kind,): (String,) =
             query_as("SELECT kind FROM cloud_chat_conversations WHERE legacy_session_id=$1")
@@ -77,7 +79,10 @@ impl Fixture {
                 let envelope: Value = serde_json::from_slice(&decoded).ok()?;
                 let response = envelope.get("message").unwrap_or(&envelope);
                 let text = response["text"].as_str()?;
-                (response["deliveryState"] == "complete" && text != WAITING)
+                (response["deliveryState"] == "complete"
+                    && text != WAITING
+                    && response["synchronizationOnly"] != true
+                    && response["structuredContent"]["synchronizationOnly"] != true)
                     .then(|| text.to_owned())
             })
             .collect()
@@ -92,7 +97,7 @@ async fn shared_question_silently_finishes_after_a_reply_on_mac_and_cloud() {
         };
         f.send("quiet", 1).await;
         let parent = f.complete_parent(cloud).await;
-        if !cloud {
+        {
             let body = parent["body"].as_str().unwrap().split_once(':').unwrap().1;
             let value: Value = serde_json::from_slice(
                 &base64::engine::general_purpose::URL_SAFE_NO_PAD
@@ -100,7 +105,11 @@ async fn shared_question_silently_finishes_after_a_reply_on_mac_and_cloud() {
                     .unwrap(),
             )
             .unwrap();
-            assert_eq!(value.get("message").unwrap_or(&value)["text"], WAITING);
+            let response = value.get("message").unwrap_or(&value);
+            assert_eq!(response["text"], "");
+            let control = response.get("structuredContent").unwrap_or(response);
+            assert_eq!(control["synchronizationOnly"], true);
+            assert_eq!(control["agentExchangeOutcome"], "waiting");
         }
         let target = f.pending(1).await.remove(0);
         let target_run = target["runId"].as_str().unwrap();

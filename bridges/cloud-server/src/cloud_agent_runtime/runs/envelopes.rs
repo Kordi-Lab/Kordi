@@ -167,10 +167,14 @@ pub(super) fn parse_cloud_group_envelope(body: &str) -> Option<CloudGroupEnvelop
 }
 
 fn encode_cloud_group_envelope(envelope: &CloudGroupEnvelope) -> String {
+    let mut value = serde_json::to_value(envelope).unwrap_or_default();
+    if value["message"]["senderKind"] == "agent" {
+        super::exchanges::separate_control_outcome(&mut value["message"], true);
+    }
     format!(
         "{}{}",
         CLOUD_GROUP_PREFIX,
-        URL_SAFE_NO_PAD.encode(serde_json::to_string(envelope).unwrap_or_default())
+        URL_SAFE_NO_PAD.encode(value.to_string())
     )
 }
 
@@ -371,6 +375,7 @@ pub(super) fn encode_cloud_agent_response_body_with_ending(
     if let Some(ending) = ending {
         envelope["ending"] = serde_json::Value::String(ending.to_string());
     }
+    super::exchanges::separate_control_outcome(&mut envelope, false);
     format!(
         "{}{}",
         CLOUD_AGENT_RESPONSE_PREFIX,

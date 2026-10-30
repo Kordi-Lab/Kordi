@@ -1,4 +1,5 @@
 import { agentExchangeOutcome } from '@/features/cloud/agentExchangeOutcome';
+import { cloudAgentTurnLifecycleState } from '../cloudAgentTurnLifecycle';
 import type { CanonicalSessionMessage } from '@/kordi-app/types';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import { parseCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
@@ -44,7 +45,7 @@ export function isInternalCloudAgentControlMessage(message: CanonicalSessionMess
   const content = contentRecord(message.content);
   const normalized = content.schemaVersion === 1 && content.kind === 'message';
   const envelope = normalized ? null : parseCloudDirectMessageEnvelope(text);
-  return (message.messageKind === 'agent-turn' && message.status === 'complete' && agentExchangeOutcome(text) !== null)
+  return (cloudAgentTurnLifecycleState(message) === 'complete' && agentExchangeOutcome(text) !== null)
     || content.synchronizationOnly === true
     || envelope?.synchronizationOnly === true
     || (Boolean(envelope) && message.messageKind === 'agent-model-change')

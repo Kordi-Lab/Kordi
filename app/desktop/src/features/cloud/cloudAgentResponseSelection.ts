@@ -86,7 +86,8 @@ export function selectVisibleCloudAgentResponses(
     responseRequestIds.add(response.requestId);
     if (response.deliveryState !== 'processing') {
       terminalResponseRequestIds.add(response.requestId);
-      return response.deliveryState !== 'complete' || agentExchangeOutcome(response.text) === null;
+      return response.deliveryState !== 'complete'
+        || (!response.synchronizationOnly && agentExchangeOutcome(response.text) === null);
     }
     return !hasCompletedLocalResponse(response.requestId);
   });

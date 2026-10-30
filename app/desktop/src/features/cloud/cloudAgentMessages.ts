@@ -41,6 +41,7 @@ export type CloudAgentResponseEnvelope = {
   requestId: string;
   text: string;
   deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled';
+  synchronizationOnly?: boolean;
   ending?: CloudAgentReplyEnding;
   execution?: CloudAgentExecutionSnapshot;
   backgroundSessions?: CloudAgentBackgroundSession[];
@@ -242,6 +243,7 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       kind: 'agent-response',
       requestId: parsed.requestId,
       text: parsed.text,
+      ...(parsed.synchronizationOnly === true ? { synchronizationOnly: true } : {}),
       ...(deliveryState ? { deliveryState } : {}),
       ...(ending ? { ending } : {}),
       ...(execution ? { execution } : {}),

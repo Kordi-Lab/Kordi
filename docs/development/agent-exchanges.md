@@ -8,8 +8,10 @@ continuation publishes only new useful work requested by the user, not a
 confirmation, quotation, or paraphrase of the reply already in this conversation.
 
 The parent yields with the internal `{"agentExchangeOutcome":"waiting"}`
-completion. Both publishers normalize delegated parents to this result; the
-read model retires progress without rendering a redundant finished bubble.
+completion. Both publishers consume it before storing a terminal synchronization
+event: the message text is empty and the outcome lives in metadata. The read
+model retires progress without rendering a bubble, including replay and legacy
+records whose transport status is received, delivered, or read.
 On resumption, `{"agentExchangeOutcome":"silent"}` acknowledges that no
 additional work is needed. The server accepts it only for a continuation with
 a public reply, atomically completes the run and exchange, and creates no
@@ -76,3 +78,17 @@ Regression tests also cover silent completion on Mac and cloud, stale claims,
 completion retries, missing replies, hidden progress, and useful follow-up output.
 Real test-client validation must additionally check visible messages and the
 continued response. It must preserve the existing profiles and account data.
+
+## Queue and acknowledgement reference
+
+[SwarmChat's design](https://github.com/Pranjal2041/swarmchat/blob/main/DESIGN.md)
+and its `swarmchat/client.py` wait implementation separate message delivery from
+acknowledgement. Waiting starts at a saved position; unconfirmed deliveries can
+be received again after interruption. Acknowledgements travel as protocol data,
+not chat messages. Its viewer does not move an agent's read position.
+
+Kordi uses durable per-exchange request, reply, and processed state instead of
+reusing a person's chat read cursor. Polling discovers pending work; a fenced
+Mac-first lease controls execution. Completion acknowledgements are idempotent,
+and recovery republishes no question or reply that already has a durable ID.
+Terminal synchronization metadata retires UI progress without assistant text.
