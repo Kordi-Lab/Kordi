@@ -17,6 +17,10 @@ message. An empty answer, failed provider, silent recipient, or timeout without
 a public reply is not a successful silent completion. Retries retain the same
 lease checks and idempotency as a visible result.
 
+The continuation's original request comes from the canonical triggering
+message, including after further delegation. An executor prompt may contain
+conversation history; that history must not become a list of unfinished tasks.
+
 The server owns a durable exchange record, not the model execution location.
 Each recipient and continuation is an ordinary run: a ready owner Mac gets
 its existing preference window and execution lease. Eligible cloud fallback

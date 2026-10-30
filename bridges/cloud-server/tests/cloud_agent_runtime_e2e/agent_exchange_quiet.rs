@@ -269,3 +269,28 @@ async fn a_follow_up_that_delegates_again_yields_without_another_acknowledgement
     assert!(texts.iter().all(|text| !text.contains("am waiting")));
     assert_eq!(f.pending(2).await.len(), 1);
 }
+
+#[tokio::test]
+async fn continuation_uses_canonical_trigger_not_historical_run_prompt() {
+    for group in [true, false] {
+        let Some(f) = Fixture::kind(group).await else {
+            return;
+        };
+        query("UPDATE cloud_agent_fallback_runs SET prompt=$2 WHERE run_id=$1")
+            .bind(&f.root)
+            .bind("Conversation history: Create an old synthetic document. Current request: Ask Beta and continue")
+            .execute(&f.pool).await.unwrap();
+        f.send("canonical-trigger", 1).await;
+        f.complete_parent(true).await;
+        let target = f.pending(1).await.remove(0);
+        let claim = f.claim(1, &target).await;
+        f.finish(1, target["runId"].as_str().unwrap(), claim, "Ready")
+            .await;
+        let resume = f.pending(0).await.remove(0);
+        let prompt = resume["prompt"].as_str().unwrap();
+        let data: Value = serde_json::from_str(prompt.split_once('\n').unwrap().1).unwrap();
+        assert_eq!(data["originalRequest"], "Ask Beta and continue");
+        assert!(!prompt.contains("old synthetic document"));
+        assert!(prompt.contains("not unfinished tasks"));
+    }
+}
