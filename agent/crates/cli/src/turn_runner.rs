@@ -113,6 +113,7 @@ fn retry_text(message: &str) -> String {
     kordi_omp_runtime::provider_reason(message).unwrap_or_default()
 }
 mod tool_argument_progress;
+pub(crate) mod tool_availability;
 mod tool_policy;
 mod tool_support;
 mod tools;

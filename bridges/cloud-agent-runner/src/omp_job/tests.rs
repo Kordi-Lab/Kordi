@@ -16,6 +16,7 @@ impl HostTool for Probe {
 
 fn run_fixture() -> CloudAgentRun {
     CloudAgentRun {
+        agent_communication: false,
         turn_identity: None,
         history_messages: vec![],
         subsession_id: None,
@@ -138,7 +139,10 @@ async fn packaged_worker_runs_scoped_system_agent_and_digest_tools() {
                     json!({"id":"fixture","choices":[{"index":0,"delta":delta,"finish_reason":null}]}),
                     json!({"id":"fixture","choices":[{"index":0,"delta":{},"finish_reason":if step == 0 {"tool_calls"} else {"stop"}}]})
                 );
-                let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len());
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
                 stream.write_all(response.as_bytes()).await.unwrap();
             }
         });

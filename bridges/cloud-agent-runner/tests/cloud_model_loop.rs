@@ -155,6 +155,7 @@ fn provider_auth() -> ProviderAuthMaterial {
 
 fn run() -> CloudAgentRun {
     CloudAgentRun {
+        agent_communication: false,
         turn_identity: None,
         history_messages: Vec::new(),
         subsession_id: None,

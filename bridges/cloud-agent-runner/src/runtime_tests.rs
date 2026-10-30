@@ -133,6 +133,7 @@ impl CloudAgentRunClient for FakeClient {
 }
 pub(super) fn leased_run(run_id: &str, provider_auth_available: bool) -> CloudAgentRun {
     CloudAgentRun {
+        agent_communication: false,
         turn_identity: None,
         history_messages: Vec::new(),
         subsession_id: None,

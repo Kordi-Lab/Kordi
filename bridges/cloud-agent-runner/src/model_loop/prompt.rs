@@ -29,6 +29,7 @@ the finished content.",
 
 pub fn tool_catalog() -> Vec<Value> {
     vec![
+        local_tool_schema(&kordi_tools::reach_out::ReachOutTool),
         serde_json::json!({
             "type":"function", "function": {
                 "name":"task_operator", "description":"Create a real independent execution subsession of this Agent, or inspect one by its exact sessionId. After a successful spawn, briefly acknowledge in the parent chat and end the parent turn; do not wait or copy the child result here.",

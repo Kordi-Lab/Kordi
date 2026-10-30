@@ -31,7 +31,7 @@ pub struct ReachOutInput {
     #[serde(default = "default_context_policy")]
     pub context_policy: String,
     /// Include concise project context automatically unless explicitly disabled.
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub include_project_context: bool,
     /// Wait for the remote reply and return it as this tool result.
     #[serde(default = "default_true")]
@@ -49,50 +49,14 @@ impl Tool for ReachOutTool {
     }
 
     fn description(&self) -> &str {
-        "Internal executor for @Person/@Agent participation. Use this when a mentioned or visible connected person/agent may have relevant information. The outreach is always allowed, creates a visible join event in the current session when possible, includes policy-scoped context by default, and can return the remote reply as the tool result."
+        "Send an explicit request to another agent in the current conversation. Use an exact agent ID or unique @handle from the participant directory. A successful request is durable and returns a receipt. Briefly acknowledge and end this turn; the reply automatically continues the original task. Never resend or poll while waiting."
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "target": {
-                    "type": "string",
-                    "description": "Visible person/agent to contact. May be a display name, owner name, node id, human id, or agent id."
-                },
-                "targetKind": {
-                    "type": "string",
-                    "enum": ["bridge-agent", "bridge-person"],
-                    "description": "Optional target kind. Use bridge-agent for agent expertise and bridge-person for a human/person."
-                },
-                "message": {
-                    "type": "string",
-                    "description": "The question or request to send to the remote target."
-                },
-                "context": {
-                    "type": "string",
-                    "description": "Optional extra context to send with the request. Runtime context is included according to session policy unless disabled."
-                },
-                "contextPolicy": {
-                    "type": "string",
-                    "enum": ["last-message", "recent-window", "summary", "full-session"],
-                    "description": "How much session context to share with the remote participant. Defaults to recent-window."
-                },
-                "includeProjectContext": {
-                    "type": "boolean",
-                    "description": "Include concise project context by default. Set false only if the request is unrelated to the current project."
-                },
-                "waitForResponse": {
-                    "type": "boolean",
-                    "description": "Wait for the remote response and return it as this tool result. Defaults to true."
-                },
-                "timeoutSeconds": {
-                    "type": "number",
-                    "description": "Optional maximum seconds to wait for a response."
-                }
-            },
-            "required": ["target", "message"]
-        })
+        json!({"type":"object","properties":{
+            "target":{"type":"string","description":"Exact agent ID or unique @handle from this conversation's directory."},
+            "message":{"type":"string","description":"The explicit request to share with all conversation members. Never include private files, credentials, or hidden context."}
+        },"required":["target","message"],"additionalProperties":false})
     }
 
     fn metadata(&self) -> ToolMetadata {
@@ -111,13 +75,13 @@ impl Tool for ReachOutTool {
 
         let Some(runtime) = ctx.reach_out.clone() else {
             return Err(KordiError::Tool(
-                "reach_out is only available in the desktop app when bridge outreach is configured"
-                    .to_string(),
+                "reach_out is unavailable for this execution lease".to_string(),
             ));
         };
 
         let context = build_context(&input, ctx);
         let request = ReachOutRequest {
+            tool_call_id: ctx.invocation_id.clone(),
             target: input.target.trim().to_string(),
             target_kind: input
                 .target_kind
@@ -170,7 +134,14 @@ impl Tool for ReachOutTool {
             .filter(|value| !value.trim().is_empty())
         {
             lines.push(String::new());
-            lines.push("Remote response:".to_string());
+            lines.push(
+                if response.status == "pending" {
+                    "Delivery receipt:"
+                } else {
+                    "Remote response:"
+                }
+                .to_string(),
+            );
             lines.push(text.to_string());
         } else if !response.timed_out {
             lines.push("No response text was returned yet.".to_string());

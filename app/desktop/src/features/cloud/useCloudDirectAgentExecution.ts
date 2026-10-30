@@ -72,6 +72,7 @@ import { createCloudSharedAgentProgress } from './cloudSharedAgentProgress';
 import { cloudAgentTurnReplyText } from './cloudAgentReplyText';
 import { useDocumentAgentRequests } from '@/features/documents/useDocumentAgentRequests';
 import { useDigestMacRuns } from '@/features/digest/useDigestMacRuns';
+import { useAgentExchangeMacRuns } from './useAgentExchangeMacRuns';
 import { useScheduledMacRuns } from './useScheduledMacRuns';
 import { useProactiveMacRuns } from '@/features/proactive/useProactiveMacRuns';
 
@@ -136,6 +137,7 @@ export function useCloudDirectAgentExecution({
   // Digest runs of this account run on this Mac when it has a local provider.
   useDigestMacRuns({ account, client, defaultRoute: defaultCloudAgentRuntimeRoute, runtimeReady, reportWarning });
   // Scheduled tasks of this account run on this Mac while it is ready.
+  useAgentExchangeMacRuns({ account, client, defaultRoute: defaultCloudAgentRuntimeRoute, runtimeReady, reportWarning });
   useScheduledMacRuns({ account, client, defaultRoute: defaultCloudAgentRuntimeRoute, runtimeReady, reportWarning });
   // Proactive evaluations and allowed offers of this account run on this Mac while it is ready.
   useProactiveMacRuns({ account, client, defaultRoute: defaultCloudAgentRuntimeRoute, runtimeReady, reportWarning });

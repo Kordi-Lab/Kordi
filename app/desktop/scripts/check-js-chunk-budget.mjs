@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES ?? '', 10) || 700_000;
 // The pinned OMP catalog grew with 18.12.6 (80 providers), so the budget moved from 5.4 MB to 5.5 MB.
 // Main reached 5.495 MB, and proactive runs on the owner's Mac add 7 kB, so it moves to 5.6 MB.
-// Ownership-aware direct read receipts add less than 1 kB; keep the browser-test build bounded too.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_601_000;
+// Direct read receipts add 1 kB and durable Mac agent communication adds 5 kB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_606_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;

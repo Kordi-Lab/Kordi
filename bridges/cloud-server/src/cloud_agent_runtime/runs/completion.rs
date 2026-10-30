@@ -69,6 +69,9 @@ async fn complete(
     omp_state: Option<&super::omp_state::OmpState>,
     service_auths: &[super::super::provider_auth::ServiceProviderAuth<'_>],
 ) -> RunResult<RunnerRunResponse> {
+    if super::exchanges::finish(pool, run_id, runner_id, response_text, true).await? {
+        return digest_run_response(pool, run_id).await;
+    }
     if let Some(run) = super::subsession_lifecycle::finish_with_state(
         pool,
         run_id,
@@ -274,6 +277,9 @@ async fn fail(
     message: &str,
     support_agent_id: Option<&str>,
 ) -> RunResult<RunnerRunResponse> {
+    if super::exchanges::finish(pool, run_id, runner_id, "", false).await? {
+        return digest_run_response(pool, run_id).await;
+    }
     if let Some(run) = super::subsession_lifecycle::finish(
         pool,
         run_id,
