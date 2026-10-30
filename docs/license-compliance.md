@@ -61,6 +61,22 @@ No packaging check asserts a legal conclusion merely because a file exists.
 
 ## LGPL source and relink materials
 
+The obligation comes from distributing the LGPL-covered native libraries in
+Bun, including inside a compiled worker. Kordi's own MIT grant does not replace
+those terms. The required outcome is access to corresponding library sources
+and sufficient materials to modify the libraries and relink the affected
+executable; it does not require publishing unrelated Kordi services or changing
+Kordi's first-party license to LGPL.
+
+A separate downloadable source kit is the delivery method selected here, not
+a license-mandated archive format or a requirement to operate a particular
+hosting service. LGPL 2.1 section 6 describes alternatives, including delivery
+with the executable and a qualifying written offer. This implementation uses
+equivalent download access to avoid adding multi-gigabyte materials to every
+installer. It contains the relevant worker and rebuild inputs, not production
+data, secrets or the complete backend. No upstream license change or additional
+Bun permission is requested by this PR.
+
 The macOS arm64 demonstration in `legal/runtime-relink-verification.json`
 rebuilt JavaScriptCore and TinyCC, observed both modifications, rebuilt the
 worker, and passed startup and native-worker protocol probes. The verifier

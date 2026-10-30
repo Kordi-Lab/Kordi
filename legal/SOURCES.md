@@ -24,13 +24,13 @@ https://github.com/oven-sh/bun/tree/bun-v1.4.2 and its WebKit fork at
 https://github.com/oven-sh/WebKit. The exact WebKit revision is specified by
 WEBKIT_VERSION in scripts/build/deps/webkit.ts at that Bun tag.
 
-To rebuild with a modified JavaScriptCore, follow Bun's pinned build
-instructions: clone its WebKit fork into vendor/WebKit, run
-`bun sync-webkit-source`, make the desired library modifications, and run
-`bun run build:local`. Use that resulting Bun executable to compile the Kordi
-worker from the matching Kordi release source with the frozen Bun lockfile.
-Kordi's shared/omp-runtime/scripts/build-standalone.mjs records the compiler
-version in runtime-build.json. Preserve that record with the runtime bundle.
+The demonstrated procedure is in docs/runtime-relinking.md and in the source
+kit's build-patches archive. It uses the pinned WebKit source with
+`BUN_WEBKIT_PATH`, the local TinyCC source, and Bun's version-specific build
+script. Use the resulting Bun executable to compile the Kordi worker from the
+matching release source with the frozen Bun lockfile. Kordi's
+shared/omp-runtime/scripts/build-standalone.mjs records the compiler version in
+runtime-build.json. Preserve that record with the runtime bundle.
 
 The source download link for this exact release is included below and in the
 license viewer. The separate kit contains the pinned libraries, Kordi worker
