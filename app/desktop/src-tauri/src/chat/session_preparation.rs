@@ -254,10 +254,11 @@ pub(super) async fn prepare_desktop_session_for_send(
         super::agent_exchange_runtime::build(cloud_lease.as_ref(), owner_requester).await;
     if let Some((_, guidance)) = outreach.as_ref() {
         runtime.set_session_prompt_context(Some(format!(
-            "{}\n{}\n{}",
+            "{}\n{}\n{}\n{}",
             local_session_context.clone().unwrap_or_default(),
             kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE,
-            format!("{}\n{}", documents.unwrap_or_default(), guidance)
+            documents.unwrap_or_default(),
+            guidance
         )));
     }
     runtime.set_reach_out_runtime(outreach.map(|(runtime, _)| runtime));
