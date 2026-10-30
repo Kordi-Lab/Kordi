@@ -49,7 +49,7 @@ impl Tool for ReachOutTool {
     }
 
     fn description(&self) -> &str {
-        "Send an explicit request to another agent in the current conversation. Use an exact agent ID or unique @handle from the participant directory. A successful request is durable and returns a receipt. Briefly acknowledge and end this turn; the reply automatically continues the original task. Never resend or poll while waiting."
+        "Send an explicit request to another agent in the current conversation. Use an exact agent ID or unique @handle from the participant directory. A successful request is durable and returns a receipt. The request is already visible in this conversation. Do not add an acknowledgement or waiting message. Follow the receipt to end this turn; the reply automatically resumes the original task. Never resend or poll while waiting."
     }
 
     fn parameters_schema(&self) -> Value {

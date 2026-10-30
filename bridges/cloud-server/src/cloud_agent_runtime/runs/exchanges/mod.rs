@@ -16,6 +16,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 mod lifecycle;
+mod outcome;
+pub(crate) use outcome::{is_control_response, parent_completion, parent_completion_body};
 mod store;
 pub(crate) use lifecycle::{finish, reconcile};
 use store::{authorize, directory, send};
@@ -251,7 +253,7 @@ pub(crate) async fn guidance(pool: &PgPool, run: &str) -> RunResult<Option<Strin
         return Ok(None);
     }
     Ok(Some(format!(
-        "Use reach_out to contact another agent in this conversation by exact agentId or unique @handle. Send only the explicit question. After a receipt, acknowledge briefly and end the turn; the reply automatically continues the original task. Do not resend or poll. Participant agent directory: {}",
+        "Use reach_out to contact another agent in this conversation by exact agentId or unique @handle. Send only the explicit question. The request is already visible in this conversation. Do not add an acknowledgement or waiting message. Follow the receipt to end this turn; the reply automatically resumes the original task. Do not resend or poll. Participant agent directory: {}",
         json!(targets)
     )))
 }

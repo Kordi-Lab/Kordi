@@ -1,3 +1,4 @@
+import { agentExchangeOutcome } from './agentExchangeOutcome';
 import type { CloudMessage } from './authClient';
 import {
   isCloudAgentControlMessage,
@@ -85,7 +86,7 @@ export function selectVisibleCloudAgentResponses(
     responseRequestIds.add(response.requestId);
     if (response.deliveryState !== 'processing') {
       terminalResponseRequestIds.add(response.requestId);
-      return true;
+      return response.deliveryState !== 'complete' || agentExchangeOutcome(response.text) === null;
     }
     return !hasCompletedLocalResponse(response.requestId);
   });

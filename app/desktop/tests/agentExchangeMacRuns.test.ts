@@ -106,3 +106,15 @@ test('a lost completion acknowledgement retries the same result without running 
   assert.equal(await runAgentExchangeOnMac(run, value), 'completed');
   assert.equal(attempts, 2); assert.equal(turns, 1);
 });
+
+test('silent continuation acknowledges durably, while empty answers and recipient silence fail', async () => {
+  for (const [suffix, text, expected] of [
+    ['resume', '{"agentExchangeOutcome":"silent"}', 'completed'],
+    ['request', '{"agentExchangeOutcome":"silent"}', 'failed'],
+    ['resume', '', 'failed'],
+  ]) {
+    const { value, requests } = runtime({ startTurn: async () => ({ id: 'turn', completed: true, succeeded: true, assistantText: text }) as DesktopChatTurnSnapshot });
+    assert.equal(await runAgentExchangeOnMac({ ...run, requestMessageId: `agent-exchange:synthetic:${suffix}` }, value), expected);
+    assert.equal(requests[0].path, expected === 'completed' ? 'car_1/complete' : 'car_1/fail');
+  }
+});

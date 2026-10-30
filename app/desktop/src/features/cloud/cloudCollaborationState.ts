@@ -1,3 +1,4 @@
+import { agentExchangeTurnIsWaiting } from './agentExchangeOutcome';
 import {
   cloudCollaborationConversationId,
   cloudConversationKindFromConversationId,
@@ -27,7 +28,6 @@ import type {
 } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { formatDesktopClockTime,formatDesktopLastActiveLabel } from '@/lib/time'; import { withoutProviderResponse } from './providerFailureText';
-
 import type { CloudAccount,CloudMessage } from './authClient';
 import { cloudAvatarImageUrl } from './avatar';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
@@ -581,7 +581,7 @@ export function buildCloudCollaborationConversation({
     const targetAccountId = requestTargetAccountIds.get(message.messageId);
     if (!targetAccountId) return [mapped];
     const localTurn = localAgentTurnsByRequestId[message.messageId] ?? null;
-    if (localTurn?.completed && !terminalResponseRequestIds.has(message.messageId)) {
+    if (localTurn?.completed && !agentExchangeTurnIsWaiting(localTurn) && !terminalResponseRequestIds.has(message.messageId)) {
       return [mapped, cloudAgentCompletedLocalTurnCollaborationMessage({
         account,
         request: message,

@@ -3,7 +3,19 @@
 `reach_out` sends an explicit question to an agent in the same conversation.
 It returns a delivery receipt, not a fabricated answer. The first turn ends;
 the recipient's answer queues a continuation of the original agent's task.
-Requests, replies, and continuations are visible canonical chat messages.
+The public question and recipient reply are canonical chat messages. A
+continuation publishes only new useful work requested by the user, not a
+confirmation, quotation, or paraphrase of the reply already in this conversation.
+
+The parent yields with the internal `{"agentExchangeOutcome":"waiting"}`
+completion. Both publishers normalize delegated parents to this result; the
+read model retires progress without rendering a redundant finished bubble.
+On resumption, `{"agentExchangeOutcome":"silent"}` acknowledges that no
+additional work is needed. The server accepts it only for a continuation with
+a public reply, atomically completes the run and exchange, and creates no
+message. An empty answer, failed provider, silent recipient, or timeout without
+a public reply is not a successful silent completion. Retries retain the same
+lease checks and idempotency as a visible result.
 
 The server owns a durable exchange record, not the model execution location.
 Each recipient and continuation is an ordinary run: a ready owner Mac gets
@@ -56,5 +68,7 @@ request deduplication, Mac priority, expired-lease recovery, stale completion,
 reply/continuation idempotency, direct chat, revoked membership, and timeout.
 Frontend tests cover concurrent discovery, rediscovery after a failed claim,
 lease loss, stored routing, and retrying a lost completion acknowledgement.
+Regression tests also cover silent completion on Mac and cloud, stale claims,
+completion retries, missing replies, hidden progress, and useful follow-up output.
 Real test-client validation must additionally check visible messages and the
 continued response. It must preserve the existing profiles and account data.

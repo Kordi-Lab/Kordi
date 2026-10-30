@@ -1,3 +1,4 @@
+import { agentExchangeOutcome } from './agentExchangeOutcome';
 import { cloudApiBaseUrl, type CloudAuthClient } from './authClient';
 import { cloudGroupAgentRequestRuntimeSessionId, cloudAgentRuntimeSessionId } from './cloudAgentRuntime';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
@@ -93,6 +94,8 @@ export async function runAgentExchangeOnMac(
     const final = turn.completed ? turn : await (runtime.waitForTurn ?? waitForCloudAgentTurn)(turn.id);
     const text = final.assistantText.trim();
     if (!final.succeeded || !text) throw new Error(final.error || 'The task finished without an answer.');
+    const outcome = agentExchangeOutcome(text);
+    if (outcome && (outcome !== 'silent' || !run.requestMessageId.endsWith(':resume'))) throw new Error('Invalid agent exchange outcome.');
     // Retry the same result if the HTTP acknowledgement was lost.
     let confirmed = false;
     for (let attempt = 0; attempt < 3 && !lease.lost; attempt++) {

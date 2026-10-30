@@ -358,3 +358,6 @@ async fn exchange_cloud_fallback_and_root_cancellation_use_the_same_run() {
             .unwrap();
     assert_eq!(state, "cancelled");
 }
+
+#[path = "agent_exchange_quiet.rs"]
+mod quiet;

@@ -64,7 +64,7 @@ pub(super) async fn build(
         return None;
     }
     let guidance = format!(
-        "Use reach_out to contact another agent in this conversation. Send only the explicit question, never private context or files. Use an exact agentId or an unambiguous @handle from this directory: {}. A successful call queues the request. Briefly acknowledge and end this turn; the reply automatically resumes the original task. Do not poll or resend.",
+        "Use reach_out to contact another agent in this conversation. Send only the explicit question, never private context or files. Use an exact agentId or an unambiguous @handle from this directory: {}. A successful call queues the request. The request is already visible in this conversation. Do not add an acknowledgement or waiting message. Follow the receipt to end this turn; the reply automatically resumes the original task. Do not poll or resend.",
         capabilities["targets"]
     );
     Some((

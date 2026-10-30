@@ -1,3 +1,4 @@
+import { agentExchangeTurnIsWaiting } from './agentExchangeOutcome';
 import {
   useEffect,
   type Dispatch,
@@ -335,7 +336,7 @@ export function useCloudDirectAgentExecution({
           }
 
           try {
-            if (activitySessionId) {
+            if (activitySessionId && !agentExchangeTurnIsWaiting(finalTurn)) {
               await publishDerivedCloudSessionActivity({
                 client,
                 token: session.token,

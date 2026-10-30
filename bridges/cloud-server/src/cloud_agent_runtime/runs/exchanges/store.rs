@@ -216,7 +216,7 @@ pub(super) async fn send(
 }
 
 fn receipt(id: Uuid, status: &str, target: &Target) -> Value {
-    json!({"exchangeId":id,"status":status,"target":target,"message":"The request is durably recorded. Briefly say you are waiting, then end this turn. The reply will automatically continue your original task; do not poll, resend, or ask the user to contact the agent."})
+    json!({"exchangeId":id,"status":status,"target":target,"message":"The request is durably recorded. The question is already visible in this conversation. Do not acknowledge or repeat it. End this turn with exactly {\"agentExchangeOutcome\":\"waiting\"}. The reply will automatically continue your original task; do not poll, resend, or ask the user to contact the agent."})
 }
 
 async fn target_route(pool: &PgPool, target: &Target, session: &str) -> RunResult<Value> {

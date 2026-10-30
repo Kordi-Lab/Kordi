@@ -93,6 +93,7 @@ async fn complete(
     {
         return digest_run_response(pool, run_id).await;
     }
+    let response_text = super::exchanges::parent_completion(pool, run_id, response_text).await?;
     let trimmed = response_text.trim();
     if trimmed.is_empty() {
         return Err(RunError::NotFound);

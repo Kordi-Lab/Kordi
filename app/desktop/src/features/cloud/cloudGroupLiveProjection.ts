@@ -1,3 +1,4 @@
+import { cloudAgentTurnReplyText } from './cloudAgentReplyText';
 import type { CanonicalSessionState, DesktopChatTurnSnapshot } from '@/kordi-app/types';
 import { isTerminalCloudAgentTurn } from '@/features/canonical/cloudAgentTurnLifecycle';
 import { cloudGroupAgentRuntimeSessionId } from './cloudAgentRuntime';
@@ -85,7 +86,7 @@ export function withLiveTurn(
   const localExecutionStatus = turn.completed || !ADMISSION_STATUSES.has(turn.status) ? turn.status : undefined;
   return {
     ...message,
-    contentText: turn.assistantText,
+    contentText: turn.completed && turn.succeeded ? cloudAgentTurnReplyText(turn) : turn.assistantText,
     contentHash: null,
     status: turn.completed ? turn.status === 'cancelled' ? 'cancelled' : turn.succeeded ? 'complete' : 'failed' : 'processing',
     content: {
