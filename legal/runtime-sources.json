@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "bunVersion": "1.4.2",
+  "sources": {
+    "bun": {
+      "url": "https://codeload.github.com/oven-sh/bun/tar.gz/refs/tags/bun-v1.4.2",
+      "sha256": "e14670b117d69012d828514d657f0a3133d1c25d13d69461184d05b6a8e9a876"
+    },
+    "javascriptcore": {
+      "git": "https://github.com/oven-sh/WebKit.git",
+      "revision": "2e2aa2290fac856d6f451ceacb58f7f5b44dd057",
+      "sha256": "2f6b03d1f28533b0cd824c81c618254574dcfe7fa79ea6df7675c006a06316d7"
+    },
+    "tinycc": {
+      "url": "https://codeload.github.com/oven-sh/tinycc/tar.gz/05f0fafaa3be31e31d7b4b5c17dc60f62c991171",
+      "sha256": "50750680312923a59fdd36ae41f7091d8e35e51909d0e0b25b0b33ea9534bc08"
+    }
+  }
+}

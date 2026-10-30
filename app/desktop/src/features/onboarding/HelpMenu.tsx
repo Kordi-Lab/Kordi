@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, CircleHelp, Play, ShieldCheck, X } from 'lucide-
 import { AppDialog, AppDialogTitle, type AppDialogAnchor } from '@/components/ui/dialog';
 import { cloudApiBaseUrl, defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
-import { isNativeDesktopShell } from '@/lib/desktop';
+import { isNativeDesktopShell, openDesktopExternalUrl } from '@/lib/desktop';
 import { HelpPermissions } from './HelpPermissions';
 import { HelpReleaseNotes } from './HelpReleaseNotes';
 import { nativeMacPermissions } from './permissionAccess';
@@ -34,7 +34,7 @@ export type HelpMenuProps = {
 
 export default function HelpMenu({ progressKey, settingsAvailable, supportAvailable, onAction, onOpenSession, onDismiss, onStartTour, anchor, updateAction, initialView = 'home' }: HelpMenuProps) {
   const titleId = useId();
-  const [view, setView] = useState<'home' | 'permissions' | 'updates'>(initialView);
+  const [view, setView] = useState<'home' | 'permissions' | 'updates' | 'licenses'>(initialView);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const progress = readHelpProgress(progressKey);
@@ -46,10 +46,10 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
     catch { setError('Could not open this destination. Try again.'); }
     finally { setBusy(false); }
   };
-  return createPortal(<AppDialog titleId={titleId} onDismiss={onDismiss} presentation="popover" anchorRect={anchor} className={`help-menu ${view === 'permissions' || view === 'updates' ? 'help-menu-detail' : ''}`} backdropClassName="help-menu-backdrop">
+  return createPortal(<AppDialog titleId={titleId} onDismiss={onDismiss} presentation="popover" anchorRect={anchor} className={`help-menu ${view !== 'home' ? 'help-menu-detail' : ''}`} backdropClassName="help-menu-backdrop">
     <div onKeyDown={(event) => {
       if (event.key !== 'Tab') return;
-      const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), summary, a[href]')).filter((element) => element.getClientRects().length > 0);
+      const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), summary, a[href], iframe')).filter((element) => element.getClientRects().length > 0);
       if (!controls.length) return;
       event.preventDefault(); event.stopPropagation();
       const index = controls.indexOf(document.activeElement as HTMLElement);
@@ -58,7 +58,7 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
     }}>
     <header className="help-menu-header">
       {view !== 'home' ? <button className="help-icon-button" aria-label="Back to help menu" onClick={() => setView('home')}><ArrowLeft size={16} /></button> : <CircleHelp size={16} aria-hidden="true" />}
-      <AppDialogTitle id={titleId}>{view === 'permissions' ? 'Permissions & access' : view === 'updates' ? 'What’s new' : 'Help'}</AppDialogTitle>
+      <AppDialogTitle id={titleId}>{view === 'permissions' ? 'Permissions & access' : view === 'updates' ? 'What’s new' : view === 'licenses' ? 'Open-source licenses' : 'Help'}</AppDialogTitle>
       <button className="help-icon-button" onClick={onDismiss} aria-label="Close help"><X size={16} /></button>
     </header>
     {view === 'home' ? <div className="help-menu-items">
@@ -73,10 +73,18 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
       <button onClick={() => setView('permissions')}><ShieldCheck size={16} /><span>Permissions & access</span><ArrowRight size={14} /></button>
       <div className="help-menu-divider" />
       <button onClick={() => setView('updates')}><span>What’s new</span></button>
+      <button onClick={() => setView('licenses')}><span>Open-source licenses</span><ArrowRight size={14} /></button>
       {supportAvailable ? <button disabled={busy} onClick={() => void action({ kind: 'support' })}><span>Contact support</span></button> : null}
       {updateAction ? <button onClick={(event) => { updateAction.onClick(event); onDismiss(); }}><span>{updateAction.label}</span><ArrowRight size={14} /></button> : null}
     </div> : <div className="help-menu-content">
-      {view === 'permissions' ? <HelpPermissions compact onAction={(target) => void action(target)} onOpenSession={(id) => { onOpenSession(id); onDismiss(); }} connectorsAvailable={settingsAvailable && (nativeMacPermissions() || (capabilities.capabilities?.connectorsVersion ?? 0) > 0)} groundingAvailable={(capabilities.capabilities?.commonGroundVersion ?? 0) > 0} /> : <HelpReleaseNotes native={isNativeDesktopShell()} />}
+      {view === 'licenses' ? <iframe title="Open-source licenses" src="/licenses/index.html" className="help-license-frame" onLoad={(event) => {
+        event.currentTarget.contentDocument?.addEventListener('click', (click) => {
+          const href = (click.target as Element | null)?.closest?.('a')?.getAttribute('href');
+          if (!href?.startsWith('https://')) return;
+          click.preventDefault();
+          void openDesktopExternalUrl(href).catch(() => setError('Could not open the source link.'));
+        });
+      }} /> : view === 'permissions' ? <HelpPermissions compact onAction={(target) => void action(target)} onOpenSession={(id) => { onOpenSession(id); onDismiss(); }} connectorsAvailable={settingsAvailable && (nativeMacPermissions() || (capabilities.capabilities?.connectorsVersion ?? 0) > 0)} groundingAvailable={(capabilities.capabilities?.commonGroundVersion ?? 0) > 0} /> : <HelpReleaseNotes native={isNativeDesktopShell()} />}
     </div>}
     {error ? <p className="help-menu-error" role="alert">{error}</p> : null}
     </div>

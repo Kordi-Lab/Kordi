@@ -1,0 +1,7 @@
+# Preserve original upstream notice formatting; licenses:check verifies exact bytes.
+legal/distribution/THIRD-PARTY-NOTICES.txt -whitespace
+legal/distribution/index.html -whitespace
+legal/native/*-THIRD-PARTY-NOTICES.txt -whitespace
+
+# Unified patch context preserves upstream blank lines.
+legal/runtime-patches/*.patch -whitespace

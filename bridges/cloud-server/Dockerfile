@@ -42,6 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && useradd --system --uid 1000 --gid kordi --home /var/lib/kordi-cloud --shell /usr/sbin/nologin kordi \
     && install -d -o kordi -g kordi /var/lib/kordi-cloud
 
+COPY legal/distribution /usr/local/share/kordi/licenses
 COPY --from=builder /workspace/target/release/kordi-cloud-server /usr/local/bin/kordi-cloud-server
 COPY --from=builder /workspace/shared/blob-emoji/assets /usr/local/share/kordi/blob-emoji
 

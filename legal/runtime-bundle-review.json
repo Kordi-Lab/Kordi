@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "targetTriple": "aarch64-apple-darwin",
+  "bunVersion": "1.4.2",
+  "ompVersion": "18.12.6",
+  "workerSourceSha256": "9cad3e37bbd62da331f010a387cbea02389cdfe8090a37ed8002a0a34a5400f5",
+  "inputCount": 3670,
+  "optionalLibvips": {
+    "present": false,
+    "matchingBundledInputCount": 0
+  },
+  "nativeAddon": {
+    "sha256": "06342ccac9680bdb304087dd63ce60f841df3f226c656336d30005e991520464",
+    "sectionSha256": "9ffe7658a9e3a9d15d05eb5d17027786ec2dcb1b6aa33ab7f44f34d76dac5c49",
+    "linkedSystemLibraries": [
+      "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+      "/usr/lib/libobjc.A.dylib",
+      "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+      "/usr/lib/libSystem.B.dylib",
+      "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/ApplicationServices",
+      "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+      "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+      "/System/Library/Frameworks/CoreText.framework/Versions/A/CoreText",
+      "/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO",
+      "/System/Library/Frameworks/Carbon.framework/Versions/A/Carbon",
+      "/System/Library/Frameworks/DeviceCheck.framework/Versions/A/DeviceCheck",
+      "/System/Library/Frameworks/Security.framework/Versions/A/Security",
+      "/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit",
+      "/System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia",
+      "/System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio",
+      "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+      "/System/Library/Frameworks/AVFAudio.framework/Versions/A/AVFAudio",
+      "/System/Library/Frameworks/MediaToolbox.framework/Versions/A/MediaToolbox",
+      "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+      "/System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo",
+      "/System/Library/Frameworks/CoreData.framework/Versions/A/CoreData",
+      "/System/Library/Frameworks/CoreImage.framework/Versions/A/CoreImage",
+      "/System/Library/Frameworks/Metal.framework/Versions/A/Metal",
+      "/System/Library/Frameworks/CloudKit.framework/Versions/A/CloudKit",
+      "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+      "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox",
+      "/usr/lib/libiconv.2.dylib",
+      "/usr/lib/libc++.1.dylib"
+    ],
+    "notices": "Original OMP THIRD-PARTY-NOTICES and license texts are retained in the frozen catalog."
+  }
+}

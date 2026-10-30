@@ -42,3 +42,18 @@ export function vendoredRuntimeScanArguments(root, { homeDirectory = homedir() }
   args.push(root);
   return args;
 }
+
+export function redactPublisherText(value, env = process.env) {
+  let redacted = String(value ?? '');
+  for (const [name, secret] of Object.entries(env)) {
+    if (!/(KEY|PASSWORD|SECRET|TOKEN|CREDENTIAL)/i.test(name)) continue;
+    if (typeof secret !== 'string' || secret.length < 3) continue;
+    redacted = redacted.split(secret).join('[REDACTED]');
+  }
+  redacted = redacted.replace(
+    /https?:\/\/[^\s/]*(?:minio|\.internal|\.svc(?:\.cluster\.local)?)[^\s]*/gi,
+    '[REDACTED_INTERNAL_URL]',
+  );
+  redacted = redacted.replace(/Developer ID Application:[^\r\n"]*(?:\([^\r\n)]*\))?/gi, 'Developer ID Application: [REDACTED_IDENTITY]');
+  return redacted;
+}

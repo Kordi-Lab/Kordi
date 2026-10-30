@@ -15,5 +15,6 @@ RUN go build -o /out/kordi-cloud-temporal-bridge -ldflags="-s -w" .
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/kordi-cloud-temporal-bridge /usr/local/bin/kordi-cloud-temporal-bridge
+COPY licenses /usr/local/share/kordi/licenses
 USER nonroot:nonroot
 ENTRYPOINT ["/usr/local/bin/kordi-cloud-temporal-bridge"]

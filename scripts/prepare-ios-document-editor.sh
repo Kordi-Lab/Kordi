@@ -32,3 +32,7 @@ fi
 mkdir -p "$output"
 pnpm --dir "$desktop" exec vite build --config vite.ios-editor.config.js --outDir "$output" --logLevel warn
 cp "$desktop/src/ios-document-editor/index.html" "$output/index.html"
+
+# The native app and its embedded editor share the complete offline notices.
+node "$repo_root/scripts/licenses.mjs" check
+node "$repo_root/scripts/licenses.mjs" stage "$resources/licenses"
