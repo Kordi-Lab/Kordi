@@ -413,6 +413,8 @@ async fn publish_progress(
                 )
             }
         };
+    } else if super::runs::exchanges::is_control_progress(&response) {
+        input.body = super::runs::exchanges::control_safe_body(envelope.clone().unwrap(), group);
     }
     let result = async {
         let mut tx = state.db_pool().begin().await?;

@@ -1,4 +1,5 @@
 import { cloudAgentTurnReplyText } from './cloudAgentReplyText';
+import { agentExchangeTurnIsYielding } from './agentExchangeOutcome';
 import type { CanonicalSessionState, DesktopChatTurnSnapshot } from '@/kordi-app/types';
 import { isTerminalCloudAgentTurn } from '@/features/canonical/cloudAgentTurnLifecycle';
 import { cloudGroupAgentRuntimeSessionId } from './cloudAgentRuntime';
@@ -82,7 +83,7 @@ export function withLiveTurn(
   message: CanonicalSessionState['messages'][number],
   turn: DesktopChatTurnSnapshot,
 ): CanonicalSessionState['messages'][number] {
-  const { hostedRunStatus: _hostedRunStatus, ...content } = record(message.content);
+  const { hostedRunStatus: _hostedRunStatus, synchronizationOnly: _synchronizationOnly, ...content } = record(message.content);
   const localExecutionStatus = turn.completed || !ADMISSION_STATUSES.has(turn.status) ? turn.status : undefined;
   return {
     ...message,
@@ -91,6 +92,7 @@ export function withLiveTurn(
     status: turn.completed ? turn.status === 'cancelled' ? 'cancelled' : turn.succeeded ? 'complete' : 'failed' : 'processing',
     content: {
       ...content,
+      ...(agentExchangeTurnIsYielding(turn) ? { synchronizationOnly: true } : {}),
       deliveryState: turn.completed ? turn.status === 'cancelled' ? 'cancelled' : turn.succeeded ? 'complete' : 'failed' : 'processing',
       localExecutionStatus, localExecutionMessage: turn.message,
       thinkingText: turn.thinkingText, tools: turn.tools,

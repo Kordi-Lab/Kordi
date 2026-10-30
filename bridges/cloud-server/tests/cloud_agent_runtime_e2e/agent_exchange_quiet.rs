@@ -5,12 +5,6 @@ const WAITING: &str = r#"{"agentExchangeOutcome":"waiting"}"#;
 
 impl Fixture {
     async fn complete_parent(&self, cloud: bool) -> Value {
-        let (request,): (String,) =
-            query_as("SELECT request_message_id FROM cloud_agent_fallback_runs WHERE run_id=$1")
-                .bind(&self.root)
-                .fetch_one(&self.pool)
-                .await
-                .unwrap();
         if cloud {
             query("UPDATE cloud_agent_fallback_runs SET execution_backend='cloud',claimed_by='quiet-runner' WHERE run_id=$1")
                 .bind(&self.root).execute(&self.pool).await.unwrap();
@@ -34,13 +28,24 @@ impl Fixture {
                 .bind(&self.root).fetch_one(&self.pool).await.unwrap();
             return json!({"body":body});
         }
+        self.parent_progress("I asked and am waiting.", "complete")
+            .await
+    }
+    async fn parent_progress(&self, text: &str, phase: &str) -> Value {
+        let (request,): (String,) =
+            query_as("SELECT request_message_id FROM cloud_agent_fallback_runs WHERE run_id=$1")
+                .bind(&self.root)
+                .fetch_one(&self.pool)
+                .await
+                .unwrap();
         let (kind,): (String,) =
             query_as("SELECT kind FROM cloud_chat_conversations WHERE legacy_session_id=$1")
                 .bind(&self.session)
                 .fetch_one(&self.pool)
                 .await
                 .unwrap();
-        let response = json!({"kind":"agent-response","requestId":request,"text":"I asked and am waiting.","deliveryState":"complete"});
+        let response =
+            json!({"kind":"agent-response","requestId":request,"text":text,"deliveryState":phase});
         let (prefix, envelope) = if kind == "group" {
             let mut message = response;
             message["id"] = json!(uuid::Uuid::new_v4());
@@ -301,5 +306,34 @@ async fn continuation_uses_canonical_trigger_not_historical_run_prompt() {
         assert_eq!(data["originalRequest"], "Ask Beta and continue");
         assert!(!prompt.contains("old synthetic document"));
         assert!(prompt.contains("not unfinished tasks"));
+    }
+}
+
+#[tokio::test]
+async fn desktop_streaming_control_is_metadata_before_completion() {
+    for group in [true, false] {
+        let Some(f) = Fixture::kind(group).await else {
+            return;
+        };
+        for text in ["{", r#"{"agentExchangeOutcome":"#, WAITING] {
+            let response = f.parent_progress(text, "processing").await;
+            let encoded = response["body"]
+                .as_str()
+                .unwrap()
+                .split_once(':')
+                .unwrap()
+                .1;
+            let value: Value = serde_json::from_slice(
+                &base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .decode(encoded)
+                    .unwrap(),
+            )
+            .unwrap();
+            let message = value.get("message").unwrap_or(&value);
+            assert_eq!(message["text"], "");
+            let metadata = message.get("structuredContent").unwrap_or(message);
+            assert_eq!(metadata["synchronizationOnly"], true);
+        }
+        f.complete_parent(false).await;
     }
 }

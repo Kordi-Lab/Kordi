@@ -1,4 +1,4 @@
-import { agentExchangeOutcome } from '@/features/cloud/agentExchangeOutcome';
+import { isAgentExchangeControlText } from '@/features/cloud/agentExchangeOutcome';
 import { cloudAgentTurnLifecycleState } from '../cloudAgentTurnLifecycle';
 import type { CanonicalSessionMessage } from '@/kordi-app/types';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
@@ -47,9 +47,10 @@ export function isInternalCloudAgentControlMessage(message: CanonicalSessionMess
   const envelope = normalized ? null : parseCloudDirectMessageEnvelope(text);
   const agentResponse = message.messageKind === 'agent-turn'
     || message.senderRole === 'owned-agent' || message.senderRole === 'external-agent';
-  const legacyOutcome = agentResponse && agentExchangeOutcome(text) !== null
-    && cloudAgentTurnLifecycleState(message.messageKind === 'agent-turn'
-      ? message : { ...message, messageKind: 'agent-turn' }) === 'complete';
+  const phase = agentResponse ? cloudAgentTurnLifecycleState(message.messageKind === 'agent-turn'
+    ? message : { ...message, messageKind: 'agent-turn' }) : null;
+  const legacyOutcome = (phase === 'complete' || phase === 'processing')
+    && isAgentExchangeControlText(text, phase === 'processing');
   return legacyOutcome
     || content.synchronizationOnly === true
     || envelope?.synchronizationOnly === true

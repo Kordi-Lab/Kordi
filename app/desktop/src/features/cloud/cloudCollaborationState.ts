@@ -1,4 +1,4 @@
-import { agentExchangeTurnIsWaiting } from './agentExchangeOutcome';
+import { agentExchangeTurnIsWaiting, agentExchangeTurnIsYielding } from './agentExchangeOutcome';
 import {
   cloudCollaborationConversationId,
   cloudConversationKindFromConversationId,
@@ -59,6 +59,7 @@ import {
 } from './cloudCollaborationMemo';
 import {
   cloudAgentBackgroundTurnForMessage,
+  cloudAgentProcessingCollaborationMessage,
   cloudAgentSyntheticResponseDirection,
   isDirectCloudContact,
 } from './cloudCollaborationPresentation';
@@ -209,36 +210,6 @@ export function cloudMessageToCollaborationMessage(
         ?? syncedExecutionTurn
         ?? syncedBackgroundTurn
       : null,
-  };
-}
-
-function cloudAgentProcessingCollaborationMessage({
-  account,
-  request,
-  targetAccountId,
-  targetAgentName,
-  localAgentTurnsByRequestId = {},
-}: {
-  account: CloudAccount;
-  request: CloudMessage;
-  targetAccountId: string;
-  targetAgentName: string | null;
-  localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
-}): DesktopCollaborationConversationMessage {
-  const timestampMs = (Date.parse(request.createdAt) || Date.now()) + 1;
-  return {
-    id: `cloud-agent-processing:${request.messageId}`,
-    direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
-    sender: targetAgentName,
-    text: '',
-    timeLabel: formatDesktopClockTime(timestampMs),
-    timestampMs,
-    requestId: request.messageId,
-    deliveryState: 'processing',
-    detail: undefined,
-    attachments: [],
-    localTurn: localAgentTurnsByRequestId[request.messageId] ?? null,
-    messageAction: localAgentTurnsByRequestId[request.messageId]?.messageAction ?? cloudDirectMessageAction(request.body),
   };
 }
 
@@ -570,13 +541,16 @@ export function buildCloudCollaborationConversation({
     if (answeredRequestIds.has(message.messageId) || timedOutAgentRequestIds.has(message.messageId)) return false;
     if (requestTargetAccountIds.get(message.messageId) !== account.accountId) return true;
     const localTurn = localAgentTurnsByRequestId[message.messageId];
-    if (localTurn) return !localTurn.completed;
+    if (localTurn) return !localTurn.completed && !agentExchangeTurnIsYielding(localTurn);
     if (cloudMessageMentionsFirstPersonAgent(message.body) || cloudMessageMentionsLocalAgent(message.body, account, { allowFirstPerson: message.fromAccountId === account.accountId })) return true;
     const createdAtMs = Date.parse(message.createdAt);
     return Number.isFinite(createdAtMs) && Date.now() - createdAtMs < CLOUD_LOCAL_AGENT_PENDING_WINDOW_MS;
   });
   const pendingAgentRequestIds = new Set(pendingAgentRequests.map((message) => message.messageId));
   const collaborationMessages = visibleCloudMessages.flatMap((message) => {
+    const responseId = parseCloudAgentResponse(message.body)?.requestId;
+    const responseTurn = responseId ? localAgentTurnsByRequestId[responseId] : undefined;
+    if (responseTurn && agentExchangeTurnIsYielding(responseTurn)) return [];
     const mapped = cloudMessageToCollaborationMessage(account, message, contact, { cancelledRequestIds, localAgentTurnsByRequestId, targetAgentNameByRequestId: explicitResponseAgentNames });
     const targetAccountId = requestTargetAccountIds.get(message.messageId);
     if (!targetAccountId) return [mapped];

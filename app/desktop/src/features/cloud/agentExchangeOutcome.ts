@@ -13,6 +13,21 @@ export function agentExchangeOutcome(text: string): 'waiting' | 'silent' | null 
   } catch { return null; }
 }
 
+/** Buffer a reserved outcome while it is still arriving token by token. */
+export function isAgentExchangeControlText(text: string, streaming = false): boolean {
+  if (agentExchangeOutcome(text) !== null) return true;
+  const compact = text.replace(/\s/g, '');
+  return streaming && compact.length > 0
+    && [AGENT_EXCHANGE_WAITING, AGENT_EXCHANGE_SILENT].some(value => value.startsWith(compact));
+}
+
+export function agentExchangeTurnIsYielding(turn: DesktopChatTurnSnapshot): boolean {
+  if (turn.completed && !turn.succeeded) return false;
+  return isAgentExchangeControlText(turn.assistantText, !turn.completed)
+    || turn.tools.some(tool => tool.name === 'reach_out' && !tool.isError
+      && tool.resultText?.includes(AGENT_EXCHANGE_WAITING));
+}
+
 /** A successful durable receipt owns the public question; the parent yields. */
 export function agentExchangeTurnIsWaiting(turn: Pick<DesktopChatTurnSnapshot, 'succeeded' | 'assistantText' | 'tools'>): boolean {
   return turn.succeeded && (agentExchangeOutcome(turn.assistantText) === 'waiting'

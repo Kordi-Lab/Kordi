@@ -18,7 +18,8 @@ use uuid::Uuid;
 mod lifecycle;
 mod outcome;
 pub(crate) use outcome::{
-    is_control_response, parent_completion, parent_completion_body, separate_control_outcome,
+    control_safe_body, is_control_progress, is_control_response, parent_completion,
+    parent_completion_body, separate_control_outcome,
 };
 mod store;
 pub(crate) use lifecycle::{finish, reconcile};

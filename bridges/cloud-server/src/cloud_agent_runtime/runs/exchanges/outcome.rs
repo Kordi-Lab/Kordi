@@ -1,5 +1,6 @@
 //! Internal completion outcomes. These are never conversation speech.
 use super::*;
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 
 pub(crate) const WAITING: &str = r#"{"agentExchangeOutcome":"waiting"}"#;
 
@@ -23,25 +24,48 @@ pub(crate) fn is_control_response(value: &Value) -> bool {
             || value["structuredContent"]["synchronizationOnly"] == true)
 }
 
+fn control_prefix(text: &str) -> bool {
+    let compact: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    !compact.is_empty()
+        && [WAITING, r#"{"agentExchangeOutcome":"silent"}"#]
+            .iter()
+            .any(|value| value.starts_with(&compact))
+}
+
+pub(crate) fn is_control_progress(value: &Value) -> bool {
+    value["deliveryState"] == "processing"
+        && value["text"]
+            .as_str()
+            .is_some_and(|text| outcome(text).is_some() || control_prefix(text))
+}
+
 /// Persist completion as synchronization metadata, never as assistant speech.
 /// The terminal event still retires progress and supports replay on every client.
 pub(crate) fn separate_control_outcome(reply: &mut Value, group: bool) {
-    if reply["deliveryState"] != "complete" {
+    let streaming = reply["deliveryState"] == "processing";
+    if reply["deliveryState"] != "complete" && !streaming {
         return;
     }
-    let Some(control) = reply["text"].as_str().and_then(outcome) else {
+    let text = reply["text"].as_str().unwrap_or_default();
+    let control = outcome(text);
+    let partial = streaming && control_prefix(text);
+    if control.is_none() && !partial {
         return;
-    };
+    }
     reply["text"] = json!("");
     if group {
         if !reply["structuredContent"].is_object() {
             reply["structuredContent"] = json!({});
         }
         reply["structuredContent"]["synchronizationOnly"] = json!(true);
-        reply["structuredContent"]["agentExchangeOutcome"] = json!(control);
+        if let Some(control) = control {
+            reply["structuredContent"]["agentExchangeOutcome"] = json!(control);
+        }
     } else {
         reply["synchronizationOnly"] = json!(true);
-        reply["agentExchangeOutcome"] = json!(control);
+        if let Some(control) = control {
+            reply["agentExchangeOutcome"] = json!(control);
+        }
     }
 }
 
@@ -69,7 +93,6 @@ pub(crate) async fn parent_completion_body(
     mut wire: Value,
     group: bool,
 ) -> RunResult<String> {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
     let reply = if group {
         &mut wire["message"]
     } else {
@@ -77,8 +100,19 @@ pub(crate) async fn parent_completion_body(
     };
     reply["text"] =
         json!(parent_completion(pool, run, reply["text"].as_str().unwrap_or_default()).await?);
-    separate_control_outcome(reply, group);
-    Ok(format!(
+    Ok(control_safe_body(wire, group))
+}
+
+pub(crate) fn control_safe_body(mut wire: Value, group: bool) -> String {
+    separate_control_outcome(
+        if group {
+            &mut wire["message"]
+        } else {
+            &mut wire
+        },
+        group,
+    );
+    format!(
         "{}:{}",
         if group {
             "kordi-cloud-group"
@@ -86,12 +120,35 @@ pub(crate) async fn parent_completion_body(
             "kordi-cloud-agent-response"
         },
         URL_SAFE_NO_PAD.encode(wire.to_string())
-    ))
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn streamed_control_prefixes_never_become_message_text() {
+        for group in [false, true] {
+            for full in [WAITING, r#"{"agentExchangeOutcome":"silent"}"#] {
+                for end in 1..=full.len() {
+                    let mut reply = json!({"text":&full[..end],"deliveryState":"processing"});
+                    separate_control_outcome(&mut reply, group);
+                    assert_eq!(reply["text"], "");
+                    let metadata = if group {
+                        &reply["structuredContent"]
+                    } else {
+                        &reply
+                    };
+                    assert_eq!(metadata["synchronizationOnly"], true);
+                }
+            }
+            for text in ["", r#"{"answer":19}"#, "A useful result"] {
+                let mut reply = json!({"text":text,"deliveryState":"processing"});
+                separate_control_outcome(&mut reply, group);
+                assert_eq!(reply["text"], text);
+            }
+        }
+    }
     #[test]
     fn synchronization_metadata_has_no_assistant_text() {
         for group in [false, true] {

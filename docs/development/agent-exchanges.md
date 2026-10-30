@@ -19,6 +19,11 @@ message. An empty answer, failed provider, silent recipient, or timeout without
 a public reply is not a successful silent completion. Retries retain the same
 lease checks and idempotency as a visible result.
 
+Streaming snapshots buffer reserved outcome prefixes before they can render.
+Owner-local overlays, peer progress, and stored progress use the same rule; a
+terminal failure clears internal visibility metadata and remains visible. This
+also prevents a control token from flashing before the final acknowledgement.
+
 The continuation's original request comes from the canonical triggering
 message, including after further delegation. An executor prompt may contain
 conversation history; that history must not become a list of unfinished tasks.
