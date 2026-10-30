@@ -33,6 +33,14 @@ test('received group completions hide protocol outcomes for owners and peers aft
       assert.equal(isInternalCloudAgentControlMessage({ ...row, status: 'failed' }), false);
       assert.equal(isInternalCloudAgentControlMessage({ ...row, status: 'cancelled' }), false);
       assert.equal(isInternalCloudAgentControlMessage({ ...row, messageKind: 'text' }), false);
+      for (const senderRole of ['owned-agent', 'external-agent'] as const) {
+        const compatibility = { ...row, messageKind: 'text', senderRole };
+        assert.equal(mapCanonicalMessage(compatibility, new Map()), null);
+        assert.equal(mapCanonicalMessage(JSON.parse(JSON.stringify(compatibility)), new Map()), null);
+      }
+      for (const senderRole of ['user', 'person'] as const) {
+        assert.equal(isInternalCloudAgentControlMessage({ ...row, messageKind: 'text', senderRole }), false);
+      }
     }
   }
 });

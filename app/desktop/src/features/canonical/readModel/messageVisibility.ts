@@ -45,7 +45,12 @@ export function isInternalCloudAgentControlMessage(message: CanonicalSessionMess
   const content = contentRecord(message.content);
   const normalized = content.schemaVersion === 1 && content.kind === 'message';
   const envelope = normalized ? null : parseCloudDirectMessageEnvelope(text);
-  return (cloudAgentTurnLifecycleState(message) === 'complete' && agentExchangeOutcome(text) !== null)
+  const agentResponse = message.messageKind === 'agent-turn'
+    || message.senderRole === 'owned-agent' || message.senderRole === 'external-agent';
+  const legacyOutcome = agentResponse && agentExchangeOutcome(text) !== null
+    && cloudAgentTurnLifecycleState(message.messageKind === 'agent-turn'
+      ? message : { ...message, messageKind: 'agent-turn' }) === 'complete';
+  return legacyOutcome
     || content.synchronizationOnly === true
     || envelope?.synchronizationOnly === true
     || (Boolean(envelope) && message.messageKind === 'agent-model-change')
