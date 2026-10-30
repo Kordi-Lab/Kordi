@@ -84,6 +84,9 @@ jobs:
       - name: Run desktop checks
         run: pnpm check:desktop
 
+      - name: Verify ad-hoc OMP native-addon loading
+        run: node scripts/test-packaged-omp-macos.mjs
+
   ios:
     name: iOS simulator compile
     needs: plan

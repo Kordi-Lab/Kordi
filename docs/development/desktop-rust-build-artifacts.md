@@ -124,3 +124,24 @@ export KORDI_DEBUG_ARTIFACT_CHECK_HOURS=24
 ```
 
 The `*:raw` desktop package commands exist only as wrapper implementation details. Do not use them for routine debugging because they bypass disk-budget maintenance.
+
+## Packaged ad-hoc previews
+
+Named profiles and acceptance builds use `Entitlements.preview.plist`. Ad-hoc
+executables have no signing team, so macOS library validation otherwise prevents
+the OMP worker from loading its bundled native addon, even when both signatures
+verify. The preview entitlement allows this load while retaining hardened runtime.
+Production builds continue to use `Entitlements.plist` without this exception.
+
+Before handing off a packaged preview, check its actual worker:
+
+```bash
+node scripts/check-packaged-omp.mjs --app-bundle "/path/to/Kordi Test.app"
+```
+
+The check uses a temporary home, no saved credentials, and an unknown synthetic
+model. It requires the worker's startup handshake and expected model rejection;
+it makes no provider requests. `--version` is insufficient because it exits before
+the native addon is loaded. Release artifact verification also runs this check.
+macOS CI reproduces the ad-hoc signing failure and verifies the preview fix using
+the compiled worker and native addon, including a directory with spaces.

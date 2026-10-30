@@ -3,7 +3,7 @@
   "productName": "Kordi",
   "identifier": "io.kordi.cloud",
   "version": "0.0.1-beta.5.1",
-  "bundle": { "macOS": { "signingIdentity": "-" } },
+  "bundle": { "macOS": { "signingIdentity": "-", "entitlements": "./Entitlements.preview.plist" } },
   "plugins": {
     "updater": {
       "endpoints": [

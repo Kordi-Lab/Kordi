@@ -1,3 +1,4 @@
+import { PACKAGED_OMP_CHECK_SCRIPT } from '../lib/macos-release-signing.mjs';
 import { versionParts } from '../check-macos-runtime-minimum.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -54,6 +55,7 @@ export { MACOS_NOTIFICATION_BUNDLE_MARKERS };
 export function contractRun(overrides = new Map(), calls = []) {
   const info = `${APP_CONTRACT_BUNDLE}/Contents/Info.plist`;
   const results = new Map([
+    [`node ${PACKAGED_OMP_CHECK_SCRIPT} --app-bundle ${APP_CONTRACT_BUNDLE}`, { status: 0, stdout: '', stderr: '' }],
     [`codesign -d --entitlements :- ${APP_CONTRACT_BUNDLE}`, { status: 0, stdout: '<plist><dict><key>com.apple.security.personal-information.calendars</key><true/></dict></plist>', stderr: '' }],
     [`plutil -extract NSCalendarsFullAccessUsageDescription raw -o - ${info}`, { status: 0, stdout: 'Read selected calendars.', stderr: '' }],
     [`plutil -extract CFBundleShortVersionString raw -o - ${info}`, {
@@ -155,6 +157,7 @@ export function artifactVerifierRun(releaseProfile, calls) {
     if (command === 'git' && args[0] === 'rev-parse') {
       return { status: 0, stdout: '0123456789abcdef0123456789abcdef01234567\n', stderr: '' };
     }
+    if (command === 'node' && args[0] === PACKAGED_OMP_CHECK_SCRIPT) return { status: 0, stdout: '', stderr: '' };
     if (command === 'security') {
       return {
         status: 0,

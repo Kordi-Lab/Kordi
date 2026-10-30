@@ -1,3 +1,4 @@
+import { PACKAGED_OMP_CHECK_SCRIPT } from '../../../scripts/lib/macos-release-signing.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -25,6 +26,7 @@ function fakeDependencies(overrides = {}) {
     ...overrides.env,
   };
   const results = new Map([
+    [`node ${PACKAGED_OMP_CHECK_SCRIPT} --app-bundle ${APP}`, success()],
     ['git status --porcelain=v1 --untracked-files=all', success('')],
     ['git rev-parse HEAD', success(`${COMMIT}\n`)],
     ...(overrides.includeProductionSigningResults === false ? [] : [

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   RELEASE_PROFILES,
+  PACKAGED_OMP_CHECK_SCRIPT,
   assertMacCalendarAccess,
   assertProductionSigningIdentity,
   verifyMacAppSignature,
@@ -18,6 +19,7 @@ function fail(stderr = 'command failed') {
 
 function fakeRun(overrides) {
   const results = new Map([
+    [`node ${PACKAGED_OMP_CHECK_SCRIPT} --app-bundle ${APP}`, ok()],
     [`codesign -d --entitlements :- ${APP}`, ok('<plist><dict><key>com.apple.security.personal-information.calendars</key><true/></dict></plist>')],
     [`plutil -extract NSCalendarsFullAccessUsageDescription raw -o - ${APP}/Contents/Info.plist`, ok('Read selected calendars.')],
     ...overrides,
@@ -294,3 +296,15 @@ test('calendar gate rejects a missing or empty purpose string', () => {
     ])), APP), /calendar access usage description|Calendar access usage description/);
   }
 });
+
+for (const profile of ['production', 'adhoc-preview']) {
+  test(`${profile} rejects a signed bundle whose worker cannot complete a request`, () => {
+    const run = fakeRun(new Map([
+      [VERIFY_COMMAND, ok()], [ASSESS_COMMAND, ok()],
+      [DISPLAY_COMMAND, ok('', 'Signature=adhoc\nTeamIdentifier=not set\n')],
+      [`node ${PACKAGED_OMP_CHECK_SCRIPT} --app-bundle ${APP}`, fail('private loader details')],
+    ]));
+    assert.throws(() => verifyMacAppSignature({ run, appBundle: APP, profile }),
+      error => error.message === 'Packaged OMP startup/protocol check failed');
+  });
+}

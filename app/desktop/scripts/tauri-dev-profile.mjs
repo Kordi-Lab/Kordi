@@ -167,7 +167,7 @@ const nextConfig = {
     createUpdaterArtifacts: false,
     icon: resolveDesktopPreviewIcons(process.env),
     // Packaged previews need a valid bundle signature for macOS permission prompts.
-    macOS: { ...baseConfig.bundle?.macOS, signingIdentity: '-' },
+    macOS: { ...baseConfig.bundle?.macOS, signingIdentity: '-', entitlements: './Entitlements.preview.plist' },
   },
   build: {
     ...baseConfig.build,
