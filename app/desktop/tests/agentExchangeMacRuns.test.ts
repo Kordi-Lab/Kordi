@@ -111,6 +111,8 @@ test('silent continuation acknowledges durably, while empty answers and recipien
   for (const [suffix, text, expected] of [
     ['resume', '{"agentExchangeOutcome":"silent"}', 'completed'],
     ['request', '{"agentExchangeOutcome":"silent"}', 'failed'],
+    ['resume', '{"agentExchangeOutcome":"waiting"}', 'completed'],
+    ['request', '{"agentExchangeOutcome":"waiting"}', 'failed'],
     ['resume', '', 'failed'],
   ]) {
     const { value, requests } = runtime({ startTurn: async () => ({ id: 'turn', completed: true, succeeded: true, assistantText: text }) as DesktopChatTurnSnapshot });

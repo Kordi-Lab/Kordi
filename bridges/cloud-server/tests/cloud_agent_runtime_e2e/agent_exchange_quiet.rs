@@ -240,3 +240,32 @@ async fn useful_follow_up_is_public_and_timeout_cannot_disappear_silently() {
     .await;
     assert_eq!(f.public_texts().await.len(), 2);
 }
+
+#[tokio::test]
+async fn a_follow_up_that_delegates_again_yields_without_another_acknowledgement() {
+    let Some(mut f) = Fixture::new().await else {
+        return;
+    };
+    f.send("first", 1).await;
+    f.complete_parent(false).await;
+    let target = f.pending(1).await.remove(0);
+    let claim = f.claim(1, &target).await;
+    f.finish(1, target["runId"].as_str().unwrap(), claim, "Ready")
+        .await;
+    let resume = f.pending(0).await.remove(0);
+    let claim = f.claim(0, &resume).await;
+    let run = resume["runId"].as_str().unwrap();
+    f.root = run.into();
+    f.claim = claim;
+    f.send("follow-up", 2).await;
+    f.finish(0, run, claim, "I asked another agent and am waiting.")
+        .await;
+    let texts = f.public_texts().await;
+    assert_eq!(
+        texts.len(),
+        3,
+        "first question, answer, and new question only"
+    );
+    assert!(texts.iter().all(|text| !text.contains("am waiting")));
+    assert_eq!(f.pending(2).await.len(), 1);
+}

@@ -46,10 +46,8 @@ pub(crate) async fn finish(
             .bind(run)
             .fetch_one(&mut *tx)
             .await?;
-    let silent = success
-        && !target
-        && ((has_public_reply && control == Some("silent"))
-            || (delegated && control == Some("waiting")));
+    let silent =
+        success && !target && (delegated || (has_public_reply && control == Some("silent")));
     if control.is_some() && !silent {
         return Err(RunError::NotFound);
     }

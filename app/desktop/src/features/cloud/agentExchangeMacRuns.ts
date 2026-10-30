@@ -95,7 +95,7 @@ export async function runAgentExchangeOnMac(
     const text = final.assistantText.trim();
     if (!final.succeeded || !text) throw new Error(final.error || 'The task finished without an answer.');
     const outcome = agentExchangeOutcome(text);
-    if (outcome && (outcome !== 'silent' || !run.requestMessageId.endsWith(':resume'))) throw new Error('Invalid agent exchange outcome.');
+    if (outcome && (!run.requestMessageId.endsWith(':resume'))) throw new Error('Invalid agent exchange outcome.');
     // Retry the same result if the HTTP acknowledgement was lost.
     let confirmed = false;
     for (let attempt = 0; attempt < 3 && !lease.lost; attempt++) {
