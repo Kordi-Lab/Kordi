@@ -8,4 +8,3 @@ export type CloudAgentReplyEnding = 'stopped' | 'interrupted';
 export function cloudAgentReplyEnding(value: unknown): CloudAgentReplyEnding | undefined {
   return value === 'stopped' || value === 'interrupted' ? value : undefined;
 }
-
