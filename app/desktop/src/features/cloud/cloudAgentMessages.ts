@@ -227,6 +227,7 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       || parsed.deliveryState === 'cancelled'
       ? parsed.deliveryState
       : undefined;
+    const exchangeStatus = agentExchangeStatus(parsed.agentExchangeStatus);
     const ending = cloudAgentReplyEnding(parsed.ending);
     const execution = parseCloudAgentExecutionSnapshot(parsed.execution);
     const backgroundSessions = parseCloudAgentBackgroundSessions(parsed.backgroundSessions);
@@ -239,7 +240,7 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       kind: 'agent-response',
       requestId: parsed.requestId,
       text: parsed.text,
-      agentExchangeStatus: agentExchangeStatus(parsed.agentExchangeStatus),
+      ...(exchangeStatus ? { agentExchangeStatus: exchangeStatus } : {}),
       ...(parsed.synchronizationOnly === true ? { synchronizationOnly: true } : {}),
       ...(deliveryState ? { deliveryState } : {}),
       ...(ending ? { ending } : {}),
