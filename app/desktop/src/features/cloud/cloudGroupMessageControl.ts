@@ -8,6 +8,7 @@ import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
 } from '@/kordi-app/types';
+import { isTerminalCloudAgentTurn } from '@/features/canonical/cloudAgentTurnLifecycle';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
 import { withoutVoiceAttachment } from './cloudVoiceMessage';
@@ -109,11 +110,6 @@ export async function applyCloudGroupMessageControl({
     return null;
   }
 
-  // Match owner responses to the stable processing slot. A terminal replay
-  // replaces that slot in place instead of adding a second row.
-  const isOwnAgentResponseRoundTrip = message.senderKind === 'agent'
-    && message.senderAccountId === account.accountId
-    && Boolean((message.replyToMessageId || message.requestId)?.trim());
   const senderIsAgent = message.senderKind === 'agent';
   const senderAgentId = senderIsAgent
     ? cloudAgentId(message.senderAgentId, message.senderAccountId)
@@ -137,8 +133,8 @@ export async function applyCloudGroupMessageControl({
     && message.senderAccountId === account.accountId
     ? (cloudMessage.readAt ? 'read' : 'delivered')
     : null;
-  const ownAgentProcessingId = isOwnAgentResponseRoundTrip
-    ? `msg:cloud-agent-processing:${messageRequestId}:${account.accountId}`
+  const stableAgentNoticeId = senderIsAgent && messageRequestId
+    ? `msg:cloud-agent-processing:${messageRequestId}:${message.senderAccountId}`
     : null;
   const incomingSource = cloudGroupCanonicalMessageSource(cloudMessage, envelope);
   if (!incomingSource) {
@@ -154,7 +150,7 @@ export async function applyCloudGroupMessageControl({
       && candidate.sourceEventId === incomingSourceEventId
   )) ?? existingCloudGroupMessages.find((candidate) => (
     candidate.id === message.id
-      || (ownAgentProcessingId !== null && candidate.id === ownAgentProcessingId)
+      || (stableAgentNoticeId !== null && candidate.id === stableAgentNoticeId)
   )) ?? null;
   const existingCloudGroupContent = stateOps.objectContent(existingCloudGroupMessage?.content);
   const existingCloudMessageVersion = typeof existingCloudGroupContent.cloudMessageVersion === 'number'
@@ -228,14 +224,9 @@ export async function applyCloudGroupMessageControl({
   const responseProcessingSlot = senderIsAgent
     && messageRequestId
     && !isPendingAgentDeliveryState(agentDeliveryState)
-    ? [canonicalState, nextState]
-        .map((state) => stateOps.processingSlot(
-          state.messages,
-          envelope.groupId,
-          messageRequestId,
-          message.senderAccountId,
-        ))
-        .find((candidate): candidate is CanonicalSessionMessage => Boolean(candidate)) ?? null
+    ? stateOps.processingSlot(
+        existingCloudGroupMessages, envelope.groupId, messageRequestId, message.senderAccountId,
+      )
     : null;
   if (
     messageAlreadyExists
@@ -247,41 +238,11 @@ export async function applyCloudGroupMessageControl({
   }
 
   if (!messageAlreadyExists) {
-    const stableAgentNoticeId = senderIsAgent && messageRequestId
-      ? `msg:cloud-agent-processing:${messageRequestId}:${message.senderAccountId}`
-      : null;
-    const terminalStableAgentNoticeId = stableAgentNoticeId
-      && !isPendingAgentDeliveryState(agentDeliveryState)
-      ? stableAgentNoticeId
-      : null;
     const existingStableRow = stableAgentNoticeId
-      ? [canonicalState, nextState]
-          .map((state) => state.messages.find((candidate) => candidate.id === stableAgentNoticeId) ?? null)
-          .find((candidate): candidate is CanonicalSessionMessage => Boolean(candidate)) ?? null
+      ? existingCloudGroupMessages.find((candidate) => candidate.id === stableAgentNoticeId) ?? null
       : null;
-    const existingStableRowContent = existingStableRow
-      ? stateOps.objectContent(existingStableRow.content)
-      : null;
-    const existingStableRowDeliveryState = stateOps.cleanText(
-      typeof existingStableRowContent?.deliveryState === 'string'
-        ? existingStableRowContent.deliveryState
-        : null,
-    ).toLowerCase();
-    const existingStableRowStatus = (existingStableRow?.status || '').trim().toLowerCase();
-    const existingStableRowTerminalLocked = existingStableRow
-      ? ['cancelled', 'complete'].includes(existingStableRowStatus)
-        || ['cancelled', 'complete'].includes(existingStableRowDeliveryState)
-        || (
-          existingStableRow.sourceTransport === 'cloud-group-agent'
-          && existingStableRowDeliveryState === 'failed'
-        )
-      : false;
-    if (
-      existingStableRowTerminalLocked
-      && isPendingAgentDeliveryState(agentDeliveryState)
-    ) {
-      return null;
-    }
+    if (existingStableRow && isTerminalCloudAgentTurn(existingStableRow)
+      && isPendingAgentDeliveryState(agentDeliveryState)) return null;
     const replacementAgentSlot = existingStableRow ?? responseProcessingSlot;
     const messageStatus = senderIsAgent && isPendingAgentDeliveryState(
       agentDeliveryState,
@@ -294,7 +255,7 @@ export async function applyCloudGroupMessageControl({
           : humanOutgoingDeliveryState ?? 'received';
     const structuredContent = stateOps.objectContent(message.structuredContent);
     const messageRequest = {
-      id: replacementAgentSlot?.id ?? terminalStableAgentNoticeId ?? message.id,
+      id: replacementAgentSlot?.id ?? stableAgentNoticeId ?? message.id,
       sessionId: envelope.groupId,
       senderIdentityId,
       senderRole: senderIsAgent

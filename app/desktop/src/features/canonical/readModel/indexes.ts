@@ -29,6 +29,7 @@ import {
   processingAgentMessage,
   stringValue,
 } from './messageMapping';
+import { currentCloudGroupReplyRevisions } from '../cloudGroupReplyRevisions';
 import { selfAgentMirrorDuplicateIds } from './selfAgentMirrorDedup';
 
 export type CanonicalIndexes = {
@@ -656,7 +657,6 @@ function buildTaskActivitiesBySessionId(
 
 export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | null): CanonicalIndexes {
   if (!canonicalState) return emptyIndexes();
-
   const identityById = new Map(canonicalState.identities.map((identity) => [identity.id, identity]));
   const sessionById = new Map(canonicalState.sessions.map((session) => [session.id, session]));
   const presenceByIdentityId = new Map(canonicalState.presence.map((presence) => [presence.identityId, presence]));
@@ -724,7 +724,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   const latestActivityMessageBySessionId = new Map<string, CanonicalSessionMessage>();
   const readableMessageCountBySessionId = new Map<string, number>();
   const rawMessageById = new Map<string, CanonicalSessionMessage>();
-  for (const message of canonicalState.messages) {
+  for (const message of currentCloudGroupReplyRevisions(canonicalState.messages)) {
     const sessionMessages = rawMessagesBySessionId.get(message.sessionId);
     if (sessionMessages) {
       sessionMessages.push(message);
