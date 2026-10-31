@@ -1,5 +1,6 @@
 import type { DesktopChatToolSnapshot, DesktopChatTurnSnapshot } from '@/kordi-app/types';
 
+import { AGENT_EXCHANGE_WAITING, agentExchangeTurnIsWaiting } from './agentExchangeOutcome';
 import { isCloudAgentStoredNoProviderFailure } from './cloudAgentMessages';
 
 /** Provider failure notices and raw provider errors are one short line. */
@@ -69,6 +70,7 @@ export function cloudAgentTurnReplyText(
   turn: Pick<DesktopChatTurnSnapshot, 'succeeded' | 'assistantText' | 'tools'>,
 ): string {
   if (!turn.succeeded) return '';
+  if (agentExchangeTurnIsWaiting(turn)) return AGENT_EXCHANGE_WAITING;
   const text = turn.assistantText.trim();
   if (text) return text;
   const titles = [...new Set(turn.tools.map(createdDocumentTitle).filter((title): title is string => Boolean(title)))];

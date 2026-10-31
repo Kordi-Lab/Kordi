@@ -107,7 +107,11 @@ function messageSort(left: CloudMessage, right: CloudMessage) {
 
 export function cloudGroupReplayKeyForRow(row: IndexedCloudGroupRow) {
   if (row.envelope.kind === 'group-message' && row.canonicalMessageId) {
-    return `${row.envelope.kind}:${row.envelope.groupId}:${row.canonicalMessageId}`;
+    // Replay deduplicates a revision, not the lifetime of a message. Progress,
+    // edits, and recipient answers all update an existing canonical row.
+    const version = Number(row.wire.version);
+    const revision = Number.isSafeInteger(version) && version > 1 ? `:v${version}` : '';
+    return `${row.envelope.kind}:${row.envelope.groupId}:${row.canonicalMessageId}${revision}`;
   }
   return `${row.envelope.kind}:${row.envelope.groupId}:${row.wire.body}`;
 }

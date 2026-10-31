@@ -258,9 +258,11 @@ pub(super) fn build_request(
             .as_ref()
             .and_then(|auth| auth.account_id.as_deref()),
     )?;
-    let tools = config
-        .tool_registry
-        .tool_defs()
+    let definitions = crate::turn_runner::tool_availability::available_definitions(
+        config.tool_registry.tool_defs(),
+        &config.tool_ctx,
+    );
+    let tools = definitions
         .iter()
         .map(|definition| {
             let function = definition

@@ -82,6 +82,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             post(super::runs::subsession_lifecycle::progress_route),
         )
         .route(
+            "/v1/cloud/agent-runs/:run_id/agent-exchange",
+            post(super::runs::exchanges::runner_tool),
+        )
+        .route(
             "/v1/cloud/agent-runs/:run_id/task-operator",
             post(super::runs::subsessions::tool_route),
         )
@@ -218,7 +222,7 @@ async fn mark_runner_run_running(
         Ok(Some(run)) => return Json(RunnerRunEnvelope { run }).into_response(),
         Ok(None) => {}
         Err(error) => {
-            return run_error_response("acknowledge stop", "Could not mark run running.", error)
+            return run_error_response("acknowledge stop", "Could not mark run running.", error);
         }
     }
     match mark_run_running(state.db_pool(), &run_id, &runner_id).await {

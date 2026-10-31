@@ -450,3 +450,6 @@ mod projects;
 
 #[path = "common/signup_email.rs"]
 mod signup_email_fixture;
+
+#[path = "cloud_agent_runtime_e2e/agent_exchanges.rs"]
+mod agent_exchanges;

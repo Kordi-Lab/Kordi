@@ -1,8 +1,10 @@
+import { formatDesktopClockTime } from '@/lib/time';
+import { cloudDirectMessageAction } from './cloudDirectMessages';
 import {
   COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE,
   COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
 } from '@/features/collaboration/messages';
-import type { Contact, DesktopChatTurnSnapshot } from '@/kordi-app/types';
+import type { Contact, DesktopChatTurnSnapshot, DesktopCollaborationConversationMessage } from '@/kordi-app/types';
 import type { CloudAccount, CloudMessage } from './authClient';
 import type { CloudAgentResponseEnvelope } from './cloudAgentMessages';
 
@@ -54,4 +56,34 @@ export function cloudAgentSyntheticResponseDirection(
 
 export function isDirectCloudContact(contact: Contact): boolean {
   return contact.contactStatus?.trim().toLowerCase() !== 'group-member';
+}
+
+export function cloudAgentProcessingCollaborationMessage({
+  account,
+  request,
+  targetAccountId,
+  targetAgentName,
+  localAgentTurnsByRequestId = {},
+}: {
+  account: CloudAccount;
+  request: CloudMessage;
+  targetAccountId: string;
+  targetAgentName: string | null;
+  localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
+}): DesktopCollaborationConversationMessage {
+  const timestampMs = (Date.parse(request.createdAt) || Date.now()) + 1;
+  return {
+    id: `cloud-agent-processing:${request.messageId}`,
+    direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
+    sender: targetAgentName,
+    text: '',
+    timeLabel: formatDesktopClockTime(timestampMs),
+    timestampMs,
+    requestId: request.messageId,
+    deliveryState: 'processing',
+    detail: undefined,
+    attachments: [],
+    localTurn: localAgentTurnsByRequestId[request.messageId] ?? null,
+    messageAction: localAgentTurnsByRequestId[request.messageId]?.messageAction ?? cloudDirectMessageAction(request.body),
+  };
 }

@@ -18,7 +18,6 @@ const cloudAgentRequestStateSource = () => readFileSync(new URL('../src/features
 const cloudGroupAgentExecutionSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentExecution.ts', import.meta.url), 'utf8');
 const cloudGroupAgentPublicationSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentPublication.ts', import.meta.url), 'utf8');
 const cloudGroupAgentFailureSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentFailure.ts', import.meta.url), 'utf8');
-const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
 const cloudGroupControlSenderSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlSender.ts', import.meta.url), 'utf8');
 const chatSessionActionsSource = () => readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
 
@@ -446,15 +445,6 @@ test('cloud group owner processing upserts the shared slot so a local placeholde
   assert.doesNotMatch(processingBlock, /await (?:append|upsert)CanonicalMessage\(\{/);
   assert.match(processingBlock, /sourceTransport:\s*'cloud-group-agent'/);
   assert.match(processingBlock, /publishCloudGroupAgentEnvelope\(\{\s*publisher: lease\.publisher/);
-});
-
-test('cloud group terminal hosted-agent responses reserve the stable slot even when processing is not visible yet', () => {
-  const source = cloudGroupMessageControlSource();
-  assert.match(source, /terminalStableAgentNoticeId/);
-  assert.match(source, /replacementAgentSlot\?\.id \?\? terminalStableAgentNoticeId \?\? message\.id/);
-  assert.match(source, /existingStableRowTerminalLocked[\s\S]*existingStableRowDeliveryState/);
-  assert.match(source, /cloudGroupMessageId:\s*message\.id/);
-  assert.match(cloudGroupAgentExecutionSource(), /cloudGroupMessageId:\s*responseMessageId/);
 });
 
 test('cloud group terminal hosted-agent responses clear timeout placeholders and keep agent attribution', () => {

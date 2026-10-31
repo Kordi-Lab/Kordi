@@ -27,15 +27,10 @@ pub(super) async fn build_request(
 
     let mut mutation_flags = request_mutation_flags(context_rewritten);
 
-    let mut tool_defs = config.tool_registry.tool_defs().to_vec();
-    if config.tool_ctx.reach_out.is_none() {
-        tool_defs.retain(|tool| {
-            tool.get("function")
-                .and_then(|function| function.get("name"))
-                .and_then(|name| name.as_str())
-                != Some("reach_out")
-        });
-    }
+    let tool_defs = super::super::tool_availability::available_definitions(
+        config.tool_registry.tool_defs(),
+        &config.tool_ctx,
+    );
 
     let mut request = CompletionRequest {
         system_prompt: system_prompt.to_string(),

@@ -400,4 +400,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "nearby card activities",
         "0159_nearby_card_activities.sql"
     ),
+    migration!(160, "durable agent exchanges", "0160_agent_exchanges.sql"),
 ];

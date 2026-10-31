@@ -7,7 +7,7 @@ export function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
     turn.startedAtMs ?? '',
     turn.completedAtMs ?? '',
     turn.localExecutionStarted ? `${turn.status}:local-started` : turn.status,
-    turn.message,
+    turn.message, turn.agentExchangeStatus ?? '',
     turn.assistantText,
     turn.thinkingText,
     JSON.stringify(turn.segments ?? []),

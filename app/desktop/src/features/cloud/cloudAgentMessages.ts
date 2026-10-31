@@ -1,4 +1,8 @@
+import { agentExchangeStatus, type AgentExchangeStatus } from './agentExchangePresentation';
+import { cloudAgentReplyEnding, type CloudAgentReplyEnding } from './cloudAgentReplyEnding';
+export { cloudAgentReplyEnding, type CloudAgentReplyEnding } from './cloudAgentReplyEnding';
 import { voiceAgentText } from '@/features/chat/voiceTranscription';
+import { isAgentExchangeControlText } from './agentExchangeOutcome';
 import type { CloudVoiceMessage } from './cloudAttachmentTypes';
 import type { CloudAccount, CloudMessage } from './authClient';
 import {
@@ -25,22 +29,13 @@ export function isCloudAgentRuntimeSessionId(sessionId: string | null | undefine
   return Boolean(sessionId?.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX));
 }
 
-/**
- * How a reply that ended early stopped: `stopped` by a user, `interrupted` by
- * its executor (lost lease or runtime error). Present only when the reply
- * keeps the text the agent produced before it ended.
- */
-export type CloudAgentReplyEnding = 'stopped' | 'interrupted';
-
-export function cloudAgentReplyEnding(value: unknown): CloudAgentReplyEnding | undefined {
-  return value === 'stopped' || value === 'interrupted' ? value : undefined;
-}
-
 export type CloudAgentResponseEnvelope = {
   kind: 'agent-response';
   requestId: string;
   text: string;
   deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled';
+  synchronizationOnly?: boolean;
+  agentExchangeStatus?: AgentExchangeStatus;
   ending?: CloudAgentReplyEnding;
   execution?: CloudAgentExecutionSnapshot;
   backgroundSessions?: CloudAgentBackgroundSession[];
@@ -200,10 +195,12 @@ export function encodeCloudAgentResponse(input: {
   messageAction?: MessageActionMetadata | null;
   executionClaimId?: string;
 }): string {
+  const internalProgress = input.deliveryState === 'processing' && isAgentExchangeControlText(input.text, true);
   const envelope: CloudAgentResponseEnvelope = {
     kind: 'agent-response',
     requestId: input.requestId,
-    text: input.text,
+    text: internalProgress ? '' : input.text,
+    ...(internalProgress ? { synchronizationOnly: true } : {}),
     ...(input.messageAction ? { messageAction: input.messageAction } : {}),
     ...(input.deliveryState ? { deliveryState: input.deliveryState } : {}),
     ...(input.ending ? { ending: input.ending } : {}),
@@ -230,6 +227,7 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       || parsed.deliveryState === 'cancelled'
       ? parsed.deliveryState
       : undefined;
+    const exchangeStatus = agentExchangeStatus(parsed.agentExchangeStatus);
     const ending = cloudAgentReplyEnding(parsed.ending);
     const execution = parseCloudAgentExecutionSnapshot(parsed.execution);
     const backgroundSessions = parseCloudAgentBackgroundSessions(parsed.backgroundSessions);
@@ -242,6 +240,8 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       kind: 'agent-response',
       requestId: parsed.requestId,
       text: parsed.text,
+      ...(exchangeStatus ? { agentExchangeStatus: exchangeStatus } : {}),
+      ...(parsed.synchronizationOnly === true ? { synchronizationOnly: true } : {}),
       ...(deliveryState ? { deliveryState } : {}),
       ...(ending ? { ending } : {}),
       ...(execution ? { execution } : {}),

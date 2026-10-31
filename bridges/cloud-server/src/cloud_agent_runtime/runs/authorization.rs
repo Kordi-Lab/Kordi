@@ -53,6 +53,9 @@ pub async fn requester_can_target_owner(
 }
 
 pub async fn validate_group_agent_claim(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<bool> {
+    if let Some(allowed) = super::exchanges::validate_claim(pool, input).await? {
+        return Ok(allowed);
+    }
     let Some(envelope) =
         cloud_group_request_envelope_for_run(pool, &input.session_id, &input.request_message_id)
             .await?
@@ -83,6 +86,15 @@ pub async fn validate_group_agent_claim(pool: &PgPool, input: &ClaimRunRequest) 
     if message.sender_kind.as_deref() != Some("agent") {
         return Ok(human_group_target(message, &envelope.participants)
             .is_some_and(|target| target.owner_account_id == input.owner_account_id.trim()));
+    }
+    // A reach_out call already owns delivery and continuation for this reply.
+    // A textual @mention in its acknowledgement must not start a second task.
+    if let Some(parent_request) = message.request_id.as_deref() {
+        let (sent,):(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_exchanges e JOIN cloud_agent_fallback_runs r ON r.run_id=e.parent_run_id WHERE r.session_id=$1 AND r.request_message_id=$2 AND r.owner_account_id=$3)")
+            .bind(&input.session_id).bind(parent_request).bind(&message.sender_account_id).fetch_one(pool).await?;
+        if sent {
+            return Ok(false);
+        }
     }
     Ok(agent_handoff_target(&envelope).is_some_and(|target| {
         target.participant.account_id.trim() == input.owner_account_id.trim()
@@ -228,6 +240,9 @@ pub(super) fn is_local_default_agent_alias(agent_id: &str) -> bool {
 }
 
 pub async fn execution_agent_id(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<String> {
+    if let Some(agent) = super::exchanges::agent_for_claim(pool, input).await? {
+        return Ok(agent);
+    }
     Ok(shared_cloud_agent_target_for_claim(pool, input)
         .await?
         .map(|target| target.agent_id)
@@ -247,6 +262,9 @@ pub async fn validate_shared_cloud_agent_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
 ) -> RunResult<bool> {
+    if let Some(allowed) = super::exchanges::validate_claim(pool, input).await? {
+        return Ok(allowed);
+    }
     let Some(target) = shared_cloud_agent_target_for_claim(pool, input).await? else {
         return Ok(true);
     };

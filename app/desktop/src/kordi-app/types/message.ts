@@ -271,6 +271,8 @@ export type Message = {
   /** Stable id of the canonical session entry rendered by this row,
    * including aggregated assistant turns. Required for actions like fork. */
   entryId?: string | null;
+  /** Presentation identity shared by pending, local, and stored collaboration replies. */
+  agentReplyRenderKey?: string;
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
   /** Human owner shown as secondary attribution for agent messages. */
@@ -388,6 +390,7 @@ export type DesktopBackgroundFollowUp = {
 };
 
 export type DesktopChatTurnSnapshot = {
+  agentExchangeStatus?: 'waiting' | 'processing';
   localExecutionStarted?: boolean;
   /** Server-confirmed state of a hosted request; never a local execution handle. */
   hostedRunStatus?: 'queued' | 'leased' | 'running';

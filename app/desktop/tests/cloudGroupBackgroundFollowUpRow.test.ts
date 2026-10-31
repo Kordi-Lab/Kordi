@@ -108,6 +108,7 @@ function context(
   localAccountId: string,
   message: AgentReply,
   sequence: number,
+  version = 1,
 ): CloudGroupControlContext {
   const participant = (accountId: string) => ({
     accountId, displayName: accountId, avatarUrl: null, role: 'person' as const,
@@ -118,7 +119,7 @@ function context(
       messageId: `wire:${message.id}`, fromAccountId: OWNER, toAccountId: localAccountId,
       body: '', createdAt: '2026-01-01T00:00:00Z', deliveredAt: null, readAt: null,
       direction: localAccountId === OWNER ? 'outgoing' : 'incoming',
-      sessionId: GROUP, version: 1, conversationSequence: sequence,
+      sessionId: GROUP, version, conversationSequence: sequence,
     },
     envelope: {
       kind: 'group-message', groupId: GROUP, groupTitle: 'Group', createdByAccountId: OWNER,
@@ -154,10 +155,10 @@ async function withCanonicalIpc<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-async function apply(state: CanonicalSessionState, localAccountId: string, message: AgentReply, sequence: number) {
+async function apply(state: CanonicalSessionState, localAccountId: string, message: AgentReply, sequence: number, version = 1) {
   let current: CanonicalSessionState | null = state;
   const result: CloudGroupMessageControlContext | null = await applyCloudGroupMessageControl({
-    context: context(state, localAccountId, message, sequence),
+    context: context(state, localAccountId, message, sequence, version),
     setCanonicalState: (update) => { current = update(current); },
     stateOps,
   });
@@ -266,3 +267,34 @@ test('a follow-up publication carries its own request id and turn timing', async
   assert.equal(message?.replyToMessageId, 'request');
   assert.deepEqual(message?.structuredContent, { startedAtMs: 50_000, completedAtMs: 58_000 });
 });
+
+for (const localAccountId of [OWNER, PEER]) {
+  test(`cold group revisions share one durable reply ID for ${localAccountId}`, async () => {
+    await withCanonicalIpc(async () => {
+      const cold = { ...initialState(localAccountId), messages: [] };
+      const waiting = agentReply({ id: 'cloud-reply', text: '', deliveryState: 'processing' });
+      const pending = agentRows(await apply(cold, localAccountId, waiting, 17))[0];
+      // The group page was unloaded when the completion arrived. Persistence
+      // must still update the same primary key, independent of loaded rows.
+      const finished = agentReply({ ...waiting, text: '8 + 5 = 13', deliveryState: 'complete' });
+      const complete = agentRows(await apply(cold, localAccountId, finished, 17, 2))[0];
+      assert.equal(pending.id, PROCESSING_ID);
+      assert.equal(complete.id, pending.id);
+      assert.equal(cloudObjectContent(pending.content).cloudGroupMessageId, 'cloud-reply');
+      assert.equal(cloudObjectContent(complete.content).cloudGroupMessageId, 'cloud-reply');
+      assert.notEqual(complete.sourceEventId, pending.sourceEventId);
+      const durableRows = new Map([pending, complete].map((message) => [message.id, message]));
+      assert.equal(durableRows.size, 1);
+      assert.equal(durableRows.get(PROCESSING_ID)?.contentText, '8 + 5 = 13');
+      let restored: CanonicalSessionState | null = { ...cold, messages: [...durableRows.values()] };
+      const original = restored;
+      const staleReplay = await applyCloudGroupMessageControl({
+        context: context(restored, localAccountId, waiting, 17, 3),
+        setCanonicalState: (update) => { restored = update(restored); },
+        stateOps,
+      });
+      assert.equal(staleReplay, null);
+      assert.deepEqual(restored?.messages, original.messages, 'pending replay cannot reopen a terminal slot');
+    });
+  });
+}

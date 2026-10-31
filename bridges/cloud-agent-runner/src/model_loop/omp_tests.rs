@@ -37,6 +37,7 @@ impl CloudAgentRunClient for NoCloudCalls {
 
 fn run() -> CloudAgentRun {
     CloudAgentRun {
+        agent_communication: false,
         turn_identity: None,
         history_messages: vec![],
         subsession_id: None,
@@ -164,7 +165,10 @@ async fn real_bun_cloud_adapter_returns_durable_context() {
                 "data: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
                 chunks[0], chunks[1]
             );
-            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
             stream.write_all(response.as_bytes()).await.unwrap();
         }
     });
@@ -257,4 +261,23 @@ fn vertex_service_token_uses_google_endpoint_with_chat_completions() {
     .unwrap();
     assert_eq!(auth.model, "google/synthetic-model");
     assert_eq!(auth.api_key, "synthetic-oauth-token");
+}
+
+#[test]
+fn agent_communication_requires_server_capability_and_owner_authority() {
+    let mut run = run();
+    let memory = crate::memory::RunMemory::disabled();
+    let advertised = |run: &CloudAgentRun| {
+        crate::model_loop::run_tool_catalog(run, &memory)
+            .iter()
+            .any(|tool| tool["function"]["name"] == "reach_out")
+    };
+    assert!(!advertised(&run));
+    run.agent_communication = true;
+    assert!(advertised(&run));
+    run.requester_account_id = "other-person".into();
+    assert!(!advertised(&run));
+    run.requester_account_id = run.owner_account_id.clone();
+    run.subsession_id = Some("child".into());
+    assert!(!advertised(&run));
 }

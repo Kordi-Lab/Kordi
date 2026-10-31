@@ -18,6 +18,8 @@ pub enum RunnerClientError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloudAgentRun {
+    #[serde(rename = "agentCommunication", default)]
+    pub agent_communication: bool,
     #[serde(rename = "turnIdentity", default)]
     pub turn_identity: Option<kordi_core::types::RuntimeIdentity>,
     #[serde(rename = "historyMessages", default)]
@@ -92,6 +94,17 @@ pub struct OmpState {
 
 #[async_trait]
 pub trait CloudAgentRunClient {
+    async fn agent_exchange(
+        &self,
+        _run_id: &str,
+        _call_id: &str,
+        _arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, RunnerClientError> {
+        Err(RunnerClientError::Request(
+            "Agent communication is unavailable".into(),
+        ))
+    }
+
     async fn task_operator(
         &self,
         _run_id: &str,
@@ -291,6 +304,15 @@ impl HttpCloudAgentRunClient {
 
 #[async_trait]
 impl CloudAgentRunClient for HttpCloudAgentRunClient {
+    async fn agent_exchange(
+        &self,
+        run_id: &str,
+        call_id: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, RunnerClientError> {
+        self.post_json(&format!("/v1/cloud/agent-runs/{run_id}/agent-exchange"),serde_json::json!({"runnerId":self.runner_id,"toolCallId":call_id,"action":"send","arguments":arguments})).await
+    }
+
     async fn task_operator(
         &self,
         run_id: &str,
