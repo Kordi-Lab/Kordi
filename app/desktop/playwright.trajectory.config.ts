@@ -4,7 +4,7 @@ const port = Number(process.env.KORDI_TRAJECTORY_TEST_PORT ?? '62360');
 
 export default defineConfig({
   testDir: './tests/visual',
-  testMatch: ['processingTrajectory.spec.ts', 'progressDuration.spec.ts', 'pinMotion.spec.ts'],
+  testMatch: ['processingTrajectory.spec.ts', 'progressDuration.spec.ts', 'pinMotion.spec.ts', 'directReplyHandoff.spec.ts'],
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -17,6 +17,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'webkit-reply-handoff', testMatch: 'directReplyHandoff.spec.ts', use: { ...devices['Desktop Safari'] } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
   webServer: {
