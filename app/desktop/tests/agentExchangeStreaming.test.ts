@@ -11,11 +11,27 @@ import { encodeCloudAgentResponse, parseCloudAgentResponse } from '../src/featur
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
 import type { CanonicalSessionMessage, DesktopChatTurnSnapshot } from '../src/kordi-app/types';
 import { cloudAccountAvatarFixture as avatar } from './helpers/cloudAccountAvatarFixture';
+import { cloudGroupReplayKeyForRow, type IndexedCloudGroupRow } from '../src/features/cloud/cloudMessageIndex';
+import { CloudGroupReplayCoordinator } from '../src/features/cloud/cloudGroupReplayCoordinator';
 
 const owner: CloudAccount = { accountId: 'owner', displayName: 'Owner', primaryEmail: 'owner@example.test', avatarUrl: null, avatar, nodeId: 'owner', passwordSet: true,
   defaultAgent: { agentId: 'cloud-agent:owner', displayName: 'Target Agent', avatarUrl: null, avatar } };
 const peer: CloudAccount = { ...owner, accountId: 'peer', displayName: 'Peer', nodeId: 'peer', defaultAgent: null };
 const snapshot = (assistantText: string) => ({ assistantText, completed: false, succeeded: false, status: 'running', tools: [], thinkingText: '' }) as unknown as DesktopChatTurnSnapshot;
+
+test('replay applies each question progress revision instead of retaining the first waiting state', async () => {
+  const coordinator = new CloudGroupReplayCoordinator<IndexedCloudGroupRow>();
+  coordinator.changeAccount('synthetic-owner');
+  const applied: string[] = [];
+  for (const [index, state] of ['waiting', 'processing', 'completed'].entries()) {
+    const row = { canonicalMessageId: 'question', wire: { messageId: 'wire', version: index + 2 }, envelope: { kind: 'group-message', groupId: 'group', message: { structuredContent: { agentExchangeStatus: state } } } } as unknown as IndexedCloudGroupRow;
+    const request = { entries: [{ key: cloudGroupReplayKeyForRow(row), row }], apply: async (item: IndexedCloudGroupRow) => { applied.push(String(item.envelope.message?.structuredContent?.agentExchangeStatus)); } };
+    await coordinator.request(request);
+    await coordinator.request(request);
+  }
+  coordinator.dispose();
+  assert.deepEqual(applied, ['waiting', 'processing', 'completed']);
+});
 
 test('every streamed outcome prefix stays hidden in group live projection and history replay', () => {
   for (const full of [AGENT_EXCHANGE_WAITING, AGENT_EXCHANGE_SILENT, '{ "agentExchangeOutcome" : "waiting" }']) {

@@ -106,3 +106,7 @@ and group timestamp. A pending row is not a received reply and never permits a
 silent continuation. Cancellation, lost membership, and timeout retire it as
 synchronization-only metadata. Group envelopes retain the conversation's stored
 group space, which can differ from the channel's session ID.
+
+The client replay coordinator acknowledges each message revision separately.
+A completed replay key for the question must not suppress its later processing
+or completion revision, even though all revisions share one canonical message.
