@@ -280,10 +280,21 @@ for (const localAccountId of [OWNER, PEER]) {
       const complete = agentRows(await apply(cold, localAccountId, finished, 17, 2))[0];
       assert.equal(pending.id, PROCESSING_ID);
       assert.equal(complete.id, pending.id);
+      assert.equal(cloudObjectContent(pending.content).cloudGroupMessageId, 'cloud-reply');
+      assert.equal(cloudObjectContent(complete.content).cloudGroupMessageId, 'cloud-reply');
       assert.notEqual(complete.sourceEventId, pending.sourceEventId);
       const durableRows = new Map([pending, complete].map((message) => [message.id, message]));
       assert.equal(durableRows.size, 1);
       assert.equal(durableRows.get(PROCESSING_ID)?.contentText, '8 + 5 = 13');
+      let restored: CanonicalSessionState | null = { ...cold, messages: [...durableRows.values()] };
+      const original = restored;
+      const staleReplay = await applyCloudGroupMessageControl({
+        context: context(restored, localAccountId, waiting, 17, 3),
+        setCanonicalState: (update) => { restored = update(restored); },
+        stateOps,
+      });
+      assert.equal(staleReplay, null);
+      assert.deepEqual(restored?.messages, original.messages, 'pending replay cannot reopen a terminal slot');
     });
   });
 }
