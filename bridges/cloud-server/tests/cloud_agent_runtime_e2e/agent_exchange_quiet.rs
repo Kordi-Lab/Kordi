@@ -94,6 +94,23 @@ impl Fixture {
             message["text"].as_str().unwrap().into(),
         )
     }
+    pub(super) async fn recipient_row(&self) -> (String, i64, Value) {
+        let (id, sequence, content): (String, i64, Value) = query_as("SELECT m.message_id::text,m.conversation_sequence,m.content FROM cloud_agent_exchanges e JOIN cloud_chat_messages m ON m.client_message_id=e.exchange_id AND m.sender_account_id=e.target_owner_id WHERE e.parent_run_id=$1 ORDER BY e.created_at LIMIT 1")
+            .bind(&self.root).fetch_one(&self.pool).await.unwrap();
+        let encoded = content["blocks"][0]["text"]
+            .as_str()
+            .unwrap()
+            .split_once(':')
+            .unwrap()
+            .1;
+        let wire: Value = serde_json::from_slice(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(encoded)
+                .unwrap(),
+        )
+        .unwrap();
+        (id, sequence, wire.get("message").unwrap_or(&wire).clone())
+    }
     async fn public_texts(&self) -> Vec<String> {
         let rows: Vec<(Value,)> = query_as("SELECT m.content FROM cloud_chat_messages m JOIN cloud_chat_conversations c USING(conversation_id) WHERE c.legacy_session_id=$1 ORDER BY m.conversation_sequence")
             .bind(&self.session).fetch_all(&self.pool).await.unwrap();
@@ -124,6 +141,9 @@ async fn shared_question_silently_finishes_after_a_reply_on_mac_and_cloud() {
             return;
         };
         f.send("quiet", 1).await;
+        let (recipient_id, recipient_sequence, recipient) = f.recipient_row().await;
+        assert_eq!(recipient["deliveryState"], "processing");
+        assert_eq!(recipient["text"], "");
         let (state, sequence, question) = f.question_progress().await;
         assert_eq!(state, "waiting");
         let parent = f.complete_parent(cloud).await;
@@ -160,6 +180,14 @@ async fn shared_question_silently_finishes_after_a_reply_on_mac_and_cloud() {
         }
         f.finish(1, target_run, target_claim, "Synthetic status: ready")
             .await;
+        let (answered_id, answered_sequence, answered) = f.recipient_row().await;
+        assert_eq!(
+            (answered_id, answered_sequence),
+            (recipient_id, recipient_sequence)
+        );
+        assert_eq!(answered["deliveryState"], "complete");
+        assert_eq!(answered["text"], "Synthetic status: ready");
+        assert_eq!(answered.get("createdAtMs"), recipient.get("createdAtMs"));
         let resume = f.pending(0).await.remove(0);
         assert_eq!(
             f.question_progress().await,
@@ -233,6 +261,43 @@ async fn shared_question_silently_finishes_after_a_reply_on_mac_and_cloud() {
 }
 
 #[tokio::test]
+async fn exchange_in_a_secondary_group_channel_preserves_its_group_identity() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let space = format!("synthetic-space-{}", uuid::Uuid::new_v4());
+    query("UPDATE cloud_chat_conversations SET group_space_id=$2 WHERE legacy_session_id=$1")
+        .bind(&f.session)
+        .bind(&space)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    f.send("secondary-channel", 1).await;
+    assert_eq!(f.question_progress().await.0, "waiting");
+    f.end_parent().await;
+    let target = f.pending(1).await.remove(0);
+    let claim = f.claim(1, &target).await;
+    f.finish(1, target["runId"].as_str().unwrap(), claim, "19")
+        .await;
+    assert_eq!(f.question_progress().await.0, "processing");
+    let resume = f.pending(0).await.remove(0);
+    let claim = f.claim(0, &resume).await;
+    f.finish(0, resume["runId"].as_str().unwrap(), claim, "25")
+        .await;
+    assert_eq!(f.question_progress().await.0, "completed");
+    let (stored_space,): (String,) =
+        query_as("SELECT group_space_id FROM cloud_chat_conversations WHERE legacy_session_id=$1")
+            .bind(&f.session)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(stored_space, space);
+    let texts = f.public_texts().await;
+    assert_eq!(texts.len(), 3);
+    assert_eq!(&texts[1..], &["19", "25"]);
+}
+
+#[tokio::test]
 async fn useful_follow_up_is_public_and_timeout_cannot_disappear_silently() {
     let Some(f) = Fixture::new().await else {
         return;
@@ -263,6 +328,9 @@ async fn useful_follow_up_is_public_and_timeout_cannot_disappear_silently() {
     f.complete_parent(false).await;
     query("UPDATE cloud_agent_exchanges SET deadline_at=now()-interval '1 second' WHERE parent_run_id=$1").bind(&f.root).execute(&f.pool).await.unwrap();
     let resume = f.pending(0).await.remove(0);
+    let (_, _, retired) = f.recipient_row().await;
+    assert_eq!(retired["deliveryState"], "cancelled");
+    assert_eq!(retired["structuredContent"]["synchronizationOnly"], true);
     let claim = f.claim(0, &resume).await;
     let response = f
         .router

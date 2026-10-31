@@ -99,3 +99,10 @@ and recovery republishes no question or reply that already has a durable ID.
 Terminal synchronization metadata retires UI progress without assistant text.
 
 The public question carries durable waiting, processing, and terminal metadata. State changes update that same canonical message and sync version; they never append another acknowledgement. The UI shows waiting/processing on the question until the continuation is acknowledged, including after history replay. Ordered text segments are sanitized after live/history merging, because they may arrive before the aggregate assistant text.
+
+The recipient also has a durable pending response under its own identity. Its
+answer replaces that row in place, retaining the message ID, timeline sequence,
+and group timestamp. A pending row is not a received reply and never permits a
+silent continuation. Cancellation, lost membership, and timeout retire it as
+synchronization-only metadata. Group envelopes retain the conversation's stored
+group space, which can differ from the channel's session ID.

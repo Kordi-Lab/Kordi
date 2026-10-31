@@ -261,6 +261,9 @@ async fn exchange_membership_revocation_cancels_delivery_and_resume() {
             .unwrap();
     assert_eq!(status, "cancelled");
     assert_eq!(f.question_progress().await.0, "cancelled");
+    let (_, _, recipient) = f.recipient_row().await;
+    assert_eq!(recipient["deliveryState"], "cancelled");
+    assert_eq!(recipient["structuredContent"]["synchronizationOnly"], true);
 }
 
 #[tokio::test]
@@ -359,6 +362,9 @@ async fn exchange_cloud_fallback_and_root_cancellation_use_the_same_run() {
             .unwrap();
     assert_eq!(state, "cancelled");
     assert_eq!(f.question_progress().await.0, "cancelled");
+    let (_, _, recipient) = f.recipient_row().await;
+    assert_eq!(recipient["deliveryState"], "cancelled");
+    assert_eq!(recipient["structuredContent"]["synchronizationOnly"], true);
 }
 
 #[path = "agent_exchange_quiet.rs"]

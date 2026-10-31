@@ -212,6 +212,17 @@ pub(super) async fn send(
     query("UPDATE cloud_agent_exchanges SET target_run_id=$2,request_message_id=$3 WHERE exchange_id=$1")
         .bind(id).bind(&run).bind(message).execute(&mut *tx).await?;
     progress::update(&mut tx, id, "waiting").await?;
+    publish_state(
+        &mut tx,
+        parent,
+        &target.owner_account_id,
+        &target.agent_id,
+        &format!("{PREFIX}{id}:reply"),
+        "",
+        Some(message),
+        "processing",
+    )
+    .await?;
     tx.commit().await?;
     Ok(receipt(id, "pending", target))
 }
@@ -262,9 +273,41 @@ pub(super) async fn publish(
     text: &str,
     reply: Option<Uuid>,
 ) -> RunResult<Uuid> {
+    publish_state(tx, parent, owner, agent, request, text, reply, "complete").await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn publish_state(
+    tx: &mut Transaction<'_, Postgres>,
+    parent: &Parent,
+    owner: &str,
+    agent: &str,
+    request: &str,
+    text: &str,
+    reply: Option<Uuid>,
+    state: &str,
+) -> RunResult<Uuid> {
     let row: (String,String)=query_as("SELECT a.display_name,COALESCE((SELECT name FROM cloud_agent_definitions WHERE agent_id=$2 AND owner_account_id=$1),p.display_name,'Kordi') FROM cloud_accounts a LEFT JOIN cloud_default_agent_profiles p ON p.owner_account_id=a.account_id WHERE a.account_id=$1")
         .bind(owner).bind(agent).fetch_one(&mut **tx).await?;
-    let id = Uuid::new_v4();
+    // The recipient's pending row becomes its answer in place, including retries.
+    let id = request
+        .strip_prefix(PREFIX)
+        .and_then(|value| value.strip_suffix(":reply"))
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .unwrap_or_else(Uuid::new_v4);
+    let created_at: Option<(Value,)> = if request.ends_with(":reply") {
+        query_as("SELECT content FROM cloud_chat_messages WHERE sender_account_id=$1 AND client_message_id=$2")
+            .bind(owner).bind(id).fetch_optional(&mut **tx).await?
+    } else {
+        None
+    };
+    let created_at = created_at
+        .and_then(|(content,)| {
+            let body = content["blocks"][0]["text"].as_str()?.split_once(':')?.1;
+            let wire: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(body).ok()?).ok()?;
+            wire["message"]["createdAtMs"].as_i64()
+        })
+        .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
     let participants:Vec<(String,String)>=query_as("SELECT a.account_id,a.display_name FROM cloud_chat_conversation_members m JOIN cloud_accounts a USING(account_id) WHERE m.conversation_id=$1 AND m.membership_state='active'")
         .bind(parent.conversation).fetch_all(&mut **tx).await?;
     let participants: Vec<Value> = participants
@@ -272,18 +315,46 @@ pub(super) async fn publish(
         .map(|(id, name)| json!({"accountId":id,"displayName":name}))
         .collect();
     let body = if parent.kind == "group" {
-        let value = json!({"kind":"group-message","groupId":parent.session,"groupSpaceId":parent.session,"createdByAccountId":parent.requester,"actor":{"accountId":owner,"displayName":row.0,"avatarUrl":null},"participants":participants,"message":{"id":id,"senderAccountId":owner,"senderKind":"agent","senderAgentId":agent,"senderOwnerAccountId":owner,"senderOwnerName":row.0,"senderDisplayName":row.1,"text":text,"createdAtMs":chrono::Utc::now().timestamp_millis(),"deliveryState":"complete","requestId":request,"agentMentionDepth":1}});
+        // A group can have several channels; the session identifies the channel,
+        // while the persisted space identifies the shared group and its members.
+        let (space,): (Option<String>,) = query_as(
+            "SELECT group_space_id FROM cloud_chat_conversations WHERE conversation_id=$1",
+        )
+        .bind(parent.conversation)
+        .fetch_one(&mut **tx)
+        .await?;
+        let space = space.as_deref().unwrap_or(&parent.session);
+        let value = json!({"kind":"group-message","groupId":parent.session,"groupSpaceId":space,"createdByAccountId":parent.requester,"actor":{"accountId":owner,"displayName":row.0,"avatarUrl":null},"participants":participants,"message":{"id":id,"senderAccountId":owner,"senderKind":"agent","senderAgentId":agent,"senderOwnerAccountId":owner,"senderOwnerName":row.0,"senderDisplayName":row.1,"text":text,"createdAtMs":created_at,"deliveryState":state,"requestId":request,"agentMentionDepth":1,"structuredContent":{"agentExchangeStatus":if state=="complete" {Some("completed")} else {None}}}});
         format!(
             "kordi-cloud-group:{}",
             URL_SAFE_NO_PAD.encode(serde_json::to_vec(&value).map_err(|_| RunError::NotFound)?)
         )
     } else {
-        super::super::encode_cloud_agent_response_body(request, text)
+        let value = json!({"kind":"agent-response","requestId":request,"text":text,"deliveryState":state,"agentExchangeStatus":if state=="complete" {Some("completed")} else {None}});
+        format!(
+            "kordi-cloud-agent-response:{}",
+            URL_SAFE_NO_PAD.encode(value.to_string())
+        )
     };
+    let content = json!({"schema":1,"blocks":[{"type":"text","text":body}]});
+    if request.ends_with(":reply") {
+        if let Some(message) = crate::chat_sync::store::replace_server_message_in_transaction(
+            tx,
+            owner,
+            id,
+            "text",
+            content.clone(),
+        )
+        .await
+        .map_err(|_| RunError::NotFound)?
+        {
+            return Ok(message.id);
+        }
+    }
     let sent = crate::chat_sync::models::SendMessageRequest {
         client_message_id: id,
         kind: "text".into(),
-        content: json!({"schema":1,"blocks":[{"type":"text","text":body}]}),
+        content,
         reply_to_message_id: reply,
         attachment_ids: vec![],
     };

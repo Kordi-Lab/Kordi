@@ -78,3 +78,26 @@ test('durable exchange status survives canonical and direct replay on the existi
     }
   }
 });
+
+test('recipient progress survives replay and becomes one answer under the same identity', () => {
+  for (const complete of [false, true]) {
+    const text = complete ? '19' : '';
+    const deliveryState = complete ? 'complete' : 'processing';
+    for (const role of ['owned-agent', 'external-agent']) {
+      const row = { id: 'recipient-reply', createdAtMs: 1, sessionId: 'group', senderIdentityId: 'recipient', messageKind: 'agent-turn', senderRole: role, status: deliveryState, contentText: text, content: { deliveryState, requestId: 'agent-exchange:synthetic:reply' } } as CanonicalSessionMessage;
+      const mapped = mapCanonicalMessage(JSON.parse(JSON.stringify(row)), new Map())!;
+      assert.ok(mapped);
+      assert.equal(mapped.id, 'recipient-reply');
+      assert.equal(mapped.role, role);
+      assert.equal(mapped.turn?.completed, complete);
+      assert.equal(mapped.turn?.assistantText, text);
+    }
+    const reply = { messageId: 'recipient-reply', fromAccountId: peer.accountId, toAccountId: owner.accountId, createdAt: new Date().toISOString(), body: encodeCloudAgentResponse({ requestId: 'agent-exchange:synthetic:reply', text, deliveryState }) } as CloudMessage;
+    for (const viewer of [owner, peer]) {
+      const conversation = buildCloudCollaborationConversation({ account: viewer, contact: cloudContactToContact({ ...(viewer === owner ? peer : owner), createdAt: reply.createdAt }), messages: [reply], runtime: 'person' });
+      assert.equal(conversation.messages.length, 1);
+      assert.equal(conversation.messages[0].id, 'recipient-reply');
+      assert.equal(conversation.messages[0].text, text);
+    }
+  }
+});
