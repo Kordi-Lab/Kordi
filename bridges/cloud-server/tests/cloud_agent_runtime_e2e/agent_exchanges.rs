@@ -362,6 +362,17 @@ async fn exchange_cloud_fallback_and_root_cancellation_use_the_same_run() {
             .unwrap();
     assert_eq!(state, "cancelled");
     assert_eq!(f.question_progress().await.0, "cancelled");
+    // Cancelling the parent must preserve an answer already delivered.
+    let (_, _, recipient) = f.recipient_row().await;
+    assert_eq!(recipient["deliveryState"], "complete");
+    assert_eq!(recipient["text"], "Cloud fallback answer");
+
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    f.send("cancel-before-reply", 1).await;
+    query("UPDATE cloud_agent_fallback_runs SET cancel_requested_at=now(),status='cancelled' WHERE run_id=$1").bind(&f.root).execute(&f.pool).await.unwrap();
+    assert!(f.pending(0).await.is_empty());
     let (_, _, recipient) = f.recipient_row().await;
     assert_eq!(recipient["deliveryState"], "cancelled");
     assert_eq!(recipient["structuredContent"]["synchronizationOnly"], true);
