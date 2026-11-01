@@ -11,11 +11,16 @@ repository.workspace = true
 name = "kordi-cloud-server"
 path = "src/main.rs"
 
+[[bin]]
+name = "kordi-simulator-api"
+path = "src/bin/human_simulator_api.rs"
+
 [lib]
 name = "kordi_cloud_server"
 path = "src/lib.rs"
 
 [dependencies]
+kordi-human-simulator.workspace = true
 kordi-tools.workspace = true
 serde.workspace = true
 serde_json.workspace = true

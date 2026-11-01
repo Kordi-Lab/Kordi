@@ -12,7 +12,7 @@ publish = false
 
 [features]
 default = ["cli"]
-cli = ["dep:clap", "dep:crossterm", "dep:kordi-tui"]
+cli = ["dep:clap", "dep:crossterm", "dep:kordi-tui", "dep:kordi-human-simulator"]
 desktop-runtime = []
 
 [[bin]]
@@ -22,6 +22,7 @@ required-features = ["cli"]
 
 [dependencies]
 kordi-core.workspace = true
+kordi-human-simulator = { workspace = true, optional = true }
 kordi-session.workspace = true
 kordi-tools.workspace = true
 kordi-provider.workspace = true
