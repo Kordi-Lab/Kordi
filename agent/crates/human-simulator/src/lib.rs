@@ -3,6 +3,8 @@ pub mod cli;
 pub mod client;
 pub mod config;
 pub mod decision;
+pub mod deployment;
+pub mod deployment_config;
 pub mod protocol;
 pub mod worker;
 

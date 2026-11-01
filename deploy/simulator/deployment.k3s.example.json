@@ -1,0 +1,13 @@
+{
+  "actor_id": "synthetic-requester-01",
+  "image": "registry.example.invalid/kordi/human-simulator-worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "api_base": "https://simulator.kordi.cloud/",
+  "backend": {
+    "type": "k3s",
+    "context": "synthetic-k3s-context",
+    "namespace": "human-simulator-test",
+    "worker_secret": "human-sim-worker",
+    "account_secret": "human-sim-account",
+    "account_auth": "session"
+  }
+}

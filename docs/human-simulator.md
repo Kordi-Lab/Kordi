@@ -89,28 +89,54 @@ The Render blueprint [render.yaml](../deploy/simulator/render.yaml) defines the 
 
 The service requires explicit model configuration; this deployment adds no model default. The blueprint lists the OpenAI-compatible settings. If Vertex is selected, also configure `KORDI_SYSTEM_AGENT_VERTEX_MODEL`, `KORDI_SERVICE_VERTEX_PROJECT`, and `KORDI_SERVICE_VERTEX_LOCATION`, and provide the workload identity file referenced by `GOOGLE_APPLICATION_CREDENTIALS`. Mark credentials and environment-specific values as unsynchronized secrets in Render and provide the secret file through Render's secret-file facility when using Vertex. Use a provider account and model configuration authorized for the synthetic test environment only.
 
-## Worker image and k3s
+## Worker deployment: k3s and Fly
 
-Build the headless worker image from the repository root with `deploy/simulator/Dockerfile.worker`. Match the image platform to the k3s node architecture; for AMD64 nodes, run:
+Both channels run the same `kordi-human-simulator` image and actor protocol. Render hosts the control API and durable state; choosing a worker backend does not move model credentials or the database into that worker. An experiment may run different actors on different backends. Selecting a backend is explicit; a provider error does not automatically start a second worker elsewhere.
+
+Build and publish the worker image from the repository root. Select the target architecture for the destination nodes, then use the registry's immutable digest in each deployment configuration:
 
 ```sh
 docker build --platform linux/amd64 -f deploy/simulator/Dockerfile.worker -t human-simulator-worker:local .
 ```
 
-The image runs `kordi-human-simulator run --actor <id>` as a non-root user. Both images bundle the requester skill used by the compiled model code. The worker image includes no provider keys, operator token, or database credential.
+The examples contain a placeholder digest, not a published image. Replace it with the digest of your built image. The worker needs no local volume: cursor, model memory, pending messages, budgets, and leases live in the control database.
 
-[k3s-worker.yaml](../deploy/simulator/k3s-worker.yaml) is a per-actor Job template. The [startup helper](../deploy/simulator/start-worker.sh) requires explicit `KUBECONFIG` and `SIMULATOR_KUBE_CONTEXT` values plus the namespace, unique DNS-safe job name, image, actor ID, and secret names. Include the actor identity in the job name so multiple actors can run at once. The namespace must be dedicated to the simulator and created separately. The referenced Kubernetes Secrets are deliberately not included in the repository. Store `KORDI_SIM_ACTOR_TOKEN` in the worker secret and store either `KORDI_SIM_ACCOUNT_TOKEN` or both login fields in the account secret. Set `KORDI_SIMULATOR_API_BASE` to the HTTPS simulator API origin. Do not add provider or database credentials to the worker.
+Copy either [deployment.k3s.example.json](../deploy/simulator/deployment.k3s.example.json) or [deployment.fly.example.json](../deploy/simulator/deployment.fly.example.json) to a private deployment file. Set the actor ID, immutable image, API origin, and backend settings. These files contain Secret **references**, never credentials. Register the actor with `kordi sim create` first and provision its worker token and synthetic account credentials in the selected provider's secret store.
 
-After exporting `KUBECONFIG`, `SIMULATOR_KUBE_CONTEXT`, `SIMULATOR_NAMESPACE`, `SIMULATOR_JOB_NAME`, `SIMULATOR_IMAGE`, `SIMULATOR_ACTOR_ID`, `SIMULATOR_WORKER_SECRET`, and `SIMULATOR_ACCOUNT_SECRET`, and creating the namespace and Secrets through the approved secret manager, preview the rendered manifest without contacting the cluster. The helper requires Python 3; its apply mode also requires `kubectl`:
+The same commands handle both backends:
 
 ```sh
-deploy/simulator/start-worker.sh --dry-run
-deploy/simulator/start-worker.sh
+kordi sim deploy --config ./deployment.json --dry-run
+kordi sim deploy --config ./deployment.json
+kordi sim worker-status --config ./deployment.json
+kordi sim worker-stop --config ./deployment.json
 ```
 
-`--dry-run` prints only the rendered manifest and does not call `kubectl` or connect to a cluster. The apply path checks that the requested namespace and Secrets exist, runs client-side validation, and applies the same temporary rendered manifest. It suppresses `kubectl` output during checks so environment values and cluster details are not printed by the helper. The Job uses `OnFailure` with a six-retry limit and no execution deadline, so an active simulation can wait as long as configured. A finished or stopped actor exits successfully and completes its Job. The worker has no service-account token mount, a read-only root filesystem, a non-root UID, and dropped Linux capabilities; it exposes no network listener. The database lease also fences stale workers after restarts.
+`deploy --dry-run` validates and prints the provider request without requiring provider credentials or contacting a server. [start-worker.sh](../deploy/simulator/start-worker.sh) is a thin wrapper around `kordi sim deploy` and accepts the same arguments. Set `KORDI_BIN` when using a locally built CLI.
 
-If a completed or failed Job needs replacement, delete that Job and create a new actor-specific Job with the same actor ID and worker token. Do not run two Jobs for the same actor concurrently. After terminating an old worker, allow its lease to release or expire (up to 60 seconds after its last heartbeat) before expecting the replacement to acquire ownership. A new Job for a finished or stopped actor exits successfully without sending more messages.
+Deployment names are stable hashes of the API origin and actor ID. Existing resources must match both the ownership metadata and expected runtime configuration; the CLI refuses to overwrite unrelated or modified resources. Repeated deploys reconcile the same resource. Ambiguous create failures require status inspection before retrying; the implementation never blindly repeats a create request. Worker status prints only the backend and lifecycle state, not raw provider configuration or credentials.
+
+### k3s
+
+Provide a readable `KUBECONFIG` file. The configuration explicitly selects the context, namespace, worker Secret, account Secret, and `account_auth` (`session` or `login`). No implicit cluster context is used. Create the dedicated namespace and Secrets before deploying. The worker Secret needs `KORDI_SIM_ACTOR_TOKEN`; the account Secret needs `KORDI_SIM_ACCOUNT_TOKEN` or both `KORDI_SIM_ACCOUNT_EMAIL` and `KORDI_SIM_ACCOUNT_PASSWORD`.
+
+The CLI creates an actor-specific Job using `kubectl`, with six failure retries, a read-only root filesystem, non-root user, CPU/memory limits, dropped capabilities, and no service-account token mount. It publishes no ports. Configure namespace network policies according to the cluster's DNS and approved API egress routes.
+
+`worker-stop` suspends the exact owned Job using UID and resource-version preconditions, then checks the Job's suspension condition and its Pods before reporting stopped. The selected Kubernetes credentials need Job get/create/patch and Pod list permissions. It preserves the Job and actor state. `deploy` resumes a suspended, unfinished Job; completed or failed Jobs remain terminal. Register a new actor for a new experiment. The generated manifest from `deploy --dry-run` is the authoritative k3s resource specification. See [Kubernetes Job suspension](https://kubernetes.io/docs/concepts/workloads/controllers/job/#suspending-a-job) for the underlying lifecycle.
+
+### Fly
+
+Set `KORDI_SIM_FLY_TOKEN` in the invoking process or secret manager. It is a deployment credential, never a worker environment variable. Select an explicit Fly app and region in the deployment file. Use a dedicated simulator app and distinct Secret names for every actor; changing app secrets may restart Machines, so provision them before launching workers and coordinate rotations.
+
+Fly deployment uses the Machines REST API directly and does not require `flyctl` to start, inspect, or stop a worker. The Machine has no public services, one shared CPU, 512 MiB memory, and an `on-failure` restart policy with six retries. It runs the same image as k3s as UID/GID 1000. Process-level `ignore_app_secrets: true` and explicit Secret mappings limit its environment to the selected actor/account credentials. Do not reuse the tested-agent tool-sandbox image or inherit its application secrets.
+
+The adapter uses exclusive Machine leases for start/stop mutations, rechecks ownership after acquiring a lease, and releases it after the operation. Stop sends SIGTERM, waits for the captured Machine instance to stop, and preserves the Machine for a later deploy. The API request and response handling is bounded and never logs provider response bodies. See the official [Fly Machines API](https://fly.io/docs/machines/api/machines-resource/) for process secrets, leases, and instance-scoped wait behavior.
+
+### Switching channels
+
+Use the same actor ID and Render API origin in both deployment files. First run `worker-stop` with the old deployment file and verify its stopped state, then deploy the other file. A released or expired database lease allows the new worker to restore the same progress and pending message ID. A replacement may need to wait up to 60 seconds for an ungraceful predecessor's lease to expire. Worker tokens and account credentials must reference the same actor/account on both providers.
+
+`worker-stop` stops compute and leaves a running actor resumable. `kordi sim stop --actor <id>` instead makes the actor terminal in the control API and prevents future automatic actions. For permanent shutdown, stop the actor and then stop its worker compute. In-flight accepted Kordi requests cannot be retracted. This first slice does not automatically fail over, delete provider resources, or reset completed actors.
 
 ## Limits and recovery
 

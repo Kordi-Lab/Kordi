@@ -9,6 +9,23 @@ use std::path::PathBuf;
 
 #[derive(Clone, Debug, Subcommand)]
 pub enum SimCommand {
+    /// Deploy a worker through k3s or Fly; dry-run renders without credentials or network calls.
+    Deploy {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Inspect only the worker belonging to this deployment configuration.
+    WorkerStatus {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Stop worker compute while preserving the actor's durable progress.
+    WorkerStop {
+        #[arg(long)]
+        config: PathBuf,
+    },
     /// Validate a versioned actor configuration without network calls.
     Validate {
         #[arg(long)]
@@ -51,6 +68,19 @@ fn load(path: &std::path::Path) -> Result<ActorConfig> {
 }
 
 pub async fn execute(command: SimCommand) -> Result<()> {
+    use crate::deployment::{self, Operation};
+    match &command {
+        SimCommand::Deploy { config, dry_run } => {
+            return deployment::execute(config, Operation::Deploy, *dry_run).await;
+        }
+        SimCommand::WorkerStatus { config } => {
+            return deployment::execute(config, Operation::Status, false).await;
+        }
+        SimCommand::WorkerStop { config } => {
+            return deployment::execute(config, Operation::Stop, false).await;
+        }
+        _ => {}
+    }
     if let SimCommand::Validate { config } = &command {
         load(config)?;
         println!("Actor configuration is valid.");

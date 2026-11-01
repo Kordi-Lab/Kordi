@@ -27,6 +27,7 @@ COPY agent ./agent
 COPY app ./app
 COPY bridges ./bridges
 COPY shared ./shared
+COPY simulations ./simulations
 
 RUN cargo build --release -p kordi-cloud-server \
     && strip target/release/kordi-cloud-server
