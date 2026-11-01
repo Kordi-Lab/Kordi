@@ -175,3 +175,27 @@ KORDI_SIM_LIVE_MODEL_TEST=1 cargo test -p kordi-cloud-server \
 This bounded synthetic scenario has Alice propose a meeting, Bob select his available time, Alice confirm, and Bob acknowledge. Both runtimes use their own account and actor credentials. The test checks four alternating canonical messages, unique message IDs, two sends per actor, and both actors observing the complete conversation before operator shutdown. It cleans up its accounts and conversation on success or failure. Optionally set `KORDI_SIM_TEST_REPORT` to a new private output file to save a sanitized synthetic transcript and counters; it contains no account IDs, credentials, or infrastructure identifiers. This is a local HTTP integration test, not a remote provider deployment test.
 
 Local HTTP tests do not establish that Render routing, TLS, container images, Kubernetes network policies, or a remote worker deployment are operational. Validate those separately against the chosen simulator environment.
+
+## Name-only synthetic accounts
+
+The Kordi account API can opt in to `POST /v1/cloud/simulator/accounts` by setting
+its own `KORDI_SIM_ACCOUNT_OPERATOR_TOKEN` (32 to 1024 bytes). This is a separate
+secret from the simulator control API operator token. The route is absent when
+not configured. Send the dedicated bearer token and `{"displayName":"Alice (simulator)"}`.
+No mailbox, verification code, existing account ID, or caller-selected login ID
+is accepted.
+
+The response returns `accountId`, `displayName`, `loginId`, and a random `password`
+once, with `Cache-Control: no-store`. Store it in an operator-only private file,
+never source control or shared logs. The generated `example.invalid` login ID is
+an internal identifier for the existing password login screen, not a verified
+email address. It lets the complete Kordi app observe the same retained account
+and conversation. Creation records synthetic provenance atomically and never
+updates an existing identity. The endpoint permits at most 20 creations per hour
+per server process and two simultaneous requests.
+
+Workers may use a normal account session after login and device confirmation.
+At the end of an experiment, stop the actors and revoke their worker sessions if
+they are no longer needed. Keep the accounts and chat history when observation is
+requested. A later app installation must follow the normal device confirmation
+flow; simulator provisioning does not bypass device review for other accounts.
