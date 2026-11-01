@@ -1,6 +1,8 @@
 //! Explicitly isolated integration coverage: real HTTP, auth, sync and Postgres;
 //! External models are scripted by default; a separate opt-in test uses the live provider.
 //! No desktop App is involved.
+#[path = "mutual_tests.rs"]
+mod mutual;
 use super::*;
 use axum::{extract::State, routing::post, Json};
 use futures_util::FutureExt;

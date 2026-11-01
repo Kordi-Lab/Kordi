@@ -152,7 +152,8 @@ For the database and HTTP tests, set `KORDI_SIM_TEST_DATABASE_URL` to a disposab
 
 ```sh
 cargo test -p kordi-cloud-server human_simulator --lib -- \
-  --include-ignored --skip live_provider_real_http_headless_human
+  --include-ignored --skip live_provider_real_http_headless_human \
+  --skip live_two_simulators_exchange_messages
 ```
 
 This covers authenticated API send/receive, actor-token scope, account allowlisting, database leases, persisted budgets, and recovery after Kordi accepted a message before its simulator confirmation. Only the model is scripted in this test.
@@ -163,5 +164,14 @@ The separate live-model test requires the same isolated database settings, an au
 KORDI_SIM_LIVE_MODEL_TEST=1 cargo test -p kordi-cloud-server \
   live_provider_real_http_headless_human --lib -- --ignored
 ```
+
+To test two independent live-model simulators talking to each other, run:
+
+```sh
+KORDI_SIM_LIVE_MODEL_TEST=1 cargo test -p kordi-cloud-server \
+  live_two_simulators_exchange_messages --lib -- --ignored
+```
+
+This bounded synthetic scenario has Alice propose a meeting, Bob select his available time, Alice confirm, and Bob acknowledge. Both runtimes use their own account and actor credentials. The test checks four alternating canonical messages, unique message IDs, two sends per actor, and both actors observing the complete conversation before operator shutdown. It cleans up its accounts and conversation on success or failure. Optionally set `KORDI_SIM_TEST_REPORT` to a new private output file to save a sanitized synthetic transcript and counters; it contains no account IDs, credentials, or infrastructure identifiers. This is a local HTTP integration test, not a remote provider deployment test.
 
 Local HTTP tests do not establish that Render routing, TLS, container images, Kubernetes network policies, or a remote worker deployment are operational. Validate those separately against the chosen simulator environment.
