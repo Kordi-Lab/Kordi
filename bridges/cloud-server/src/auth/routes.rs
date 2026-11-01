@@ -85,6 +85,7 @@ mod session_forks;
 mod session_pins;
 mod session_visibility;
 mod signup_email_handlers;
+mod simulator_accounts;
 mod support;
 mod types;
 
@@ -144,6 +145,7 @@ pub fn routes_with_shared_rate_limiter(
     hasher_config: PasswordHasherConfig,
     rate_limiter: Arc<CloudRateLimiter>,
 ) -> Router {
+    let simulator = simulator_accounts::routes(&state, hasher_config, rate_limiter.clone());
     let hasher_config = Arc::new(hasher_config);
 
     let public = Router::new()
@@ -391,5 +393,5 @@ pub fn routes_with_shared_rate_limiter(
         ))
         .with_state(state);
 
-    public.merge(protected)
+    public.merge(protected).merge(simulator)
 }
