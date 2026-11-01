@@ -211,6 +211,23 @@ fn mutations(state: &MockState) -> Vec<&Request> {
         .collect()
 }
 
+#[test]
+fn provider_omission_of_empty_services_is_normalized_only_for_empty_values() {
+    let config = config();
+    let mut omitted = machine(&config, "stopped");
+    omitted["config"].as_object_mut().unwrap().remove("services");
+    omitted["config"].as_object_mut().unwrap().remove("auto_destroy");
+    verify(&config, &omitted).unwrap();
+
+    let mut null_services = machine(&config, "stopped");
+    null_services["config"]["services"] = Value::Null;
+    verify(&config, &null_services).unwrap();
+
+    let mut unexpected_service = machine(&config, "stopped");
+    unexpected_service["config"]["services"] = json!([{"ports":[{"port":443}]}]);
+    assert!(verify(&config, &unexpected_service).is_err());
+}
+
 #[tokio::test]
 async fn deploy_creates_without_launch_then_starts_under_lease() {
     timeout(Duration::from_secs(5), async {

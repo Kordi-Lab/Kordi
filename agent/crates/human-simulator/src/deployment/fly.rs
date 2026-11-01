@@ -121,6 +121,14 @@ fn verify(config: &DeploymentConfig, machine: &Value) -> Result<()> {
     if actual_config.get("auto_destroy").is_none() {
         actual_config["auto_destroy"] = json!(false);
     }
+    // Fly may omit an empty services list when returning a created Machine.
+    // Normalize only the provider's absent/null representation; a non-empty
+    // list must remain visible to the ownership/configuration comparison.
+    if expected["config"]["services"] == json!([])
+        && (actual_config.get("services").is_none() || actual_config["services"].is_null())
+    {
+        actual_config["services"] = json!([]);
+    }
     ensure!(
         machine["name"] == expected["name"]
             && machine["region"] == expected["region"]
