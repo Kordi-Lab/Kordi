@@ -1,0 +1,20 @@
+diff --git a/Source/JavaScriptCore/runtime/InitializeThreading.cpp b/Source/JavaScriptCore/runtime/InitializeThreading.cpp
+index 4db13e38c2..0920580775 100644
+--- a/Source/JavaScriptCore/runtime/InitializeThreading.cpp
++++ b/Source/JavaScriptCore/runtime/InitializeThreading.cpp
+@@ -27,6 +27,7 @@
+  */
+ 
+ #include "config.h"
++#include <cstdio>
+ #include "InitializeThreading.h"
+ 
+ #include "AssemblyComments.h"
+@@ -89,6 +90,7 @@ void initializeWithOptionsCustomization(const ScopedLambda<void()>& optionsCusto
+ 
+     std::call_once(onceFlag, [&] {
+         WTF::initialize();
++        std::fputs("KORDI_JSC_RELINK_PROBE\n", stderr);
+         Options::initialize(optionsCustomizationCallback);
+ 
+         initializePtrTagLookup();

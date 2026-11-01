@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "archives": [
+    {
+      "name": "LiveKitWebRTC",
+      "version": "144.7559.11",
+      "sha256": "07c5caf718058af3c528dcabd257298c40e5a8527e4fb9f47c48336ba5899853",
+      "noticeFile": "WebRTC-LICENSE",
+      "noticeSha256": "ab00a482b6a3902e40211b43c5d0441962ea99b6cc7c25c0f243fa270b78d482",
+      "embeddedDependencyReview": "reviewed",
+      "dependencyInventory": "webrtc-dependencies.json",
+      "dependencyNotices": "WebRTC-THIRD-PARTY-NOTICES.txt"
+    },
+    {
+      "name": "RustLiveKitUniFFI",
+      "version": "0.0.6",
+      "sha256": "0d3f2ce159a224c728f8b131068d53bbf9b13d968cda0edc68a6a2290f2651ed",
+      "noticeFilesInArchive": [],
+      "sourceBuildNoticeCollector": "scripts/licenses/native-notices.py",
+      "embeddedDependencyReview": "reviewed",
+      "dependencyInventory": "uniffi-dependencies.json",
+      "dependencyNotices": "UniFFI-THIRD-PARTY-NOTICES.txt",
+      "sourceBuild": {
+        "source_commit": "598d0e3bd09b382db12e0ea0d117238763737c76",
+        "protocol_commit": "f734574de339d94dd83f70fbe1723ba1cdc61c2f",
+        "wrapper_commit": "7c161254ce7cd55debc48023f69a917076b12a26",
+        "platform": "ios-arm64",
+        "binary_sha256": "6bbc346ba9182397a43b639f343a65969023337e309d534b3ef6b11111ad7d5b",
+        "bindings_match": true,
+        "privacy_clean": true,
+        "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)",
+        "xcode": "Xcode 27.1\nBuild version 27A9275"
+      }
+    }
+  ]
+}

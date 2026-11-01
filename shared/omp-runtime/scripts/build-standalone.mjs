@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { stageRuntimeLicenses } from './runtime-licenses.mjs';
 import { resolveNativeAddon } from './native-addon.mjs';
 
 const runtimeDir = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -30,6 +31,9 @@ if (!existsSync(nativePath)
   throw new Error('Version-matched OMP coding agent and native addon must be installed for this target.');
 }
 
+const compiler = spawnSync('bun', ['--version'], { encoding: 'utf8' });
+if (compiler.status !== 0) throw new Error('Unable to identify the Bun compiler.');
+stageRuntimeLicenses(runtimeDir, outputDir, compiler.stdout.trim(), targetTriple);
 mkdirSync(outputDir, { recursive: true });
 const executable = join(outputDir, `kordi-omp-${targetTriple}${platform === 'win32' ? '.exe' : ''}`);
 // OMP's optional legacy plugin bridge is unreachable: Kordi disables ambient

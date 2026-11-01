@@ -89,7 +89,7 @@ async fn claim_request(
                 "project routing",
                 "Could not resolve this project device.",
                 error.into(),
-            )
+            );
         }
     };
     // Another Mac runs a project session only when its build moves the session
@@ -162,6 +162,24 @@ async fn claim_request(
             Err(e) => run_error_response("desktop claim", "Could not claim agent execution.", e),
         };
     }
+    match runs::exchanges::claim(
+        state.db_pool(),
+        &session,
+        &input.run,
+        &executor(&session, input.claim_id),
+    )
+    .await
+    {
+        Ok(Some(value)) => return context_scope_response(&state, value).await,
+        Ok(None) => {}
+        Err(error) => {
+            return run_error_response(
+                "agent exchange admission",
+                "Could not admit the agent request.",
+                error,
+            );
+        }
+    }
     match subsession_execution::claim(
         state.db_pool(),
         &session,
@@ -177,7 +195,7 @@ async fn claim_request(
                 "subsession admission",
                 "Could not admit the follow-up.",
                 error,
-            )
+            );
         }
     }
     let result = async {

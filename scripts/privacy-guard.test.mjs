@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -179,4 +180,16 @@ test('oversized text objects fail closed instead of skipping inspection', async 
 
 test('the current repository passes the privacy guard', () => {
   assert.deepEqual(scanRepository({ repositoryRoot: repoRoot }), []);
+});
+
+// Public upstream contacts are attribution data, not private Kordi account data.
+test('license attribution exceptions are limited to reviewed contacts and paths', () => {
+  const catalog = JSON.parse(readFileSync(path.join(repoRoot, 'legal/catalog.json'), 'utf8'));
+  const contact = Object.values(catalog.documents).join('\n').match(/[A-Za-z0-9._%+-]+@(?:gmail|outlook|hotmail|icloud|qq|163)\.com/i)[0];
+  const options = { repositoryPath: 'legal/distribution/THIRD-PARTY-NOTICES.txt' };
+  assert.deepEqual(inspectText(contact, options), []);
+  assert.ok(inspectText(contact).some((finding) => finding.rule === 'personal-mailbox'));
+  assert.ok(inspectText('synthetic-not-an-upstream-author-999@gmail.com', options).some((finding) => finding.rule === 'personal-mailbox'));
+  assert.ok(inspectText(contact, { ...options, denylist: [contact] }).some((finding) => finding.rule === 'private-denylist'));
+  assert.ok(inspectText(contact + '\n-----BEGIN PRIVATE KEY-----', options).some((finding) => finding.rule === 'private-key'));
 });

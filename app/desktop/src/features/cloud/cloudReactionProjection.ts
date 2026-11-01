@@ -1,3 +1,6 @@
+import { cleanCloudText as cleanText, cloudObjectContent as contentRecord } from './cloudValue';
+import { currentCloudGroupReplyRevisions } from '@/features/canonical/cloudGroupReplyRevisions';
+import { canApplyCloudAgentTurnTransition } from '@/features/canonical/cloudAgentTurnLifecycle';
 import type { CanonicalSessionState } from '@/kordi-app/types';
 import type { CloudMessage } from './authClient';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
@@ -6,13 +9,6 @@ import {
   cloudReactionsEqual,
   normalizeCloudMessageReactions,
 } from './cloudMessageMerge';
-
-const cleanText = (value?: string | null) => (value ?? '').trim();
-const contentRecord = (value: unknown): Record<string, unknown> => (
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
-);
 
 function transcriptionKey(value: unknown) {
   const state = contentRecord(value);
@@ -23,11 +19,15 @@ export function patchCanonicalCloudMessages(
   current: CanonicalSessionState | null,
   groupRows: readonly IndexedCloudGroupRow[],
 ): CanonicalSessionState | null {
-  if (!current || groupRows.length === 0) return current;
+  if (!current) return current;
+  const revisions = currentCloudGroupReplyRevisions(current.messages);
+  if (revisions !== current.messages) current = { ...current, messages: revisions };
+  if (groupRows.length === 0) return current;
   const projections = new Map<string, {
     conversationId: string;
     targetMessageId: string;
     text: string;
+    deliveryState: string | null;
     voiceMessage: Record<string, unknown> | null;
     version: number | null;
     editedAt: string | null;
@@ -58,6 +58,7 @@ export function patchCanonicalCloudMessages(
       conversationId: useRowContent ? conversationId : previous.conversationId,
       targetMessageId: useRowContent ? targetMessageId : previous.targetMessageId,
       text: useRowContent ? row.envelope.message!.text : previous.text,
+      deliveryState: useRowContent ? row.envelope.message?.deliveryState ?? null : previous.deliveryState,
       voiceMessage: useRowContent ? voiceMessage : previous.voiceMessage,
       version: useRowContent ? version : previous.version,
       editedAt: useRowContent ? row.wire.editedAt ?? null : previous.editedAt,
@@ -86,6 +87,14 @@ export function patchCanonicalCloudMessages(
       `${message.sessionId}\u0000${cloudGroupMessageId || message.id}`,
     );
     if (!projection) return message;
+    if (typeof content.cloudMessageVersion === 'number'
+      && content.cloudMessageVersion > (projection.version ?? 0)) return message;
+    const deliveryState = message.messageKind === 'agent-turn' ? projection.deliveryState : null;
+    const status = deliveryState === 'complete' ? 'received' : deliveryState ?? message.status;
+    const text = deliveryState === 'failed' ? '' : projection.text;
+    if (deliveryState && !canApplyCloudAgentTurnTransition(message, {
+      ...message, status, content: { ...content, deliveryState },
+    })) return message;
     const reactions = normalizeCloudMessageReactions(content.reactions) ?? [];
     // A sender's transcript update changes only the voice metadata; keep this device's local path.
     const currentVoice = contentRecord(content.voiceMessage);
@@ -98,7 +107,9 @@ export function patchCanonicalCloudMessages(
     );
     if (
       !voiceChanged
-      && message.contentText === projection.text
+      && message.status === status
+      && (!deliveryState || content.deliveryState === deliveryState)
+      && message.contentText === text
       && content.cloudMessageVersion === projection.version
       && content.editedAt === projection.editedAt
       && content.cloudReactionConversationId === projection.conversationId
@@ -108,10 +119,13 @@ export function patchCanonicalCloudMessages(
     changed = true;
     return {
       ...message,
-      contentText: projection.text,
+      contentText: text,
+      status,
       contentHash: null,
       content: {
         ...content,
+        ...(deliveryState ? { deliveryState } : {}),
+        ...(deliveryState === 'failed' ? { error: projection.text } : {}),
         cloudMessageVersion: projection.version,
         editedAt: projection.editedAt,
         cloudReactionConversationId: projection.conversationId,

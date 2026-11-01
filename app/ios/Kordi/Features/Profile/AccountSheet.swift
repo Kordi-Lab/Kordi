@@ -9,6 +9,7 @@ enum AccountSettingsRoute: String, Hashable {
     case connectors
     case memory
     case appearance
+    case licenses
 }
 
 struct AccountSheet: View {
@@ -133,6 +134,12 @@ struct AccountSheet: View {
                     }
                 }
                 .accessibilityIdentifier("settings-authentication")
+                SettingsDivider()
+                SettingsSectionTitle("About")
+                settingsLink(.licenses) {
+                    CompactSettingsLabel(title: "Open-source licenses", systemImage: "doc.text")
+                }
+                .accessibilityIdentifier("settings-licenses")
             }
             .padding(.horizontal, 20)
             .padding(.top, 12)
@@ -163,6 +170,8 @@ struct AccountSheet: View {
                 MemorySettingsView(appModel: model)
             case .appearance:
                 AppearanceSettingsView()
+            case .licenses:
+                OpenSourceLicensesView()
             }
         }
         .task { await model.refreshMemoryCapabilities() }

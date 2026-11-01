@@ -574,7 +574,7 @@ function MessageBubbleView({
               onStopActiveTurn={onStopActiveTurn}
               onNavigateToMessage={onNavigateToMessage}
               onOpenArtifact={onOpenArtifact}
-              onOpenAuthSettings={onOpenAuthSettings}
+              onOpenAuthSettings={msg.role === 'owned-agent' ? onOpenAuthSettings : undefined}
             />
             <MessageEventSourceChips sources={msg.eventSources} />
             <RelatedAgentSessionLinks sessions={relatedAgentSessions} agentName={msg.sender} statusBySessionId={relatedAgentSessionStatusById} onOpen={onOpenForkSession} />

@@ -51,7 +51,7 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
   const standaloneReasoning = !hasActivity && turn.tools.length === 0;
   const [trajectoryExpanded, setTrajectoryExpanded] = useState(false);
   const hasTrace = hasActivity || turn.tools.length > 0 || Boolean(turn.thinkingText);
-  const showHeader = hasTrace || (live && (ordered || !legacyAnswer));
+  const showHeader = Boolean(turn.agentExchangeStatus) || hasTrace || (live && (ordered || !legacyAnswer));
   const expandable = hasTrace || (live && ordered);
   const progressLabel = turnProgressLabel(turn);
   const statusLabel = live && standaloneReasoning && turn.thinkingText && ['Working', 'Thinking'].includes(progressLabel) ? 'Reasoning' : progressLabel;

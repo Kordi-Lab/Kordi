@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "catalogSha256": "5e82b8869ffd802cbfb01b6894e6b0b58a5ceea375d05d4831b8f141ebec9270",
+  "inputs": {
+    "Cargo.lock": "f482109a2004b9eaf3759d08b0d5a629904be7edc7eca9a0b2c70c466c05dab5",
+    "pnpm-lock.yaml": "b1ab9e2c06646f73288db2ef5075bf48107bc0f4a8364e1a3726f5e8dee85e30",
+    "shared/omp-runtime/bun.lock": "ceb1c45ea56f52fa440e8c3aa23377c484b8acb5ef512d0de8ab6cfc218ef43a",
+    "bridges/cloud-temporal-bridge/go.mod": "c09969e162406833ad4a1c85524a1fbe4196fd84aea2ded9ef4c8b251da72c51",
+    "bridges/cloud-temporal-bridge/go.sum": "c1311ad16d865fb72e794d12b7ef49dfdf616fbb6c21145bc28c5d320a69f5c7",
+    "app/ios/Kordi.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved": "a8a4b736b08655d9a66387b0a9c187dfb50e87d884a983bbc165ade4e288ea86",
+    "shared/omp-runtime/package.json": "ce8a1828ebc157f10cc0c145994eb33630e1cb267822d47869737a79843769f3",
+    "legal/runtime-sources.json": "19b23dc48c6e5f1ae535454bc46350f7530d1a653ae12b00bddb7d07b688c11e",
+    "legal/native/archive-evidence.json": "90f8c673a36c1557adda2b118c3b2b5c29200c252c35d01a7b3ce4610ce99598",
+    "legal/public-contact-hashes.json": "241ddd7846876dcb475628fb6b57a7797a438cee0e2a669a9bfa2871c54a8ae1",
+    "app/desktop/package.json": "67f035479649230f18515b8ac43e1ba20cf66ca4d2b1b79ce4e596000542325e",
+    "legal/runtime-relink-verification.json": "f69b0ab7976cdf30cc076e243ed6180b2c7cc4fc7e3289c06e37957ae7eeafdb",
+    "legal/runtime-bundle-review.json": "c026d9b9ad1fe8ada7f29d2a86e7b9178ef8616bb6bffef5125fe970320dbb5c",
+    "legal/native/Bun-THIRD-PARTY-NOTICES.txt": "f4ca369a72fd02167f2dd774cfde9bdc2aed2e9d919119679d6028e3b8568646",
+    "legal/native/UniFFI-THIRD-PARTY-NOTICES.txt": "34634a030abf7428eda2a4850c623d4c9c7f1de0094fd3cddfcfc842214f3e39",
+    "legal/native/WebRTC-LICENSE": "ab00a482b6a3902e40211b43c5d0441962ea99b6cc7c25c0f243fa270b78d482",
+    "legal/native/WebRTC-THIRD-PARTY-NOTICES.txt": "16d36f5dad2e3a1cd26570fb673b4e25ea22e40995ab4609e986a694f2e79a19",
+    "legal/native/binary-section-hashes.json": "9bf857124a9342cdbcf87aff2f4dfb0b7612ce256d00eb843241d4581c53c423",
+    "legal/native/bun-dependencies.json": "ca611bd0213170c08679ce60a0d93983f79fc0850faee9012c375bf814a846cf",
+    "legal/native/uniffi-dependencies.json": "f21323cf078c87547ebd38d45a98df8fec46c2720f09035c59f76d74265b0646",
+    "legal/native/webrtc-dependencies.json": "fc9e748f39b4a98ddfc50c75a25b90e6e2998bdfa62605ae0b2fa0194f6a057b",
+    "legal/runtime-patches/javascriptcore-proof.patch": "d76d9f1e594ef9963f97465970e758f1dffda89e8b24401759b9186ecbafa598",
+    "legal/runtime-patches/macos-sdk-compatibility.patch": "209bacc11f0cdc2d68f1e4d87f2fd537a11f5c512e1776e3c04af1364c8ac2d0",
+    "legal/runtime-patches/tinycc-proof.patch": "0f27549d4de8409a5c41c78759f910d8619f85e1fe8c251685f5019e7c63312f"
+  },
+  "files": {
+    "LICENSE": "0d699f2763ad95c6b648b27536bf176e2b517e06bf204643629ada1623ac1196",
+    "NOTICE": "8fc419687eab6772d2f483c7008369bc87feb896c215b8e4b0cfa6da6eca60eb",
+    "SOURCES.md": "f9e751b638c6366f9df8f5d627d5a6015dfa225413293a43bd11f5f1a01a6e9f",
+    "THIRD-PARTY-NOTICES.txt": "de9da6491fb3ee055fb121b2582460342bba095fbfff72304c8e358f4895332f",
+    "index.html": "ed55a4d8ec04769ba53b07bed1d6f82e30fdfb47e48f7fb147fe19c5d133c6e3",
+    "inventory.json": "e42748515335e77c0128235317d8fcd90981681bfed63fce771ec8aace2633af"
+  }
+}

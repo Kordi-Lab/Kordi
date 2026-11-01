@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES ?? '', 10) || 700_000;
 // The pinned OMP catalog grew with 18.12.6 (80 providers), so the budget moved from 5.4 MB to 5.5 MB.
 // Main reached 5.495 MB, and proactive runs on the owner's Mac add 7 kB, so it moves to 5.6 MB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_600_000;
+// Direct read receipts add 1 kB, durable Mac agent communication adds 5 kB,
+// and persistent exchange progress with ordered-output filtering adds 2 kB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_608_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;
@@ -16,6 +18,9 @@ const MAX_DOCUMENT_EDITOR_BYTES = 750_000;
 // Product guides and permission setup load only when Help opens. Bound their
 // JavaScript and CSS together, keeping the existing app/startup budget intact.
 const MAX_HELP_CENTER_BYTES = 50_000;
+// Original legal texts load only in the offline license viewer. Bound them
+// separately so compliance material cannot weaken the application budget.
+const MAX_LICENSE_BYTES = 16_000_000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const assetsDir = process.argv[2]
@@ -64,6 +69,12 @@ try {
     process.exit(1);
   }
 
+  const licenseDirectory = path.join(path.dirname(assetsDir), 'licenses');
+  let licenseBytes = 0;
+  try { licenseBytes = await directoryBytes(licenseDirectory); } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  if (licenseBytes > MAX_LICENSE_BYTES) throw new Error('Offline license documents exceed their separate 16 MB budget.');
   const largestChunk = chunks[0];
   const distBytes = await directoryBytes(path.dirname(assetsDir));
   const atlasFiles = (await readdir(assetsDir)).filter(name => /^atlas-[0-3]-[\w-]+\.webp$/.test(name));
@@ -92,13 +103,14 @@ try {
       throw new Error(`Help must load on demand, but ${chunk.name} imports it eagerly.`);
     }
   }
-  if (distBytes - atlasBytes - editorBytes - helpBytes > MAX_DESKTOP_DIST_BYTES) {
+  if (distBytes - atlasBytes - editorBytes - helpBytes - licenseBytes > MAX_DESKTOP_DIST_BYTES) {
     console.error(`Desktop web bundle budget exceeded. Maximum allowed size is ${formatKb(MAX_DESKTOP_DIST_BYTES)}.`);
     console.error(`- dist: ${formatKb(distBytes)}`);
     process.exit(1);
   }
   console.log(`JavaScript chunk budget ok: ${chunks.length} chunks, largest ${largestChunk.name} at ${formatKb(largestChunk.bytes)}.`);
   console.log(`Desktop web bundle budget ok: ${formatKb(distBytes)} total.`);
+  if (licenseBytes) console.log(`Offline license documents: ${formatKb(licenseBytes)} of ${formatKb(MAX_LICENSE_BYTES)}.`);
   if (atlasBytes) console.log(`Bundled Noto thumbnails: ${formatKb(atlasBytes)} of ${formatKb(MAX_NOTO_THUMBNAIL_BYTES)}.`);
   if (editorBytes) console.log(`Document editor chunk: ${formatKb(editorBytes)} of ${formatKb(MAX_DOCUMENT_EDITOR_BYTES)}.`);
   if (helpBytes) console.log(`Help center: ${formatKb(helpBytes)} of ${formatKb(MAX_HELP_CENTER_BYTES)}.`);

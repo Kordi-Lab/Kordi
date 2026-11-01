@@ -23,6 +23,7 @@ else
   plan+=("node scripts/check-maintainability-ratchet.mjs")
   plan+=("node scripts/check-eslint-suppressions-ratchet.mjs")
 fi
+plan+=("pnpm licenses:check")
 plan+=("pnpm test:scripts")
 plan+=("pnpm test:ci-scripts")
 
@@ -55,6 +56,8 @@ else
   echo "• eslint suppressions"
   node scripts/check-eslint-suppressions-ratchet.mjs
 fi
+echo "• license evidence and distribution"
+pnpm licenses:check
 echo "• script tests"
 pnpm test:scripts
 echo "• CI script tests"

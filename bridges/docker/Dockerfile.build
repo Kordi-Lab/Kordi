@@ -24,6 +24,8 @@ WORKDIR /build
 COPY cli/Cargo.toml cli/Cargo.lock* ./cli/
 COPY cli/src ./cli/src
 COPY Cargo.toml ./
+# Stage with node ../scripts/licenses.mjs stage licenses before this build.
+COPY licenses /legal/distribution
 
 # ---------- Stage 2: Build all Linux targets ----------
 FROM builder AS compile

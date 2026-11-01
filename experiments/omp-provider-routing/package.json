@@ -1,6 +1,6 @@
 {
   "name": "kordi-omp-provider-routing-probe",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {

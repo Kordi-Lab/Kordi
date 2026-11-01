@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "status": "verified",
+  "targetTriple": "aarch64-apple-darwin",
+  "bunVersion": "1.4.2",
+  "workerSourceSha256": "9cad3e37bbd62da331f010a387cbea02389cdfe8090a37ed8002a0a34a5400f5",
+  "sourcePinsSha256": "19b23dc48c6e5f1ae535454bc46350f7530d1a653ae12b00bddb7d07b688c11e",
+  "binarySha256": {
+    "baselineWorker": "5e1ef3e9431f3cbabb4ae7fe97ae2f4faaeb904f210ad16ab11fb684d2e543c0",
+    "modifiedWorker": "96185ad3d58f3b68a4ebe84127feaf42eb295e8eb1924c58fe5b0d6416e499f0",
+    "modifiedBun": "7cf65cbf3ef4187afa71750ee391baa205ace611db60e7cb13568e02481b2aea"
+  },
+  "checks": {
+    "baseline": {
+      "ready": true,
+      "workerProtocol": true,
+      "expectedJscMarker": true
+    },
+    "modified": {
+      "ready": true,
+      "workerProtocol": true,
+      "expectedJscMarker": true
+    },
+    "tinycc": {
+      "modifiedLibraryExecuted": true,
+      "compiledCExecuted": true
+    }
+  },
+  "scope": "Local source-rebuild and replacement demonstration. Modified probe binaries are test artifacts, not release binaries."
+}

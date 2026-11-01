@@ -1,6 +1,6 @@
 {
   "name": "@bridges/registry",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "version": "0.0.1",
   "type": "module",
   "main": "dist/index.js",

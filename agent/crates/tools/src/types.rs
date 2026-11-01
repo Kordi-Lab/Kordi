@@ -130,6 +130,8 @@ pub struct WebSearchRuntime {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReachOutRequest {
+    #[serde(default)]
+    pub tool_call_id: Option<String>,
     pub target: String,
     pub target_kind: Option<String>,
     pub message: String,

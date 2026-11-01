@@ -11,6 +11,9 @@ const runCheck = path.join(repoRoot, 'scripts/ci/run-check.mjs');
 const selectChecks = path.join(repoRoot, 'scripts/ci/select-checks.mjs');
 const requiredGroupIds = ['frontend', 'visual', 'browser', 'server', 'migrations', 'desktop', 'ios', 'hygiene'];
 const expectedSharedPaths = [
+  'legal/**',
+  'scripts/licenses*',
+  'scripts/licenses/**',
   'pnpm-lock.yaml',
   'Cargo.lock',
   'package.json',

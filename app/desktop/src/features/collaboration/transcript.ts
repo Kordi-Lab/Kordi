@@ -1,3 +1,4 @@
+import { collaborationReplyIdentity } from './collaborationReplyIdentity';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { withLocalExecutionProgress } from '@/features/chat/localExecutionProgress';
 import { collaborationMessageActionSourceReference,collaborationMessageActionWithRealSourceLabel } from "./messageActionPresentation";
@@ -212,15 +213,7 @@ export function mapCollaborationConversationToViewModel(
     [remoteAgentLabel]: remoteAgentProfileImageUrl,
   };
   const collaborationViewMessageId = (message: DesktopCollaborationConversationMessage) => `collaboration-message:${conversation.id}:${message.id}`;
-  const requestMessageIdByRequestId = new Map<string, string>();
-  for (const message of conversation.messages) {
-    const requestId = message.requestId?.trim();
-    if (!requestId) continue;
-    if (message.direction !== COLLABORATION_MESSAGE_DIRECTION_OUTBOUND && message.direction !== COLLABORATION_MESSAGE_DIRECTION_INBOUND) continue;
-    if (!requestMessageIdByRequestId.has(requestId)) {
-      requestMessageIdByRequestId.set(requestId, collaborationViewMessageId(message));
-    }
-  }
+  const { requestMessageIdByRequestId, replyRenderKey } = collaborationReplyIdentity(conversation);
 
   const awaitingAgentOutreach = conversation.outreach?.targetKind === 'agent'
     && isActiveOutreachStatus(conversation.outreach.status)
@@ -319,6 +312,7 @@ export function mapCollaborationConversationToViewModel(
       return [{
         id: messageId,
         role: isRemoteAgentResponse ? 'external-agent' as const : 'owned-agent' as const,
+        agentReplyRenderKey: replyRenderKey(requestId, isLocalAgentResponse),
         sender: responseSender,
         senderOwnerName: isRemoteAgentResponse && !isSupportContact ? remoteHumanSourceLabel : null,
         sourceSenderLabel: isRemoteAgentResponse ? remoteAgentSourceLabel : localAgentSourceLabel,
@@ -437,6 +431,7 @@ export function mapCollaborationConversationToViewModel(
     messages.push({
       id: `collaboration-live-turn:${conversation.id}:processing`,
       role: pendingAgentIsLocal ? 'owned-agent' : 'external-agent',
+      agentReplyRenderKey: replyRenderKey(outreachRequestId || pendingRequestId || [...requestMessageIdByRequestId.keys()].pop(), pendingAgentIsLocal),
       sender: awaitingAgentOutreach ? outreachAgentLabel : pendingAgentLabel,
       senderOwnerName: !pendingAgentIsLocal && !isSupportContact
         ? conversation.outreach?.targetOwnerName?.trim() || remoteHumanSourceLabel

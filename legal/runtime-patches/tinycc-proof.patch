@@ -1,0 +1,10 @@
+--- a/libtcc.c
++++ b/libtcc.c
+@@ -868,6 +868,7 @@
+ 
+ LIBTCCAPI TCCState *tcc_new(void)
+ {
++    fprintf(stderr, "KORDI_TINYCC_RELINK_PROBE\n");
+     TCCState *s;
+ 
+     s = tcc_mallocz(sizeof(TCCState));

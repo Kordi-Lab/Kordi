@@ -1,3 +1,4 @@
+import { withAgentExchangeProgress } from '@/features/cloud/agentExchangePresentation';
 import { canonicalTools } from './toolMapping';
 export { canonicalTools } from './toolMapping';
 import { parseTurnSegments } from '@/features/chat/turnSegments';
@@ -419,7 +420,7 @@ export function mapCanonicalMessage(
   const sourceMessage = canonicalMessageActionSourceReference(messageAction);
   if (role === 'system' && !displayText.trim()) return null;
   const voiceMessage = storedVoiceMessage(content.voiceMessage, isOwnMessage);
-  return {
+  return withAgentExchangeProgress({
     id: message.id,
     // A message typed in this window keeps its canonical id as its render
     // identity from the first frame, as the optimistic copy and the runtime
@@ -457,7 +458,7 @@ export function mapCanonicalMessage(
     messageAction,
     sourceMessage,
     ...canonicalMessageReactionMetadata(message, content, sourceTransport),
-    cloudMessageVersion: numberValue(content.cloudMessageVersion) ?? null, editedAt: stringValue(content.editedAt) ?? null, statusChips: role === 'user' ? [canonicalUserStatusChip(message, content)] : undefined,
+    cloudMessageVersion: numberValue(content.cloudMessageVersion) ?? null, editedAt: content.agentExchangeStatus ? null : stringValue(content.editedAt) ?? null, statusChips: role === 'user' ? [canonicalUserStatusChip(message, content)] : undefined,
     turn: isAgentTurn
       ? {
           id: `canonical-turn:${message.id}`,
@@ -481,7 +482,7 @@ export function mapCanonicalMessage(
             ? content.hostedRunStatus : undefined,
         }
       : undefined,
-  };
+  }, content.agentExchangeStatus);
 }
 
 export { contentRecord,numberValue,stringValue } from "./messageContent";

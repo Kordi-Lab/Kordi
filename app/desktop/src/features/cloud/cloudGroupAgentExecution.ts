@@ -1,3 +1,4 @@
+import { agentExchangeTurnIsWaiting } from './agentExchangeOutcome';
 import { withoutProviderResponse } from './providerFailureText';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
@@ -409,7 +410,7 @@ export async function respondToCloudGroupAgentMention(
   const activitySpan = beginChatPerformanceSpan(
     'cloud-agent-activity-publish',
   );
-  void policy.publishActivity({
+  if (!agentExchangeTurnIsWaiting(finalTurn)) void policy.publishActivity({
     client: runtime.client,
     token: session.token,
     accountId: account.accountId,

@@ -76,7 +76,7 @@ pub(super) async fn take(
     query(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'leased', execution_backend = 'desktop', claimed_by = $2, \
-             lease_expires_at = $3, desktop_preferred_until = NULL, runtime_route_json = $4, \
+             lease_expires_at = $3, desktop_preferred_until = NULL, runtime_route_json = CASE WHEN starts_with(request_message_id, 'agent-exchange:') THEN runtime_route_json ELSE $4 END, \
              updated_at = $5 \
          WHERE run_id = $1 AND status = 'queued' AND cancel_requested_at IS NULL \
            AND subsession_id IS NULL AND document_comment_id IS NULL AND NOT legacy_duplicate \

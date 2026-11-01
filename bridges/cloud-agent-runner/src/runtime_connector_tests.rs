@@ -50,6 +50,7 @@ fn descriptor(name: &str, group: ConnectorToolGroup) -> ConnectorToolDescriptor 
 
 fn run(trigger: &str, tools: Vec<ConnectorToolDescriptor>) -> CloudAgentRun {
     CloudAgentRun {
+        agent_communication: false,
         turn_identity: None,
         history_messages: Vec::new(),
         subsession_id: None,

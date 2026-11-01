@@ -1,13 +1,13 @@
 {
   "name": "kordi-desktop",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "private": true,
   "version": "0.0.2-beta.6",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:web": "vite --host 127.0.0.1 --port 1420 --strictPort",
-    "build": "vite build && pnpm check:bundle",
+    "build": "node ../../scripts/licenses.mjs check && node ../../scripts/licenses.mjs stage public/licenses && vite build && pnpm check:bundle",
     "bench:chat-scale": "tsx scripts/benchmark-chat-scale.ts",
     "check:bundle": "node scripts/check-js-chunk-budget.mjs",
     "typecheck": "tsc --noEmit",

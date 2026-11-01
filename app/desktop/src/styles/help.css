@@ -117,3 +117,5 @@
 .kordi-app [data-help-tour-scroll] { scrollbar-color: var(--app-transient-muted-text) transparent; scrollbar-width: auto; }
 .kordi-app [data-help-tour-scroll]::-webkit-scrollbar { display: block; width: 8px; height: 8px; }
 .kordi-app [data-help-tour-scroll]::-webkit-scrollbar-thumb { background-color: var(--app-transient-muted-text); border-radius: 8px; }
+
+.help-license-frame { width: 100%; height: min(65vh, 640px); border: 0; background: var(--background, transparent); }

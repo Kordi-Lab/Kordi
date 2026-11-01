@@ -33,6 +33,7 @@ export function turnProgressLabel(turn: DesktopChatTurnSnapshot) {
   if (turn.status === 'retrying') return 'Retrying…';
   if (turn.status === 'compacting') return 'Compressing conversation…';
   if (turn.status === 'failed' || (turn.completed && !turn.succeeded)) return 'Needs attention';
+  if (!turn.completed && turn.agentExchangeStatus) return turn.agentExchangeStatus === 'waiting' ? 'Waiting for reply' : 'Processing reply';
   if (turn.completed) return elapsedLabel(turn, 0) ? 'Worked for' : 'Finished';
   if (['waiting', 'waiting-approval', 'waiting_approval'].includes(turn.status)) return 'Waiting for approval';
   if (turn.hostedRunStatus === 'leased') return 'Starting…';

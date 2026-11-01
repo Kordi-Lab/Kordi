@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "method": "SHA-256 over sorted loadable section names and section digests; excludes code signatures, symbol tables and load commands. Architecture: arm64.",
+  "frameworks": {
+    "LiveKitWebRTC": {
+      "archiveSha256": "07c5caf718058af3c528dcabd257298c40e5a8527e4fb9f47c48336ba5899853",
+      "platforms": {
+        "ios-arm64": "bad63d278bef0043597099deb62fd395ee4b5b41bc0de9f2ca8a9868eb00c066",
+        "ios-simulator-arm64": "36ddbd70c96eb0e258ab17519ada12db0286bb31b6f844c878efa35e1123c6c7"
+      }
+    },
+    "RustLiveKitUniFFI": {
+      "sourceRevision": "598d0e3bd09b382db12e0ea0d117238763737c76",
+      "platforms": {
+        "ios-arm64": "fd275cd4b9e2d1f938916e222414eb1d0b61de8993965bb76cf7c6246f4c1ab7"
+      }
+    }
+  },
+  "adHocSigningInvarianceVerified": true
+}

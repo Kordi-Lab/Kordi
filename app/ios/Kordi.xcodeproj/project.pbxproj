@@ -293,6 +293,7 @@
 		B233E89BCF59515FDE8CA626 /* CommonGroundNearbyConsentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF92FACEB4D0AEA8696EBDD6 /* CommonGroundNearbyConsentSheet.swift */; };
 		B390B8EDCC28336BF19EDCFD /* SessionFilesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B253DEC14935BAE03D80365F /* SessionFilesSheet.swift */; };
 		B41CEC7F2405B39CDF400491 /* MediaCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8BE8ED2C03AEBF0EAA5F045 /* MediaCacheTests.swift */; };
+		B43D02A9D78D5EEBD3123183 /* OpenSourceLicensesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00ABE2AF59B23CA70F1598B /* OpenSourceLicensesView.swift */; };
 		B448AA97D036B9F71899B43F /* ProfileDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BA2D3393DF23D61D5DD71A /* ProfileDraft.swift */; };
 		B5A4DEDE26C34B90346FAD9F /* ChatHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 958064210641FA020E27EF19 /* ChatHomeView.swift */; };
 		B5B5BB40648C816CA1BCFEF9 /* LivePhotoMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A6E730DE888A7B0CBC6C9F /* LivePhotoMedia.swift */; };
@@ -759,6 +760,7 @@
 		AF92FACEB4D0AEA8696EBDD6 /* CommonGroundNearbyConsentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundNearbyConsentSheet.swift; sourceTree = "<group>"; };
 		AFC9BC36305D732953A99687 /* PhotoImageEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoImageEditing.swift; sourceTree = "<group>"; };
 		B00630CFD8CCBA61FCC69A93 /* PersonalAgentSessions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalAgentSessions.swift; sourceTree = "<group>"; };
+		B00ABE2AF59B23CA70F1598B /* OpenSourceLicensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSourceLicensesView.swift; sourceTree = "<group>"; };
 		B05863F065BA138C9337DF7F /* MediaPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPreviewView.swift; sourceTree = "<group>"; };
 		B155B683BFA4E6099FDE5CF8 /* MessageForwarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageForwarding.swift; sourceTree = "<group>"; };
 		B15E42DE0C24C650D0259FB8 /* PhotoLibraryAssets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryAssets.swift; sourceTree = "<group>"; };
@@ -997,6 +999,7 @@
 				8232EDB843A4459373D95A16 /* MemoryRows.swift */,
 				3E2DC6199D18F50DD5C5DBC4 /* MemorySettingsModel.swift */,
 				5101422FFF620FF837A563E8 /* MemorySettingsView.swift */,
+				B00ABE2AF59B23CA70F1598B /* OpenSourceLicensesView.swift */,
 				29909C6255BCF356E3B6A61D /* PreviewMemoryCards.swift */,
 				04DB13168D004CFB223E9828 /* ProfileEditorView.swift */,
 				91F583054F514DF4B9CE1523 /* ProviderAuthenticationDetailView.swift */,
@@ -1682,6 +1685,7 @@
 				A0F704B1C13CBBF817DED85B /* Resources */,
 				CB41CB7B63AD1B7A7FCB61BF /* Frameworks */,
 				108895A63222CFC41EE70E90 /* Embed Foundation Extensions */,
+				168A6B73DA5ED8F0912633AD /* Verify release licenses and native frameworks */,
 			);
 			buildRules = (
 			);
@@ -1791,6 +1795,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		168A6B73DA5ED8F0912633AD /* Verify release licenses and native frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Verify release licenses and native frameworks";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$CONFIGURATION\" = \"Release\" ]; then\n  export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\n  python3 \"$SRCROOT/../../scripts/licenses/verify-ios.py\" --app \"$TARGET_BUILD_DIR/$WRAPPER_NAME\" --platform ios-arm64\nfi\n";
+		};
 		6EB16C212CBAD8DEA348AA16 /* Generate synthetic Live Photo test assets */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -2220,6 +2243,7 @@
 				614248D4D06693A4FD693758 /* NetworkProxyPolicy.swift in Sources */,
 				9EBDED4D2D65304EE4A7A1C0 /* NewChatSheet.swift in Sources */,
 				8C8A23245680BF38E4E1B061 /* NotoEmoji.swift in Sources */,
+				B43D02A9D78D5EEBD3123183 /* OpenSourceLicensesView.swift in Sources */,
 				5A9CA0356AB0A944A1DC8C1D /* OrderedAgentExecution.swift in Sources */,
 				B5F678342A58AB0F76377D25 /* PersonalAgentSection.swift in Sources */,
 				08B4500758AEF0331EC1B759 /* PersonalAgentSessions.swift in Sources */,

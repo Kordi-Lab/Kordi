@@ -283,3 +283,22 @@ fn message_payload_uses_absolute_badge_thread_and_opaque_routing_fields() {
     assert_eq!(value["message_id"], message_id);
     assert_eq!(value["message_sequence"], 8);
 }
+
+#[test]
+fn exchange_control_completions_do_not_notify_or_count_as_unread() {
+    for group in [false, true] {
+        let response = json!({"kind":"agent-response","senderKind":"agent","deliveryState":"complete","text":r#"{"agentExchangeOutcome":"waiting"}"#});
+        let (prefix, envelope) = if group {
+            (
+                CLOUD_GROUP_PREFIX,
+                json!({"kind":"group-message","message":response}),
+            )
+        } else {
+            (CLOUD_AGENT_RESPONSE_PREFIX, response)
+        };
+        let wire = encoded_envelope(prefix, envelope);
+        let row = message(json!({"blocks":[{"type":"text","text":wire}]}), 0);
+        assert!(!is_frontend_visible_message(&row));
+        assert!(!is_notifiable_message(&row));
+    }
+}

@@ -10,6 +10,9 @@ export const MANIFEST_VERSION = 1;
 export const GENERATED_BY = 'scripts/ci/select-checks.mjs';
 
 export const SHARED_PATHS = Object.freeze([
+  'legal/**',
+  'scripts/licenses*',
+  'scripts/licenses/**',
   'pnpm-lock.yaml',
   'Cargo.lock',
   'package.json',

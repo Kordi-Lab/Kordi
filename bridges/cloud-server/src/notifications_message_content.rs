@@ -151,6 +151,9 @@ fn message_notification_content(message: &MessageSnapshot) -> MessageNotificatio
         if envelope.get("kind").and_then(serde_json::Value::as_str) != Some("agent-response") {
             return MessageNotificationContent::Hidden;
         }
+        if crate::cloud_agent_runtime::runs::exchanges::is_control_response(&envelope) {
+            return MessageNotificationContent::Hidden;
+        }
         return MessageNotificationContent::Visible(visible_envelope_text(&envelope));
     }
     if raw_text.starts_with(CLOUD_GROUP_PREFIX) {
@@ -158,6 +161,13 @@ fn message_notification_content(message: &MessageSnapshot) -> MessageNotificatio
             return MessageNotificationContent::Hidden;
         };
         if envelope.get("kind").and_then(serde_json::Value::as_str) != Some("group-message") {
+            return MessageNotificationContent::Hidden;
+        }
+        if envelope["message"]["senderKind"] == "agent"
+            && crate::cloud_agent_runtime::runs::exchanges::is_control_response(
+                &envelope["message"],
+            )
+        {
             return MessageNotificationContent::Hidden;
         }
         let text = envelope

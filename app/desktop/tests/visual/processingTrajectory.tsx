@@ -1,3 +1,4 @@
+import { directReplyHandoffMessages } from './directReplyHandoff';
 import { CompanionDocumentPane } from '../../src/pages/chatsPage.companionDocument';
 import { useCompanionDocument, useCompanionDocumentRequests } from '../../src/features/documents/useCompanionDocument';
 import { openTranscriptFile } from '../../src/features/documents/companionDocument';
@@ -86,7 +87,9 @@ function Fixture() {
       thinkingText: phase === 6 ? 'Checking the request.' : '', tools: phase < 7 ? [] : tools,
     },
   } : message);
-  const messages: Message[] = [...history, ...(phase >= 1 ? [{ id: 'request', clientMessageId: 'request', role: 'user' as const, sender: 'Me', text: 'Synthetic request', time: '12:01', timestampMs: now, statusChips: [phase === 1 ? 'sending' : 'delivered'] }] : []), ...(phase >= 2 ? response : [])];
+  const messages: Message[] = new URLSearchParams(location.search).has('directHandoff')
+    ? [...history, ...directReplyHandoffMessages(phase, now, new URLSearchParams(location.search).get('directHandoff') === 'local')]
+    : [...history, ...(phase >= 1 ? [{ id: 'request', clientMessageId: 'request', role: 'user' as const, sender: 'Me', text: 'Synthetic request', time: '12:01', timestampMs: now, statusChips: [phase === 1 ? 'sending' : 'delivered'] }] : []), ...(phase >= 2 ? response : [])];
   return <>
     <div data-testid="phase" style={{ position: 'fixed', top: 0, right: 30, zIndex: 1000 }}>{phases[phase]}</div>
     <AppShellFrame rootThemeClass="theme-light" isNativeShell isLayoutResizing={false} windowSize={{ width: 1440, height: 1040 }} leftWorkspaceWidth={320}

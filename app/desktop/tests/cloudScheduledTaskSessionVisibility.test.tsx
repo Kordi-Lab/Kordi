@@ -29,10 +29,10 @@ test('cloud group agent scheduling uses the visible group session id, not the hi
 
 test('direct contact agent scheduling uses the visible contact activity session id, not the hidden runtime session id', () => {
   const source = cloudDirectAgentExecutionSource();
-  const runtimeStart = source.indexOf('const runtimeSessionId =');
-  const publishStart = source.indexOf('if (activitySessionId) {', runtimeStart);
-  assert.ok(runtimeStart >= 0 && publishStart > runtimeStart, 'expected direct contact cloud agent start block');
-  const block = source.slice(runtimeStart, publishStart);
+  const runtimeStart = source.indexOf('const startedTurn = await startDesktopSharedChatMessage(');
+  const turnStarted = source.indexOf('lease.attach(startedTurn.id);', runtimeStart);
+  assert.ok(runtimeStart >= 0 && turnStarted > runtimeStart, 'expected direct contact cloud agent start block');
+  const block = source.slice(runtimeStart, turnStarted);
 
   assert.match(block, /startDesktopSharedChatMessage\([\s\S]*visibleTaskRecords,\s*\n\s*activitySessionId,/);
 });

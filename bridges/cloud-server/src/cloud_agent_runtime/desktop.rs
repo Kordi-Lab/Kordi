@@ -20,6 +20,10 @@ use sqlx_postgres::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[path = "desktop_context.rs"]
+mod context;
+use context::context_scope_response;
+
 #[path = "desktop_claim.rs"]
 mod claim;
 pub(crate) use claim::agent_desktop_ready;
@@ -390,6 +394,28 @@ async fn publish_progress(
         Err(super::runs::RunError::NotFound) => return expired(),
         Err(e) => return run_error_response("comment reply", "Could not post the reply.", e),
     }
+    let mut input = input;
+    if phase == "completed" {
+        input.body = match super::runs::exchanges::parent_completion_body(
+            state.db_pool(),
+            &run_id,
+            envelope.clone().unwrap(),
+            group,
+        )
+        .await
+        {
+            Ok(body) => body,
+            Err(error) => {
+                return run_error_response(
+                    "agent completion",
+                    "Could not finish the request.",
+                    error,
+                )
+            }
+        };
+    } else if super::runs::exchanges::is_control_progress(&response) {
+        input.body = super::runs::exchanges::control_safe_body(envelope.clone().unwrap(), group);
+    }
     let result = async {
         let mut tx = state.db_pool().begin().await?;
         let row: Option<(String,String,String,String)> = query_as("SELECT session_id,request_message_id,requester_account_id,execution_agent_id FROM cloud_agent_fallback_runs WHERE run_id=$1 AND owner_account_id=$2 AND claimed_by=$3 AND execution_backend='desktop' AND ((status IN ('leased','running') AND lease_expires_at::timestamptz>now()) OR (status=$4 AND status IN ('completed','failed','cancelled') AND EXISTS(SELECT 1 FROM cloud_chat_messages WHERE sender_account_id=$2 AND (client_message_id=$5 OR message_id::text=response_message_id)))) FOR UPDATE")
@@ -434,45 +460,6 @@ async fn publish_progress(
             StatusCode::INTERNAL_SERVER_ERROR,
         ),
     }
-}
-
-async fn context_scope_response(state: &ServerState, mut value: Value) -> Response {
-    let pool = state.db_pool();
-    if value["acquired"] == true {
-        let run_id = value["runId"].as_str().unwrap_or_default().to_string();
-        match query_as::<_, (String, String, String)>(
-            "SELECT session_id, run_trigger, connector_audience FROM cloud_agent_fallback_runs WHERE run_id=$1",
-        )
-        .bind(&run_id)
-        .fetch_one(pool)
-        .await
-        {
-            Ok((scope, trigger, audience)) => {
-                value["contextSessionId"] = json!(scope);
-                // The desktop lease carries the same connector descriptors
-                // as a cloud lease; the broker checks calls against them.
-                value["trigger"] = json!(crate::connectors::models::RunTrigger::parse(&trigger));
-                value["connectorAudience"] =
-                    json!(crate::connectors::models::ConnectorAudience::parse(&audience));
-                value["connectorTools"] = json!(
-                    crate::connectors::delivery::deliver_to_run(
-                        pool,
-                        &state.connectors().providers,
-                        &run_id,
-                    )
-                    .await
-                );
-            }
-            Err(error) => {
-                return run_error_response(
-                    "desktop context scope",
-                    "Could not resolve conversation context.",
-                    error.into(),
-                )
-            }
-        }
-    }
-    Json(value).into_response()
 }
 
 // Owner-authorized history reads are separate from execution admission.

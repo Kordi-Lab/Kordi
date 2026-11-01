@@ -181,7 +181,9 @@ pub(super) async fn prepare_desktop_session_for_send(
             .ok()
             .flatten()
     } else {
-        Some(format!("Current session: {prompt_session_id}. Use this session ID when retrieving earlier messages or attachments from this conversation."))
+        Some(format!(
+            "Current session: {prompt_session_id}. Use this session ID when retrieving earlier messages or attachments from this conversation."
+        ))
     };
     // Document guidance only for a turn that can call create_document.
     let documents = [cloud_lease.as_ref(), document_lease.as_ref()]
@@ -192,7 +194,7 @@ pub(super) async fn prepare_desktop_session_for_send(
         .then_some(super::background_tasks::GROUP_DOCUMENTS_POLICY);
     runtime.set_session_prompt_context(Some(format!(
         "{}\n{}{}",
-        local_session_context.unwrap_or_default(),
+        local_session_context.clone().unwrap_or_default(),
         kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE,
         documents
             .map(|policy| format!("\n{policy}"))
@@ -248,6 +250,18 @@ pub(super) async fn prepare_desktop_session_for_send(
         })
         .and_then(|context| super::tool_approval::hook(act_tools, context));
     runtime.set_tool_approval_hook(approval_hook);
+    let outreach =
+        super::agent_exchange_runtime::build(cloud_lease.as_ref(), owner_requester).await;
+    if let Some((_, guidance)) = outreach.as_ref() {
+        runtime.set_session_prompt_context(Some(format!(
+            "{}\n{}\n{}\n{}",
+            local_session_context.clone().unwrap_or_default(),
+            kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE,
+            documents.unwrap_or_default(),
+            guidance
+        )));
+    }
+    runtime.set_reach_out_runtime(outreach.map(|(runtime, _)| runtime));
     let parent_lease = cloud_lease.clone();
     let group_documents =
         super::background_tasks::group_document_lease(cloud_lease.as_ref(), owner_requester)

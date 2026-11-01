@@ -1,3 +1,5 @@
+import { publishSourceKit } from '../licenses/source-delivery.mjs';
+import { verifyReleaseLicenseEvidence } from '../licenses/release-evidence.mjs';
 import { assertVersionParity } from './desktop-release-version-parity.mjs';
 import { checkMacOSRuntimeMinimum, versionParts } from '../check-macos-runtime-minimum.mjs';
 import {
@@ -41,6 +43,7 @@ import { releaseTreeScanArguments, vendoredRuntimeScanArguments } from './deskto
 import { VERSION_PATTERN, MANIFEST_KEY_PATTERN } from './desktop-release-version.mjs';
 
 export { releaseTreeScanArguments, vendoredRuntimeScanArguments };
+export { redactPublisherText } from './desktop-release-privacy-scan.mjs';
 
 export { PRODUCT_ORIGIN } from './desktop-release-public.mjs';
 export const TAURI_UPDATER_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3N0JBRkMwRDRDNzFEOUIKUldTYkhjZlV3Szk3WjVXWWVmNzZGanNDakFlRkxTZ3UwZ1dLelpJenl3NnY3YmkvZCtEcUxxUWcK';
@@ -348,6 +351,7 @@ export async function prepareDesktopRelease(options, dependencies = {}) {
 
   return {
     ...normalized,
+    sourceKit: verification?.sourceKit,
     release,
     releaseBytes,
     checksumsBytes,
@@ -776,6 +780,7 @@ export async function publishDesktopRelease(options, dependencies = {}) {
     throw new Error('A public HTTP verification adapter is required');
   }
 
+  if (prepared.sourceKit) await publishSourceKit(prepared.sourceKit, store, publicHttp);
   const missing = [];
   for (const object of prepared.immutableObjects) {
     const existing = await store.getObject(object.key);
@@ -847,21 +852,6 @@ export async function publishDesktopRelease(options, dependencies = {}) {
   }
   logger.info(`[release] promoted ${prepared.channel} to ${prepared.version}`);
   return { ...prepared, dryRun: false, published: true };
-}
-
-export function redactPublisherText(value, env = process.env) {
-  let redacted = String(value ?? '');
-  for (const [name, secret] of Object.entries(env)) {
-    if (!/(KEY|PASSWORD|SECRET|TOKEN|CREDENTIAL)/i.test(name)) continue;
-    if (typeof secret !== 'string' || secret.length < 3) continue;
-    redacted = redacted.split(secret).join('[REDACTED]');
-  }
-  redacted = redacted.replace(
-    /https?:\/\/[^\s/]*(?:minio|\.internal|\.svc(?:\.cluster\.local)?)[^\s]*/gi,
-    '[REDACTED_INTERNAL_URL]',
-  );
-  redacted = redacted.replace(/Developer ID Application:[^\r\n"]*(?:\([^\r\n)]*\))?/gi, 'Developer ID Application: [REDACTED_IDENTITY]');
-  return redacted;
 }
 
 function defaultRun(command, args = [], options = {}) {
@@ -1009,6 +999,7 @@ function createArtifactVerifier({
   validateDmgVolumeLayoutImpl = validateDmgVolumeLayout,
   inspectUpdaterArchiveImpl = inspectUpdaterArchive,
   checkMacOSRuntimeMinimumImpl = checkMacOSRuntimeMinimum,
+  verifyReleaseLicenseEvidenceImpl = verifyReleaseLicenseEvidence,
 }) {
   return {
     async verify(input) {
@@ -1028,7 +1019,9 @@ function createArtifactVerifier({
       if (releaseProfile === 'production') assertProductionSigningIdentity(run);
 
       verifyTauriUpdaterSignature(input.updaterBytes, input.signature, input.updaterPublicKey);
+      let sourceKit;
       const verifyBundle = (appBundle) => {
+        sourceKit = verifyReleaseLicenseEvidenceImpl(appBundle, env.KORDI_LICENSE_RELEASE_EVIDENCE, repoRoot, { directory: env.KORDI_LICENSE_SOURCE_KIT, version: input.version, releaseCommit: input.expectedCommit, verifiedKit: sourceKit });
         checkMacOSRuntimeMinimumImpl(appBundle, { expectedMinimum: minimumSystemVersion, run });
         assertAppBundleContract(run, appBundle, {
           version: input.version,
@@ -1049,7 +1042,7 @@ function createArtifactVerifier({
       } finally {
         detachDmgImpl(mounted.device);
       }
-      return { minimumSystemVersion };
+      return { minimumSystemVersion, sourceKit };
     },
   };
 }

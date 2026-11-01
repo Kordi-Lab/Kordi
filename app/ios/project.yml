@@ -57,6 +57,14 @@ targets:
       - name: Build document editor page
         script: bash "$SRCROOT/../../scripts/prepare-ios-document-editor.sh" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
         basedOnDependencyAnalysis: false
+    postBuildScripts:
+      - name: Verify release licenses and native frameworks
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "$CONFIGURATION" = "Release" ]; then
+            export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+            python3 "$SRCROOT/../../scripts/licenses/verify-ios.py" --app "$TARGET_BUILD_DIR/$WRAPPER_NAME" --platform ios-arm64
+          fi
     entitlements:
       path: Kordi/Supporting/Kordi.entitlements
       properties:

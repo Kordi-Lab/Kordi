@@ -50,6 +50,8 @@ pub struct RunnerRunEnvelope {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RunnerRunResponse {
+    #[serde(rename = "agentCommunication")]
+    pub agent_communication: bool,
     #[serde(rename = "turnIdentity")]
     pub turn_identity: serde_json::Value,
     #[serde(rename = "historyMessages")]
@@ -157,6 +159,7 @@ async fn lease_run(
     runner_id: &str,
     canary_run_id: Option<&str>,
 ) -> RunResult<Option<RunnerRunResponse>> {
+    super::exchanges::reconcile(pool).await?;
     let started = std::time::Instant::now();
     let leased = lease_eligible(pool, runner_id, canary_run_id).await;
     let outcome = match &leased {
@@ -300,7 +303,16 @@ pub(super) async fn runner_response_from_row(
     let provider_auth_needs_reconnect = !provider_auth_available
         && super::super::provider_auth::snapshot_needs_reconnect_for_route(pool, &row.3, &row.7)
             .await?;
+    let communication = if subsession_id.is_none() {
+        super::exchanges::guidance(pool, &row.0).await?
+    } else {
+        None
+    };
+    if let Some(guidance) = communication.as_ref() {
+        row.11.push_str(&format!("\n{guidance}"));
+    }
     Ok(RunnerRunResponse {
+        agent_communication: communication.is_some(),
         turn_identity: super::identity::identity_for_run(pool, &row.0).await?,
         history_messages: super::super::subsession_execution::history(pool, &row.0).await?,
         subsession_id: subsession_id.map(|id| id.to_string()),

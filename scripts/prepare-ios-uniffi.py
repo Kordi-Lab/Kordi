@@ -146,6 +146,9 @@ def prepare(args):
     (framework / "Modules/module.modulemap").write_text("framework " + module)
     shutil.copy2(source / "livekit-uniffi/support/swift/PrivacyInfo.xcprivacy",
                  framework / "PrivacyInfo.xcprivacy")
+    license_collector = Path(__file__).parent / "licenses/native-notices.py"
+    run([sys.executable, str(license_collector), "--manifest", manifest,
+         "--output", str(framework / "LICENSES.txt")], cwd=source, env=env)
     info = dict(CFBundleDevelopmentRegion="en", CFBundleExecutable=NAME,
                 CFBundleIdentifier=f"com.cargo-swift.{NAME}", CFBundleInfoDictionaryVersion="6.0",
                 CFBundleName=NAME, CFBundlePackageType="FMWK", CFBundleShortVersionString="1.0",

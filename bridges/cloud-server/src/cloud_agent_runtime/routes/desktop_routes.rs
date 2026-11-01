@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::Router;
 
 use crate::cloud_agent_runtime::{desktop, desktop_tasks};
@@ -11,6 +11,22 @@ use crate::server::ServerState;
 
 pub(super) fn routes() -> Router<Arc<ServerState>> {
     Router::new()
+        .route(
+            "/v1/cloud/agent-exchanges/desktop/pending",
+            get(crate::cloud_agent_runtime::runs::exchanges::pending),
+        )
+        .route(
+            "/v1/cloud/agent-exchanges/desktop/:run_id/complete",
+            post(crate::cloud_agent_runtime::runs::exchanges::desktop_complete),
+        )
+        .route(
+            "/v1/cloud/agent-exchanges/desktop/:run_id/fail",
+            post(crate::cloud_agent_runtime::runs::exchanges::desktop_fail),
+        )
+        .route(
+            "/v1/cloud/agent-runs/desktop/:run_id/agent-exchange",
+            post(crate::cloud_agent_runtime::runs::exchanges::desktop_tool),
+        )
         .route(
             "/v1/cloud/agent-runs/desktop/:run_id/cancel",
             post(desktop::cancel),

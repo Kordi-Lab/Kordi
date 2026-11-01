@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPOSITORY_ROOT = path.dirname(SCRIPT_DIR);
+const PUBLIC_CONTACT_HASHES = new Set(JSON.parse(readFileSync(new URL('../legal/public-contact-hashes.json', import.meta.url), 'utf8')));
+const ATTRIBUTION_PATHS = new Set(['legal/native/WebRTC-THIRD-PARTY-NOTICES.txt', 'legal/native/UniFFI-THIRD-PARTY-NOTICES.txt', 'legal/native/Bun-THIRD-PARTY-NOTICES.txt', 'legal/native/bun-dependencies.json', 'legal/native/uniffi-dependencies.json', 'legal/catalog.json', 'legal/distribution/inventory.json', 'legal/distribution/index.html', 'legal/distribution/THIRD-PARTY-NOTICES.txt']);
 const MAX_TEXT_BYTES = 20 * 1024 * 1024;
 
 const TEXT_RULES = [
@@ -134,6 +136,10 @@ function normalizedDenylist(denylist) {
 export function inspectText(contents, options = {}) {
   const findings = [];
   for (const rule of TEXT_RULES) {
+    if (rule.id === 'personal-mailbox' && ATTRIBUTION_PATHS.has(options.repositoryPath)) {
+      const matches = contents.match(new RegExp(rule.pattern.source, 'gi')) ?? [];
+      if (matches.every((email) => PUBLIC_CONTACT_HASHES.has(createHash('sha256').update(email.toLowerCase()).digest('hex')))) continue;
+    }
     if (rule.pattern.test(contents)) {
       findings.push({ rule: rule.id, description: rule.description });
     }
@@ -164,7 +170,7 @@ function inspectBlob(repositoryPath, buffer, options = {}) {
       });
     } else {
       const contents = buffer.toString('utf8');
-      findings.push(...inspectText(contents, options));
+      findings.push(...inspectText(contents, { ...options, repositoryPath }));
       if (/\.json$/i.test(repositoryPath) && TRANSCRIPT_SHAPED_JSON.test(contents)) {
         findings.push({
           rule: 'transcript-shaped-json',

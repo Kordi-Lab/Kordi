@@ -1,6 +1,7 @@
 import type { Message } from '@/kordi-app/types';
 
 export function transcriptMessageRenderKey(message: Message, index: number) {
+  if (message.agentReplyRenderKey) return message.agentReplyRenderKey;
   if (message.clientMessageId?.trim()) return `client-message:${message.clientMessageId}`;
   if (message.id?.trim()) return `message:${message.id}`;
   return [
@@ -35,8 +36,17 @@ function isSelfAgentReplyRow(message: Message) {
  */
 export function transcriptMessageRenderKeys(messages: readonly Message[]) {
   const keys = new Map<Message, string>();
-  messages.forEach((message, index) => keys.set(message, transcriptMessageRenderKey(message, index)));
-  const used = new Set(keys.values());
+  const used = new Set<string>();
+  messages.forEach((message, index) => {
+    let key = transcriptMessageRenderKey(message, index);
+    // A legacy provider can publish multiple responses to one request. Keep
+    // those distinct; only the first response occupies the pending reply slot.
+    if (used.has(key) && message.agentReplyRenderKey) {
+      key = transcriptMessageRenderKey({ ...message, agentReplyRenderKey: undefined }, index);
+    }
+    keys.set(message, key);
+    used.add(key);
+  });
   for (const message of messages) {
     if (!isSelfAgentReplyRow(message)) continue;
     const id = message.id ?? '';
