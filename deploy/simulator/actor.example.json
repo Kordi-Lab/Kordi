@@ -1,0 +1,15 @@
+{
+  "actor_id": "synthetic-requester-01",
+  "account_id": "synthetic-account-001",
+  "conversation_id": "00000000-0000-0000-0000-000000000001",
+  "objective": "Ask the other participant for a short explanation of the topic.",
+  "persona": "A synthetic requester who is polite and concise.",
+  "private_facts": [
+    "The requester prefers short answers."
+  ],
+  "skill": "human-requester@1",
+  "max_model_calls": 20,
+  "max_messages": 10,
+  "poll_seconds": 5,
+  "max_wait_seconds": 60
+}

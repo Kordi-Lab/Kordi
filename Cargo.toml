@@ -9,6 +9,7 @@ members = [
     "agent/crates/plugin-host",
     "agent/crates/tui",
     "agent/crates/cli",
+    "agent/crates/human-simulator",
     "agent/crates/kordi-monitor",
     "app/server",
     "app/desktop/src-tauri",
@@ -54,6 +55,7 @@ p256 = { version = "0.13", features = ["pkcs8"] }
 
 # Internal crates
 kordi-core = { version = "0.0.18", path = "agent/crates/core" }
+kordi-human-simulator = { version = "0.0.18", path = "agent/crates/human-simulator" }
 kordi-session = { version = "0.0.18", path = "agent/crates/session" }
 kordi-tools = { version = "0.0.18", path = "agent/crates/tools" }
 kordi-provider = { version = "0.0.18", path = "agent/crates/provider" }
