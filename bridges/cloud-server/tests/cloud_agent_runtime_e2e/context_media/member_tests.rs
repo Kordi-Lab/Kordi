@@ -11,7 +11,7 @@ async fn source_request(f: &Fixture) -> String {
     .0
 }
 
-fn member_request(f: &Fixture, source: Option<&str>, args: Value) -> Request<Body> {
+pub(super) fn member_request(f: &Fixture, source: Option<&str>, args: Value) -> Request<Body> {
     post_json_with_token(
         "/v1/cloud/agent-runs/desktop/read-context",
         &f.owner.token,

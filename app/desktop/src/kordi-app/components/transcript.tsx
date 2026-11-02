@@ -3,7 +3,7 @@ import { ThreadMessageHeader } from './ThreadMessageHeader';
 import { ContactRequestFailureNotice } from './contactRequestFailureNotice';
 import { beginChatPerformanceSpan, finishChatPerformanceSpan } from '@/features/performance/chatPerformance';
 import { agentMessageAvatarSeed } from '@/features/chat/agentMessageAvatar';
-import { attachmentsAreOnlyMp4Videos } from '@/features/chat/attachmentMediaGallery';
+import { transcriptAttachmentLayout } from './transcriptAttachmentLayout';
 import { messageDeliveryVisual,shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
@@ -611,8 +611,8 @@ function MessageBubbleView({
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage; const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
   const hasVoice = Boolean(msg.voiceMessage); const hasPlanCard = Boolean(msg.planCard); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0); const planCardOnly = showCompactFooter && hasPlanCard && !hasText && !hasVoice && !((msg.attachments?.length ?? 0) > 0) && !msg.supportContactTyping && !msg.supportContactResponse;
-  const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasOnlyBorderlessMediaAttachments = hasOnlyImageAttachments || (!hasText && !hasVoice && attachmentsAreOnlyMp4Videos(msg.attachments)); const hasMixedImageAttachments = hasText && (msg.attachments ?? []).some((attachment) => attachment.kind === 'image');
-  const hasGroupedImageAttachments = hasAttachments && (msg.attachments?.length ?? 0) > 1 && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasDetachedImageGroup = hasGroupedImageAttachments && hasText;
+  const { hasAttachments, hasOnlyBorderlessMediaAttachments, hasMixedImageAttachments, hasGroupedImageAttachments,
+    hasDetachedImageGroup, hasBubbleAttachments } = transcriptAttachmentLayout(msg, hasText, hasVoice);
   const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage); const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus; const hasLinkPreview = (isOwnHumanMessage || isPeerHumanMessage) && hasText && !msg.callActivity && !hasVoice && !hasPlanCard && !hasAttachments && Boolean(standaloneExternalMessageLink(msg.text)); const bareSurface = hasOnlyBorderlessMediaAttachments || planCardOnly;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !hasPlanCard && !msg.supportContactResponse && !hasLinkPreview && !(/\r?\n/.test(msg.text) || /^\s*(?:`{3,}|#{1,3}\s+|>|[-*+]\s+|\d+\.\s+)/.test(msg.text));
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
@@ -657,11 +657,11 @@ function MessageBubbleView({
           </div>
         ) : (
           <>
-            <div className={cn('flex flex-col', hasAttachments && !hasDetachedImageGroup && hasText ? 'gap-2.5' : 'gap-0')}>
+            <div className={cn('flex flex-col', hasBubbleAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
               {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} ownMessage={isOwnHumanMessage ? msg : undefined} footer={<MessageFooter message={msg} status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
-              {hasAttachments && !hasDetachedImageGroup ? (
+              {hasBubbleAttachments ? (
                 <AttachmentPreview
-                  msg={msg}
+                  msg={msg} scope={hasDetachedImageGroup ? 'non-images' : 'all'}
                   imageGallery={imageGallery}
                   imageDeliveryStatus={hasOnlyBorderlessMediaAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null}
                 />
@@ -687,8 +687,8 @@ function MessageBubbleView({
         )
       ) : (
         <>
-          <div className={cn('flex flex-col', hasAttachments && !hasDetachedImageGroup && hasText ? 'gap-2.5' : 'gap-0')}>{msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
-            {hasAttachments && !hasDetachedImageGroup ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}{msg.planCard ? <PlanCardContent card={msg.planCard} conversationId={msg.reactionConversationId} /> : null}
+          <div className={cn('flex flex-col', hasBubbleAttachments && hasText ? 'gap-2.5' : 'gap-0')}>{msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
+            {hasBubbleAttachments ? <AttachmentPreview msg={msg} scope={hasDetachedImageGroup ? 'non-images' : 'all'} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}{msg.planCard ? <PlanCardContent card={msg.planCard} conversationId={msg.reactionConversationId} /> : null}
             {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MarkdownContent text={msg.text} showLinkIcons copySurface="message" />) : null}
           </div>
           {(msg.statusChips?.length || footerDetail) ? (
@@ -784,7 +784,7 @@ function MessageBubbleView({
         <TranscriptMessageSurface data-message-context-menu-anchor="true"
           data-message-media-side={hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasMixedImageAttachments ? 'true' : undefined}
           data-message-detached-image-group={hasDetachedImageGroup ? 'true' : undefined}
-          attachmentPreview={<AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} />} borderless={bareSurface || Boolean(standaloneEmojiItem)}
+          attachmentPreview={<AttachmentPreview msg={msg} scope="images" imageGallery={imageGallery} imageDeliveryStatus={null} />} borderless={bareSurface || Boolean(standaloneEmojiItem)}
           bubbleClassName={bubble} compact={useHumanCompactDensity} detachedImageGroup={hasDetachedImageGroup}
           enter={shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus)} groupedWithPrevious={isGroupedWithPrevious}
           side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'} tail={!isGroupedWithNext}

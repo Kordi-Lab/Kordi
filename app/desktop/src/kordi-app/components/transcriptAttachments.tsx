@@ -41,11 +41,13 @@ export type { AttachmentImageDeliveryVisual,AttachmentImageForegroundTone } from
 export { attachmentImageDeliveryVisual };
 export function AttachmentPreview({
   msg,
+  scope = 'all',
   imageGallery,
   imageDeliveryStatus,
   onRetryImage,
 }: {
   msg: Message;
+  scope?: 'all' | 'images' | 'non-images';
   imageGallery?: readonly MessageAttachment[];
   imageDeliveryStatus?: string | null;
   onRetryImage?: () => void;
@@ -55,7 +57,8 @@ export function AttachmentPreview({
     expressiveMediaLibrarySnapshot,
     expressiveMediaLibrarySnapshot,
   );
-  const attachments = msg.attachments ?? [];
+  const attachments = (msg.attachments ?? []).filter((attachment) => scope === 'all'
+    || shouldPreviewAttachmentInline(attachment) === (scope === 'images'));
   const stickerAttachment = messageStickerAttachment(msg);
   const previewImageAttachments = attachments.filter((attachment) => shouldPreviewAttachmentInline(attachment));
   const videoAttachments = attachments.filter(isMp4VideoAttachment);
