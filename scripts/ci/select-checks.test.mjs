@@ -115,6 +115,16 @@ test('OMP worker-only changes run the server adapter and packaging checks', (t) 
   assert.equal(group(manifest, 'frontend').applicable, false);
 });
 
+test('simulator runtime changes include isolated PostgreSQL recovery coverage', (t) => {
+  const fixture = changedFilesFixture(t, ['agent/crates/human-simulator/src/worker.rs']);
+  const manifest = manifestFrom(
+    runSelection(['--changed-files', fixture, '--json', '--base', shaA, '--head', shaB]),
+  );
+  for (const id of ['server', 'migrations', 'desktop', 'hygiene']) {
+    assert.equal(group(manifest, id).applicable, true, id);
+  }
+});
+
 test('shared lockfiles select every group', (t) => {
   for (const sharedPath of ['pnpm-lock.yaml', '.github/workflows/blocking-ci.yml', 'Cargo.lock']) {
     const fixture = changedFilesFixture(t, [sharedPath]);

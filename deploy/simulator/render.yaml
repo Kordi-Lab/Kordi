@@ -1,0 +1,51 @@
+# Dedicated simulator control plane. Bind simulator.kordi.cloud to this web
+# service in Render; the worker connects to that HTTPS origin.
+services:
+  - type: web
+    name: human-simulator-api
+    runtime: docker
+    region: oregon
+    plan: starter
+    numInstances: 1
+    dockerfilePath: ./deploy/simulator/Dockerfile.api
+    dockerContext: .
+    domains:
+      - simulator.kordi.cloud
+    healthCheckPath: /ready
+    autoDeployTrigger: off
+    envVars:
+      - key: PORT
+        value: '10000'
+      - key: KORDI_SIM_BIND
+        value: 0.0.0.0
+      - key: KORDI_SIM_DATABASE_URL
+        fromDatabase:
+          name: human-simulator-db
+          property: connectionString
+      - key: KORDI_SIM_OPERATOR_TOKEN
+        generateValue: true
+      - key: KORDI_SIM_ALLOWED_ACCOUNTS
+        sync: false
+      - key: KORDI_SIM_KORDI_API_BASE
+        sync: false
+      # Supply the same operator-selected System agent model settings used by
+      # the Kordi server. Do not copy production credentials into this stack.
+      - key: KORDI_SYSTEM_AGENT_PROVIDER
+        sync: false
+      - key: KORDI_SYSTEM_AGENT_OPENAI_API_KEY
+        sync: false
+      - key: KORDI_SYSTEM_AGENT_OPENAI_MODEL
+        sync: false
+      - key: KORDI_SYSTEM_AGENT_OPENAI_BASE_URL
+        sync: false
+      # For Vertex, add its explicit model, project, location, and workload
+      # identity file settings only when that provider is selected.
+
+databases:
+  - name: human-simulator-db
+    region: oregon
+    plan: basic-256mb
+    postgresMajorVersion: '17'
+    databaseName: human_simulator
+    user: simulator
+    ipAllowList: []

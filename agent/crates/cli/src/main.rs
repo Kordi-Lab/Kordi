@@ -142,6 +142,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Run and manage headless human simulation actors.
+    Sim {
+        #[command(subcommand)]
+        command: kordi_human_simulator::cli::SimCommand,
+    },
     /// Print bundled third-party licenses and exact source links
     Licenses,
     /// Login to a provider (OAuth / API key)
@@ -277,6 +282,7 @@ async fn main() -> Result<()> {
     if let Some(cmd) = &cli.command {
         let cwd = std::fs::canonicalize(cli.cwd.as_deref().unwrap_or("."))?;
         return match cmd {
+            Commands::Sim { command } => kordi_human_simulator::cli::execute(command.clone()).await,
             Commands::Licenses => {
                 print!(
                     "{}",

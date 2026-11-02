@@ -1,0 +1,34 @@
+FROM docker.io/library/rust:1.97-slim-bookworm AS builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential cmake pkg-config ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+COPY Cargo.toml Cargo.lock ./
+COPY agent ./agent
+COPY app ./app
+COPY bridges ./bridges
+COPY shared ./shared
+COPY simulations ./simulations
+COPY legal/distribution ./legal/distribution
+
+RUN cargo build --release -p kordi-human-simulator --bin kordi-human-simulator
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 1000 simulator \
+    && useradd --system --uid 1000 --gid simulator --home /var/lib/kordi-simulator --shell /usr/sbin/nologin simulator \
+    && install -d -o simulator -g simulator /var/lib/kordi-simulator
+
+COPY legal/distribution /usr/local/share/kordi/licenses
+COPY --from=builder /workspace/target/release/kordi-human-simulator /usr/local/bin/kordi-human-simulator
+
+USER simulator
+WORKDIR /var/lib/kordi-simulator
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/kordi-human-simulator"]
+CMD ["run", "--actor", "replace-with-actor-id"]

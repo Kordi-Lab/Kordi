@@ -86,6 +86,8 @@
       "prerequisites": ["cargo", "bun"],
       "paths": [
         "agent/**",
+        "simulations/**",
+        "deploy/simulator/**",
         "app/server/**",
         "bridges/cli/**",
         "bridges/cloud-agent-runner/**",
@@ -108,6 +110,7 @@
       "outputs": [
         "rustfmt",
         "clippy",
+        "human simulator dual-channel tests",
         "session tests",
         "provider tests",
         "tools tests",
@@ -129,6 +132,7 @@
         "bridges/cloud-server/**",
         "bridges/cloud-agent-runner/**",
         "agent/crates/tools/**",
+        "agent/crates/human-simulator/**",
         "shared/blob-emoji/**",
         "shared/chat-sync/**",
         "shared/agent-targeting/**",
@@ -143,7 +147,7 @@
       "always": false,
       "serial": false,
       "timeoutMinutes": 45,
-      "outputs": ["database upgrade matrix", "cloud agent runtime e2e", "chat sync e2e"]
+      "outputs": ["database upgrade matrix", "cloud agent runtime e2e", "chat sync e2e", "isolated simulator recovery and provisioning tests"]
     },
     {
       "id": "desktop",

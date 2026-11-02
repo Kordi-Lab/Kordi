@@ -121,3 +121,16 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
 # Personal agent tests (docs/development/personal-agent.md) follow the same rule.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib personal_agent:: -- --test-threads=1
+
+# Simulator regression tests use their own fresh database and scripted local
+# model. Never enable the opt-in live-provider tests in unattended CI.
+migration_create_database kordi_migration_test_simulator
+KORDI_SIM_TEST_DATABASE_URL="$(migration_database_url kordi_migration_test_simulator)" \
+  KORDI_CHAT_SYNC_CURSOR_SECRET=synthetic-simulator-ci-cursor-signing-secret \
+  cargo test -p kordi-cloud-server --lib human_simulator --locked -- \
+    --include-ignored --skip live_provider_real_http_headless_human \
+    --skip live_two_simulators_exchange_messages --test-threads=1
+KORDI_SIM_TEST_DATABASE_URL="$(migration_database_url kordi_migration_test_simulator)" \
+  KORDI_CHAT_SYNC_CURSOR_SECRET=synthetic-simulator-ci-cursor-signing-secret \
+  cargo test -p kordi-cloud-server --lib simulator_accounts --locked -- \
+    --include-ignored --test-threads=1
