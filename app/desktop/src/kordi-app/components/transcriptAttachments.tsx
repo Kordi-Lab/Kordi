@@ -152,8 +152,7 @@ export function AttachmentPreview({
   }
 
   return (
-    <>
-      <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
         {previewImageAttachments.length > 0 ? (
           <TranscriptMediaBoundary><TranscriptImageGroup
             groupId={imageGroupId}
@@ -222,7 +221,6 @@ export function AttachmentPreview({
             ))}
           </div>
         ) : null}
-      </div>
-    </>
+    </div>
   );
 }

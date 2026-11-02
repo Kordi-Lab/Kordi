@@ -14,7 +14,6 @@ export function transcriptAttachmentLayout(msg: Message, hasText: boolean, hasVo
   return {
     hasAttachments,
     hasOnlyBorderlessMediaAttachments,
-    hasMixedImageAttachments: imageCount > 0 && hasText,
     hasGroupedImageAttachments: imageCount > 1,
     hasDetachedImageGroup,
     hasBubbleAttachments: hasDetachedImageGroup ? imageCount < attachments.length : hasAttachments,

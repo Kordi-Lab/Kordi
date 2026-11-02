@@ -611,7 +611,7 @@ function MessageBubbleView({
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage; const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
   const hasVoice = Boolean(msg.voiceMessage); const hasPlanCard = Boolean(msg.planCard); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0); const planCardOnly = showCompactFooter && hasPlanCard && !hasText && !hasVoice && !((msg.attachments?.length ?? 0) > 0) && !msg.supportContactTyping && !msg.supportContactResponse;
-  const { hasAttachments, hasOnlyBorderlessMediaAttachments, hasMixedImageAttachments, hasGroupedImageAttachments,
+  const { hasAttachments, hasOnlyBorderlessMediaAttachments, hasGroupedImageAttachments,
     hasDetachedImageGroup, hasBubbleAttachments } = transcriptAttachmentLayout(msg, hasText, hasVoice);
   const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage); const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus; const hasLinkPreview = (isOwnHumanMessage || isPeerHumanMessage) && hasText && !msg.callActivity && !hasVoice && !hasPlanCard && !hasAttachments && Boolean(standaloneExternalMessageLink(msg.text)); const bareSurface = hasOnlyBorderlessMediaAttachments || planCardOnly;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !hasPlanCard && !msg.supportContactResponse && !hasLinkPreview && !(/\r?\n/.test(msg.text) || /^\s*(?:`{3,}|#{1,3}\s+|>|[-*+]\s+|\d+\.\s+)/.test(msg.text));
@@ -631,6 +631,8 @@ function MessageBubbleView({
   const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = threadLayout || !isAgentMessage || groupChatAgentAvatar; const smallAvatar = threadLayout || useHumanCompactDensity || groupChatAgentAvatar; const showAvatar = showAvatarSlot && (threadLayout ? !isGroupedWithPrevious || Boolean(msg.sourceMessage) : !isGroupedWithNext);
   const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode && !isSystemAvatarUrl(msg.senderProfileImageUrl)); const isForwardedMessage = msg.messageAction?.kind === 'forward'; const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
   const standaloneEmojiItem = standaloneEmojiItemForMessage(msg, { isHuman: showCompactFooter, showsSender: showInlineHumanSender, footerDetail });
+  const bubbleAttachmentPreview = hasBubbleAttachments ? <AttachmentPreview msg={msg} scope={hasDetachedImageGroup ? 'non-images' : 'all'} imageGallery={imageGallery} imageDeliveryStatus={hasOnlyBorderlessMediaAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null} /> : null;
+  const planCardContent = msg.planCard ? <PlanCardContent card={msg.planCard} conversationId={msg.reactionConversationId} /> : null;
   const messageSurfaceContent = (
     <>
       {threadLayout && (!isGroupedWithPrevious || msg.sourceMessage) ? <ThreadMessageHeader msg={msg} name={avatarName} ownerName={agentOwnerName} /> : null}{showHeaderMeta && groupChatAgentAvatar ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} highlightName className="mb-1 px-0" /> : null}
@@ -659,13 +661,7 @@ function MessageBubbleView({
           <>
             <div className={cn('flex flex-col', hasBubbleAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
               {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} ownMessage={isOwnHumanMessage ? msg : undefined} footer={<MessageFooter message={msg} status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
-              {hasBubbleAttachments ? (
-                <AttachmentPreview
-                  msg={msg} scope={hasDetachedImageGroup ? 'non-images' : 'all'}
-                  imageGallery={imageGallery}
-                  imageDeliveryStatus={hasOnlyBorderlessMediaAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null}
-                />
-              ) : null}{msg.planCard ? <PlanCardContent card={msg.planCard} conversationId={msg.reactionConversationId} /> : null}
+              {bubbleAttachmentPreview}{planCardContent}
               {msg.supportContactTyping ? (
                 <SupportContactTypingIndicator />
               ) : hasText ? (
@@ -688,7 +684,7 @@ function MessageBubbleView({
       ) : (
         <>
           <div className={cn('flex flex-col', hasBubbleAttachments && hasText ? 'gap-2.5' : 'gap-0')}>{msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
-            {hasBubbleAttachments ? <AttachmentPreview msg={msg} scope={hasDetachedImageGroup ? 'non-images' : 'all'} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}{msg.planCard ? <PlanCardContent card={msg.planCard} conversationId={msg.reactionConversationId} /> : null}
+            {bubbleAttachmentPreview}{planCardContent}
             {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MarkdownContent text={msg.text} showLinkIcons copySurface="message" />) : null}
           </div>
           {(msg.statusChips?.length || footerDetail) ? (
@@ -782,7 +778,7 @@ function MessageBubbleView({
           <span className={cn('app-message-avatar-spacer shrink-0', smallAvatar ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
         ) : null}
         <TranscriptMessageSurface data-message-context-menu-anchor="true"
-          data-message-media-side={hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasMixedImageAttachments ? 'true' : undefined}
+          data-message-media-side={hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasDetachedImageGroup && hasText ? 'true' : undefined}
           data-message-detached-image-group={hasDetachedImageGroup ? 'true' : undefined}
           attachmentPreview={<AttachmentPreview msg={msg} scope="images" imageGallery={imageGallery} imageDeliveryStatus={null} />} borderless={bareSurface || Boolean(standaloneEmojiItem)}
           bubbleClassName={bubble} compact={useHumanCompactDensity} detachedImageGroup={hasDetachedImageGroup}
@@ -807,19 +803,19 @@ function MessageBubbleView({
             ? bareSurface || hasDetachedImageGroup || standaloneEmojiItem
               ? 'w-fit max-w-[31rem] p-0'
               : useHumanCompactDensity
-                ? cn('app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
-                : cn('w-fit px-4 py-2.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
+                ? cn('app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
+                : cn('w-fit px-4 py-2.5', 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
               ? bareSurface || hasDetachedImageGroup || standaloneEmojiItem
                 ? 'w-fit max-w-[31rem] p-0'
                 : useHumanCompactDensity
                   ? cn(
-                    'app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]',
+                    'app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', 'max-w-[52rem]',
                     msg.supportContactTyping ? 'min-w-[3.25rem]' : undefined,
                     humanMessageBubbleShapeClass('peer'),
                   )
                   : cn(
-                    'w-fit px-4 py-2.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]',
+                    'w-fit px-4 py-2.5', 'max-w-[52rem]',
                     msg.supportContactTyping ? 'min-w-[4rem]' : undefined,
                     humanMessageBubbleShapeClass('peer'),
                   )
