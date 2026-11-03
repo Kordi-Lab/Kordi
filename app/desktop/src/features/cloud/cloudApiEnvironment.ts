@@ -1,4 +1,4 @@
-import { clientDistribution } from './distribution';
+import { requiredClientDistribution } from './distribution';
 import type { CloudOAuthProvider } from './authClient';
 
 // This allowlist is a development safeguard, never a release routing fallback.
@@ -12,7 +12,6 @@ export type CloudApiEnvironment = {
   VITE_KORDI_DEV_PROFILE?: string;
   VITE_KORDI_PRODUCTION_DEBUG_ACK?: string;
   VITE_KORDI_ENABLE_LOOPBACK_REALTIME?: string;
-  distribution?: ReturnType<typeof clientDistribution>;
 };
 
 function cleanBaseUrl(value: string): string {
@@ -66,18 +65,17 @@ export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {
     if (operatorProfile) {
       if (!operatorProductionDebugIsEnabled(activeEnv)) {
         throw new Error(
-          'Production Cloud API is blocked in development until the operator acknowledgement is set.',
+          'Production Cloud API is blocked in development without operator acknowledgement.',
         );
       }
       if (!APPROVED_OPERATOR_CLOUD_API_ORIGINS.has(cleaned)) {
-        throw new Error('Operator development may use only the approved https://kordi.ai product origin.');
+        throw new Error('Operator origin must match the approved product origin.');
       }
       return cleaned;
     }
     if (isProductionCloudOrigin(cleaned)) {
       throw new Error(
-        'Production Cloud API is blocked in development for community profiles. '
-        + 'Use the allowlisted operator launcher for approved production debugging.',
+        'Production Cloud API is blocked in development for community profiles. Use the approved operator launcher.',
       );
     }
     return cleaned;
@@ -87,12 +85,11 @@ export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {
   if (activeEnv?.VITE_KORDI_DEV_PROFILE === 'community' && configured) {
     const url = new URL(cleanBaseUrl(configured));
     if (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return url.origin;
-    throw new Error('Community builds must use a loopback origin.');
+    throw new Error('Community builds require loopback.');
   }
-  const distribution = activeEnv?.distribution ?? clientDistribution();
-  if (!distribution) throw new Error('An ops distribution profile is required for this release.');
+  const distribution = requiredClientDistribution();
   if (configured && cleanBaseUrl(configured) !== distribution.backendOrigin) {
-    throw new Error('Cloud API override does not match the selected distribution.');
+    throw new Error('API override does not match this distribution.');
   }
   return distribution.backendOrigin;
 }

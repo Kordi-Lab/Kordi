@@ -15,14 +15,19 @@ use crate::service_model_config::{shared_setting, validate_base_url};
 pub const DEFAULT_SYSTEM_AGENT_ACCOUNT_ID: &str = "acct_kordi_pip";
 pub const DEFAULT_SYSTEM_AGENT_ID: &str = "cloud_agent_kordi_pip";
 /// People see the plan agent as System, like every other server notice.
-pub const DEFAULT_SYSTEM_AGENT_NAME: &str = crate::system_account::SYSTEM_DISPLAY_NAME;
-pub const DEFAULT_SYSTEM_AGENT_SUBTITLE: &str = "Keeps plans in this chat honest";
-pub const DEFAULT_SYSTEM_AGENT_OWNER_EMAIL: &str = "pip@kordi.ai";
-pub const DEFAULT_SYSTEM_AGENT_OPENAI_MODEL: &str = "gpt-5.6-luna";
+pub const DEFAULT_SYSTEM_AGENT_NAME: &str =
+    crate::distribution::development_default(crate::system_account::SYSTEM_DISPLAY_NAME);
+pub const DEFAULT_SYSTEM_AGENT_SUBTITLE: &str =
+    crate::distribution::development_default("Keeps plans in this chat honest");
+pub const DEFAULT_SYSTEM_AGENT_OWNER_EMAIL: &str =
+    crate::distribution::development_default("pip@kordi.ai");
+pub const DEFAULT_SYSTEM_AGENT_OPENAI_MODEL: &str =
+    crate::distribution::development_default("gpt-5.6-luna");
 
 const SYSTEM_AGENT_OPENAI_PROVIDER: &str = "openai";
 const SYSTEM_AGENT_OPENAI_AUTH_CHOICE: &str = "pip-service-api-key";
-pub const DEFAULT_SYSTEM_AGENT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+pub const DEFAULT_SYSTEM_AGENT_OPENAI_BASE_URL: &str =
+    crate::distribution::development_default("https://api.openai.com/v1");
 const SYSTEM_AGENT_OPENAI_SNAPSHOT_ID: &str = "pip-service-openai";
 
 #[derive(Clone)]
@@ -217,6 +222,11 @@ impl PendingSystemAgentConfig {
     pub fn from_env() -> Result<Option<Self>, SystemAgentConfigError> {
         let config = Self::from_lookup(|key| env::var(key).ok())?;
         if let Some(config) = &config {
+            if config.name.trim().is_empty() || config.subtitle.trim().is_empty() {
+                return Err(SystemAgentConfigError::Invalid(
+                    "An explicit agent name and subtitle are required",
+                ));
+            }
             config
                 .provider_auth
                 .credential()

@@ -39,8 +39,8 @@ fn hash_app_invite_token(token: &str) -> String {
 }
 
 fn app_invite_url(token: &str) -> String {
-    let public_base =
-        std::env::var("KORDI_PUBLIC_APP_URL").unwrap_or_else(|_| crate::distribution::public_origin());
+    let public_base = std::env::var("KORDI_PUBLIC_APP_URL")
+        .unwrap_or_else(|_| crate::distribution::public_origin());
     format!("{}/i/{token}", public_base.trim_end_matches('/'))
 }
 

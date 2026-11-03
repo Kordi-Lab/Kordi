@@ -10,9 +10,9 @@ test('Research uses its own backend and rejects App updates and links', () => {
   const previous = scope.__KORDI_DISTRIBUTION__;
   try {
     scope.__KORDI_DISTRIBUTION__ = {
-      edition: 'research', environment: 'production', backendOrigin: 'https://research.example.test',
-      displayName: 'Research', desktopIdentifier: 'test.research.desktop', callbackScheme: 'sample-research',
-      updates: { enabled: false, publicKey: '', artifactName: 'Research' },
+      backendOrigin: 'https://research.example.test',
+      callbackScheme: 'sample-research',
+      updates: { enabled: false, artifactName: 'Research' },
     };
     assert.equal(cloudApiBaseUrl({}), 'https://research.example.test');
     assert.throws(() => cloudApiBaseUrl({ VITE_KORDI_CLOUD_API_BASE: 'https://kordi.ai' }), /does not match/);

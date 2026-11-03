@@ -36,7 +36,7 @@ export interface DistributionConfiguration {
     memoryMiB: number;
     sandboxCpuMillis: number;
     sandboxMemoryMiB: number;
-    bindings: Record<'project' | 'region' | 'instance' | 'database' | 'objectStorage' | 'serviceIdentity', string>;
+    bindings: Record<'project' | 'region' | 'zone' | 'instance' | 'database' | 'objectStorage' | 'serviceIdentity', string>;
   };
   apple: {
     teamBinding: string;
@@ -50,3 +50,6 @@ export type PublicClientConfiguration = Pick<DistributionConfiguration['routing'
   & { backendOrigin: string };
 export function validateDistributionConfiguration(value: unknown, expected: ExpectedTarget): DistributionConfiguration;
 export function publicClientConfiguration(profile: DistributionConfiguration): PublicClientConfiguration;
+export function publicDesktopConfiguration(profile: DistributionConfiguration): Pick<PublicClientConfiguration,
+  'backendOrigin' | 'callbackScheme'>
+  & { updates: Pick<PublicClientConfiguration['updates'], 'enabled' | 'artifactName'> };

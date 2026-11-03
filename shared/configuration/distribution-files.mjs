@@ -81,10 +81,13 @@ export function writeDistributionArtifacts(selection, directory) {
   const origin = c.backendOrigin;
   const files = {
     'client.json': json(c),
+    'profile.json': json({ ...p, clients: { ...p.clients, desktopIcon: 'icon.png', desktopIcns: 'icon.icns', iosIcon: 'ios-icon.png' } }),
+    'ios-icon.png': assets.iosIcon,
     'server.env.json': json(serviceEnvironment(p, 'server')),
     'runner.env.json': json(serviceEnvironment(p, 'runner')),
     'resources.json': json(p.resources),
     'apple-signing.json': json(p.apple),
+    'ExportOptions.plist': `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>method</key><string>${p.apple.exportMethod}</string><key>destination</key><string>export</string><key>signingStyle</key><string>automatic</string></dict></plist>\n`,
     'icon.png': assets.desktopIcon,
     'icon.icns': assets.desktopIcns,
     'Distribution.xcassets/DistributionIcon.appiconset/icon.png': assets.iosIcon,

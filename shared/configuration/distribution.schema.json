@@ -272,6 +272,7 @@
           "required": [
             "project",
             "region",
+            "zone",
             "instance",
             "database",
             "objectStorage",
@@ -299,6 +300,10 @@
               "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
             },
             "serviceIdentity": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "zone": {
               "type": "string",
               "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
             }

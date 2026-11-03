@@ -77,3 +77,12 @@ mod tests {
         );
     }
 }
+
+/// Preserve existing debug/Beta defaults without assigning a release deployment policy.
+pub(crate) const fn development_default(value: &'static str) -> &'static str {
+    if cfg!(debug_assertions) {
+        value
+    } else {
+        ""
+    }
+}

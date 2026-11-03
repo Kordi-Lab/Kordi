@@ -19,6 +19,7 @@ try {
   const build = args.includes('--build');
   const unsigned = args.includes('--unsigned');
   const env = { ...process.env,
+    KORDI_DISTRIBUTION_PROFILE: path.join(prepared, 'profile.json'),
     KORDI_RELEASE_BACKEND_ORIGIN: profile.routing.backend.origin,
     VITE_KORDI_CLOUD_API_BASE: profile.routing.backend.origin,
     MACOSX_DEPLOYMENT_TARGET: '13.0',

@@ -21,7 +21,7 @@
     "iosIcon": "fixture.png",
     "updates": {
       "enabled": true,
-      "publicKey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3N0JBRkMwRDRDNzFEOUIKUldTYkhjZlV3Szk3WjVXWWVmNzZGanNDakFlRkxTZ3UwZ1dLelpJenl3NnY3YmkvZCtEcUxxUWcK",
+      "publicKey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkgRTc2MjBGMTg0MkI0RTgxRgpSV1FmNkxSQ0dBOWk1M21sWWVjTzRJelQ1MVRHUHB2V3VjTlNDaDFDQk0wUVRhTG43M1k3R0ZPMw==",
       "artifactName": "Kordi"
     }
   },
@@ -64,7 +64,8 @@
       "instance": "TEST_INSTANCE",
       "database": "TEST_DATABASE",
       "objectStorage": "TEST_OBJECTSTORAGE",
-      "serviceIdentity": "TEST_SERVICEIDENTITY"
+      "serviceIdentity": "TEST_SERVICEIDENTITY",
+      "zone": "TEST_ZONE"
     }
   },
   "apple": {

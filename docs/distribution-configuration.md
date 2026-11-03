@@ -33,13 +33,13 @@ node scripts/package-distribution.mjs ios
 
 The example backend is synthetic; use the reviewed target from the selected ops repository. Validation and packaging plans do not build, sign, upload, provision or deploy. Preparation creates a new output directory exclusively and never overwrites an existing one.
 
-Outputs include `client.json`, `tauri.json`, `ios.xcconfig`, the selected icon assets, separate server/runner environment JSON, resource policy, Apple signing references, and a SHA-256 manifest. Absolute paths inside generated native build inputs are local-only and do not belong in Git.
+Outputs include a contained profile/asset snapshot, `client.json`, `tauri.json`, `ios.xcconfig`, the selected icon assets, separate server/runner environment JSON, resource policy, Apple signing references, local-only iOS `ExportOptions.plist`, and a SHA-256 manifest. Absolute paths inside generated native build inputs are local-only and do not belong in Git.
 
 ## Client builds
 
 Vite loads the selected profile at build time and injects only the public allowlist. Release API overrides must equal the selected origin. Generic browser builds have no product backend fallback; explicitly selected community browser fixtures remain loopback-only. Development/operator allowlists remain safeguards, not release defaults.
 
-The desktop packaging wrapper generates the Tauri identity, callback scheme, icons, updater endpoint and verification key. The native release embeds the selected backend at compile time, so a different launch environment cannot silently redirect the installed app. The App shipping identity is retained by its ops profile. Research has independent bundle/storage identity and cannot inherit App's updater key. Disabled Research updates provide no manual App download fallback.
+The desktop packaging wrapper uses one prepared snapshot for both native and web compilation and generates the Tauri identity, callback scheme, icons, updater endpoint and verification key. The native release embeds the selected backend at compile time, so a different launch environment cannot silently redirect the installed app. The App shipping identity is retained by its ops profile. Research has independent bundle/storage identity and cannot inherit App's updater key. Disabled Research updates provide no manual App download fallback.
 
 The iOS `Kordi` scheme requires the App profile. `Kordi Research` requires the Research profile. Their settings come from the generated xcconfig and are checked against an embedded public identity record. The app and share extension validate the selected origin, callback, app group and credential service. `Kordi Beta` retains its exact existing bundle IDs, gray icon, callback, app group, keychain service and loopback origin; it does not load ops release settings.
 
@@ -54,7 +54,7 @@ node scripts/run-configured-service.mjs server /path/to/kordi-cloud-server serve
 node scripts/run-configured-service.mjs runner /path/to/kordi-cloud-agent-runner
 ```
 
-This is a process launcher, not infrastructure provisioning. Do not run it against a live environment without that environment's operating authorization. The server receives the selected public origin, client callback allowlist, model/provider policy, built-in personas, names and connector budget. The runner receives the backend, polling, concurrency, sandbox backend and bounded Kubernetes CPU/memory limits. Credentials and restricted bindings are supplied separately through the established service-specific environment variables. The profile cannot turn off authorization, change cross-user boundaries, enable privileged containers or attach service-account credentials to sandbox pods.
+This is a process launcher, not infrastructure provisioning. Do not run it against a live environment without that environment's operating authorization. The server receives the selected public origin, client callback allowlist, model/provider policy, built-in personas, names and connector budget. The runner receives the backend, polling, concurrency, sandbox backend and bounded Kubernetes CPU/memory limits. The configured launcher requires explicit namespace/image bindings for Kubernetes or the required Fly bindings; release runners reject an implicit local sandbox. Credentials and restricted bindings are supplied separately through the established service-specific environment variables. The profile cannot turn off authorization, change cross-user boundaries, enable privileged containers or attach service-account credentials to sandbox pods.
 
 Ops owns the resource plan and provider choice. Its binding fields are environment-variable names, not actual identifiers. Kubernetes namespace/image, Fly app/image/token, database, storage, IAM and GCP placement must be resolved by the separately reviewed deployment adapter. This implementation does not provision those resources, change existing deployments or replace network policy.
 

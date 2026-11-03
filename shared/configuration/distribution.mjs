@@ -45,6 +45,7 @@ export function validateDistributionConfiguration(input, expected) {
   if (expected.edition === 'app' && [c.desktopIdentifier, c.iosIdentifier, c.appGroup, c.credentialService].some((v) => v.split(/[.-]/).includes('research'))) fail('App must not reuse Research storage.');
   text(c.callbackScheme, /^[a-z][a-z0-9-]{2,39}$/, 'Callback scheme');
   if (c.callbackScheme === 'kordi-beta') fail('Release callback must not reuse Beta.');
+  if (expected.environment === 'staging' && [c.desktopIdentifier, c.iosIdentifier, c.appGroup, c.credentialService, c.callbackScheme].some((v) => !v.split(/[.-]/).includes('staging'))) fail('Staging must have separate identities.');
   if (c.iosShareIdentifier !== `${c.iosIdentifier}.share`) fail('Share extension identity must belong to this app.');
   if (expected.edition === 'research' && [c.desktopIdentifier, c.iosIdentifier, c.appGroup, c.credentialService, c.callbackScheme].some((v) => !v.split(/[.-]/).includes('research'))) {
     fail('Research identities must carry a separate research namespace.');
@@ -88,7 +89,7 @@ export function validateDistributionConfiguration(input, expected) {
   integer(res.memoryMiB, 256, 262144, 'Memory limit');
   integer(res.sandboxCpuMillis, 100, 16000, 'Sandbox CPU limit');
   integer(res.sandboxMemoryMiB, 128, 32768, 'Sandbox memory limit');
-  object(res.bindings, ['project', 'region', 'instance', 'database', 'objectStorage', 'serviceIdentity'], 'Resource bindings');
+  object(res.bindings, ['project', 'region', 'zone', 'instance', 'database', 'objectStorage', 'serviceIdentity'], 'Resource bindings');
   for (const name of Object.values(res.bindings)) text(name, binding, 'Resource binding name');
   object(value.apple, ['teamBinding', 'identityBinding', 'notaryProfileBinding', 'exportMethod'], 'Apple packaging');
   for (const field of ['teamBinding', 'identityBinding', 'notaryProfileBinding']) text(value.apple[field], binding, 'Signing binding name');
@@ -110,5 +111,15 @@ export function publicClientConfiguration(profile) {
     appGroup: profile.clients.appGroup,
     credentialService: profile.clients.credentialService,
     updates: profile.clients.updates,
+  };
+}
+
+/** Desktop bundles do not need iOS app-group or credential-service identifiers. */
+export function publicDesktopConfiguration(profile) {
+  const client = publicClientConfiguration(profile);
+  return {
+    backendOrigin: client.backendOrigin,
+    callbackScheme: client.callbackScheme,
+    updates: { enabled: client.updates.enabled, artifactName: client.updates.artifactName },
   };
 }
