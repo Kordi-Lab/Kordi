@@ -28,7 +28,9 @@ const PAGE_CSS: &str = include_str!("assets/page.css");
 const PAGE_JS: &str = include_str!("assets/page.js");
 const PAGE_AGENT_JS: &str = include_str!("assets/page-agent.js");
 const PAGE_MENU_JS: &str = include_str!("assets/page-menu.js");
-const KORDI_HOMEPAGE_URL: &str = "https://kordi.ai/";
+fn homepage_url() -> String {
+    format!("{}/", crate::distribution::public_origin())
+}
 const KORDI_FAVICON_URL: &str = "/assets/favicon.png";
 
 const BRAND_MARK: &str = r#"<svg viewBox='64 58 384 384' aria-hidden='true'><mask id='kordi-bird-cut' maskUnits='userSpaceOnUse' x='-100' y='-100' width='712' height='712'><ellipse cx='262' cy='292' rx='150' ry='136' fill='#fff'/><path d='M400,342 C436,322 462,272 470,204 C448,236 420,244 386,218Z' fill='#fff' stroke='#fff' stroke-width='4' stroke-linejoin='round'/><circle cx='194' cy='266' r='17'/><path d='M269.6,333.2 C292,299.6 348,282 397.6,285.2 C381.6,325.2 336.8,357.2 288.8,355.6 C272.8,354 264.8,344.4 269.6,333.2Z'/></mask><g transform='translate(256,250) scale(0.94) translate(-270,-292)'><path d='M120,276 L82,294 L120,312Z' fill='currentColor' stroke='currentColor' stroke-width='12' stroke-linejoin='round'/><rect x='-100' y='-100' width='712' height='712' fill='currentColor' mask='url(#kordi-bird-cut)'/></g></svg>"#;
@@ -188,7 +190,7 @@ pub(crate) fn document_page(input: &PageInput<'_>, nonce: &str) -> String {
         favicon = KORDI_FAVICON_URL,
         title = escape_html(&title),
         css = PAGE_CSS,
-        home = KORDI_HOMEPAGE_URL,
+        home = homepage_url(),
         brand = BRAND_MARK,
         deep_link = escape_html(&share_deep_link(input.token)),
         token = escape_html(input.token),
@@ -205,6 +207,7 @@ pub(crate) fn document_page(input: &PageInput<'_>, nonce: &str) -> String {
 }
 
 pub(crate) fn link_off_page(nonce: &str) -> String {
+    let homepage = homepage_url();
     format!(
         r#"<!doctype html>
 <html lang="en">
@@ -216,7 +219,7 @@ pub(crate) fn link_off_page(nonce: &str) -> String {
 <style nonce="{nonce}">{PAGE_CSS}</style>
 </head>
 <body>
-<header class="webbar"><a class="brand" href="{KORDI_HOMEPAGE_URL}" aria-label="Kordi home">{BRAND_MARK}Kordi</a></header>
+<header class="webbar"><a class="brand" href="{homepage}" aria-label="Kordi home">{BRAND_MARK}Kordi</a></header>
 <main class="gone">{LOCK_ICON}<b>This link is off</b></main>
 </body>
 </html>"#

@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-const DEFAULT_PUBLIC_BASE_URL: &str = "https://kordi.ai";
 const AVATAR_SEED_PREFIX: &str = "kordi-pixel-avatar://";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,10 +113,7 @@ pub(super) fn oauth_config(provider: OAuthProvider) -> Result<OAuthConfig, Strin
 }
 
 pub(crate) fn public_base_url() -> String {
-    std::env::var("KORDI_CLOUD_PUBLIC_BASE_URL")
-        .unwrap_or_else(|_| DEFAULT_PUBLIC_BASE_URL.to_string())
-        .trim_end_matches('/')
-        .to_string()
+    crate::distribution::public_origin()
 }
 
 pub(crate) fn is_allowed_oauth_redirect(target: &str) -> bool {

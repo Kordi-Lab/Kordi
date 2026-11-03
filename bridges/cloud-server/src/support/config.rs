@@ -5,12 +5,15 @@ use crate::service_model_config::{shared_setting, validate_base_url};
 
 pub const DEFAULT_SUPPORT_ACCOUNT_ID: &str = "acct_kordi_support";
 pub const DEFAULT_SUPPORT_AGENT_ID: &str = "cloud_agent_kordi_support";
-pub const DEFAULT_SUPPORT_NAME: &str = "Kordi Support";
-pub const DEFAULT_SUPPORT_SUBTITLE: &str = "Ask questions or suggest improvements";
-pub const DEFAULT_SUPPORT_OPENAI_MODEL: &str = "gpt-5.6-luna";
+pub const DEFAULT_SUPPORT_NAME: &str = crate::distribution::development_default("Kordi Support");
+pub const DEFAULT_SUPPORT_SUBTITLE: &str =
+    crate::distribution::development_default("Ask questions or suggest improvements");
+pub const DEFAULT_SUPPORT_OPENAI_MODEL: &str =
+    crate::distribution::development_default("gpt-5.6-luna");
 const SUPPORT_OPENAI_PROVIDER: &str = "openai";
 const SUPPORT_OPENAI_AUTH_CHOICE: &str = "support-service-api-key";
-const SUPPORT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+const SUPPORT_OPENAI_BASE_URL: &str =
+    crate::distribution::development_default("https://api.openai.com/v1");
 const SUPPORT_OPENAI_SNAPSHOT_ID: &str = "support-service-openai";
 
 #[derive(Clone)]
@@ -97,6 +100,7 @@ impl fmt::Debug for SupportProviderAuth {
 
 #[derive(Debug, Clone)]
 pub struct PendingSupportConfig {
+    pub system_prompt: String,
     pub owner_account_id: String,
     pub owner_email: String,
     pub agent_id: String,
@@ -108,6 +112,7 @@ pub struct PendingSupportConfig {
 
 #[derive(Debug, Clone)]
 pub struct SupportConfig {
+    pub system_prompt: String,
     pub owner_account_id: String,
     pub owner_email: String,
     pub agent_id: String,
@@ -172,6 +177,11 @@ impl PendingSupportConfig {
     pub fn from_env() -> Result<Option<Self>, SupportConfigError> {
         let config = Self::from_lookup(|key| env::var(key).ok())?;
         if let Some(config) = &config {
+            if config.name.trim().is_empty() || config.subtitle.trim().is_empty() {
+                return Err(SupportConfigError::Invalid(
+                    "An explicit agent name and subtitle are required",
+                ));
+            }
             config
                 .provider_auth
                 .credential()
@@ -219,10 +229,10 @@ impl PendingSupportConfig {
                     DEFAULT_SUPPORT_OPENAI_MODEL,
                 );
                 let mut auth = SupportProviderAuth::openai_api_key(api_key, model)?;
-                if let Some(base_url) = optional(&mut get, "KORDI_SUPPORT_OPENAI_BASE_URL") {
-                    auth.base_url =
-                        validate_base_url(&base_url).map_err(SupportConfigError::Invalid)?;
-                }
+                let base_url = optional(&mut get, "KORDI_SUPPORT_OPENAI_BASE_URL")
+                    .unwrap_or_else(|| SUPPORT_OPENAI_BASE_URL.to_string());
+                auth.base_url =
+                    validate_base_url(&base_url).map_err(SupportConfigError::Invalid)?;
                 auth
             }
             Some(_) => {
@@ -232,7 +242,10 @@ impl PendingSupportConfig {
             }
         };
 
+        let system_prompt = super::agent::system_prompt(get("KORDI_SUPPORT_PERSONA").as_deref())
+            .map_err(SupportConfigError::Invalid)?;
         Ok(Some(Self {
+            system_prompt,
             owner_account_id: required_or_default(
                 &mut get,
                 "KORDI_SUPPORT_OWNER_ACCOUNT_ID",
