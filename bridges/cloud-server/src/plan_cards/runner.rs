@@ -31,7 +31,7 @@ fn represented_accounts(prompt: &str) -> BTreeSet<String> {
         .flatten()
         .filter(|message| message["isNew"] == true)
         .filter(|message| {
-            message["id"]
+            message["messageId"]
                 .as_str()
                 .is_some_and(|message_id| !message_id.is_empty())
         })
@@ -168,15 +168,44 @@ pub async fn runner_action(
 #[cfg(test)]
 mod tests {
     use super::represented_accounts;
+    use crate::system_agent::context::{budget_messages, ContextMessage};
     use serde_json::json;
+
+    #[test]
+    fn represented_accounts_accept_the_system_agent_context_wire_shape() {
+        let message = |id: &str, sequence, sender: &str| ContextMessage {
+            id: id.to_string(),
+            sequence,
+            sender_id: sender.to_string(),
+            sender_name: sender.to_string(),
+            kind: "text".to_string(),
+            text: "Lunch works for me".to_string(),
+            created_at: "2026-11-01T12:00:00Z".to_string(),
+        };
+        let messages = budget_messages(
+            vec![
+                message("new", 2, "new-member"),
+                message("old", 1, "old-member"),
+            ],
+            0,
+            1,
+            "system-agent",
+        );
+        assert_eq!(
+            represented_accounts(&json!({"messages": messages}).to_string()),
+            std::collections::BTreeSet::from(["new-member".to_string()])
+        );
+    }
 
     #[test]
     fn represented_accounts_require_new_message_provenance() {
         let prompt = json!({
             "messages": [
-                {"id": "old", "senderId": "old-member", "isNew": false},
-                {"id": "new", "senderId": "new-member", "isNew": true},
-                {"id": "", "senderId": "missing-source", "isNew": true}
+                {"messageId": "old", "senderId": "old-member", "isNew": false},
+                {"messageId": "new", "senderId": "new-member", "isNew": true},
+                {"messageId": "", "senderId": "empty-source", "isNew": true},
+                {"senderId": "missing-source", "isNew": true},
+                {"id": "wrong-key", "senderId": "wrong-source", "isNew": true}
             ]
         })
         .to_string();
@@ -184,5 +213,8 @@ mod tests {
             represented_accounts(&prompt),
             std::collections::BTreeSet::from(["new-member".to_string()])
         );
+        for prompt in ["not json", "{}", r#"{"messages":null}"#] {
+            assert!(represented_accounts(prompt).is_empty());
+        }
     }
 }
