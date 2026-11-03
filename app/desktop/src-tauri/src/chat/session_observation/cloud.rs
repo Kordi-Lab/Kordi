@@ -4,6 +4,7 @@ use kordi_core::error::{KordiError, KordiResult};
 use kordi_tools::{ReadSessionRequest, SessionObservationRuntime};
 use serde_json::{json, Value};
 use std::sync::Arc;
+pub(super) mod catalog;
 
 struct CloudObservation {
     authorization: Value,
