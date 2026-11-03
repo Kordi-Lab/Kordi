@@ -111,3 +111,48 @@ test('the sync retries a failed personal agents list and reports each failure', 
     setPersonalAgentEntries([]);
   }
 });
+
+test('a synced Proactive change refreshes the list without a local toggle', async () => {
+  __setSessionBackendForTests({ load: async () => ({ token: 'token', accountId: 'acct_alex', expiresAt: '2099-01-01T00:00:00Z' }), save: async () => undefined, clear: async () => undefined });
+  let enabled = true;
+  let calls = 0;
+  const agents: Agent[] = [];
+  const personal = { agentId: 'cloud-agent:acct_alex', conversationId: 'conv', sessionId: 'session:personal', proactive: true };
+  function Harness() {
+    usePersonalAgentSync({
+      accountId: 'acct_alex', agents, canonicalState: null, setCanonicalState: () => undefined, canCreateSessions: false,
+      loadCachedConversations: async () => [{ id: 'conv', kind: 'ai', legacy_session_id: personal.sessionId, personal_agent: enabled ? { agent_id: personal.agentId } : null } as never],
+      list: async () => { calls += 1; return enabled ? [personal] : []; },
+    });
+    return null;
+  }
+  try {
+    await withJsdomRoot(async (mount) => {
+      await mount(createElement(Harness));
+      await act(async () => { await until(() => getPersonalAgentEntries().length === 1); });
+      enabled = false;
+      await act(async () => {
+        window.dispatchEvent(new window.Event('kordi.chat-sync.local-state-changed'));
+        await wait(30);
+      });
+      await act(async () => { await until(() => calls === 2); });
+      assert.deepEqual(getPersonalAgentEntries(), [], 'the retained conversation is no longer a personal-agent row');
+      const callsAfterDisable = calls;
+      await act(async () => {
+        window.dispatchEvent(new window.Event('kordi.chat-sync.local-state-changed'));
+        await wait(30);
+      });
+      assert.equal(calls, callsAfterDisable, 'unrelated message sync does not reload the list');
+      enabled = true;
+      await act(async () => {
+        window.dispatchEvent(new window.Event('kordi.chat-sync.local-state-changed'));
+        await wait(30);
+      });
+      await act(async () => { await until(() => getPersonalAgentEntries().length === 1); });
+      assert.equal(getPersonalAgentEntries()[0]?.sessionId, personal.sessionId, 're-enable reuses the conversation');
+    });
+  } finally {
+    __setSessionBackendForTests(null);
+    setPersonalAgentEntries([]);
+  }
+});
