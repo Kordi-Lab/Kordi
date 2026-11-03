@@ -327,3 +327,37 @@ async fn null_cursor_reads_latest_but_real_cursors_are_preserved_with_recovery_g
     assert_eq!(captured[0].attachment_id, None);
     assert_eq!(captured[0].around_message_id, None);
 }
+
+#[tokio::test]
+async fn nonempty_older_index_explicitly_excludes_newer_messages() {
+    let runtime = SessionObservationRuntime {
+        calendar: None,
+        search_sessions: Arc::new(|_| Box::pin(async { unreachable!() })),
+        read_session: Arc::new(|request| {
+            assert_eq!(request.before_sequence, Some(14));
+            Box::pin(async {
+                Ok(serde_json::from_value(json!({
+                "session":{"sessionId":"group","title":"Synthetic Group","kind":"group","participants":[]},
+                "window":{"hasMoreBefore":false,"hasMoreAfter":false},
+                "messages":[{"messageId":"old-image-message","sender":"Synthetic Person","role":"human","sequenceNum":13}]
+            })).unwrap())
+            })
+        }),
+    };
+    let result = ReadSessionTool
+        .execute(
+            json!({"sessionId":"group","mode":"index","beforeSequence":14}),
+            &ctx_with_runtime(Some(runtime)),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    let text = match &result.content[0] {
+        kordi_core::types::ContentBlock::Text { text } => text,
+        _ => panic!("expected text"),
+    };
+    assert!(text.contains("old-image-message"));
+    assert!(text.contains("strictly before sequence 14"));
+    assert!(text.contains("newer messages are excluded"));
+    assert!(text.contains("retry mode=index with beforeSequence=null"));
+}

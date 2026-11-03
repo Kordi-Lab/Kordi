@@ -275,11 +275,11 @@ impl Tool for ReadSessionTool {
             "Session `{}` — {} ({})",
             response.session.session_id, response.session.title, response.session.kind
         );
-        if is_index
-            && response.messages.is_empty()
-            && let Some(before) = before_sequence
-        {
-            text.push_str(&format!("\nNo messages were returned before sequence {before}. This older-history window does not establish that the conversation has no messages. To inspect the latest messages, retry mode=index with beforeSequence=null (or omitted) and aroundMessageId=null."));
+        if is_index && let Some(before) = before_sequence {
+            text.push_str(&format!("\nThis index contains only messages strictly before sequence {before}; newer messages are excluded even if this page is nonempty. For latest or unread messages, retry mode=index with beforeSequence=null (or omitted) and aroundMessageId=null."));
+            if response.messages.is_empty() {
+                text.push_str(" No messages were returned in this older window; that does not establish that the conversation has no messages.");
+            }
         }
         for participant in &response.session.participants {
             text.push_str(&format!(
