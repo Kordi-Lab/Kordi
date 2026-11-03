@@ -244,3 +244,120 @@ async fn image_reads_return_media_without_copying_bytes_into_diagnostic_details(
     );
     assert!(!result.details.unwrap().to_string().contains(&encoded));
 }
+
+#[test]
+fn optional_observation_arguments_allow_null_when_provider_requires_all_properties() {
+    for schema in [
+        SearchSessionsTool.parameters_schema(),
+        ReadSessionTool.parameters_schema(),
+    ] {
+        let required = schema["required"].as_array().unwrap();
+        for (name, property) in schema["properties"].as_object().unwrap() {
+            if required.contains(&json!(name)) {
+                continue;
+            }
+            assert!(
+                property["type"]
+                    .as_array()
+                    .is_some_and(|types| types.contains(&json!("null"))),
+                "optional {name} must support explicit null"
+            );
+            if let Some(values) = property["enum"].as_array() {
+                assert!(values.contains(&Value::Null), "optional enum {name}");
+            }
+        }
+    }
+    assert_eq!(
+        ReadSessionTool.parameters_schema()["properties"]["beforeSequence"]["minimum"],
+        1
+    );
+    assert!(CHAT_HISTORY_GUIDANCE.contains("beforeSequence=null"));
+}
+
+#[tokio::test]
+async fn null_cursor_reads_latest_but_real_cursors_are_preserved_with_recovery_guidance() {
+    let requests = Arc::new(Mutex::new(Vec::<crate::ReadSessionRequest>::new()));
+    let capture = requests.clone();
+    let runtime = SessionObservationRuntime {
+        calendar: None,
+        search_sessions: Arc::new(|_| Box::pin(async { unreachable!() })),
+        read_session: Arc::new(move |request| {
+            capture.lock().unwrap().push(request);
+            Box::pin(async {
+                Ok(serde_json::from_value(json!({
+                "session":{"sessionId":"group","title":"Synthetic Group","kind":"group","participants":[]},
+                "window":{"hasMoreBefore":false,"hasMoreAfter":false},"messages":[]
+            })).unwrap())
+            })
+        }),
+    };
+    let context = ctx_with_runtime(Some(runtime));
+    for cursor in [Value::Null, json!(1), json!(14)] {
+        let result = ReadSessionTool
+            .execute(
+                json!({"sessionId":"group","mode":"index",
+            "beforeSequence":cursor,"aroundMessageId":null,"limit":null,"offset":null,
+            "attachmentId":null,"expectedVersion":null,"messageIds":null}),
+                &context,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        let text = match &result.content[0] {
+            kordi_core::types::ContentBlock::Text { text } => text,
+            _ => panic!("expected text"),
+        };
+        assert_eq!(
+            text.contains("retry mode=index with beforeSequence=null"),
+            !cursor.is_null()
+        );
+    }
+    let captured = requests.lock().unwrap();
+    assert_eq!(
+        captured
+            .iter()
+            .map(|r| r.before_sequence)
+            .collect::<Vec<_>>(),
+        vec![None, Some(1), Some(14)]
+    );
+    assert_eq!(captured[0].limit, Some(DEFAULT_READ_SESSION_LIMIT));
+    assert_eq!(captured[0].expected_version, None);
+    assert_eq!(captured[0].offset, None);
+    assert_eq!(captured[0].message_ids, None);
+    assert_eq!(captured[0].attachment_id, None);
+    assert_eq!(captured[0].around_message_id, None);
+}
+
+#[tokio::test]
+async fn nonempty_older_index_explicitly_excludes_newer_messages() {
+    let runtime = SessionObservationRuntime {
+        calendar: None,
+        search_sessions: Arc::new(|_| Box::pin(async { unreachable!() })),
+        read_session: Arc::new(|request| {
+            assert_eq!(request.before_sequence, Some(14));
+            Box::pin(async {
+                Ok(serde_json::from_value(json!({
+                "session":{"sessionId":"group","title":"Synthetic Group","kind":"group","participants":[]},
+                "window":{"hasMoreBefore":false,"hasMoreAfter":false},
+                "messages":[{"messageId":"old-image-message","sender":"Synthetic Person","role":"human","sequenceNum":13}]
+            })).unwrap())
+            })
+        }),
+    };
+    let result = ReadSessionTool
+        .execute(
+            json!({"sessionId":"group","mode":"index","beforeSequence":14}),
+            &ctx_with_runtime(Some(runtime)),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    let text = match &result.content[0] {
+        kordi_core::types::ContentBlock::Text { text } => text,
+        _ => panic!("expected text"),
+    };
+    assert!(text.contains("old-image-message"));
+    assert!(text.contains("strictly before sequence 14"));
+    assert!(text.contains("newer messages are excluded"));
+    assert!(text.contains("retry mode=index with beforeSequence=null"));
+}
