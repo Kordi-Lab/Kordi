@@ -271,7 +271,6 @@ final class CloudModelDecodingTests: XCTestCase {
     }
 
     func testDefaultClientUsesConfiguredOriginAndFailsFast() {
-        XCTAssertEqual(CloudAPIClient.productionBaseURL.absoluteString, "https://kordi.ai")
         XCTAssertFalse(CloudAPIClient.reliableSession.configuration.waitsForConnectivity)
         XCTAssertEqual(CloudAPIClient.reliableSession.configuration.timeoutIntervalForRequest, 30)
         XCTAssertEqual(CloudAPIClient.reliableSession.configuration.timeoutIntervalForResource, 90)

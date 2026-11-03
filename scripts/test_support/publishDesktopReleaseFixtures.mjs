@@ -114,10 +114,8 @@ export async function makeVerifierRepoFixture() {
   const packageLock = { version: VERSION, packages: { '': { version: VERSION } } };
   const cargoVersion = `name = "kordi-desktop"\nversion = "${VERSION}"\n`;
   const acceptanceConfig = {
-    productName: 'Kordi',
-    identifier: 'io.kordi.cloud',
     bundle: { macOS: { signingIdentity: '-' } },
-    plugins: { updater: { endpoints: [ACCEPTANCE_ENDPOINT] } },
+    plugins: { updater: { endpoints: [] } },
   };
   await Promise.all([
     writeFile(join(desktopRoot, 'package.json'), JSON.stringify({ version: VERSION })),
@@ -125,7 +123,7 @@ export async function makeVerifierRepoFixture() {
     writeFile(join(tauriRoot, 'tauri.conf.json'), JSON.stringify({
       version: VERSION,
       bundle: { macOS: { minimumSystemVersion: '13.0' } },
-      plugins: { updater: { pubkey: TAURI_UPDATER_PUBLIC_KEY, endpoints: [PRODUCTION_ENDPOINT] } },
+      plugins: { updater: { pubkey: '', endpoints: [] } },
     })),
     writeFile(join(tauriRoot, 'tauri.cloud.conf.json'), JSON.stringify({ identifier: 'io.kordi.cloud' })),
     writeFile(join(tauriRoot, 'tauri.cloud.acceptance.conf.json'), JSON.stringify(acceptanceConfig)),
