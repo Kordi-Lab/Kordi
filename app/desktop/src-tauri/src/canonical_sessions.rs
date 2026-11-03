@@ -28,7 +28,7 @@ mod presence;
 pub(crate) mod prompt_context;
 mod sanitization;
 mod schema;
-mod session_observation;
+pub(crate) mod session_observation;
 pub(crate) mod session_route_command;
 mod side_sessions;
 mod voice_context;

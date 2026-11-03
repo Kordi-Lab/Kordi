@@ -389,20 +389,31 @@ impl<C: CloudAgentRunClient + Sync> HostTool for CloudOmpTools<'_, C> {
         )
         .await;
         let outcome = ToolOutcome::new(&model_call.name, &result);
+        let ok = outcome.ok;
         let content = outcome.content.clone();
         if let Ok(mut outcomes) = self.outcomes.lock() {
             outcomes.push(outcome);
         }
         let content = match content {
-            Value::Array(blocks) => blocks,
+            Value::Array(blocks) => blocks.into_iter().map(omp_tool_block).collect(),
             Value::String(text) => vec![json!({"type":"text","text":text})],
             other => vec![json!({"type":"text","text":other.to_string()})],
         };
         ToolResult {
-            ok: true,
+            ok,
             content,
             details: None,
         }
+    }
+}
+
+// The legacy cloud loop uses provider-shaped images. OMP needs its own typed
+// image block; otherwise OMP can omit the image from the provider request.
+fn omp_tool_block(block: Value) -> Value {
+    if block["type"] == "image" && block["source"]["type"] == "base64" {
+        json!({"type":"image", "data":block["source"]["data"], "mimeType":block["source"]["media_type"]})
+    } else {
+        block
     }
 }
 

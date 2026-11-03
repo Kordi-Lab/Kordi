@@ -3,6 +3,7 @@ use kordi_tools::{ReadSessionRequest, SearchSessionsRequest, SessionObservationR
 use std::sync::Arc;
 pub(super) mod cloud;
 pub(super) mod image_visibility;
+pub(super) mod selection;
 
 #[cfg(test)]
 pub(super) fn build_session_observation_runtime(
@@ -31,6 +32,20 @@ pub(super) fn build_with_identity(
                     if let Some(remote) = cloud::member_runtime(scope, identity.as_ref())? {
                         return (remote.search_sessions)(request).await;
                     }
+                } else if let Some(owner) = cloud::catalog::owner_catalog(identity.as_ref())? {
+                    let conversations = owner.conversations().await?;
+                    let mut sessions = cloud::catalog::search(&conversations, &request);
+                    let limit = request.limit.unwrap_or(8).clamp(1, 20);
+                    let local = run_blocking_observation(move || {
+                        crate::canonical_sessions::session_observation::search_local_sessions_for_observation(request)
+                    })
+                    .await?;
+                    sessions.extend(local.sessions);
+                    sessions.truncate(limit);
+                    return Ok(kordi_tools::SearchSessionsResponse {
+                        sessions,
+                        next_before_sequence: None,
+                    });
                 }
                 run_blocking_observation(move || {
                     crate::canonical_sessions::search_sessions_for_observation_scoped(
@@ -53,6 +68,18 @@ pub(super) fn build_with_identity(
                     return Err(KordiError::Tool(
                         "This agent can only read its current group conversation".into(),
                     ));
+                }
+                if scope.is_none() {
+                    if let Some(owner) = cloud::catalog::owner_catalog(identity.as_ref())? {
+                        if let Some(response) = owner.read(request.clone()).await? {
+                            return Ok(response);
+                        }
+                        if is_synced_session(&request.session_id)? {
+                            return Err(KordiError::Tool(
+                                "Conversation is no longer accessible".into(),
+                            ));
+                        }
+                    }
                 }
                 if let Some(remote) = cloud::member_runtime(&request.session_id, identity.as_ref())?
                 {
@@ -79,6 +106,18 @@ pub(super) fn build_with_identity(
             })
         }),
     }
+}
+
+// Shared conversations must never fall back to a possibly stale local transcript.
+fn is_synced_session(session_id: &str) -> KordiResult<bool> {
+    let conn = crate::canonical_sessions::open_db().map_err(KordiError::Tool)?;
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM chat_sync_conversations WHERE client_session_id=?1)
+            OR EXISTS(SELECT 1 FROM sessions WHERE id=?1 AND kind IN ('group','direct'))",
+        [session_id.trim()],
+        |row| row.get(0),
+    )
+    .map_err(|error| KordiError::Tool(error.to_string()))
 }
 
 async fn run_blocking_observation<T, F>(operation: F) -> KordiResult<T>

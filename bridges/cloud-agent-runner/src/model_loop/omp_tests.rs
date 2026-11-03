@@ -5,6 +5,9 @@ use crate::client::{
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+#[path = "omp_media_tests.rs"]
+mod media;
+
 struct NoCloudCalls;
 #[async_trait]
 impl CloudAgentRunClient for NoCloudCalls {

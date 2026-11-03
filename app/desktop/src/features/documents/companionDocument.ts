@@ -67,11 +67,21 @@ export function withUploadedAttachmentId(
   return attachmentId ? { ...attachment, attachmentId } : attachment;
 }
 
+export function isSourceAttachment(attachment: Pick<MessageAttachment, 'name'>) {
+  return /\.(txt|text|log|csv|tsv|json|xml|ya?ml)$/i.test(attachment.name);
+}
+
+export function canPreviewAttachment(attachment: MessageAttachment) {
+  const resolved = withUploadedAttachmentId(attachment);
+  return Boolean((resolved.attachmentId || resolved.localPath)
+    && (documentFormatForPath(resolved.name) || isSourceAttachment(resolved)));
+}
+
 function attachmentDocument(attachment: MessageAttachment): CompanionDocument {
   const attachmentId = attachment.attachmentId?.trim() ?? '';
   return {
     artifact: {
-      id: `attachment:${attachmentId}`,
+      id: `attachment:${attachmentId || attachment.localPath}`,
       path: attachment.localPath?.trim() || attachment.name,
       name: attachment.name,
       kind: 'document',
@@ -80,19 +90,15 @@ function attachmentDocument(attachment: MessageAttachment): CompanionDocument {
     },
     preview: null,
     previewBaseRoot: null,
+    sourceView: isSourceAttachment(attachment),
+    readLocally: Boolean(attachment.localPath),
   };
 }
 
-/**
- * The one route for opening or downloading a file attachment: Markdown and
- * HTML with a cloud id open in the chat's document pane and the caller stops
- * (returns true). When no chat page is listening at that instant, the request
- * waits for the next one rather than falling back to a download. Other files
- * return false and keep their open or download action.
- */
+/** Opens supported document attachments in the pane, queuing requests until a chat mounts. */
 export function openAttachmentInCompanion(sent: MessageAttachment): boolean {
   const attachment = withUploadedAttachmentId(sent);
-  if (!isReaderAttachment(attachment)) return false;
+  if (!canPreviewAttachment(attachment)) return false;
   const document = attachmentDocument(attachment);
   if (!openCompanionDocument(document)) pendingDocument = document;
   return true;

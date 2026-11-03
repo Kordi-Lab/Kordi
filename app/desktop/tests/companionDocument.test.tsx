@@ -249,3 +249,23 @@ test('tool file links open read-only source tabs and retain the workspace bounda
     } finally { window.removeEventListener(COMPANION_DOCUMENT_OPEN_EVENT, capture); }
   });
 });
+
+test('text documents display literal source in the parallel pane', async () => {
+  await withJsdomRoot(async (mount) => {
+    const root = await mount(createElement(CompanionDocumentPane, {
+      tabs: {
+        documents: [{
+          artifact: { id: 'text-example', path: 'notes.txt', name: 'notes.txt', kind: 'file', summary: '' },
+          sourceView: true,
+          preview: { path: 'notes.txt', lines: [{ number: 1, text: '<h1>Plain text</h1>' }], truncated: false },
+        }],
+        activeId: 'text-example', activate: () => {}, closeTab: () => {},
+      },
+      host, onClose: () => {},
+    }));
+    const source = root.querySelector('[aria-label="File source"]');
+    assert.ok(source);
+    assert.match(source.textContent ?? '', /<h1>Plain text<\/h1>/);
+    assert.equal(source.querySelector('h1'), null);
+  });
+});
