@@ -306,9 +306,29 @@ pub struct ConnectorResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthStartRequest {
-    pub grant: ConnectorToolGroup,
+    pub grant: OAuthGrantRequest,
     #[serde(default)]
     pub redirect_after: Option<String>,
+}
+
+/// Explicit read-only consent fails closed on servers predating that policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OAuthGrantRequest {
+    Read,
+    Act,
+    ReadOnly,
+}
+
+impl OAuthGrantRequest {
+    pub fn tool_group(self, provider: &str) -> Option<ConnectorToolGroup> {
+        match self {
+            Self::Read => Some(ConnectorToolGroup::Read),
+            Self::Act => Some(ConnectorToolGroup::Act),
+            Self::ReadOnly if provider == "google_calendar" => Some(ConnectorToolGroup::Read),
+            Self::ReadOnly => None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]

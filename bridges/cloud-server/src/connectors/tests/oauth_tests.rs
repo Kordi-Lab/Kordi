@@ -4,6 +4,12 @@ use super::*;
 
 #[test]
 fn calendar_read_consent_never_requests_write_scope() {
+    let request: OAuthStartRequest = serde_json::from_value(json!({"grant": "read_only"})).unwrap();
+    assert_eq!(
+        request.grant.tool_group("google_calendar"),
+        Some(ConnectorToolGroup::Read)
+    );
+    assert_eq!(request.grant.tool_group("gmail"), None);
     let spec = &providers::GOOGLE_CALENDAR;
     assert_eq!(
         spec.requested_scopes(ConnectorToolGroup::Read),

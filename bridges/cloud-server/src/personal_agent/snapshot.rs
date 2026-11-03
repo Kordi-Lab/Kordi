@@ -226,12 +226,17 @@ pub(super) async fn build(
     conversation_id: Uuid,
     events: &[Event],
 ) -> Result<Value, sqlx_core::Error> {
-    let zone: Option<(String,)> =
-        query_as("SELECT timezone FROM cloud_account_digests WHERE account_id = $1")
-            .bind(&agent.owner_account_id)
-            .fetch_optional(pool)
-            .await?;
-    let zone = zone.and_then(|(zone,)| zone.parse::<chrono_tz::Tz>().ok());
+    let zone: Option<(Option<String>, Option<String>)> = query_as(
+        "SELECT account.time_zone, digest.timezone FROM cloud_accounts account
+         LEFT JOIN cloud_account_digests digest ON digest.account_id = account.account_id
+         WHERE account.account_id = $1",
+    )
+    .bind(&agent.owner_account_id)
+    .fetch_optional(pool)
+    .await?;
+    let zone = zone
+        .and_then(|(profile, digest)| profile.or(digest))
+        .and_then(|zone| zone.parse::<chrono_tz::Tz>().ok());
     let shares: Vec<(DateTime<Utc>, String)> = query_as(
         "SELECT created_at, text FROM cloud_personal_agent_messages
          WHERE agent_id = $1 AND owner_account_id = $2 AND created_at > now() - interval '7 days'

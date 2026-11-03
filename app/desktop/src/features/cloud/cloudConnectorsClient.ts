@@ -38,7 +38,7 @@ export type CloudConnectorListResponse = {
 export type CloudConnectorResponse = { connector: CloudConnectorSummary };
 
 export type CloudConnectorOAuthStartInput = {
-  grant: CloudConnectorToolGroup;
+  grant: CloudConnectorToolGroup | 'read_only';
   redirectAfter?: string;
 };
 

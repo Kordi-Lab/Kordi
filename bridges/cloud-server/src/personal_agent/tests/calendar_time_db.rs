@@ -30,8 +30,20 @@ async fn calendar_snapshot_uses_the_latest_owner_zone_without_changing_source_in
         .unwrap();
     assert!(missing["owner"]["timeZone"].is_null());
     assert!(missing["events"][0]["ownerLocalTime"].is_null());
-    query("INSERT INTO cloud_account_digests (account_id, timezone) VALUES ($1, 'America/Los_Angeles')")
-        .bind(&f.owner).execute(&f.pool).await.unwrap();
+    query("INSERT INTO cloud_account_digests (account_id, timezone) VALUES ($1, 'UTC')")
+        .bind(&f.owner)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let fallback = snapshot::build(&f.pool, &agent, conversation, &events)
+        .await
+        .unwrap();
+    assert_eq!(fallback["owner"]["timeZone"], "UTC");
+    query("UPDATE cloud_accounts SET time_zone = 'America/Los_Angeles' WHERE account_id = $1")
+        .bind(&f.owner)
+        .execute(&f.pool)
+        .await
+        .unwrap();
     let local = snapshot::build(&f.pool, &agent, conversation, &events)
         .await
         .unwrap();
@@ -41,7 +53,7 @@ async fn calendar_snapshot_uses_the_latest_owner_zone_without_changing_source_in
         "2026-11-01 11:30 PST"
     );
     assert_eq!(local["events"][0]["summary"], events[0].payload);
-    query("UPDATE cloud_account_digests SET timezone = 'America/New_York' WHERE account_id = $1")
+    query("UPDATE cloud_accounts SET time_zone = 'America/New_York' WHERE account_id = $1")
         .bind(&f.owner)
         .execute(&f.pool)
         .await
@@ -53,7 +65,7 @@ async fn calendar_snapshot_uses_the_latest_owner_zone_without_changing_source_in
         changed["events"][0]["ownerLocalTime"]["start"]["label"],
         "2026-11-01 14:30 EST"
     );
-    query("UPDATE cloud_account_digests SET timezone = 'Invalid/Zone' WHERE account_id = $1")
+    query("UPDATE cloud_accounts SET time_zone = 'Invalid/Zone' WHERE account_id = $1")
         .bind(&f.owner)
         .execute(&f.pool)
         .await

@@ -128,12 +128,19 @@ async fn start_oauth(
     Path(provider): Path<String>,
     Json(input): Json<OAuthStartRequest>,
 ) -> Response {
+    let Some(grant) = input.grant.tool_group(&provider) else {
+        return error(
+            "read_only_not_supported",
+            "This connector does not support a separate read-only connection.",
+            StatusCode::BAD_REQUEST,
+        );
+    };
     match oauth::start_grant(
         state.db_pool(),
         state.connectors(),
         &session.account_id,
         &provider,
-        input.grant,
+        grant,
         input.redirect_after.as_deref(),
     )
     .await

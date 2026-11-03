@@ -330,3 +330,18 @@ test('provider readiness reaches disconnected states and remains optional for ol
   providers = undefined;
   assert.equal((await client.list()).states.find((state) => state.providerId === 'google_calendar')?.oauthReady, undefined);
 });
+
+test('Calendar uses explicit read-only consent and an older server cannot open broader consent', async () => {
+  const fixture = cloudFixture();
+  const { handoff, opened, cancelled } = fakeHandoff('');
+  let requested: unknown;
+  fixture.http.startOAuth = (_token, _provider, input) => {
+    requested = input;
+    return Promise.reject(new Error('This server does not support read_only.'));
+  };
+  const client = createCloudConnectorsClient({ accountId: ACCOUNT_ID, http: fixture.http, loadToken: async () => TOKEN, oauth: handoff });
+  await assert.rejects(client.connect('google_calendar', { scopeIds: readIds('google_calendar') }), /read_only/);
+  assert.deepEqual(requested, { grant: 'read_only', redirectAfter: 'http://127.0.0.1:5555/oauth/req-1' });
+  assert.deepEqual(opened, []);
+  assert.equal(cancelled(), 1);
+});

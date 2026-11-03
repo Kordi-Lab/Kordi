@@ -309,7 +309,7 @@ export function createCloudConnectorsClient(options: CloudConnectorsClientOption
     const timeoutMessage = connectorOAuthTimeoutMessage(providerId);
     try {
       const { authUrl } = await abortable(http.startOAuth(token, providerId, {
-        grant,
+        grant: providerId === 'google_calendar' && grant === 'read' ? 'read_only' : grant,
         ...(callback ? { redirectAfter: callback.redirectUrl } : {}),
       }), signal, definition.name);
       if (await oauth.open(authUrl) === false) {
