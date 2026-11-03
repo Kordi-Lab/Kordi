@@ -138,3 +138,7 @@ KORDI_SIM_TEST_DATABASE_URL="$(migration_database_url kordi_migration_test_simul
 # Admission integration tests must run against disposable data, never skip silently.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib auth::routes::identity_handlers::completion::tests -- --ignored --test-threads=1
+
+# Revalidate restricted admission for both session-bound and legacy realtime tickets.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib chat_sync::realtime::tests::realtime_revalidates_instance_admission_for_session_and_legacy_tickets -- --ignored --exact
