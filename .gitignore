@@ -93,3 +93,6 @@ legal/distribution/sources/
 
 # Generated backend routing inputs from private ops configuration.
 .kordi-configuration/
+
+# Ops-owned release artwork is prepared locally, never committed here.
+/app/ios/Distribution.xcassets/DistributionIcon.appiconset/

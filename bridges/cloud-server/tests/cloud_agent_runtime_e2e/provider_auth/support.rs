@@ -15,6 +15,7 @@ async fn support_runs_use_the_dedicated_service_api_key_without_an_owner_snapsho
     let support_config = bootstrap_support_agent(
         &pool,
         PendingSupportConfig {
+            system_prompt: "Synthetic support persona.".to_string(),
             owner_account_id: format!("acct_kordi_support_{suffix}"),
             owner_email: unique_email("provider-support-owner"),
             agent_id: support_agent_id.clone(),

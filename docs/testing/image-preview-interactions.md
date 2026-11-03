@@ -52,6 +52,10 @@ loads/decodes bytes only when Copy image is invoked. The focused allowance follo
 the measured feature-budget approach used in #2210 rather than exempting new code
 from the check.
 
+After reconciling main at `13731b61c`, the same production build contains 5,612,739
+budgeted application bytes, leaving 261 bytes under the unchanged 5,613,000 cap.
+The six image interaction source files remain unchanged by that integration.
+
 ## Native acceptance checklist
 
 Use existing synthetic images in an isolated development client. Do not send
@@ -68,11 +72,22 @@ messages or upload additional media for this check.
 
 The baseline native audit on `ab90e69d32e99f20e7ea4ddf8219df7b15c409bb` passed
 multi-image navigation, button zoom/reset, Escape, and a byte-identical synthetic
-PNG download. It reproduced absent click/wheel zoom and Copy image. Native
-acceptance of this follow-up remains pending because the UI observation service
-returned a ScreenCaptureKit invalid-parameter error after the scoped frontend
-update. Browser checks do not establish native clipboard success. Keep #417 open
-until that remaining acceptance is recorded.
+PNG download. It reproduced absent click/wheel zoom and Copy image.
+
+Native follow-up on `a210ea3382a262d2d400415519ffcaad18d7d019` confirmed image-click
+zoom from 100% to 106% of fit and wheel zoom from 106% to 131%. The new instructions
+and corrected Fit to window tooltip were visible. Copy image displayed success;
+an immediate recopy and local Preview paste showed the expected synthetic K6P8,
+three orange squares, and purple circle. Preview Inspector reported PNG at
+1280 by 800 pixels, matching the source dimensions. An earlier paste after a long
+application switch showed a different clipboard image, so only the immediate
+controlled recopy/paste is accepted as evidence.
+
+Native drag and close/return acceptance remain pending because the UI observation
+service again returned ScreenCaptureKit capture errors. No messages, uploads, or
+model calls were made. Browser geometry checks remain complementary evidence,
+not a substitute for the remaining native interaction checks. Keep #417 open until
+that acceptance is recorded.
 
 Agent image retrieval is separate: #2194 was resolved by #2208 with fresh synthetic
 multi-image reading and an unchanged human read cursor. This frontend follow-up

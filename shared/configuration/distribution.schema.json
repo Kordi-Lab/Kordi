@@ -1,0 +1,350 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "routing",
+    "clients",
+    "services",
+    "resources",
+    "apple"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "routing": {
+      "$ref": "./backend.schema.json"
+    },
+    "clients": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "displayName",
+        "callbackScheme",
+        "desktopIdentifier",
+        "iosIdentifier",
+        "iosShareIdentifier",
+        "appGroup",
+        "credentialService",
+        "desktopIcon",
+        "desktopIcns",
+        "iosIcon",
+        "updates"
+      ],
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9 -]{0,39}$"
+        },
+        "callbackScheme": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{2,39}$"
+        },
+        "desktopIdentifier": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$"
+        },
+        "iosIdentifier": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$"
+        },
+        "iosShareIdentifier": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$"
+        },
+        "appGroup": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$"
+        },
+        "credentialService": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$"
+        },
+        "desktopIcon": {
+          "type": "string",
+          "pattern": "^(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_.-]+\\.(?:png|icns)$"
+        },
+        "desktopIcns": {
+          "type": "string",
+          "pattern": "^(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_.-]+\\.(?:png|icns)$"
+        },
+        "iosIcon": {
+          "type": "string",
+          "pattern": "^(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_.-]+\\.(?:png|icns)$"
+        },
+        "updates": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "publicKey",
+            "artifactName"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "publicKey": {
+              "type": "string"
+            },
+            "artifactName": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,39}$"
+            }
+          }
+        }
+      }
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "systemAgent",
+        "supportAgent",
+        "runner",
+        "connectorCallsPerHour"
+      ],
+      "properties": {
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider",
+            "baseURL",
+            "model"
+          ],
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": [
+                "openai",
+                "openai-compatible",
+                "vertex-ai"
+              ]
+            },
+            "baseURL": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            }
+          }
+        },
+        "systemAgent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "name",
+            "subtitle",
+            "ownerEmail",
+            "persona"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "subtitle": {
+              "type": "string"
+            },
+            "ownerEmail": {
+              "type": "string"
+            },
+            "persona": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 12000
+            }
+          }
+        },
+        "supportAgent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "name",
+            "subtitle",
+            "ownerEmail",
+            "persona"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "subtitle": {
+              "type": "string"
+            },
+            "ownerEmail": {
+              "type": "string"
+            },
+            "persona": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 12000
+            }
+          }
+        },
+        "runner": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "concurrency",
+            "pollMilliseconds",
+            "sandboxBackend"
+          ],
+          "properties": {
+            "concurrency": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            },
+            "pollMilliseconds": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 60000
+            },
+            "sandboxBackend": {
+              "type": "string",
+              "enum": [
+                "k8s",
+                "fly"
+              ]
+            }
+          }
+        },
+        "connectorCallsPerHour": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "cpuLimit",
+        "memoryMiB",
+        "sandboxCpuMillis",
+        "sandboxMemoryMiB",
+        "bindings"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "gcp",
+            "external"
+          ]
+        },
+        "cpuLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "memoryMiB": {
+          "type": "integer",
+          "minimum": 256,
+          "maximum": 262144
+        },
+        "sandboxCpuMillis": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 16000
+        },
+        "sandboxMemoryMiB": {
+          "type": "integer",
+          "minimum": 128,
+          "maximum": 32768
+        },
+        "bindings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "project",
+            "region",
+            "zone",
+            "instance",
+            "database",
+            "objectStorage",
+            "serviceIdentity"
+          ],
+          "properties": {
+            "project": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "region": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "instance": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "database": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "objectStorage": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "serviceIdentity": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "zone": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            }
+          }
+        }
+      }
+    },
+    "apple": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "teamBinding",
+        "identityBinding",
+        "notaryProfileBinding",
+        "exportMethod"
+      ],
+      "properties": {
+        "teamBinding": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+        },
+        "identityBinding": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+        },
+        "notaryProfileBinding": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+        },
+        "exportMethod": {
+          "type": "string",
+          "enum": [
+            "app-store-connect",
+            "release-testing",
+            "debugging"
+          ]
+        }
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Kordi distribution configuration",
+  "$comment": "The shared runtime validator also enforces independent target binding, edition/storage separation, update-key consistency and bounded contained assets."
+}
