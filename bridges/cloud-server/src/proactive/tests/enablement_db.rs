@@ -111,7 +111,7 @@ async fn creation_and_definition_update_capture_the_same_boundary() {
     let boundary = f.latest_sequence().await;
     let (status, _) = f
         .send(
-            "PATCH",
+            "PUT",
             &format!("/v1/cloud/agents/{}", f.agent_id),
             &f.owner_token,
             Some(json!({"cooperative": {"enabled": true}})),
