@@ -156,6 +156,7 @@ async fn invalid_support_migration_quarantines_groups_for_every_member() {
     let support_config = bootstrap_support_agent(
         &pool,
         PendingSupportConfig {
+            system_prompt: "Synthetic support persona.".to_string(),
             owner_account_id: support_owner.clone(),
             owner_email: support_email.clone(),
             agent_id: "cloud_agent_kordi_support".to_string(),

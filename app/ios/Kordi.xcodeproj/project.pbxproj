@@ -251,6 +251,7 @@
 		9742C64E3D476EC0503A7C96 /* VoiceMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E0E98754E4D3E74B787C6A /* VoiceMessageView.swift */; };
 		97FE7B56ED21F0CDBDC8AAEB /* DigestViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 568EBC3F7D9760AAD86C912C /* DigestViewTests.swift */; };
 		98933D6DCE206D97DA22FD9D /* MemoryOrganizerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D71E37F22FAEBBD6BDBAA3 /* MemoryOrganizerModel.swift */; };
+		994F7C45677606161A38C7D7 /* KordiReleaseConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0676A85B5C6E75428E339FDB /* KordiReleaseConfiguration.swift */; };
 		9C6613A5B66EE25328C93EC8 /* KordiMarkdownListParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 366FB25C511905DAAB4EEEC8 /* KordiMarkdownListParser.swift */; };
 		9CBCC6179F5F6DCB52745C81 /* CompanionReadPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47798873F5DC1483941C6758 /* CompanionReadPresentationTests.swift */; };
 		9CCDB7C6E7EB247D7D39276A /* DigestCalendarSyncCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D29C9408B984322F36776ABE /* DigestCalendarSyncCoordinator.swift */; };
@@ -300,6 +301,7 @@
 		B5F678342A58AB0F76377D25 /* PersonalAgentSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E5777C74416076B94B96226 /* PersonalAgentSection.swift */; };
 		B6385E2469989CDAB5A71539 /* MainNavigationHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 984CB21DF1BA4C396217B6BC /* MainNavigationHost.swift */; };
 		B6CD1BEE84B0B1ACFDBA10C3 /* AttachmentReactionMutationQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB6037E13EA0BCC18AA44625 /* AttachmentReactionMutationQueue.swift */; };
+		B6D4F9B3EFEF6AC9CA6717C0 /* DistributionTestFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E7D1D9539E63FCEE1942B3 /* DistributionTestFixture.swift */; };
 		BA1EBAE68A68B522D0B2C8C8 /* InitialAgentModelNoticeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD8D24A6689116C11FF7A038 /* InitialAgentModelNoticeTests.swift */; };
 		BADCC945C605ECC12EA2DA54 /* ProviderLoginPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5680CB41441ABA9ECC9151 /* ProviderLoginPolicy.swift */; };
 		BAE153F27E5E1485C3D5424F /* ConversationMotionProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE9C2F4A6D2AEEB995AC122B /* ConversationMotionProbe.swift */; };
@@ -338,10 +340,12 @@
 		C7586D8CEA31E78F4E49E4BD /* SharedDocumentLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E67BBDF8DF185EA694C3205 /* SharedDocumentLink.swift */; };
 		C8172A449079B1EE02749702 /* CommonGroundNearbyLocator+Background.swift in Sources */ = {isa = PBXBuildFile; fileRef = 330FA05DEA807B716B3BA48B /* CommonGroundNearbyLocator+Background.swift */; };
 		C8BD24AA4D691A02181E4FB4 /* CloudMessageCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CAA0002D51BCCCF6B07B66 /* CloudMessageCodecTests.swift */; };
+		CA3C64C7761635E6CADE85DD /* KordiReleaseConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0676A85B5C6E75428E339FDB /* KordiReleaseConfiguration.swift */; };
 		CA7AAFD93DE8D988CBFCDD2E /* MessageDeletionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95C1CA4FAB75E8423430A5D4 /* MessageDeletionUITests.swift */; };
 		CB0EA5039747CC5AC755EE5F /* CommonGroundWalletTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CF543DAFCB4887780A9921F /* CommonGroundWalletTests.swift */; };
 		CCB2300E90B26B2402BA8933 /* MainNavigationDestinations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C7A5D910D9A8B4D8343F6 /* MainNavigationDestinations.swift */; };
 		CD04D68B670F6591F51E6250 /* ProviderAuthenticationDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91F583054F514DF4B9CE1523 /* ProviderAuthenticationDetailView.swift */; };
+		CD3C7A3CE21759DEED457B45 /* Distribution.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1FE75FD69082AA54E82579EC /* Distribution.xcassets */; };
 		CE346817245E10DB34E82CC1 /* ChatProjectImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA044228D16E5914AC65185F /* ChatProjectImportSheet.swift */; };
 		CE3B28D7B1662C11FCB93086 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4021DE92BF82560F7905E214 /* ConversationView.swift */; };
 		CFC44788A96F3E6E99FA48C2 /* MessageDeletionRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B8323A1DC4175F5728F6656 /* MessageDeletionRecoveryTests.swift */; };
@@ -480,6 +484,7 @@
 		032F0E9CF2067EBA48D5195A /* BlobEmojiComposerText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlobEmojiComposerText.swift; sourceTree = "<group>"; };
 		04DB13168D004CFB223E9828 /* ProfileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileEditorView.swift; sourceTree = "<group>"; };
 		065C96F4684935A21E2C862E /* NetworkProxyPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkProxyPolicyTests.swift; sourceTree = "<group>"; };
+		0676A85B5C6E75428E339FDB /* KordiReleaseConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiReleaseConfiguration.swift; sourceTree = "<group>"; };
 		06AEAA1B70194CB973B18D68 /* CommonGroundModel+Memories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CommonGroundModel+Memories.swift"; sourceTree = "<group>"; };
 		06CEFDD02CD36C6D279FBFF3 /* MemoryPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPresentation.swift; sourceTree = "<group>"; };
 		0782F717E60F5FF9440000C1 /* CommonGroundNearbyTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundNearbyTypes.swift; sourceTree = "<group>"; };
@@ -525,6 +530,7 @@
 		1D5794592A8AF567F9D888A2 /* DocumentEditorWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentEditorWebView.swift; sourceTree = "<group>"; };
 		1DECAF58B49CE2DE63185B4C /* ChatRowSwipeGesture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatRowSwipeGesture.swift; sourceTree = "<group>"; };
 		1FD2D1F807A447AC713E259F /* SystemNoticeIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemNoticeIdentityTests.swift; sourceTree = "<group>"; };
+		1FE75FD69082AA54E82579EC /* Distribution.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Distribution.xcassets; sourceTree = "<group>"; };
 		200F6B7F78667004B33236FA /* CommonGroundDeviceAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundDeviceAccess.swift; sourceTree = "<group>"; };
 		20B347EC88568935A02AB5FA /* CommonGroundQRViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundQRViews.swift; sourceTree = "<group>"; };
 		20E1D5EB9F29E06DD365480B /* ConnectorsSettingsLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorsSettingsLink.swift; sourceTree = "<group>"; };
@@ -712,6 +718,7 @@
 		91F583054F514DF4B9CE1523 /* ProviderAuthenticationDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAuthenticationDetailView.swift; sourceTree = "<group>"; };
 		9342AD4F8DA861194BABA573 /* ConversationReadVisibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationReadVisibility.swift; sourceTree = "<group>"; };
 		935EFE99E0807E1CF8BE8FA7 /* ComposerMentionMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerMentionMenuTests.swift; sourceTree = "<group>"; };
+		93E7D1D9539E63FCEE1942B3 /* DistributionTestFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistributionTestFixture.swift; sourceTree = "<group>"; };
 		942DF88B34C4810542A55879 /* AppIconSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconSettingsTests.swift; sourceTree = "<group>"; };
 		947D36AE16CB8FC9349B6169 /* EmojiAnimationDiskCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiAnimationDiskCache.swift; sourceTree = "<group>"; };
 		949D9778803DE7915795407E /* CommonGroundCardMemoriesSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundCardMemoriesSection.swift; sourceTree = "<group>"; };
@@ -1040,6 +1047,7 @@
 			isa = PBXGroup;
 			children = (
 				FC40CA44539DE969C3129E9B /* KordiAppEnvironment.swift */,
+				0676A85B5C6E75428E339FDB /* KordiReleaseConfiguration.swift */,
 			);
 			path = Environment;
 			sourceTree = "<group>";
@@ -1251,6 +1259,7 @@
 				4FA22B10C76305FFBCA3D132 /* omp-catalog */,
 				C83AA46FD83C33AF5379F1E6 /* agent-targeting */,
 				EC7028A6ADF145A7DE23EB58 /* digest */,
+				1FE75FD69082AA54E82579EC /* Distribution.xcassets */,
 				E6FFCF72758CFAD295AF15BA /* Products */,
 			);
 			sourceTree = "<group>";
@@ -1416,6 +1425,7 @@
 				328D64891C42264C1660455B /* ConversationTimelineVirtualizationTests.swift */,
 				B61579460A0EA262925C48BE /* DigestCalendarSyncTests.swift */,
 				568EBC3F7D9760AAD86C912C /* DigestViewTests.swift */,
+				93E7D1D9539E63FCEE1942B3 /* DistributionTestFixture.swift */,
 				517D72003B7A9E73111996E5 /* DocumentEditorBridgeTests.swift */,
 				E75003FC35484D74E742DA4F /* DocumentForwardingTests.swift */,
 				F17BBDC564A7E237E5E9672F /* DocumentRenameTests.swift */,
@@ -1680,6 +1690,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 4F16A02F5029C0F79DB873A0 /* Build configuration list for PBXNativeTarget "Kordi" */;
 			buildPhases = (
+				CC542951EBF85A7068CC6DC9 /* Verify distribution selection */,
 				8890082DD23DBC76BFD7940D /* Build document editor page */,
 				A37797D6099FAE8E8D3619B1 /* Sources */,
 				A0F704B1C13CBBF817DED85B /* Resources */,
@@ -1777,6 +1788,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D6E3FF1559CAAAE57EDC446B /* Assets.xcassets in Resources */,
+				CD3C7A3CE21759DEED457B45 /* Distribution.xcassets in Resources */,
 				BC01C5D7FB643F5F18C116FE /* blob-emoji in Resources */,
 				34D1737CBEFA979EC9353A72 /* digest in Resources */,
 				591D049BE5259BAF6555CCBC /* noto-emoji in Resources */,
@@ -1812,7 +1824,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"$CONFIGURATION\" = \"Release\" ]; then\n  export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\n  python3 \"$SRCROOT/../../scripts/licenses/verify-ios.py\" --app \"$TARGET_BUILD_DIR/$WRAPPER_NAME\" --platform ios-arm64\nfi\n";
+			shellScript = "if { [ \"$CONFIGURATION\" = \"Release\" ] || [ \"$CONFIGURATION\" = \"Research\" ]; } && [ \"$PLATFORM_NAME\" = \"iphoneos\" ]; then\n  export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\n  python3 \"$SRCROOT/../../scripts/licenses/verify-ios.py\" --app \"$TARGET_BUILD_DIR/$WRAPPER_NAME\" --platform ios-arm64\nfi\n";
 		};
 		6EB16C212CBAD8DEA348AA16 /* Generate synthetic Live Photo test assets */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1856,6 +1868,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "bash \"$SRCROOT/../../scripts/prepare-ios-document-editor.sh\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"";
+		};
+		CC542951EBF85A7068CC6DC9 /* Verify distribution selection */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Verify distribution selection";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$CONFIGURATION\" != \"Beta\" ]; then\n  test -n \"$KORDI_OPS_EXPECTED\" || { echo \"A prepared ops distribution is required.\"; exit 1; }\n  if [ \"$CONFIGURATION\" = \"Research\" ]; then\n    test \"$KORDI_DISTRIBUTION_CHANNEL\" = \"research\" || exit 1\n  else\n    test \"$KORDI_DISTRIBUTION_CHANNEL\" = \"production\" || exit 1\n  fi\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -1940,6 +1971,7 @@
 				126800B85342E36E4F5349FE /* ConversationTimelineVirtualizationTests.swift in Sources */,
 				C3D167D9EDCF625D54E81B5D /* DigestCalendarSyncTests.swift in Sources */,
 				97FE7B56ED21F0CDBDC8AAEB /* DigestViewTests.swift in Sources */,
+				B6D4F9B3EFEF6AC9CA6717C0 /* DistributionTestFixture.swift in Sources */,
 				8558909EFBA4EAE361665EB9 /* DocumentEditorBridgeTests.swift in Sources */,
 				FDA1CA373CE0A4957DE0F998 /* DocumentForwardingTests.swift in Sources */,
 				131F03926BC121406C9257D1 /* DocumentRenameTests.swift in Sources */,
@@ -1992,6 +2024,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				994F7C45677606161A38C7D7 /* KordiReleaseConfiguration.swift in Sources */,
 				09DEA8E88AEA560303FBB07B /* ShareExtensionAPI.swift in Sources */,
 				3721A0A2CC0167373FC6AD17 /* ShareExtensionSupport.swift in Sources */,
 				57C48DFB0681685E6BAA605D /* ShareExtensionView.swift in Sources */,
@@ -2210,6 +2243,7 @@
 				9C6613A5B66EE25328C93EC8 /* KordiMarkdownListParser.swift in Sources */,
 				5A526074F09A34B5DEF383AE /* KordiMessageNotificationCleanup.swift in Sources */,
 				66218B84FEF69BF454A03DFD /* KordiNotificationCoordinator.swift in Sources */,
+				CA3C64C7761635E6CADE85DD /* KordiReleaseConfiguration.swift in Sources */,
 				BE821F4028CF8A3212755E16 /* KordiTheme.swift in Sources */,
 				D799149952AEEC85476E82B6 /* LivePhotoAttachment.swift in Sources */,
 				B5B5BB40648C816CA1BCFEF9 /* LivePhotoMedia.swift in Sources */,
@@ -2337,24 +2371,24 @@
 			buildSettings = {
 				APNS_ENVIRONMENT = production;
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-frosted AppIcon-rice AppIcon-coral AppIcon-sakura AppIcon-butter AppIcon-mint AppIcon-sky AppIcon-lavender AppIcon-night AppIcon-midnight AppIcon-forest AppIcon-plum AppIcon-cocoa AppIcon-slate AppIcon-night-sakura AppIcon-midnight-sky";
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "$(KORDI_OPS_ICON)";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Kordi/Supporting/Kordi.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Kordi/Supporting/Info.plist;
-				KORDI_APP_DISPLAY_NAME = Kordi;
-				KORDI_CLOUD_BASE_URL = "https://kordi.ai";
-				KORDI_DISTRIBUTION_CHANNEL = production;
-				KORDI_OAUTH_CALLBACK_SCHEME = kordi;
-				KORDI_SHARE_APP_GROUP = group.ai.kordi.share;
-				KORDI_SHARE_CREDENTIAL_SERVICE = "ai.kordi.share-session";
+				KORDI_APP_DISPLAY_NAME = "$(KORDI_OPS_DISPLAY_NAME)";
+				KORDI_CLOUD_BASE_URL = "$(KORDI_OPS_ORIGIN)";
+				KORDI_DISTRIBUTION_CHANNEL = "$(KORDI_OPS_CHANNEL)";
+				KORDI_OAUTH_CALLBACK_SCHEME = "$(KORDI_OPS_CALLBACK)";
+				KORDI_SHARE_APP_GROUP = "$(KORDI_OPS_APP_GROUP)";
+				KORDI_SHARE_CREDENTIAL_SERVICE = "$(KORDI_OPS_CREDENTIAL_SERVICE)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = ai.kordi.ios;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KORDI_OPS_APP_ID)";
 				PRODUCT_NAME = Kordi;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2368,24 +2402,41 @@
 				CODE_SIGN_ENTITLEMENTS = KordiShareExtension/Supporting/KordiShareExtension.entitlements;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KordiShareExtension/Supporting/Info.plist;
-				KORDI_CLOUD_BASE_URL = "https://kordi.ai";
-				KORDI_DISTRIBUTION_CHANNEL = production;
-				KORDI_OAUTH_CALLBACK_SCHEME = kordi;
-				KORDI_SHARE_APP_GROUP = group.ai.kordi.share;
-				KORDI_SHARE_CREDENTIAL_SERVICE = "ai.kordi.share-session";
-				KORDI_SHARE_EXTENSION_DISPLAY_NAME = Kordi;
+				KORDI_CLOUD_BASE_URL = "$(KORDI_OPS_ORIGIN)";
+				KORDI_DISTRIBUTION_CHANNEL = "$(KORDI_OPS_CHANNEL)";
+				KORDI_OAUTH_CALLBACK_SCHEME = "$(KORDI_OPS_CALLBACK)";
+				KORDI_SHARE_APP_GROUP = "$(KORDI_OPS_APP_GROUP)";
+				KORDI_SHARE_CREDENTIAL_SERVICE = "$(KORDI_OPS_CREDENTIAL_SERVICE)";
+				KORDI_SHARE_EXTENSION_DISPLAY_NAME = "$(KORDI_OPS_DISPLAY_NAME)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = ai.kordi.ios.share;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KORDI_OPS_SHARE_ID)";
 				PRODUCT_NAME = KordiShareExtension;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
+		};
+		183551F4F757BA4F8A8FAF34 /* Research */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.kordi.ios.beta.deletion-tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kordi;
+			};
+			name = Research;
 		};
 		24DC4317EAF1C5E0206A88C1 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2404,6 +2455,35 @@
 			};
 			name = Release;
 		};
+		25E135AE2F21BF8B990F2912 /* Research */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APNS_ENVIRONMENT = production;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-frosted AppIcon-rice AppIcon-coral AppIcon-sakura AppIcon-butter AppIcon-mint AppIcon-sky AppIcon-lavender AppIcon-night AppIcon-midnight AppIcon-forest AppIcon-plum AppIcon-cocoa AppIcon-slate AppIcon-night-sakura AppIcon-midnight-sky";
+				ASSETCATALOG_COMPILER_APPICON_NAME = "$(KORDI_OPS_ICON)";
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Kordi/Supporting/Kordi.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Kordi/Supporting/Info.plist;
+				KORDI_APP_DISPLAY_NAME = "$(KORDI_OPS_DISPLAY_NAME)";
+				KORDI_CLOUD_BASE_URL = "$(KORDI_OPS_ORIGIN)";
+				KORDI_DISTRIBUTION_CHANNEL = "$(KORDI_OPS_CHANNEL)";
+				KORDI_OAUTH_CALLBACK_SCHEME = "$(KORDI_OPS_CALLBACK)";
+				KORDI_SHARE_APP_GROUP = "$(KORDI_OPS_APP_GROUP)";
+				KORDI_SHARE_CREDENTIAL_SERVICE = "$(KORDI_OPS_CREDENTIAL_SERVICE)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KORDI_OPS_APP_ID)";
+				PRODUCT_NAME = Kordi;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Research;
+		};
 		35E9704C0FF7E247A78B7EF9 /* Beta */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2420,6 +2500,23 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kordi.app/Kordi";
 			};
 			name = Beta;
+		};
+		4246BB61770B99BB61AEDDC3 /* Research */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.kordi.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kordi.app/Kordi";
+			};
+			name = Research;
 		};
 		47FCB9CE7212279DA23E88B3 /* Beta */ = {
 			isa = XCBuildConfiguration;
@@ -2596,24 +2693,24 @@
 			buildSettings = {
 				APNS_ENVIRONMENT = development;
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-frosted AppIcon-rice AppIcon-coral AppIcon-sakura AppIcon-butter AppIcon-mint AppIcon-sky AppIcon-lavender AppIcon-night AppIcon-midnight AppIcon-forest AppIcon-plum AppIcon-cocoa AppIcon-slate AppIcon-night-sakura AppIcon-midnight-sky";
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "$(KORDI_OPS_ICON)";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Kordi/Supporting/Kordi.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Kordi/Supporting/Info.plist;
-				KORDI_APP_DISPLAY_NAME = Kordi;
-				KORDI_CLOUD_BASE_URL = "https://kordi.ai";
-				KORDI_DISTRIBUTION_CHANNEL = production;
-				KORDI_OAUTH_CALLBACK_SCHEME = kordi;
-				KORDI_SHARE_APP_GROUP = group.ai.kordi.share;
-				KORDI_SHARE_CREDENTIAL_SERVICE = "ai.kordi.share-session";
+				KORDI_APP_DISPLAY_NAME = "$(KORDI_OPS_DISPLAY_NAME)";
+				KORDI_CLOUD_BASE_URL = "$(KORDI_OPS_ORIGIN)";
+				KORDI_DISTRIBUTION_CHANNEL = "$(KORDI_OPS_CHANNEL)";
+				KORDI_OAUTH_CALLBACK_SCHEME = "$(KORDI_OPS_CALLBACK)";
+				KORDI_SHARE_APP_GROUP = "$(KORDI_OPS_APP_GROUP)";
+				KORDI_SHARE_CREDENTIAL_SERVICE = "$(KORDI_OPS_CREDENTIAL_SERVICE)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = ai.kordi.ios;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KORDI_OPS_APP_ID)";
 				PRODUCT_NAME = Kordi;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2636,6 +2733,23 @@
 				TEST_TARGET_NAME = Kordi;
 			};
 			name = Beta;
+		};
+		98D4BDDAA54BCB463967C416 /* Research */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.kordi.ios.beta.keyboard-uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kordi;
+			};
+			name = Research;
 		};
 		9A4F699B1401FE13437B8D67 /* Beta */ = {
 			isa = XCBuildConfiguration;
@@ -2691,18 +2805,18 @@
 				CODE_SIGN_ENTITLEMENTS = KordiShareExtension/Supporting/KordiShareExtension.entitlements;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KordiShareExtension/Supporting/Info.plist;
-				KORDI_CLOUD_BASE_URL = "https://kordi.ai";
-				KORDI_DISTRIBUTION_CHANNEL = production;
-				KORDI_OAUTH_CALLBACK_SCHEME = kordi;
-				KORDI_SHARE_APP_GROUP = group.ai.kordi.share;
-				KORDI_SHARE_CREDENTIAL_SERVICE = "ai.kordi.share-session";
-				KORDI_SHARE_EXTENSION_DISPLAY_NAME = Kordi;
+				KORDI_CLOUD_BASE_URL = "$(KORDI_OPS_ORIGIN)";
+				KORDI_DISTRIBUTION_CHANNEL = "$(KORDI_OPS_CHANNEL)";
+				KORDI_OAUTH_CALLBACK_SCHEME = "$(KORDI_OPS_CALLBACK)";
+				KORDI_SHARE_APP_GROUP = "$(KORDI_OPS_APP_GROUP)";
+				KORDI_SHARE_CREDENTIAL_SERVICE = "$(KORDI_OPS_CREDENTIAL_SERVICE)";
+				KORDI_SHARE_EXTENSION_DISPLAY_NAME = "$(KORDI_OPS_DISPLAY_NAME)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = ai.kordi.ios.share;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KORDI_OPS_SHARE_ID)";
 				PRODUCT_NAME = KordiShareExtension;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -2822,6 +2936,32 @@
 			};
 			name = Beta;
 		};
+		F121D33C1E4EE739CAA27AA6 /* Research */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = KordiShareExtension/Supporting/KordiShareExtension.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KordiShareExtension/Supporting/Info.plist;
+				KORDI_CLOUD_BASE_URL = "$(KORDI_OPS_ORIGIN)";
+				KORDI_DISTRIBUTION_CHANNEL = "$(KORDI_OPS_CHANNEL)";
+				KORDI_OAUTH_CALLBACK_SCHEME = "$(KORDI_OPS_CALLBACK)";
+				KORDI_SHARE_APP_GROUP = "$(KORDI_OPS_APP_GROUP)";
+				KORDI_SHARE_CREDENTIAL_SERVICE = "$(KORDI_OPS_CREDENTIAL_SERVICE)";
+				KORDI_SHARE_EXTENSION_DISPLAY_NAME = "$(KORDI_OPS_DISPLAY_NAME)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KORDI_OPS_SHARE_ID)";
+				PRODUCT_NAME = KordiShareExtension;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Research;
+		};
 		F202FA0210166E965A934A66 /* Beta */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2849,6 +2989,67 @@
 			};
 			name = Beta;
 		};
+		FD419E060FE20A1B2BF4DC32 /* Research */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 8;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.0.2;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Research;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -2858,6 +3059,7 @@
 				ED4C52353CCB53F127082CF9 /* Beta */,
 				63E45C4E1953883E8E6E47F4 /* Debug */,
 				CC0A27FEA1BC4BF3BBC2D2C8 /* Release */,
+				98D4BDDAA54BCB463967C416 /* Research */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -2868,6 +3070,7 @@
 				75C75DEED609D3F38CDA577D /* Beta */,
 				5062E4AFC68F72FF962C4E16 /* Debug */,
 				24DC4317EAF1C5E0206A88C1 /* Release */,
+				183551F4F757BA4F8A8FAF34 /* Research */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -2878,6 +3081,7 @@
 				9A4F699B1401FE13437B8D67 /* Beta */,
 				6AB0357B3291CA57FEDBFAB8 /* Debug */,
 				0B49E13ADB8C5ACCDCF4EDC1 /* Release */,
+				25E135AE2F21BF8B990F2912 /* Research */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -2888,6 +3092,7 @@
 				47FCB9CE7212279DA23E88B3 /* Beta */,
 				4C4D6333B1E9AF2DC9FB2F8D /* Debug */,
 				C50B548653CA84B7ADB4979F /* Release */,
+				FD419E060FE20A1B2BF4DC32 /* Research */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -2898,6 +3103,7 @@
 				F202FA0210166E965A934A66 /* Beta */,
 				C010BFAD09A0550DDFF67195 /* Debug */,
 				12C6E4C1BB8E7C5FD794C101 /* Release */,
+				F121D33C1E4EE739CAA27AA6 /* Research */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -2908,6 +3114,7 @@
 				35E9704C0FF7E247A78B7EF9 /* Beta */,
 				C73469ACBD346C0827D9B9B0 /* Debug */,
 				AD7C6CC6AEB6C6210C0E62E4 /* Release */,
+				4246BB61770B99BB61AEDDC3 /* Research */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
