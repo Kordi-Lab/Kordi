@@ -97,7 +97,7 @@ export function ConnectorDialogs({
               </AppDialogTitle>
               <AppDialogDescription id={`${idPrefix}-connect-description`}>
                 {dialogDefinition.providerId === 'google_calendar'
-                  ? 'Kordi asks Google for read-only Calendar access. Acting stays off until you enable it separately. Reconnecting does not revoke permissions you previously granted Google.'
+                  ? 'Kordi requests read-only Calendar access. Acting stays off until enabled separately. Reconnecting does not revoke Google permissions.'
                   : `Kordi asks ${dialogDefinition.providerName} for the access your agent needs to read and act here. You can turn acting off at any time from this page.`}
               </AppDialogDescription>
             </>

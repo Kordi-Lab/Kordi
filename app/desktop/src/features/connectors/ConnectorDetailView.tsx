@@ -114,7 +114,7 @@ export function ConnectorDetailView({
                 title="Let my agent act here"
                 description={state.actEnabled
                   ? `${definition.actDescription} Anything on your Ask me before list still waits for your approval.`
-                  : `Your agent can only read from ${definition.name}.${grantedAct.length > 0 ? ` ${definition.providerName} still grants write access. Turning acting off does not revoke provider permissions.` : ''}`}
+                  : `Your agent can only read from ${definition.name}.${grantedAct.length > 0 ? ` ${definition.providerName} still grants write access; turning acting off does not revoke it.` : ''}`}
                 control={(
                   <SettingsSwitch
                     enabled={state.actEnabled}
