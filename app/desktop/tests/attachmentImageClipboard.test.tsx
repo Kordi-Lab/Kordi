@@ -104,26 +104,39 @@ test('Copy image writes during the click, waits for original bytes, and reports 
     })));
     const copy = host.querySelector<HTMLButtonElement>('[aria-label="Copy image Synthetic.png"]')!;
     assert.ok(copy);
+    const initialRows = copy.parentElement!.children.length;
     await act(async () => {
       copy.click();
       assert.equal(writeCalls, 1, 'clipboard write starts synchronously before the image fetch resolves');
     });
     assert.equal(requestedUrl, 'https://files.test/original.png');
     assert.equal(copy.disabled, true);
-    assert.match(host.textContent ?? '', /Copying image/);
+    assert.equal(copy.textContent, 'Copying…');
+    assert.equal(copy.parentElement!.children.length, initialRows, 'copy progress stays in the action row');
+    copy.click();
+    assert.equal(writeCalls, 1, 'the pending action prevents duplicate writes');
     await act(async () => finishDownload(new Response(original, { headers: { 'content-type': 'image/png' } })));
     await flushReactUpdates();
     assert.equal(await writtenBlob?.text(), await original.text());
     assert.equal(copy.disabled, false);
-    assert.match(host.textContent ?? '', /Image copied/);
+    assert.equal(copy.textContent, 'Copied');
+    assert.equal(copy.querySelector('[role="status"]')?.textContent, 'Copied');
+    assert.equal(copy.parentElement!.children.length, initialRows, 'copy success adds no menu row');
 
     rejectWrite = true;
     await act(async () => copy.click());
-    assert.match(host.textContent ?? '', /Clipboard access denied/);
-    assert.doesNotMatch(host.textContent ?? '', /Image copied/);
+    assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Clipboard access denied/);
+    assert.equal(copy.textContent, 'Copy image');
     assert.equal(copy.disabled, false);
     await act(async () => finishDownload(new Response('', { status: 500 })));
     await flushReactUpdates();
+    rejectWrite = false;
+    await act(async () => copy.click());
+    assert.equal(host.querySelector('[role="alert"]'), null);
+    await act(async () => finishDownload(new Response(original, { headers: { 'content-type': 'image/png' } })));
+    await flushReactUpdates();
+    assert.equal(copy.textContent, 'Copied');
+    assert.equal(copy.parentElement!.children.length, initialRows, 'successful retry keeps the original menu rows');
   } finally {
     await act(async () => root.unmount());
     globalThis.fetch = originalFetch;

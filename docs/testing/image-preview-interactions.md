@@ -23,7 +23,10 @@ are superseded by those later changes.
   or authenticated cloud attachment, never a thumbnail. Other image formats are
   converted to PNG at their decoded natural resolution for clipboard compatibility.
   Animated images and Live Photos copy a still image; Download retains the originals.
-- Copying and success are visible in the menu. Permission denial, unavailable
+- The existing Copy image row changes to Copying… and then Copied, with a live
+  status announcement. Progress and success add no menu row. Pending copying
+  disables repeat writes; an error restores the action for retry and is announced.
+  Permission denial, unavailable
   clipboard support, and image decoding failure report an error without claiming
   success. Clipboard writes start in the user gesture, before asynchronous loading,
   as required by WebKit.
@@ -64,8 +67,9 @@ from the check.
 After reconciling main at `13731b61c`, the same production build contains 5,612,739
 budgeted application bytes, leaving 261 bytes under the unchanged 5,613,000 cap.
 The six image interaction source files remain unchanged by that integration.
-The compact-fit CSS adds 211 bytes, bringing the final build to 5,612,950 budgeted
-application bytes with 50 bytes of headroom. No further allowance was added.
+The compact-fit CSS initially added 211 bytes. After moving copy feedback into
+the existing action row, the final build is 5,612,854 budgeted application bytes,
+with 146 bytes of headroom. No further allowance was added.
 
 ## Native acceptance checklist
 
@@ -102,9 +106,11 @@ human-confirmed, not automation results. The six applied image interaction sourc
 files were verified unchanged at integrated head `8628925b0`.
 
 The earlier gesture/copy scope is accepted through that controlled evidence and
-human confirmation. The subsequent compact-fit layout is applied to the same
-isolated client, but its native visual and pan/reset acceptance is still pending
-human review because screen capture again failed. No messages, uploads, or model
+human confirmation. The subsequent compact-fit layout was applied to the same
+isolated client. The human then confirmed the layout is satisfactory and panning
+and percentage reset work. That compact-layout acceptance is human-confirmed;
+automated native capture remained unavailable. The later inline-copy status
+follow-up is covered by success, error, retry, and unchanged-row regression checks. No messages, uploads, or model
 calls were made. Browser geometry checks remain complementary evidence. Keep #417 open until the
 reviewed fix is merged with required CI passing on its final head.
 

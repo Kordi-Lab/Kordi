@@ -151,7 +151,7 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
         {canCopy ? (
           <button type="button" role="menuitem" onClick={() => void handleCopy()} disabled={copyStatus === 'copying'} className={menuButtonClass} aria-label={`Copy image ${attachment.name}`}>
             <Copy className="app-transient-action-icon" />
-            <span className="app-transient-action-label">Copy image</span>
+            <span role="status" className="app-transient-action-label">{copyStatus === 'copying' ? 'Copying…' : copyStatus === 'copied' ? 'Copied' : 'Copy image'}</span>
           </button>
         ) : null}
         {canDownload ? <button type="button" role="menuitem" onClick={() => void handleDownload()} disabled={isDownloading} className={menuButtonClass} aria-label={`Download ${attachment.name}`}>
@@ -165,9 +165,8 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
           </button>
         ) : null}
         {isDownloading ? <span className="app-transient-muted app-transient-status px-2.5 pb-1">Downloading…</span> : null}
-        {copyStatus !== 'idle' ? <span role="status" className="app-transient-muted app-transient-status px-2.5 pb-1">{copyStatus === 'copying' ? 'Copying image…' : 'Image copied'}</span> : null}
         {downloadedPath && !isDownloading ? <span className="app-transient-muted app-transient-status px-2.5 pb-1">Downloaded</span> : null}
-        {error ? <span className="app-error-text app-transient-status max-w-[190px] px-2.5 pb-1 text-rose-300">{error}</span> : null}
+        {error ? <span role="alert" className="app-error-text app-transient-status max-w-[190px] px-2.5 pb-1 text-rose-300">{error}</span> : null}
       </div>
     );
   }
