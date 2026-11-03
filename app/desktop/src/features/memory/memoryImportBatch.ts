@@ -46,7 +46,7 @@ export async function importMemoryBatch(
   onFile: (file: AgentInstructionFile, result: MemoryImportFileResult) => void,
 ): Promise<MemoryImportCounts> {
   if (!client.importLesson) throw new Error('Memory import is unavailable.');
-  const batch = importer.start ? await importer.start() : { extract: importer.extract.bind(importer), finish: async () => undefined };
+  const batch = importer.start ? await importer.start() : { extract: importer.extract.bind(importer), finish: () => Promise.resolve() };
   const existing = lessons.map((lesson) => lesson.text);
   const total = emptyCounts();
   try {
