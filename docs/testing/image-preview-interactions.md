@@ -40,6 +40,18 @@ are superseded by those later changes.
 - Existing attachment, mixed-message, sender-avatar, folded-group, and Live Photo
   regression suites remain applicable.
 
+The same-dependency production build grows from 5,608,287 budgeted application
+bytes on the baseline to 5,612,188 bytes with this feature, a 3,901-byte increase.
+The application allowance increases by 4,000 bytes to 5,613,000; the individual
+JavaScript chunk and separate asset/license limits remain unchanged. This leaves
+812 bytes of application headroom. Both builds contain 41 JavaScript chunks and
+use the same dependencies. Existing image helpers generate reduced/compressed
+previews or edited images; they do not provide original-resolution PNG clipboard
+data. The new helper reuses existing authentication and attachment readers, and
+loads/decodes bytes only when Copy image is invoked. The focused allowance follows
+the measured feature-budget approach used in #2210 rather than exempting new code
+from the check.
+
 ## Native acceptance checklist
 
 Use existing synthetic images in an isolated development client. Do not send
