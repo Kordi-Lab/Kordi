@@ -364,6 +364,25 @@ test('detached media window supports visible arrows, keyboard navigation, and ri
     assert.ok(lightbox.querySelector('[aria-label="Next image"]'));
     assert.equal(lightbox.querySelector<HTMLImageElement>('img')?.style.transform, 'scale(1)');
 
+    const fittedImage = lightbox.querySelector<HTMLImageElement>('img')!;
+    Object.defineProperties(fittedImage, {
+      naturalWidth: { value: 2400 },
+      naturalHeight: { value: 1800 },
+      clientWidth: { value: 400 },
+      clientHeight: { value: 300 },
+    });
+    await act(async () => fittedImage.click());
+    assert.equal(fittedImage.style.transform, 'scale(6)', 'click reaches actual size even beyond the usual 4x zoom limit');
+    const wheel = new environment.dom.window.WheelEvent('wheel', { deltaY: 80, bubbles: true, cancelable: true });
+    await act(async () => fittedImage.dispatchEvent(wheel));
+    assert.equal(wheel.defaultPrevented, true);
+    assert.equal(fittedImage.style.transform, 'scale(5.75)', 'wheel zooms smoothly from actual size');
+    await act(async () => fittedImage.dispatchEvent(new environment.dom.window.WheelEvent('wheel', { deltaY: -80, bubbles: true, cancelable: true })));
+    assert.equal(fittedImage.style.transform, 'scale(6)');
+    await act(async () => fittedImage.click());
+    assert.equal(fittedImage.style.transform, 'scale(1)', 'second click fits the image');
+    assert.equal(lightbox.querySelector('[title="Fit to window (⌘0)"]')?.textContent, '100%');
+
     await act(async () => {
       window.dispatchEvent(new environment.dom.window.KeyboardEvent('keydown', {
         key: '=',

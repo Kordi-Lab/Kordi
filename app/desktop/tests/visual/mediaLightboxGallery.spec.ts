@@ -1,5 +1,36 @@
 import { expect, test } from '@playwright/test';
 
+test('image click reaches natural size, wheel zooms, and dragging reveals image edges without dismissing', async ({ page }) => {
+  await page.setViewportSize({ width: 720, height: 560 });
+  await page.goto('/tests/visual/mediaLightboxGallery.html?theme=light&index=1');
+  const image = page.getByRole('dialog').locator('img');
+  await expect(image).toBeVisible();
+  const fitted = (await image.boundingBox())!;
+  const naturalWidth = await image.evaluate((element: HTMLImageElement) => element.naturalWidth);
+  expect(fitted.width).toBeLessThan(naturalWidth);
+  await image.click();
+  await expect.poll(async () => (await image.boundingBox())!.width).toBeCloseTo(naturalWidth, 0);
+  const actualZoom = Number(await image.getAttribute('data-attachment-image-zoom'));
+  await page.mouse.wheel(0, 100);
+  await expect(image).toHaveAttribute('data-attachment-image-zoom', String(actualZoom - 0.25));
+  await page.getByRole('button', { name: /Reset zoom/ }).click();
+  await expect.poll(async () => (await image.boundingBox())!.width).toBeCloseTo(fitted.width, 0);
+
+  await image.click();
+  await expect.poll(async () => (await image.boundingBox())!.width).toBeCloseTo(naturalWidth, 0);
+  const beforeDrag = (await image.boundingBox())!;
+  await page.mouse.move(360, 260);
+  await page.mouse.down();
+  await page.mouse.move(450, 300, { steps: 5 });
+  await page.mouse.up();
+  await expect(image).toHaveAttribute('data-attachment-image-zoom', String(actualZoom));
+  await expect.poll(async () => (await image.boundingBox())!.x).toBeCloseTo(beforeDrag.x + 90, 0);
+  await expect.poll(async () => (await image.boundingBox())!.y).toBeCloseTo(beforeDrag.y + 40, 0);
+  await page.mouse.click(450, 300);
+  await expect(image).toHaveAttribute('data-attachment-image-zoom', '1');
+  await expect.poll(async () => (await image.boundingBox())!.x).toBeCloseTo(fitted.x, 0);
+});
+
 test('standalone link cards stay compact while agent references remain inline', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 760, height: 720 });
   await page.goto('/tests/visual/mediaLightboxGallery.html?theme=light&surface=link-preview');

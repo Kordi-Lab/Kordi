@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Download, ExternalLink, LoaderCircle } from 'lucide-react';
+import { Copy, Download, ExternalLink, LoaderCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { copyAttachmentImage } from '@/features/chat/attachmentImageClipboard';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import {
   downloadCloudAttachmentToLocalPath,
@@ -28,10 +29,25 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'copied'>('idle');
   const canDownload = Boolean((attachment.localPath && isNativeShell()) || attachment.attachmentId);
   const canOpen = Boolean(((downloadedPath ?? attachment.localPath) && isNativeShell()));
+  const canCopy = attachment.kind === 'image'
+    && Boolean(attachment.localPath || attachment.attachmentId || attachment.downloadUrl);
 
-  if (!canDownload && !canOpen) return null;
+  if (!canDownload && !canOpen && !(variant === 'menu' && canCopy)) return null;
+
+  async function handleCopy() {
+    setCopyStatus('copying');
+    setError(null);
+    try {
+      await copyAttachmentImage(attachment);
+      setCopyStatus('copied');
+    } catch (copyError) {
+      setCopyStatus('idle');
+      setError(copyError instanceof Error ? copyError.message : 'Unable to copy image.');
+    }
+  }
 
   async function ensureLocalPath() {
     if (attachment.localPath) return attachment.localPath;
@@ -132,10 +148,16 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
     const menuButtonClass = 'app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left transition disabled:cursor-not-allowed disabled:opacity-55';
     return (
       <div className="flex min-w-[170px] flex-col">
-        <button type="button" role="menuitem" onClick={() => void handleDownload()} disabled={isDownloading} className={menuButtonClass} aria-label={`Download ${attachment.name}`}>
+        {canCopy ? (
+          <button type="button" role="menuitem" onClick={() => void handleCopy()} disabled={copyStatus === 'copying'} className={menuButtonClass} aria-label={`Copy image ${attachment.name}`}>
+            <Copy className="app-transient-action-icon" />
+            <span className="app-transient-action-label">Copy image</span>
+          </button>
+        ) : null}
+        {canDownload ? <button type="button" role="menuitem" onClick={() => void handleDownload()} disabled={isDownloading} className={menuButtonClass} aria-label={`Download ${attachment.name}`}>
           <Download className="app-transient-action-icon" />
           <span className="app-transient-action-label">{attachment.livePhoto ? 'Download Live Photo originals' : downloadedPath ? 'Download again' : 'Download'}</span>
-        </button>
+        </button> : null}
         {canOpen ? (
           <button type="button" role="menuitem" onClick={() => void handleOpen()} className={menuButtonClass} aria-label={`Open ${attachment.name} with local app`}>
             <ExternalLink className="app-transient-action-icon" />
@@ -143,6 +165,7 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
           </button>
         ) : null}
         {isDownloading ? <span className="app-transient-muted app-transient-status px-2.5 pb-1">Downloading…</span> : null}
+        {copyStatus !== 'idle' ? <span role="status" className="app-transient-muted app-transient-status px-2.5 pb-1">{copyStatus === 'copying' ? 'Copying image…' : 'Image copied'}</span> : null}
         {downloadedPath && !isDownloading ? <span className="app-transient-muted app-transient-status px-2.5 pb-1">Downloaded</span> : null}
         {error ? <span className="app-error-text app-transient-status max-w-[190px] px-2.5 pb-1 text-rose-300">{error}</span> : null}
       </div>
