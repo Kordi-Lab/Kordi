@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useId, useRef } from 'react';
 import { FilePlus2, Paperclip } from 'lucide-react';
 
 import type { Message, SessionArtifact } from '@/kordi-app/types';
@@ -20,6 +20,7 @@ export function ChatDocumentEntries({ conversationId, messages, artifacts, ...ov
   const { addDocument } = useDocumentReaderHost();
   const entries = useChatDocumentEntries({ conversationId, messages, artifacts, addDocument, ...overrides });
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const formatHelpId = useId();
   if (!entries.available) return null;
 
   return (
@@ -29,7 +30,7 @@ export function ChatDocumentEntries({ conversationId, messages, artifacts, ...ov
           <FilePlus2 className="h-3.5 w-3.5" aria-hidden="true" />
           New document
         </button>
-        <button type="button" className={ENTRY_CLASS} disabled={entries.busy} onClick={() => inputRef.current?.click()}>
+        <button type="button" className={ENTRY_CLASS} disabled={entries.busy} aria-describedby={formatHelpId} onClick={() => inputRef.current?.click()}>
           <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
           Add file
         </button>
@@ -39,6 +40,7 @@ export function ChatDocumentEntries({ conversationId, messages, artifacts, ...ov
           accept={ADD_DOCUMENT_ACCEPT}
           className="hidden"
           aria-label="Add file"
+          aria-describedby={formatHelpId}
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void entries.addFile(file);
@@ -46,6 +48,7 @@ export function ChatDocumentEntries({ conversationId, messages, artifacts, ...ov
           }}
         />
       </div>
+      <p id={formatHelpId} className="app-text-muted mt-1 px-2 text-[11px]">Markdown and HTML documents</p>
       {entries.error ? (
         <div role="alert" className="app-error-text mt-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{entries.error}</div>
       ) : null}

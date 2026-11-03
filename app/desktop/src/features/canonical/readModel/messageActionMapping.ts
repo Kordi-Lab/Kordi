@@ -1,3 +1,4 @@
+import { forwardedContentFromRecord } from '@/features/chat/forwardedContent';
 import type { Message, MessageActionMetadata } from '@/kordi-app/types';
 import { canonicalMentions } from './mentionMapping';
 
@@ -24,8 +25,10 @@ export function canonicalMessageAction(value: unknown): MessageActionMetadata | 
   const senderLabel = stringValue(source.senderLabel)?.trim();
   if (!sourceSessionId || !sourceMessageId || !senderLabel) return null;
   const mentions = canonicalMentions(source.mentions);
+  const forwardedContent = record.kind === 'forward' ? forwardedContentFromRecord(record.forwardedContent) : undefined;
   return {
     schemaVersion: 1,
+    ...(forwardedContent ? { forwardedContent } : {}),
     kind: record.kind as MessageActionMetadata['kind'],
     source: {
       sourceSessionId,

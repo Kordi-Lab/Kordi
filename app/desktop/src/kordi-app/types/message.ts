@@ -171,10 +171,17 @@ export type MessageActionSource = {
   timeLabel?: string | null;
 };
 
+/** Immutable visible body, separate from the destination's optional comment. */
+export type ForwardedContent = {
+  text: string;
+  comment?: string;
+};
+
 export type MessageActionMetadata = {
   schemaVersion: 1;
   kind: 'quote' | 'forward' | 'thread';
   source: MessageActionSource;
+  forwardedContent?: ForwardedContent;
 };
 
 export type MessageReplyDestination = 'conversation' | 'thread';

@@ -17,7 +17,7 @@ import type { EditFilePreview, Message, MessageAttachment, MessageSourceReferenc
 import { isSystemAvatarUrl } from '@/features/systemAgent/systemAgentIdentity';
 import { AGENT_GROUP_NAME_CLASS,AgentHeaderMeta,AgentOwnerTag } from './AgentOwnerTag';
 import { IdentityAvatar,useLocalAgentAvatarSeed,useLocalProfileAvatarSeed,type IdentityAvatarKind } from './IdentityAvatar';
-import { ForwardedFromHeader } from './forwardedFromHeader';
+import { ForwardedMessageContent } from './ForwardedMessageContent';
 import { HumanMessageMarkdown } from './humanMessageMarkdown';
 import { MarkdownContent } from './markdown';
 import { messageBubblePropsEqual } from './messageBubbleMemo';
@@ -614,7 +614,7 @@ function MessageBubbleView({
   const { hasAttachments, hasOnlyBorderlessMediaAttachments, hasGroupedImageAttachments,
     hasDetachedImageGroup, hasBubbleAttachments } = transcriptAttachmentLayout(msg, hasText, hasVoice);
   const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage); const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus; const hasLinkPreview = (isOwnHumanMessage || isPeerHumanMessage) && hasText && !msg.callActivity && !hasVoice && !hasPlanCard && !hasAttachments && Boolean(standaloneExternalMessageLink(msg.text)); const bareSurface = hasOnlyBorderlessMediaAttachments || planCardOnly;
-  const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !hasPlanCard && !msg.supportContactResponse && !hasLinkPreview && !(/\r?\n/.test(msg.text) || /^\s*(?:`{3,}|#{1,3}\s+|>|[-*+]\s+|\d+\.\s+)/.test(msg.text));
+  const showInlineCompactFooter = msg.messageAction?.kind !== 'forward' && showCompactFooter && hasText && !hasAttachments && !hasPlanCard && !msg.supportContactResponse && !hasLinkPreview && !(/\r?\n/.test(msg.text) || /^\s*(?:`{3,}|#{1,3}\s+|>|[-*+]\s+|\d+\.\s+)/.test(msg.text));
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
   const avatarSeed = isOwnHumanMessage
@@ -630,8 +630,8 @@ function MessageBubbleView({
   );
   const imageGroupAvatar = hasGroupedImageAttachments || hasDetachedImageGroup;
   const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = threadLayout || !isAgentMessage || groupChatAgentAvatar || imageGroupAvatar; const smallAvatar = threadLayout || useHumanCompactDensity || groupChatAgentAvatar; const showAvatar = showAvatarSlot && (imageGroupAvatar || (threadLayout ? !isGroupedWithPrevious || Boolean(msg.sourceMessage) : !isGroupedWithNext));
-  const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode && !isSystemAvatarUrl(msg.senderProfileImageUrl)); const isForwardedMessage = msg.messageAction?.kind === 'forward'; const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
-  const standaloneEmojiItem = standaloneEmojiItemForMessage(msg, { isHuman: showCompactFooter, showsSender: showInlineHumanSender, footerDetail });
+  const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode && !isSystemAvatarUrl(msg.senderProfileImageUrl)); const isForwardedMessage = msg.messageAction?.kind === 'forward';
+  const standaloneEmojiItem = isForwardedMessage ? null : standaloneEmojiItemForMessage(msg, { isHuman: showCompactFooter, showsSender: showInlineHumanSender, footerDetail });
   const bubbleAttachmentPreview = hasBubbleAttachments ? <AttachmentPreview msg={msg} scope={hasDetachedImageGroup ? 'non-images' : 'all'} imageGallery={imageGallery} imageDeliveryStatus={hasOnlyBorderlessMediaAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null} /> : null;
   const planCardContent = msg.planCard ? <PlanCardContent card={msg.planCard} conversationId={msg.reactionConversationId} /> : null;
   const messageSurfaceContent = (
@@ -640,7 +640,7 @@ function MessageBubbleView({
       {showInlineHumanSender ? (
         <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4" data-transcript-leading-decoration="true">{msg.sender}</div>
       ) : null}
-      {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
+      {isForwardedMessage ? <ForwardedMessageContent message={msg} /> : null}
       {standaloneEmojiItem ? <StandaloneEmojiMessage item={standaloneEmojiItem} own={isOwnHumanMessage} status={bubbleDeliveryStatus} /> : showCompactFooter ? (
         showInlineCompactFooter ? (
           <div className="leading-[1.45]">
@@ -665,7 +665,7 @@ function MessageBubbleView({
               {bubbleAttachmentPreview}{planCardContent}
               {msg.supportContactTyping ? (
                 <SupportContactTypingIndicator />
-              ) : hasText ? (
+              ) : hasText && !isForwardedMessage ? (
                 msg.supportContactResponse
                   ? <SupportContactAnswer text={msg.text} />
                   : <>{hasLinkPreview ? <MessageLinkPreview text={msg.text} /> : msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <HumanMessageMarkdown message={msg} onOpenSenderProfile={onOpenSenderProfile} />}</>
@@ -686,7 +686,7 @@ function MessageBubbleView({
         <>
           <div className={cn('flex flex-col', hasBubbleAttachments && hasText ? 'gap-2.5' : 'gap-0')}>{msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
             {bubbleAttachmentPreview}{planCardContent}
-            {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MarkdownContent text={msg.text} showLinkIcons copySurface="message" />) : null}
+            {hasText && !isForwardedMessage ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MarkdownContent text={msg.text} showLinkIcons copySurface="message" />) : null}
           </div>
           {(msg.statusChips?.length || footerDetail) ? (
             <div className={cn('app-message-status-bar border-t border-white/10 pt-2 text-[11px] text-slate-300', hasAttachments || hasText ? 'mt-2' : '')}>

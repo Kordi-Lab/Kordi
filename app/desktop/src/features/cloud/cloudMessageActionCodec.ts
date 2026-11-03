@@ -1,3 +1,4 @@
+import { forwardedContentFromRecord } from '@/features/chat/forwardedContent';
 import { normalizedMessageMentions } from '@/features/chat/messageMentions';
 import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import { integerMilliseconds } from './cloudGroupDecoding';
@@ -24,8 +25,10 @@ export function cloudMessageActionFromRecord(value: unknown): MessageActionMetad
     ? Math.max(0, Math.floor(source.attachmentCount))
     : 0;
   const mentions = normalizedMessageMentions(source.mentions);
+  const forwardedContent = record.kind === 'forward' ? forwardedContentFromRecord(record.forwardedContent) : undefined;
   return {
     schemaVersion: 1,
+    ...(forwardedContent ? { forwardedContent } : {}),
     kind: record.kind as MessageActionMetadata['kind'],
     source: {
       sourceSessionId,

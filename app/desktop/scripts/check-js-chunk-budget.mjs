@@ -9,7 +9,8 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Direct read receipts add 1 kB, durable Mac agent communication adds 5 kB,
 // and persistent exchange progress with ordered-output filtering adds 2 kB.
 // Parallel text attachment previews and explicit external opening add less than 1 kB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_609_000;
+// Full forwarded snapshots, bounded rich rendering, voice cleanup, and document format feedback add 4 kB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_613_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;

@@ -21,6 +21,17 @@ import { pauseDesktopVoiceMessage, playDesktopVoiceMessage, seekDesktopVoiceMess
 const VOICE_PLAY_EVENT = 'kordi:voice-message-play';
 const MIN_PLAYABLE_VOICE_BYTES = 1_024;
 
+type RetainedVoiceSources = Map<string, 'object-url' | 'native'>;
+
+function releaseVoiceSource(sources: RetainedVoiceSources, source: string | null) {
+  if (!source) return;
+  const kind = sources.get(source);
+  if (!kind) return;
+  sources.delete(source);
+  if (kind === 'object-url') URL.revokeObjectURL(source);
+  else void stopDesktopVoiceMessage(source);
+}
+
 export function VoiceMessageContent({ voice, footer, ownMessage }: {
   /** Present only for the sender's own message; recipients transcribe for this device. */
   ownMessage?: VoiceTranscriptOwnMessage;
@@ -28,7 +39,8 @@ export function VoiceMessageContent({ voice, footer, ownMessage }: {
   footer?: ReactNode;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const objectUrlRef = useRef<string | null>(null);
+  const mountedRef = useRef(false);
+  const retainedSourcesRef = useRef<RetainedVoiceSources>(new Map());
   const playbackBaseMsRef = useRef(0);
   const playbackStartedAtRef = useRef<number | null>(null);
   const playerKey = useId();
@@ -68,10 +80,36 @@ export function VoiceMessageContent({ voice, footer, ownMessage }: {
     setTranscriptOpened(true);
   }
 
-  useEffect(() => () => {
-    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-    if (nativePlayback && source) void stopDesktopVoiceMessage(source);
-  }, [nativePlayback, source]);
+  useEffect(() => {
+    mountedRef.current = true;
+    const audio = audioRef.current;
+    const retainedSources = retainedSourcesRef.current;
+    return () => {
+      mountedRef.current = false;
+      for (const retainedSource of retainedSources.keys()) releaseVoiceSource(retainedSources, retainedSource);
+      if (!nativePlayback && audio) {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+      }
+    };
+  }, [nativePlayback]);
+
+  useEffect(() => {
+    const retainedSources = retainedSourcesRef.current;
+    return () => releaseVoiceSource(retainedSources, source);
+  }, [source]);
+
+  function retainSource(nextSource: string, objectUrl = false) {
+    // A delete event or virtualization can remove the row while audio loads.
+    if (!mountedRef.current) {
+      if (objectUrl) URL.revokeObjectURL(nextSource);
+      return null;
+    }
+    retainedSourcesRef.current.set(nextSource, objectUrl ? 'object-url' : 'native');
+    setSource(nextSource);
+    return nextSource;
+  }
 
   useEffect(() => {
     const stopOtherPlayer = (event: Event) => {
@@ -110,10 +148,7 @@ export function VoiceMessageContent({ voice, footer, ownMessage }: {
     setLoading(true);
     setPlaybackError(null);
     try {
-      if (force && objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = null;
-      }
+      if (force) releaseVoiceSource(retainedSourcesRef.current, source);
       if (voice.localPath) {
         try {
           if (nativePlayback) {
@@ -121,14 +156,11 @@ export function VoiceMessageContent({ voice, footer, ownMessage }: {
             if (bytes.length < MIN_PLAYABLE_VOICE_BYTES) {
               throw new Error('Voice message audio is unavailable.');
             }
-            setSource(voice.localPath);
-            return voice.localPath;
+            return retainSource(voice.localPath);
           }
           const localSource = await localVoiceSource(voice.localPath);
           if (localSource) {
-            objectUrlRef.current = localSource;
-            setSource(localSource);
-            return localSource;
+            return retainSource(localSource, true);
           }
         } catch {
           // Fall through to the authenticated Cloud copy.
@@ -146,8 +178,7 @@ export function VoiceMessageContent({ voice, footer, ownMessage }: {
         if (bytes.length < MIN_PLAYABLE_VOICE_BYTES) {
           throw new Error('Voice message audio is unavailable.');
         }
-        setSource(path);
-        return path;
+        return retainSource(path);
       }
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 10_000);
@@ -158,9 +189,7 @@ export function VoiceMessageContent({ voice, footer, ownMessage }: {
         throw new Error('Voice message audio is unavailable.');
       }
       const objectUrl = URL.createObjectURL(blob);
-      objectUrlRef.current = objectUrl;
-      setSource(objectUrl);
-      return objectUrl;
+      return retainSource(objectUrl, true);
     } catch (error) {
       setPlaybackError(error instanceof Error ? error.message : 'Unable to play this voice message.');
       return null;
@@ -186,6 +215,7 @@ export function VoiceMessageContent({ voice, footer, ownMessage }: {
         window.dispatchEvent(new CustomEvent(VOICE_PLAY_EVENT, { detail: playerKey }));
         setPlaying(true);
         const path = await ensureSource(Boolean(playbackError));
+        if (!mountedRef.current) return;
         if (!path) {
           playbackBaseMsRef.current = 0;
           playbackStartedAtRef.current = null;
@@ -193,6 +223,10 @@ export function VoiceMessageContent({ voice, footer, ownMessage }: {
           return;
         }
         const sample = await playDesktopVoiceMessage(path);
+        if (!mountedRef.current) {
+          void stopDesktopVoiceMessage(path);
+          return;
+        }
         playbackBaseMsRef.current = sample.currentMs;
         playbackStartedAtRef.current = performance.now();
         setElapsedMs(sample.currentMs);
@@ -211,7 +245,7 @@ export function VoiceMessageContent({ voice, footer, ownMessage }: {
       return;
     }
     const nextSource = await ensureSource(Boolean(playbackError));
-    if (!audio || !nextSource) return;
+    if (!mountedRef.current || !audio || !nextSource) return;
     if (audio.src !== nextSource) audio.src = nextSource;
     try {
       if (audio.paused) await audio.play();

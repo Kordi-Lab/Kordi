@@ -86,3 +86,10 @@
 @media (prefers-reduced-transparency: reduce) {
   .app-message-forward-dialog.forward-confirmation { background: var(--app-transient-surface-fallback) !important; backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
+
+.app-forwarded-content { min-width: 0; }
+.app-forwarded-comment { margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid color-mix(in oklab, currentColor 18%, transparent); }
+.app-forwarded-body { min-width: 0; overflow-wrap: anywhere; }
+.app-forwarded-body[data-forward-expanded="false"]:has(+ .app-forwarded-toggle) { mask-image: linear-gradient(to bottom, black calc(100% - 2rem), transparent); }
+.app-forwarded-toggle { display: block; margin-top: 0.5rem; font-size: 0.75rem; font-weight: 600; color: inherit; opacity: 0.8; }
+.app-forwarded-toggle:hover, .app-forwarded-toggle:focus-visible { opacity: 1; text-decoration: underline; }

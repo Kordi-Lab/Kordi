@@ -1,0 +1,34 @@
+import { expect, test } from '@playwright/test';
+
+test('forwarded answers measure overflow, preserve content, and expand in the virtual transcript', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('https://**', route => route.abort());
+  await page.goto('/tests/visual/forwardedContent.html');
+  const long = page.locator('#app-transcript-message-long-forward');
+  const short = page.locator('#app-transcript-message-short-forward');
+  const toggle = long.getByRole('button', { name: 'Show full message', exact: true });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(short.locator('.app-forwarded-toggle')).toHaveCount(0);
+  await expect(long.locator('.app-forwarded-comment')).toHaveText('Review this copy');
+  await expect(long.locator('[data-markdown-heading="2"]')).toHaveText('Original answer');
+  await expect(long.locator('.app-forwarded-body')).toHaveCSS('max-height', '320px');
+  await toggle.scrollIntoViewIfNeeded();
+  await toggle.click();
+  const collapse = long.getByRole('button', { name: 'Collapse', exact: true });
+  await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+  await expect(long.locator('.app-forwarded-body')).toHaveCSS('max-height', 'none');
+  await expect(long.locator('.app-forwarded-body')).toContainText('FINAL SENTINEL');
+  await expect(long.getByRole('button', { name: 'Copy code', exact: true })).toHaveCount(1);
+  await expect(long.locator('a[href="https://example.com"]')).toHaveCount(1);
+  await expect(long.locator('.app-message-mention button')).toHaveCount(0);
+  await long.locator('.app-message-mention').click();
+  await collapse.scrollIntoViewIfNeeded();
+  await collapse.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toBeInViewport();
+  await expect(page.getByText('Following message', { exact: true })).toBeInViewport();
+  await short.scrollIntoViewIfNeeded();
+  await expect(short.locator('.app-forwarded-toggle')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
