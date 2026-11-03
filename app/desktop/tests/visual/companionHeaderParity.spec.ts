@@ -225,7 +225,7 @@ for (const appearance of ['light', 'dark'] as const) {
       };
     });
     expect(titleRows.panel).toEqual(titleRows.main);
-    expect(titleRows.main.painter?.split(/\s+/)).toContain('app-native-titlebar');
+    expect(titleRows.main.painter?.split(/\s+/)).toContain('app-shell');
     expect(titleRows.main.own).toBe('rgba(0, 0, 0, 0)');
     await expectContinuousDivider(page, '.app-chat-native-metadata-header');
     await expectTabHoverParity(page);

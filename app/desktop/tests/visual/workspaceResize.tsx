@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { AppShellFrame } from '../../src/app/AppShellFrame';
 import { LEFT_RAIL_WIDTH } from '../../src/kordi-app/layout';
 import { ChatPaneLayout } from '../../src/pages/ChatPaneLayout';
@@ -36,10 +36,10 @@ function WorkspaceResize() {
     showRightDetailRail={false} isDetailPanelCollapsed detailRailWidth={0}
     onSessionResizeMouseDown={noop} onDetailResizeMouseDown={noop}
     onToggleSessionPanel={() => setCollapsed(value => !value)}
-    sidebar={<aside className="app-side-shell flex min-h-0 overflow-hidden">
+    sidebar={<aside className="app-side-shell app-workspace-sidebar min-h-0"><div className="flex h-full">
       <nav style={{ width: LEFT_RAIL_WIDTH, flexShrink: 0 }} aria-label="Navigation">Chats</nav>
-      {!collapsed && <div className="app-session-panel min-w-0 flex-1 overflow-y-auto">Test conversation</div>}
-    </aside>}
+      <div className="app-session-panel-clip" style={{ '--app-session-surface-width': `${320 - LEFT_RAIL_WIDTH}px` } as CSSProperties}><div className="app-session-panel overflow-y-auto" style={{ width: 320 - LEFT_RAIL_WIDTH }} inert={collapsed} aria-hidden={collapsed}>Test conversation</div></div>
+    </div></aside>}
     mainContent={<ChatPaneLayout hasHeader>
       <header className="app-page-header app-chat-pane-header flex shrink-0 items-center justify-between">
         <h2 style={{ fontSize: 17 }}>Layout regression conversation</h2>
