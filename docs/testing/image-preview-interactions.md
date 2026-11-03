@@ -83,11 +83,17 @@ three orange squares, and purple circle. Preview Inspector reported PNG at
 application switch showed a different clipboard image, so only the immediate
 controlled recopy/paste is accepted as evidence.
 
-Native drag and close/return acceptance remain pending because the UI observation
-service again returned ScreenCaptureKit capture errors. No messages, uploads, or
-model calls were made. Browser geometry checks remain complementary evidence,
-not a substitute for the remaining native interaction checks. Keep #417 open until
-that acceptance is recorded.
+The UI observation service again returned ScreenCaptureKit capture errors before
+automated drag and close/return checks could finish. The human then explicitly
+confirmed in the coordinating QA conversation that zoomed panning and Escape
+close/return to the original chat both work in Alex. Those two checks are
+human-confirmed, not automation results. The six applied image interaction source
+files were verified unchanged at integrated head `8628925b0`.
+
+Native acceptance is complete through the controlled copy/paste and zoom evidence
+plus that human confirmation. No messages, uploads, or model calls were made.
+Browser geometry checks remain complementary evidence. Keep #417 open until the
+reviewed fix is merged with required CI passing on its final head.
 
 Agent image retrieval is separate: #2194 was resolved by #2208 with fresh synthetic
 multi-image reading and an unchanged human read cursor. This frontend follow-up
