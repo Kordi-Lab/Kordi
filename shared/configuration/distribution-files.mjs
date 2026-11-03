@@ -48,6 +48,7 @@ export function serviceEnvironment(profile, service) {
   };
   if (service !== 'server') throw new ConfigurationError('Unknown configured service.');
   const values = {
+    ...(profile.authentication ? { KORDI_AUTH_POLICY_JSON: JSON.stringify({ ...profile.authentication, edition: routing.edition, environment: routing.environment, backendOrigin: routing.backend.origin }) } : {}),
     KORDI_CLOUD_PUBLIC_BASE_URL: routing.backend.origin,
     KORDI_PUBLIC_APP_URL: routing.backend.origin,
     KORDI_CLIENT_CALLBACK_SCHEME: profile.clients.callbackScheme,
@@ -107,7 +108,7 @@ export function writeDistributionArtifacts(selection, directory) {
     KORDI_OPS_SHARE_ID: c.iosShareIdentifier,
     KORDI_OPS_DISPLAY_NAME: c.displayName,
     KORDI_OPS_ORIGIN: origin.replace('://', ':/$()/'),
-    KORDI_OPS_CHANNEL: c.edition === 'app' ? 'production' : 'research',
+    KORDI_OPS_CHANNEL: c.environment === 'staging' ? (c.edition === 'research' ? 'research-staging' : 'staging') : (c.edition === 'app' ? 'production' : 'research'),
     KORDI_OPS_CALLBACK: c.callbackScheme,
     KORDI_OPS_APP_GROUP: c.appGroup,
     KORDI_OPS_CREDENTIAL_SERVICE: c.credentialService,

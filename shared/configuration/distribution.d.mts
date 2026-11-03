@@ -10,6 +10,13 @@ export interface AgentPolicy {
 export interface DistributionConfiguration {
   schemaVersion: 1;
   routing: BackendConfiguration;
+  authentication?: {
+    loginPage: LoginPageConfiguration;
+    admission: 'existing' | 'verified-domain' | 'approved-testers';
+    verifiedDomains: string[];
+    approvedEmailsBinding: string;
+    oauthBindings: Record<'googleClientId' | 'googleClientSecret' | 'githubClientId' | 'githubClientSecret', string>;
+  };
   clients: {
     displayName: string;
     callbackScheme: string;
@@ -47,9 +54,11 @@ export interface DistributionConfiguration {
 }
 export type PublicClientConfiguration = Pick<DistributionConfiguration['routing'], 'edition' | 'environment'>
   & Omit<DistributionConfiguration['clients'], 'desktopIcon' | 'desktopIcns' | 'iosIcon'>
-  & { backendOrigin: string };
+  & { backendOrigin: string; loginPage?: LoginPageConfiguration };
 export function validateDistributionConfiguration(value: unknown, expected: ExpectedTarget): DistributionConfiguration;
 export function publicClientConfiguration(profile: DistributionConfiguration): PublicClientConfiguration;
 export function publicDesktopConfiguration(profile: DistributionConfiguration): Pick<PublicClientConfiguration,
-  'backendOrigin' | 'callbackScheme'>
+  'backendOrigin' | 'callbackScheme'> & { loginPage?: LoginPageConfiguration }
   & { updates: Pick<PublicClientConfiguration['updates'], 'enabled' | 'artifactName'> };
+
+export interface LoginPageConfiguration { title: string; subtitle: string; signupTitle: string; signupSubtitle: string }

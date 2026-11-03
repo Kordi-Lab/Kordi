@@ -134,3 +134,7 @@ KORDI_SIM_TEST_DATABASE_URL="$(migration_database_url kordi_migration_test_simul
   KORDI_CHAT_SYNC_CURSOR_SECRET=synthetic-simulator-ci-cursor-signing-secret \
   cargo test -p kordi-cloud-server --lib simulator_accounts --locked -- \
     --include-ignored --test-threads=1
+
+# Admission integration tests must run against disposable data, never skip silently.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib auth::routes::identity_handlers::completion::tests -- --ignored --test-threads=1

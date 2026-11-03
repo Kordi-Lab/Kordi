@@ -2,6 +2,10 @@ import Foundation
 
 /// A public allowlist embedded by the validated ops build, covered by the app signature.
 struct KordiReleaseConfiguration: Decodable {
+    let environment: String?
+    let displayName: String?
+    struct LoginPage: Decodable { let title, subtitle, signupTitle, signupSubtitle: String }
+    let loginPage: LoginPage?
     let edition: String
     let backendOrigin: String
     let callbackScheme: String
@@ -15,6 +19,7 @@ struct KordiReleaseConfiguration: Decodable {
               let data = Data(base64Encoded: encoded),
               let value = try? JSONDecoder().decode(Self.self, from: data),
               ["app", "research"].contains(value.edition),
+              ["production", "staging"].contains(value.environment ?? "production"),
               let url = URL(string: value.backendOrigin),
               url.scheme == "https", url.host != nil,
               url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
@@ -28,8 +33,15 @@ struct KordiReleaseConfiguration: Decodable {
                   value.credentialService.split(separator: ".").contains("research"),
                   value.callbackScheme.split(separator: "-").contains("research") else { return nil }
         }
+        if value.environment == "staging" {
+            guard [value.iosIdentifier, value.appGroup, value.credentialService, value.callbackScheme]
+                .allSatisfy({ $0.split(whereSeparator: { $0 == "." || $0 == "-" }).contains("staging") }) else { return nil }
+        }
         return value
     }
 
-    var channel: String { edition == "app" ? "production" : "research" }
+    var channel: String {
+        if environment == "staging" { return edition == "app" ? "staging" : "research-staging" }
+        return edition == "app" ? "production" : "research"
+    }
 }
