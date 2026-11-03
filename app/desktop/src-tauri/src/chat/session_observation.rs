@@ -3,6 +3,7 @@ use kordi_tools::{ReadSessionRequest, SearchSessionsRequest, SessionObservationR
 use std::sync::Arc;
 pub(super) mod cloud;
 pub(super) mod image_visibility;
+pub(super) mod selection;
 
 #[cfg(test)]
 pub(super) fn build_session_observation_runtime(
