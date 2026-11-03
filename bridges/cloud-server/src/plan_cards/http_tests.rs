@@ -151,6 +151,7 @@ async fn full_lifecycle_over_real_http() {
         account_id: system_account,
         on_behalf_of_conversation: Some(conversation_id),
         represented_accounts: std::collections::BTreeSet::new(),
+        source_message_ids: Vec::new(),
     };
     let card = super::routes::dispatch_row(&pool, &system_agent, request)
         .await
