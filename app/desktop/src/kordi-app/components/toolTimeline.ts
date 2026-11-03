@@ -203,6 +203,8 @@ export function toolTimelineToolLabel(tool: ToolTimelineInput) {
     return command ? labelForShellCommand(command) : 'Run script';
   }
   if (normalized.includes('web_search') || normalized.includes('search_web')) return 'Search web';
+  if (normalized === 'search_sessions') return 'Search conversations';
+  if (normalized === 'read_session') return 'Read conversation';
   if (normalized.includes('search') || normalized.includes('grep')) return 'Search code';
   if (normalized.includes('read') || normalized.includes('view') || normalized.includes('cat')) return path ? 'Read file' : 'Read context';
   if (normalized.includes('list') || normalized.includes('glob') || normalized.includes('find') || normalized.includes('dir')) return 'Find files';

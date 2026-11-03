@@ -4,7 +4,7 @@ const port = Number(process.env.KORDI_TRAJECTORY_TEST_PORT ?? '62360');
 
 export default defineConfig({
   testDir: './tests/visual',
-  testMatch: ['processingTrajectory.spec.ts', 'progressDuration.spec.ts', 'pinMotion.spec.ts', 'directReplyHandoff.spec.ts'],
+  testMatch: ['processingTrajectory.spec.ts', 'progressDuration.spec.ts', 'pinMotion.spec.ts', 'directReplyHandoff.spec.ts', 'toolActivityInline.spec.ts', 'progressDisclosureZoom.spec.ts'],
   fullyParallel: false,
   workers: 1,
   retries: 0,

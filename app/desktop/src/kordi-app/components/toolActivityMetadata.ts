@@ -19,7 +19,10 @@ export function toolActivityMetadata(tool: DesktopChatToolSnapshot) {
   const editing = /edit|write|patch/.test(name);
   const searching = /search|grep|glob|find/.test(name);
   const active = progressToolIsActive(tool);
-  const label = command ? active ? 'Running' : 'Ran' : path ? editing ? active ? 'Editing' : 'Edited' : active ? 'Reading' : 'Read' : toolTimelineToolLabel(tool);
+  const conversationLabel = name === 'search_sessions' ? active ? 'Searching conversations' : 'Searched conversations'
+    : name === 'read_session' ? active ? 'Reading a conversation' : 'Read a conversation' : undefined;
+  const label = conversationLabel ?? (command ? active ? 'Running' : 'Ran' : path ? editing ? active ? 'Editing' : 'Edited' : active ? 'Reading' : 'Read' : toolTimelineToolLabel(tool));
+  const query = name === 'search_sessions' ? string(['query']) : undefined;
   const Icon = command ? TerminalSquare : path ? editing ? Pencil : FileText : searching ? Search : Wrench;
-  return { command, path, label, Icon };
+  return { command, path, label, query, Icon };
 }
