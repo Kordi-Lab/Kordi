@@ -405,5 +405,9 @@ async fn turning_the_default_agent_off_stops_everything() {
             .fetch_one(&f.pool)
             .await
             .unwrap();
-    assert_eq!(rows, 0, "the sweep stops watching");
+    assert_eq!(rows, 1, "disabled cursors retain their cooldown");
+    assert!(
+        f.candidate(&config()).await.is_none(),
+        "the sweep stops watching"
+    );
 }
