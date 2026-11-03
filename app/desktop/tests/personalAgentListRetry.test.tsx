@@ -112,16 +112,20 @@ test('the sync retries a failed personal agents list and reports each failure', 
   }
 });
 
-test('a synced Proactive change refreshes the list without a local toggle', async () => {
+for (const initialCacheFailure of [false, true]) test(`a synced Proactive change refreshes the list without a local toggle (initial cache failure: ${initialCacheFailure})`, async () => {
   __setSessionBackendForTests({ load: async () => ({ token: 'token', accountId: 'acct_alex', expiresAt: '2099-01-01T00:00:00Z' }), save: async () => undefined, clear: async () => undefined });
   let enabled = true;
   let calls = 0;
+  let cacheReads = 0;
   const agents: Agent[] = [];
   const personal = { agentId: 'cloud-agent:acct_alex', conversationId: 'conv', sessionId: 'session:personal', proactive: true };
   function Harness() {
     usePersonalAgentSync({
       accountId: 'acct_alex', agents, canonicalState: null, setCanonicalState: () => undefined, canCreateSessions: false,
-      loadCachedConversations: async () => [{ id: 'conv', kind: 'ai', legacy_session_id: personal.sessionId, personal_agent: enabled ? { agent_id: personal.agentId } : null } as never],
+      loadCachedConversations: async () => {
+        if (cacheReads++ === 0 && initialCacheFailure) throw new Error('Synthetic cache unavailable');
+        return [{ id: 'conv', kind: 'ai', legacy_session_id: personal.sessionId, personal_agent: enabled ? { agent_id: personal.agentId } : null } as never];
+      },
       list: async () => { calls += 1; return enabled ? [personal] : []; },
     });
     return null;

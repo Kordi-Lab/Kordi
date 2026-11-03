@@ -83,6 +83,7 @@ export function usePersonalAgentSync({
     let cancelled = false;
     let reading = false;
     let dirty = false;
+    let refreshAfterRead = false;
     let signature: string | null = null;
     const read = async () => {
       if (reading) { dirty = true; return; }
@@ -92,21 +93,23 @@ export function usePersonalAgentSync({
         try {
           const conversations = await latest.current.loadCachedConversations(accountId);
           if (cancelled) break;
+          if (dirty) continue;
           const sessions = personalAgentSessionsFromSnapshots(conversations);
           const markerless = markerlessSnapshotSessionIds(conversations);
           const next = JSON.stringify([sessions.map((session) => [session.sessionId, session.agentId]).sort(), [...markerless].sort()]);
           if (signature !== next) {
             setCached({ accountId, sessions, markerless });
-            if (signature !== null) setRefreshCount((count) => count + 1);
+            if (signature !== null || refreshAfterRead) setRefreshCount((count) => count + 1);
             signature = next;
           }
+          refreshAfterRead = false;
         } catch {
           // An unavailable cache is not evidence that the setting was disabled.
         }
       } while (dirty && !cancelled);
       reading = false;
     };
-    const changed = () => { void read(); };
+    const changed = () => { refreshAfterRead = true; void read(); };
     window.addEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT, changed);
     void read();
     return () => { cancelled = true; window.removeEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT, changed); };
