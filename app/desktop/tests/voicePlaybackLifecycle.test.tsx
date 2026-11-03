@@ -5,6 +5,8 @@ import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { VoiceMessageContent } from '../src/kordi-app/components/voiceMessage';
+import { invokeDesktop } from '../src/lib/desktop';
+import { waitForReactCondition } from './helpers/waitForReactCondition';
 import type { MessageVoice } from '../src/kordi-app/types/message';
 
 const voice: MessageVoice = {
@@ -22,32 +24,49 @@ for (const delayed of ['read', 'play', 'none', 'commit-gap'] as const) {
     const previous = new Map(Object.keys(values).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
     for (const [key, value] of Object.entries(values)) Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
     const calls: string[] = [];
+    let readCompleted = false;
+    let playCompleted = false;
+    let nativePlaying = false;
     let finish!: () => void;
     const pending = new Promise<void>(resolve => { finish = resolve; });
     mockIPC(async command => {
       calls.push(command);
       if (command === 'desktop_chat_read_attachment') {
         if (delayed === 'read') await pending;
+        readCompleted = true;
         return new Array(2048).fill(0);
       }
       if (command === 'desktop_voice_play') {
         if (delayed === 'play') await pending;
         if (delayed === 'commit-gap') root.render(createElement('div'));
+        nativePlaying = true;
+        playCompleted = true;
         return { currentMs: 0, durationMs: 9000, playing: true };
       }
+      if (command === 'desktop_voice_stop') nativePlaying = false;
       return undefined;
     });
     const root = createRoot(document.getElementById('root')!);
     try {
       await act(async () => root.render(createElement(VoiceMessageContent, { voice })));
       await act(async () => document.querySelector<HTMLButtonElement>('.app-voice-play-button')!.click());
-      assert.ok(calls.includes('desktop_chat_read_attachment'));
+      await waitForReactCondition(() => calls.includes('desktop_chat_read_attachment'), 'native attachment read started');
+      if (delayed !== 'read') {
+        await waitForReactCondition(() => calls.includes('desktop_voice_play'), 'native playback started before removal');
+      }
       // A deletion event removes the transcript row while native work can still be pending.
       await act(async () => root.render(createElement('div')));
       await act(async () => { finish(); await pending; });
+      await waitForReactCondition(() => readCompleted, 'native attachment read completed');
       if (delayed === 'read') {
+        // Use the same dynamically imported IPC path as playback as a completion fence.
+        await act(async () => { await invokeDesktop('test_voice_playback_barrier'); });
         assert.equal(calls.includes('desktop_voice_play'), false, 'removed row must never start playback');
       } else {
+        await waitForReactCondition(
+          () => playCompleted && !nativePlaying && calls.at(-1) === 'desktop_voice_stop',
+          'removal and any late play acknowledgement stop native playback',
+        );
         assert.ok(calls.includes('desktop_voice_play'));
         assert.equal(calls.at(-1), 'desktop_voice_stop', 'removed row leaves native playback stopped');
       }
