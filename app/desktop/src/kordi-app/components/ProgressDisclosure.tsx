@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 /** Retain opened content so closing can animate and nested disclosures keep their state. */
-export function ProgressDisclosure({ expanded, children }: { expanded: boolean; children: ReactNode }) {
+export function ProgressDisclosure({ expanded, children, id }: { expanded: boolean; children: ReactNode; id?: string }) {
   const [visited, setVisited] = useState(expanded);
   if (expanded && !visited) setVisited(true);
   const mounted = useRef(false);
@@ -11,17 +11,23 @@ export function ProgressDisclosure({ expanded, children }: { expanded: boolean; 
     const element = body.current;
     const inner = content.current;
     if (!element || !inner) return;
-    // Initial content is already present, not a user-triggered expansion.
+    // Capture auto height before closing; CSS layout pixels exclude ancestor zoom.
+    if (element.style.height === 'auto') element.style.height = window.getComputedStyle(element).height;
     if (!mounted.current) element.style.transition = 'none';
-    // Resolve the current height before retargeting, including a reversed transition.
     element.getBoundingClientRect();
+    const duration = parseFloat(window.getComputedStyle(element).transitionDuration) * 1000 || 0;
+    let settleTimer: number | undefined;
     const resize = () => {
-      const maxHeight = parseFloat(window.getComputedStyle(element).maxHeight);
-      // CSS heights use layout pixels; bounding rectangles include ancestor zoom
-      // and transforms, which would apply that scale twice and leave a blank gap.
-      const contentHeight = parseFloat(window.getComputedStyle(inner).height);
-      const height = expanded ? Math.min(contentHeight, Number.isFinite(maxHeight) ? maxHeight : Infinity) : 0;
-      if (element.style.height !== `${height}px`) element.style.height = `${height}px`;
+      if (expanded && element.style.height === 'auto') return;
+      const height = expanded ? parseFloat(window.getComputedStyle(inner).height) : 0;
+      element.style.height = `${height}px`;
+      window.clearTimeout(settleTimer);
+      // Once open, nested details grow naturally instead of reanimating every
+      // ancestor and waking tail-following after the clicked control settles.
+      if (expanded) {
+        if (!duration) element.style.height = 'auto';
+        else settleTimer = window.setTimeout(() => { element.style.height = 'auto'; }, duration + 34);
+      }
     };
     resize();
     if (!mounted.current) {
@@ -29,16 +35,12 @@ export function ProgressDisclosure({ expanded, children }: { expanded: boolean; 
       element.style.removeProperty('transition');
       mounted.current = true;
     }
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(resize);
-    observer.observe(inner);
-    // Viewport constraints can arrive after the first measured animation frame.
-    const constraints = new window.MutationObserver(resize);
-    constraints.observe(element, { attributes: true, attributeFilter: ['style'] });
-    return () => { observer.disconnect(); constraints.disconnect(); };
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize);
+    observer?.observe(inner);
+    return () => { observer?.disconnect(); window.clearTimeout(settleTimer); };
   }, [expanded, visited]);
-  return <div ref={body} className="app-progress-disclosure" data-expanded={expanded}
-    data-transcript-stable-disclosure-body="true" aria-hidden={!expanded} inert={!expanded}>
+  return <div id={id} ref={body} className="app-progress-disclosure" data-expanded={expanded}
+    data-transcript-stable-disclosure-body="true" data-transcript-disclosure-scroll="conversation" aria-hidden={!expanded} inert={!expanded}>
     <div ref={content} className="app-progress-disclosure-content">{visited || expanded ? children : null}</div>
   </div>;
 }

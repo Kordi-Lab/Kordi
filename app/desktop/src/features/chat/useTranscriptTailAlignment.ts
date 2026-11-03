@@ -95,7 +95,8 @@ export function useTranscriptTailAlignment({
 
   useLayoutEffect(() => {
     const container = sizeContainerRef.current;
-    if (!hasItems || suspendTailResize || !container || typeof MutationObserver === 'undefined') return;
+    if (!hasItems || !container || typeof MutationObserver === 'undefined') return;
+    rowLayoutTopsRef.current = captureTranscriptRowLayoutTops(container);
     let lastHeight = container.style.height;
     // The virtualizer can adjust scrollTop before publishing a larger extent;
     // the browser clamps that write against the old height. Repair the tail
@@ -105,7 +106,12 @@ export function useTranscriptTailAlignment({
       const height = container.style.height;
       if (height === lastHeight) return;
       lastHeight = height;
-      if (!viewportWasAtTailRef.current && !tailAlignmentActiveRef.current) return;
+      if (suspendTailResize || (!viewportWasAtTailRef.current && !tailAlignmentActiveRef.current)) {
+        // A disclosure changes row geometry without a new message. Keep the
+        // baseline current so resuming tail following does not replay that move.
+        rowLayoutTopsRef.current = captureTranscriptRowLayoutTops(container);
+        return;
+      }
       if (animateTailResize) scheduleTailAlignment(Number.MAX_SAFE_INTEGER);
       else alignViewportToTail();
     });
