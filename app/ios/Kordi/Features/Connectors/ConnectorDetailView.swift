@@ -200,8 +200,7 @@ struct ConnectorDetailView: View {
     }
 }
 
-/// A consent step: the connection, which grants read and act together for a
-/// service, or the act grant when a provider returned read-only access.
+/// A consent step: the connection (read only for Calendar), or an act grant.
 struct ConnectorConsent: Identifiable {
     enum Kind { case connect, grant }
 
