@@ -42,6 +42,52 @@ async fn complete_calendar(
 }
 
 #[tokio::test]
+async fn calendar_routes_advertise_readiness_and_accept_explicit_read_only_consent() {
+    let Some(pool) = pool().await else { return };
+    let stub = HttpStub::start().await;
+    let runtime = service_runtime(&stub, Default::default());
+    let (_, token) = signed_in_account(&pool, "calendar_routes").await;
+    let app = super::super::routes::routes(Arc::new(
+        ServerState::new(pool, EventBus::noop()).with_connector_runtime(runtime),
+    ));
+    let listed = body_json(
+        app.clone()
+            .oneshot(authed("GET", "/v1/cloud/connectors", &token, None))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        listed["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["provider"] == "google_calendar")
+            .unwrap()["oauthReady"],
+        true
+    );
+    let response = app
+        .oneshot(authed(
+            "POST",
+            "/v1/cloud/connectors/google_calendar/oauth/start",
+            &token,
+            Some(json!({"grant": "read_only"})),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_json(response).await;
+    let url = url::Url::parse(body["authUrl"].as_str().unwrap()).unwrap();
+    let scope = url
+        .query_pairs()
+        .find(|(key, _)| key == "scope")
+        .unwrap()
+        .1
+        .to_string();
+    assert_eq!(scope, providers::GOOGLE_CALENDAR.read_scopes.join(" "));
+}
+
+#[tokio::test]
 async fn calendar_consent_tracks_provider_scopes_without_implicitly_enabling_act() {
     let Some(pool) = pool().await else { return };
     let stub = HttpStub::start().await;
@@ -81,7 +127,7 @@ async fn calendar_consent_tracks_provider_scopes_without_implicitly_enabling_act
     assert!(downgraded.act_scopes.is_empty() && !downgraded.act_enabled);
     assert_eq!(downgraded.read_scopes, spec.read_scopes);
     assert_eq!(
-        store::agent_grants(&pool, &[first.connector_id.clone()])
+        store::agent_grants(&pool, std::slice::from_ref(&first.connector_id))
             .await
             .unwrap()[&first.connector_id],
         vec![store::default_agent_id(&owner)]
