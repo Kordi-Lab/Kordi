@@ -62,6 +62,7 @@ async fn handle(
         account_id: session.account_id.clone(),
         on_behalf_of_conversation: None,
         represented_accounts: BTreeSet::new(),
+        source_message_ids: Vec::new(),
     };
     match dispatch_row(state.db_pool(), &actor, request).await {
         Ok(row) => {
@@ -117,6 +118,8 @@ pub(crate) struct Actor {
     pub account_id: String,
     pub on_behalf_of_conversation: Option<Uuid>,
     pub represented_accounts: BTreeSet<String>,
+    /// Canonical new human message IDs from the server-owned run snapshot.
+    pub source_message_ids: Vec<String>,
 }
 
 async fn is_active_member(pool: &PgPool, conversation_id: Uuid, account_id: &str) -> bool {
@@ -387,9 +390,18 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
             if actor.on_behalf_of_conversation.is_none() {
                 require_plan_manager(pool, &actor.account_id, &event_id).await?;
             }
-            store::reopen(pool, &event_id, revision, &actor.account_id, &reason)
-                .await
-                .map_err(store_error)
+            super::transitions::reopen_with_sources(
+                pool,
+                &event_id,
+                revision,
+                &actor.account_id,
+                &reason,
+                actor
+                    .on_behalf_of_conversation
+                    .map(|_| actor.source_message_ids.as_slice()),
+            )
+            .await
+            .map_err(store_error)
         }
         Request::Cancel {
             event_id,
