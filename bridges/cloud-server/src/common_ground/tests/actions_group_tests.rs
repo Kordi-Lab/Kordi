@@ -122,6 +122,43 @@ async fn a_group_without_contacts_invites_and_invitees_join() {
     assert_eq!(theirs["invitations"], json!([]));
     let sams = results(&app, &code, &sam_token).await;
     assert_eq!(sams["invitations"].as_array().unwrap().len(), 1);
+
+    // The verified owner and accepted member can both create channels without contacts.
+    // A room participant whose group invitation is still pending cannot.
+    let space = group["groupSpaceId"].as_str().unwrap();
+    for (actor, token, expected_status) in [
+        (&alex, &alex_token, 201),
+        (&priya, &priya_token, 201),
+        (&sam, &sam_token, 403),
+    ] {
+        let (status, channel) = send(
+            &app,
+            "POST",
+            &format!("/v2/chat/group-spaces/{space}/channels"),
+            token,
+            Some(json!({
+                "client_operation_id": Uuid::now_v7(), "kind": "group",
+                "client_session_id": format!("session:group:{}", Uuid::now_v7()),
+                "shared_title": "Synthetic Grounding channel", "member_account_ids": []
+            })),
+        )
+        .await;
+        assert_eq!(status, expected_status, "{channel}");
+        if status == 201 {
+            let roster = channel["conversation"]["members"].as_array().unwrap();
+            let actor_role = roster
+                .iter()
+                .find(|entry| entry["account_id"] == actor.as_str())
+                .unwrap();
+            assert_eq!(
+                actor_role["role"],
+                if actor == &alex { "owner" } else { "member" }
+            );
+            assert!(!roster
+                .iter()
+                .any(|entry| entry["account_id"] == sam.as_str()));
+        }
+    }
 }
 
 #[tokio::test]

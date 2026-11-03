@@ -125,7 +125,7 @@ export function useCloudGroupControlSender({
         .filter(Boolean),
     ])].filter((accountId) => accountId !== account.accountId);
     // An owner-only group still posts into its server conversation, addressed to the owner.
-    if (targetAccountIds.length === 0 && (input.kind === 'group-avatar-update' || input.kind === 'group-message')) targetAccountIds.push(account.accountId);
+    if (targetAccountIds.length === 0 && (input.channelCreated || input.kind === 'group-avatar-update' || input.kind === 'group-message')) targetAccountIds.push(account.accountId);
     if (targetAccountIds.length === 0) {
       finishChatPerformanceSpan(firstAckPerformanceSpan, {
         resultClass: 'failed',
@@ -354,7 +354,7 @@ export function useCloudGroupControlSender({
             ...(clientCreatedAt ? { clientCreatedAt } : {}),
             conversationKind: 'group',
             memberAccountIds: targetAccountIds,
-            ...(input.channelCreated ? { sharedTitle: sessionTitle?.title } : {}),
+            ...(input.channelCreated ? { sharedTitle: sessionTitle?.title, sourceGroupSpaceId: input.groupSpaceId ?? undefined } : {}),
           },
         );
         recordFirstAck(
