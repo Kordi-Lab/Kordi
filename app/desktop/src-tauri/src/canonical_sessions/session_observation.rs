@@ -28,6 +28,13 @@ pub(crate) fn search_sessions_for_observation_scoped(
     search_sessions_in_scope(&conn, request, session_id)
 }
 
+pub(crate) fn search_local_sessions_for_observation(
+    request: SearchSessionsRequest,
+) -> Result<SearchSessionsResponse, String> {
+    let conn = open_db()?;
+    search_sessions_filtered(&conn, request, None, true)
+}
+
 pub(crate) fn read_session_for_observation(
     request: ReadSessionRequest,
 ) -> Result<ReadSessionResponse, String> {
@@ -48,6 +55,15 @@ pub(crate) fn search_sessions_in_scope(
     request: SearchSessionsRequest,
     scope: Option<&str>,
 ) -> Result<SearchSessionsResponse, String> {
+    search_sessions_filtered(conn, request, scope, false)
+}
+
+fn search_sessions_filtered(
+    conn: &Connection,
+    request: SearchSessionsRequest,
+    scope: Option<&str>,
+    local_only: bool,
+) -> Result<SearchSessionsResponse, String> {
     let query = request.query.trim().to_lowercase();
     if query.is_empty() {
         return Err("query cannot be empty".to_string());
@@ -63,11 +79,14 @@ pub(crate) fn search_sessions_in_scope(
             "SELECT id, title, kind, updated_at_ms
              FROM sessions
              WHERE status <> 'archived' AND (?1 IS NULL OR id = ?1)
+               AND (NOT ?2 OR (kind NOT IN ('group','direct') AND NOT EXISTS (
+                   SELECT 1 FROM chat_sync_conversations WHERE client_session_id=sessions.id
+               )))
              ORDER BY COALESCE(last_message_at_ms, updated_at_ms) DESC, updated_at_ms DESC",
         )
         .map_err(|err| err.to_string())?;
     let rows = stmt
-        .query_map(params![scope], |row| {
+        .query_map(params![scope, local_only], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -394,4 +413,38 @@ fn message_snippets(
         .map_err(|err| err.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())
+}
+
+#[cfg(test)]
+mod catalog_fallback_tests {
+    use super::*;
+
+    #[test]
+    fn local_fallback_filters_shared_history_before_the_result_limit() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::canonical_sessions::schema::initialize_schema(&conn).unwrap();
+        for (id, kind, time) in [
+            ("group", "group", 4),
+            ("direct", "direct", 3),
+            ("synced-ai", "ai", 2),
+            ("local-ai", "ai", 1),
+        ] {
+            conn.execute("INSERT INTO sessions(id,kind,title,created_by_identity_id,created_at_ms,updated_at_ms) VALUES(?1,?2,'Synthetic matching chat','human:fixture',?3,?3)",params![id,kind,time]).unwrap();
+        }
+        conn.execute("INSERT INTO chat_sync_conversations(account_id,conversation_id,client_session_id,version,snapshot_json,updated_at_ms) VALUES('owner','cloud','synced-ai',1,'{}',1)",[]).unwrap();
+        let result = search_sessions_filtered(
+            &conn,
+            SearchSessionsRequest {
+                query: "matching".into(),
+                limit: Some(1),
+                include_messages: Some(true),
+                before_sequence: None,
+            },
+            None,
+            true,
+        )
+        .unwrap();
+        assert_eq!(result.sessions.len(), 1);
+        assert_eq!(result.sessions[0].session_id, "local-ai");
+    }
 }
