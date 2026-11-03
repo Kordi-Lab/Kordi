@@ -135,9 +135,9 @@ KORDI_SIM_TEST_DATABASE_URL="$(migration_database_url kordi_migration_test_simul
   cargo test -p kordi-cloud-server --lib simulator_accounts --locked -- \
     --include-ignored --test-threads=1
 
-# Rescheduling must run against PostgreSQL, including rejected replacements and
-# per-attendee calendar projections. Keep its synthetic data task-local.
-migration_create_database kordi_migration_test_reschedule
-KORDI_DIGEST_TEST_DATABASE_URL="$(migration_database_url kordi_migration_test_reschedule)" \
-  cargo test -p kordi-cloud-server --lib plan_cards::reschedule_tests --locked -- \
+# Plan-card regressions need PostgreSQL, including rejected replacements,
+# stale-context protection, and per-attendee calendar projections.
+migration_create_database kordi_migration_test_plan_cards
+KORDI_DIGEST_TEST_DATABASE_URL="$(migration_database_url kordi_migration_test_plan_cards)" \
+  cargo test -p kordi-cloud-server --lib plan_cards:: --locked -- \
     --include-ignored --test-threads=1
