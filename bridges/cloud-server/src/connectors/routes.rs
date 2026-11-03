@@ -94,10 +94,32 @@ async fn list_connectors(
         Ok(connectors) => connectors,
         Err(err) => return server_error("list connectors", err),
     };
+    let providers = provider_readiness(state.connectors());
     match store::account_agents(pool, &session.account_id).await {
-        Ok(agents) => Json(ConnectorListResponse { connectors, agents }).into_response(),
+        Ok(agents) => Json(ConnectorListResponse {
+            connectors,
+            agents,
+            providers,
+        })
+        .into_response(),
         Err(err) => server_error("list connector agents", err),
     }
+}
+
+pub(super) fn provider_readiness(
+    runtime: &super::ConnectorRuntime,
+) -> Vec<super::models::ConnectorProviderReadiness> {
+    super::providers::PROVIDER_SPECS
+        .iter()
+        .map(|spec| super::models::ConnectorProviderReadiness {
+            provider: spec.id,
+            oauth_ready: runtime.cipher.is_some()
+                && runtime
+                    .providers
+                    .get(spec.id)
+                    .is_some_and(|provider| provider.oauth_client().is_ok()),
+        })
+        .collect()
 }
 
 async fn start_oauth(

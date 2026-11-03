@@ -66,12 +66,14 @@ pub struct ProviderSpec {
 }
 
 impl ProviderSpec {
-    /// Scopes to request for `grant`. Both grant kinds ask for the read and
-    /// act scopes in one consent: `read` is the first connect, which makes
-    /// the service fully usable at once, and `act` is the re-grant for a
-    /// connector whose provider returned read-only scopes. Asking for read
-    /// again also keeps read working at providers that replace scopes.
-    pub fn requested_scopes(&self, _grant: ConnectorToolGroup) -> Vec<&'static str> {
+    /// Calendar starts read only; an explicit act grant includes both sets.
+    /// Other services retain their combined initial consent. Act grants also
+    /// include read scopes for providers that replace the credential's scopes.
+    pub fn requested_scopes(&self, grant: ConnectorToolGroup) -> Vec<&'static str> {
+        // Calendar's read consent must not request permission to change events.
+        if self.id == "google_calendar" && grant == ConnectorToolGroup::Read {
+            return self.read_scopes.to_vec();
+        }
         self.read_scopes
             .iter()
             .chain(self.act_scopes.iter())
@@ -160,10 +162,8 @@ pub fn oauth_client_from_env(spec: &ProviderSpec) -> Result<ConnectorOAuthClient
 
 pub fn not_configured_message(spec: &ProviderSpec) -> String {
     format!(
-        "{} connections are not available on this server yet. Set {} and {}.",
+        "{} connections are not available on this server yet. Ask your Kordi administrator to enable them, then try again.",
         spec.display_name,
-        client_id_env(spec),
-        client_secret_env(spec)
     )
 }
 

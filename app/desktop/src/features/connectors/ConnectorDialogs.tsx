@@ -96,7 +96,9 @@ export function ConnectorDialogs({
                 {dialog.reauth ? `Sign in to ${dialogDefinition.name} again` : `Connect ${dialogDefinition.name}`}
               </AppDialogTitle>
               <AppDialogDescription id={`${idPrefix}-connect-description`}>
-                Kordi asks {dialogDefinition.providerName} for the access your agent needs to read and act here. You can turn acting off at any time from this page.
+                {dialogDefinition.providerId === 'google_calendar'
+                  ? 'Kordi asks Google for read-only Calendar access. Acting stays off until you enable it separately. Reconnecting does not revoke permissions you previously granted Google.'
+                  : `Kordi asks ${dialogDefinition.providerName} for the access your agent needs to read and act here. You can turn acting off at any time from this page.`}
               </AppDialogDescription>
             </>
           ) : (
@@ -137,7 +139,7 @@ export function ConnectorDialogs({
         >
           <AppDialogTitle id={`${idPrefix}-grant-title`}>Let your agent act in {dialogDefinition.name}</AppDialogTitle>
           <AppDialogDescription id={`${idPrefix}-grant-description`}>
-            {dialogDefinition.providerName} did not grant this when you connected. Your agent will be able to:
+            This needs additional permission from {dialogDefinition.providerName}. Your agent will be able to:
           </AppDialogDescription>
           <ScopeList scopes={dialogDefinition.actScopes} />
           <p className={cn('m-0 mt-3 text-[13px] leading-6', dialogMuted)}>

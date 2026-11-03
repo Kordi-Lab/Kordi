@@ -2,6 +2,22 @@
 
 use super::*;
 
+#[test]
+fn calendar_read_consent_never_requests_write_scope() {
+    let spec = &providers::GOOGLE_CALENDAR;
+    assert_eq!(
+        spec.requested_scopes(ConnectorToolGroup::Read),
+        spec.read_scopes
+    );
+    assert_eq!(
+        oauth::classify_granted_scopes(spec, ConnectorToolGroup::Read, None).1,
+        Vec::<String>::new()
+    );
+    assert!(spec
+        .requested_scopes(ConnectorToolGroup::Act)
+        .contains(&spec.act_scopes[0]));
+}
+
 // ---------------------------------------------------------------------------
 // Providers, sealing, OAuth helpers
 

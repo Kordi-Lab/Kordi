@@ -275,10 +275,18 @@ impl ConnectorSummary {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectorListResponse {
+    pub providers: Vec<ConnectorProviderReadiness>,
     pub connectors: Vec<ConnectorSummary>,
     /// Agents the person can grant connectors to: the built-in agent first,
     /// then active agents from `cloud_agent_definitions`.
     pub agents: Vec<ConnectorAgent>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorProviderReadiness {
+    pub provider: &'static str,
+    pub oauth_ready: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

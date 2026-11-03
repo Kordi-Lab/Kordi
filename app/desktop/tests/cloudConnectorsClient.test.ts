@@ -318,3 +318,15 @@ test('in the Tauri shell the gate always layers the Mac-local rows', async () =>
     else delete target.navigator;
   }
 });
+
+test('provider readiness reaches disconnected states and remains optional for older servers', async () => {
+  let providers: { provider: string; oauthReady: boolean }[] | undefined = [{ provider: 'google_calendar', oauthReady: false }];
+  const { fetchImpl } = recordingFetch(() => jsonResponse(200, { connectors: [], agents: [{ agentId: 'synthetic-agent', name: 'Synthetic agent', isDefault: true }], providers }));
+  const http = new CloudConnectorsHttpClient({ baseUrl: 'http://srv', fetchImpl });
+  const client = createCloudConnectorsClient({ accountId: ACCOUNT_ID, http, loadToken: async () => TOKEN });
+  assert.equal((await client.list()).states.find((state) => state.providerId === 'google_calendar')?.oauthReady, false);
+  providers = [{ provider: 'google_calendar', oauthReady: true }];
+  assert.equal((await client.list()).states.find((state) => state.providerId === 'google_calendar')?.oauthReady, true);
+  providers = undefined;
+  assert.equal((await client.list()).states.find((state) => state.providerId === 'google_calendar')?.oauthReady, undefined);
+});

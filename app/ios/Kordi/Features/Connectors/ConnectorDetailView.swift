@@ -223,7 +223,9 @@ struct ConnectorConsent: Identifiable {
                 kind: .connect,
                 definition: definition,
                 title: reauth ? "Sign in to \(definition.name) again" : "Connect \(definition.name)",
-                message: "Kordi asks \(definition.providerName) for the access your agent needs to read and act here. You can turn acting off at any time from this page.",
+                message: definition.providerId == .googleCalendar
+                    ? "Kordi asks Google for read-only Calendar access. Acting stays off until you enable it separately. Reconnecting does not revoke permissions you previously granted Google."
+                    : "Kordi asks \(definition.providerName) for the access your agent needs to read and act here. You can turn acting off at any time from this page.",
                 scopes: ConnectorsModel.connectScopes(definition),
                 note: nil,
                 cancelTitle: "Cancel",

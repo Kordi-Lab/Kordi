@@ -226,6 +226,12 @@ pub(super) async fn build(
     conversation_id: Uuid,
     events: &[Event],
 ) -> Result<Value, sqlx_core::Error> {
+    let zone: Option<(String,)> =
+        query_as("SELECT timezone FROM cloud_account_digests WHERE account_id = $1")
+            .bind(&agent.owner_account_id)
+            .fetch_optional(pool)
+            .await?;
+    let zone = zone.and_then(|(zone,)| zone.parse::<chrono_tz::Tz>().ok());
     let shares: Vec<(DateTime<Utc>, String)> = query_as(
         "SELECT created_at, text FROM cloud_personal_agent_messages
          WHERE agent_id = $1 AND owner_account_id = $2 AND created_at > now() - interval '7 days'
@@ -262,10 +268,14 @@ pub(super) async fn build(
         })
         .collect();
     Ok(json!({
-        "owner": {"name": agent.owner_name, "handle": agent.owner_handle},
+        "owner": {"name": agent.owner_name, "handle": agent.owner_handle, "timeZone": zone.map(|zone| zone.name())},
         "agent": {"agentId": agent.agent_id, "name": agent.name},
         "now": Utc::now().to_rfc3339(),
-        "events": events.iter().map(Event::to_value).collect::<Vec<_>>(),
+        "events": events.iter().map(|event| {
+            let mut value = event.to_value();
+            value["ownerLocalTime"] = super::calendar_time::presentation(&event.provider, &event.payload, zone);
+            value
+        }).collect::<Vec<_>>(),
         "recentShares": shares
             .into_iter()
             .map(|(at, text)| json!({"at": at.to_rfc3339(), "text": text}))
