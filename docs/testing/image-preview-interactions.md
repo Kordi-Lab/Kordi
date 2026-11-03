@@ -7,6 +7,10 @@ are superseded by those later changes.
 
 ## Behavior
 
+- Image fitting uses 16-pixel side gaps, a 38-pixel native titlebar, and a
+  48-pixel footer. Previous/next buttons share the footer with the count and zoom
+  controls. Below 440 pixels wide, navigation uses a second footer row. Complete
+  image pixels and aspect ratio are preserved; video fitting is unchanged.
 - Clicking a fitted image displays one decoded image pixel per CSS pixel; clicking
   again fits it to the window. Actual size remains reachable for images requiring
   more than the usual four-times-fit zoom limit.
@@ -36,7 +40,12 @@ are superseded by those later changes.
   reset, sibling navigation, and Escape while the context menu is open.
 - `mediaLightboxGallery.spec.ts`: rendered width equals decoded natural width,
   wheel zoom, drag displacement without accidental dismissal, and return to fit.
-  This is a synthetic component fixture, not a complete-product demo.
+  It also checks uncropped maximal fit and nonoverlapping controls for landscape,
+  portrait, and square images at 905x650, 1440x900, 720x1100, 520x360, and 320x360.
+  The matrix includes a three-digit gallery count, zoom percentage, and the Live
+  Photo button. Four gallery snapshots were inspected and updated; the fixture
+  backdrop now stays behind the actual gallery. This is a synthetic component
+  fixture, not a complete-product demo.
 - Existing attachment, mixed-message, sender-avatar, folded-group, and Live Photo
   regression suites remain applicable.
 
@@ -55,6 +64,8 @@ from the check.
 After reconciling main at `13731b61c`, the same production build contains 5,612,739
 budgeted application bytes, leaving 261 bytes under the unchanged 5,613,000 cap.
 The six image interaction source files remain unchanged by that integration.
+The compact-fit CSS adds 211 bytes, bringing the final build to 5,612,950 budgeted
+application bytes with 50 bytes of headroom. No further allowance was added.
 
 ## Native acceptance checklist
 
@@ -90,11 +101,34 @@ close/return to the original chat both work in Alex. Those two checks are
 human-confirmed, not automation results. The six applied image interaction source
 files were verified unchanged at integrated head `8628925b0`.
 
-Native acceptance is complete through the controlled copy/paste and zoom evidence
-plus that human confirmation. No messages, uploads, or model calls were made.
-Browser geometry checks remain complementary evidence. Keep #417 open until the
+The earlier gesture/copy scope is accepted through that controlled evidence and
+human confirmation. The subsequent compact-fit layout is applied to the same
+isolated client, but its native visual and pan/reset acceptance is still pending
+human review because screen capture again failed. No messages, uploads, or model
+calls were made. Browser geometry checks remain complementary evidence. Keep #417 open until the
 reviewed fix is merged with required CI passing on its final head.
 
 Agent image retrieval is separate: #2194 was resolved by #2208 with fresh synthetic
 multi-image reading and an unchanged human read cursor. This frontend follow-up
 does not change or re-test agent retrieval.
+
+## Compact-fit measurements
+
+The reference is approximately 1810x1300 physical pixels at a two-times display
+scale, corresponding to a 905x650 CSS viewport. The same 1.6-aspect landscape
+fixture was measured before and after the padding change in that logical viewport:
+
+| Measurement (CSS pixels) | Before | After |
+| --- | ---: | ---: |
+| Image width | 760.2 | 873 |
+| Image height | 475.1 | 545.6 |
+| Left/right gutter | 72.4 | 16 |
+| Top gutter | 91.9 | 47.2 |
+| Bottom gutter | 82.9 | 57.2 |
+
+Image area increases by approximately 32%. At two-times display scale, the new
+side gutters are 32 physical pixels and vertical gutters are approximately 94/114.
+These are browser measurements against the old CSS, not claimed native captures.
+Letterboxing remains where the source and viewport aspect ratios differ. The
+native initial size remains 1080x760 with a 520x360 minimum; a resized window keeps
+its user-selected dimensions, and no source pixels are cropped or rewritten.

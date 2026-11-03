@@ -31,6 +31,63 @@ test('image click reaches natural size, wheel zooms, and dragging reveals image 
   await expect.poll(async () => (await image.boundingBox())!.x).toBeCloseTo(fitted.x, 0);
 });
 
+test('fitted images use the viewport without cropping or covering gallery controls', async ({ page }, testInfo) => {
+  const measurements = [];
+  for (const viewport of [
+    { width: 905, height: 650 },
+    { width: 1440, height: 900 },
+    { width: 720, height: 1100 },
+    { width: 520, height: 360 },
+    { width: 320, height: 360 },
+  ]) {
+    await page.setViewportSize(viewport);
+    for (const index of [0, 1, 2]) {
+      await page.goto(`/tests/visual/mediaLightboxGallery.html?theme=light&index=${index}&position=111%20of%20999&live=1`);
+      const image = page.getByRole('dialog').locator('img');
+      await expect(image).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Play Live Photo' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Reset zoom, currently 100%' })).toBeVisible();
+      const natural = await image.evaluate((element: HTMLImageElement) => ({ width: element.naturalWidth, height: element.naturalHeight }));
+      const footer = viewport.width <= 440 ? 88 : 48;
+      const scale = Math.min(1, (viewport.width - 32) / natural.width, (viewport.height - 38 - footer) / natural.height);
+      const box = (await image.boundingBox())!;
+      if (viewport.width === 905 && index === 0) {
+        const oldPadding = await page.addStyleTag({ content: '.app-attachment-media-window-root .app-attachment-image-lightbox { padding: clamp(48px, 7vh, 72px) clamp(62px, 8vw, 112px) clamp(38px, 6vh, 64px); }' });
+        const before = (await image.boundingBox())!;
+        await oldPadding.evaluate((element) => element.remove());
+        expect(box.width * box.height / (before.width * before.height)).toBeGreaterThan(1.3);
+        await testInfo.attach('reference-viewport-before-after', { body: JSON.stringify({ viewport, before, after: box }, null, 2), contentType: 'application/json' });
+      }
+      expect(box.width).toBeCloseTo(natural.width * scale, 0);
+      expect(box.height).toBeCloseTo(natural.height * scale, 0);
+      expect(box.x).toBeGreaterThanOrEqual(15.5);
+      expect(box.y).toBeGreaterThanOrEqual(37.5);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width - 15.5);
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - footer + 0.5);
+      const controls = page.locator('.app-attachment-image-lightbox-nav, .app-attachment-image-lightbox-position, .app-attachment-image-lightbox-zoom-controls');
+      const controlBoxes = await controls.evaluateAll((elements) => elements.map((element) => {
+        const { x, y, width, height } = element.getBoundingClientRect();
+        return { x, y, width, height };
+      }));
+      for (const [controlIndex, control] of controlBoxes.entries()) {
+        expect(control.y).toBeGreaterThan(box.y + box.height);
+        expect(control.x).toBeGreaterThanOrEqual(0);
+        expect(control.x + control.width).toBeLessThanOrEqual(viewport.width);
+        expect(control.y + control.height).toBeLessThanOrEqual(viewport.height);
+        for (const other of controlBoxes.slice(controlIndex + 1)) {
+          expect(control.x + control.width <= other.x || other.x + other.width <= control.x
+            || control.y + control.height <= other.y || other.y + other.height <= control.y).toBe(true);
+        }
+      }
+      measurements.push({ viewport, index, image: box, gutters: { left: box.x, right: viewport.width - box.x - box.width, top: box.y, bottom: viewport.height - box.y - box.height } });
+      if (viewport.width === 905 || viewport.width <= 520) {
+        await page.screenshot({ path: testInfo.outputPath(`compact-fit-${viewport.width}-${index}.png`) });
+      }
+    }
+  }
+  await testInfo.attach('fit-measurements', { body: JSON.stringify(measurements, null, 2), contentType: 'application/json' });
+});
+
 test('standalone link cards stay compact while agent references remain inline', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 760, height: 720 });
   await page.goto('/tests/visual/mediaLightboxGallery.html?theme=light&surface=link-preview');
@@ -116,18 +173,18 @@ test('media lightbox remains image-first across desktop sizes and themes', async
   await expect(lightbox).toBeVisible();
   await expect(previous).toHaveCSS('opacity', '0.56');
   await expect(next).toHaveCSS('opacity', '0.56');
-  await expect(previous).toHaveCSS('width', '48px');
-  await expect(previous).toHaveCSS('height', '48px');
+  await expect(previous).toHaveCSS('width', '32px');
+  await expect(previous).toHaveCSS('height', '32px');
   await expect(previous).toHaveCSS('border-radius', '999px');
-  await expect(next).toHaveCSS('width', '48px');
-  await expect(next).toHaveCSS('height', '48px');
+  await expect(next).toHaveCSS('width', '32px');
+  await expect(next).toHaveCSS('height', '32px');
   await expect(next).toHaveCSS('border-radius', '999px');
   await expect(page.getByRole('button', { name: 'Zoom in' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Zoom out' })).toBeVisible();
   const wideBox = await image.boundingBox();
   expect(wideBox).not.toBeNull();
   expect(wideBox!.x).toBeGreaterThanOrEqual(60);
-  expect(wideBox!.y).toBeGreaterThanOrEqual(60);
+  expect(wideBox!.y).toBeGreaterThanOrEqual(38);
   await expect(page).toHaveScreenshot('media-lightbox-wide-dark.png');
 
   await page.getByRole('button', { name: 'Zoom in' }).click();
@@ -145,7 +202,7 @@ test('media lightbox remains image-first across desktop sizes and themes', async
   const compactBox = await compactImage.boundingBox();
   expect(compactBox).not.toBeNull();
   expect(compactBox!.x).toBeGreaterThanOrEqual(50);
-  expect(compactBox!.y).toBeGreaterThanOrEqual(40);
+  expect(compactBox!.y).toBeGreaterThanOrEqual(38);
   expect(compactBox!.x + compactBox!.width).toBeLessThanOrEqual(670);
   expect(compactBox!.y + compactBox!.height).toBeLessThanOrEqual(536);
   await expect(page).toHaveScreenshot('media-lightbox-compact-light.png');
