@@ -79,6 +79,7 @@ export default function DigestPage({accountId,onOpenProviderSettings,renderConte
   // One status for the whole page: the header says how fresh the brief is,
   // and a digest without a brief explains itself once, in its own card.
   const needsProvider=digest?.errorCode==='missing_provider_auth';
+  const invalidOutput=digest?.errorCode==='invalid_output';
   const reconnect=digest?.errorProvider?`Reconnect ${providerDisplayLabel(digest.errorProvider)}`:null;
   const unavailable:DigestUnavailableState|null=!digest?(digestError?'unreachable':'loading')
     :output?null
@@ -86,9 +87,12 @@ export default function DigestPage({accountId,onOpenProviderSettings,renderConte
     :needsProvider?'needsProvider'
     :digest.errorCode==='provider_auth_rejected'?'providerRejected'
     :digest.errorCode==='provider_unavailable'?'providerUnavailable'
+    :invalidOutput?'invalidOutput'
     :digest.status==='error'?'failed'
     :null;
-  function retryGeneration(){void act(()=>digestClient.refresh(accountId));}
+  // A rejected patch can fail repeatedly against the same baseline. Rebuild
+  // on explicit retry; keep the saved snapshot and the owner's model choice.
+  function retryGeneration(){void act(()=>digestClient.refresh(accountId,invalidOutput));}
   // Every status and its one action live in the header line, which keeps the
   // same height in every state; the body stays empty until there is a brief.
   const statusAction=(label:string,onClick:()=>void)=><> · <button className="digest-link" disabled={busy} onClick={onClick}>{label}</button></>;
@@ -99,8 +103,9 @@ export default function DigestPage({accountId,onOpenProviderSettings,renderConte
     :unavailable==='needsProvider'?<>Connect a model provider to get your digest{settingsAction}</>
     :unavailable==='providerRejected'?<>{reconnect??"Your model provider sign-in didn't work"}{settingsAction}</>
     :unavailable==='providerUnavailable'?<>Your model provider is unavailable right now{statusAction('Try again',retryGeneration)}</>
+    :unavailable==='invalidOutput'?<>The generated digest could not be verified{statusAction('Rebuild digest',retryGeneration)}</>
     :unavailable==='failed'?<>Your digest couldn't be prepared{statusAction('Try again',retryGeneration)}</>
-    :<><span>{digest?.updatedAt?digestUpdatedLabel(digest.updatedAt):'Up to date'}</span>{digest?.status==='updating'?<> · Updating…</>:needsProvider?<> · Connect a model provider{settingsAction}</>:digest?.errorCode==='provider_auth_rejected'?<> · {reconnect??"Provider sign-in didn't work"}{settingsAction}</>:digest?.errorCode==='provider_unavailable'?<> · Provider unavailable{statusAction('Retry',retryGeneration)}</>:digest?.errorCode?<> · Last update failed{statusAction('Retry',retryGeneration)}</>:null}</>;
+    :<><span>{digest?.updatedAt?digestUpdatedLabel(digest.updatedAt):'Up to date'}</span>{digest?.status==='updating'?<> · Updating…</>:needsProvider?<> · Connect a model provider{settingsAction}</>:digest?.errorCode==='provider_auth_rejected'?<> · {reconnect??"Provider sign-in didn't work"}{settingsAction}</>:digest?.errorCode==='provider_unavailable'?<> · Provider unavailable{statusAction('Retry',retryGeneration)}</>:invalidOutput?<> · The generated digest could not be verified{statusAction('Rebuild digest',retryGeneration)}</>:digest?.errorCode?<> · Last update failed{statusAction('Retry',retryGeneration)}</>:null}</>;
   const digestStatus=unavailable?<div className="digest-placeholder" aria-hidden="true"/>:null;
   const calendarStatus=!calendarLoaded?<DigestReadStatus label="Calendar" failed={!!calendarError} busy={busy} onRetry={()=>void retryReads()}/>:null;
   const selectedSources=sources.filter(s=>(Array.isArray(sourceId)?sourceId:[sourceId]).includes(s.id)).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
@@ -136,7 +141,7 @@ export default function DigestPage({accountId,onOpenProviderSettings,renderConte
   }
   function calendarCandidate(item:DigestItem){try{const event=proposalEvent(item,events,sources,digest?.timezone);setReview({item,original:events.find(e=>e.id===item.existingEventId),series:proposalSeries(item,events)});setEditEvent(event);}catch(error){setActionError(calendarErrorMessage(error,'Could not review this event.'));}}
   function changeMonth(next:string){setMonth(next);if(!selectedDay.startsWith(next))setSelectedDay(`${next}-01`);}
-  return <ActionErrorContext.Provider value={{error:actionError,setError:setActionError}}><section className={renderContent ? "digest-page digest-companion-page" : "digest-page"} aria-label="Digest">{!renderContent&&<header className="digest-header"><div><h1>Digest</h1><div className="digest-header-actions"><button aria-label="Enable calendar reminders" onClick={()=>void act(async()=>setReminderState(await syncReminders(accountId,events,true)))}><Bell size={18}/></button><button aria-label="Refresh digest" disabled={busy||digest?.status==='updating'} onClick={()=>void act(()=>digestClient.refresh(accountId))}><RefreshCw size={18}/></button><button aria-label="Digest settings" onClick={()=>setSettingsOpen(true)}><SlidersHorizontal size={18}/></button></div></div><div className="digest-status" role="status" aria-live="polite"><span className="digest-status-line">{pendingMutationKeys.length>0&&!unavailable?<>Saving changes…</>:freshness}</span></div><nav aria-label="Digest views">{(['brief','tasks','calendar'] as const).map(v=><button key={v} aria-pressed={view===v} onClick={()=>setView(v)}>{v==='brief'?'Brief':v==='tasks'?'Next steps':'Calendar'}</button>)}</nav></header>}
+  return <ActionErrorContext.Provider value={{error:actionError,setError:setActionError}}><section className={renderContent ? "digest-page digest-companion-page" : "digest-page"} aria-label="Digest">{!renderContent&&<header className="digest-header"><div><h1>Digest</h1><div className="digest-header-actions"><button aria-label="Enable calendar reminders" onClick={()=>void act(async()=>setReminderState(await syncReminders(accountId,events,true)))}><Bell size={18}/></button><button aria-label="Refresh digest" disabled={busy||digest?.status==='updating'} onClick={retryGeneration}><RefreshCw size={18}/></button><button aria-label="Digest settings" onClick={()=>setSettingsOpen(true)}><SlidersHorizontal size={18}/></button></div></div><div className="digest-status" role="status" aria-live="polite"><span className="digest-status-line">{pendingMutationKeys.length>0&&!unavailable?<>Saving changes…</>:freshness}</span></div><nav aria-label="Digest views">{(['brief','tasks','calendar'] as const).map(v=><button key={v} aria-pressed={view===v} onClick={()=>setView(v)}>{v==='brief'?'Brief':v==='tasks'?'Next steps':'Calendar'}</button>)}</nav></header>}
     <div className="digest-notices" role="status">{renderContent&&pendingMutationKeys.length>0&&<p className="digest-meta">Saving changes…</p>}{mutationError&&<p className="digest-warning">{mutationError} {canRetryMutation&&<button onClick={()=>void retryMutation().catch(()=>{})}>Try again</button>}</p>}{(visibleActionError||error)&&<p className="digest-warning">{visibleActionError||error}</p>}{reminderState==='denied'&&<p className="digest-warning">Device notifications are off. Enable them in system settings to receive reminders.</p>}</div>{renderContent ? renderContent({state,actions:{
       onEvent:openEvent,onSource:setSourceId,onFeedback:changeFeedback,feedbackPending,
       onCandidate:calendarCandidate,onRefresh:retryGeneration,busy,
