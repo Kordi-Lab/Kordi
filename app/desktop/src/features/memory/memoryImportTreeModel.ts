@@ -1,10 +1,11 @@
-import { agentFileSizeLabel, agentFilesBySource, importedCountLabel, type AgentInstructionFile } from './memoryImport';
+import { memoryImportRowSummary, type MemoryImportFileResult } from './memoryImportBatch';
+import { agentFileSizeLabel, agentFilesBySource, type AgentInstructionFile } from './memoryImport';
 
 // Settings › Memory › Import lists the found files as App → Project → File. An app whose files
 // are all in one project skips the project level.
 
 /** One file's import state: reading, refused with a reason, or the number of memories saved. */
-export type ImportRowStatus = 'importing' | { failed: string } | number;
+export type ImportRowStatus = 'importing' | MemoryImportFileResult;
 export type ImportStatuses = Readonly<Record<string, ImportRowStatus>>;
 
 export type ImportTreeProject = { key: string; name: string; files: AgentInstructionFile[] };
@@ -82,12 +83,11 @@ export function fileSummary(file: AgentInstructionFile, now: number = Date.now()
 export function fileStatusLabel(status: ImportRowStatus | undefined): string {
   if (status === undefined) return '';
   if (status === 'importing') return 'Importing…';
-  if (typeof status === 'object') return 'Could not import';
-  return importedCountLabel(status);
+  return memoryImportRowSummary(status);
 }
 
 export function failureOf(status: ImportRowStatus | undefined): string | null {
-  return typeof status === 'object' && status.failed ? status.failed : null;
+  return typeof status === 'object' ? status.error || null : null;
 }
 
 /**
@@ -100,6 +100,10 @@ export function rollUpLabel(files: ReadonlyArray<AgentInstructionFile>, statuses
   if (!states.length) return '';
   const reading = states.filter((status) => status === 'importing').length;
   if (reading) return level === 'app' ? '' : `Importing ${states.length - reading}/${states.length}…`;
-  if (states.every((status) => typeof status === 'object')) return 'Could not import';
-  return importedCountLabel(states.reduce<number>((total, status) => total + (typeof status === 'number' ? status : 0), 0));
+  const counts = { imported: 0, duplicates: 0, failedMemories: 0, failedFiles: 0 };
+  for (const status of states) {
+    if (typeof status !== 'object') continue;
+    for (const key of ['imported', 'duplicates', 'failedMemories', 'failedFiles'] as const) counts[key] += status[key];
+  }
+  return memoryImportRowSummary(counts);
 }

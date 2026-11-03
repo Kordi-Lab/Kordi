@@ -75,7 +75,7 @@ function jsonObjectOf(reply: string): unknown {
 export function parseMemoryImportReply(reply: string, files: ReadonlyArray<Pick<AgentInstructionFile, 'path'>>): ImportedMemory[] {
   const parsed = jsonObjectOf(reply);
   const entries = parsed && typeof parsed === 'object' ? (parsed as { memories?: unknown }).memories : null;
-  if (!Array.isArray(entries)) return [];
+  if (!Array.isArray(entries)) throw new Error('The model returned an unreadable import. Try again.');
   const paths = new Set(files.map((file) => file.path));
   const onlyFile = files.length === 1 ? files[0].path : null;
   const perFile = new Map<string, number>();

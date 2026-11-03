@@ -219,7 +219,7 @@ test('importing rolls progress and results up to projects and apps', async () =>
     await expand(container, 'Claude Code launch-site');
     assert.match(line(container, 'launch-site memory/feedback-always-checkpoint.md'), /Imported 1 memory$/);
     assert.match(line(container, 'launch-site memory/project-image-budget.md'), /Nothing new$/);
-    assert.match(container.textContent ?? '', /Imported 3 memories\./);
+    assert.match(container.textContent ?? '', /Imported 3 memories\. 1 duplicate skipped\./);
     assert.equal(imported, 1);
   } finally {
     await view.cleanup();
@@ -281,7 +281,8 @@ test('a file that cannot be imported keeps its reason under its row', async () =
     await act(async () => { importButton(container)?.click(); });
     await settle();
     assert.match(line(container, 'Project files'), /Could not import$/);
-    assert.match(container.textContent ?? '', /Nothing new\./);
+    assert.match(container.textContent ?? '', /9 files could not be read\./);
+    assert.doesNotMatch(container.textContent ?? '', /Nothing new/);
     await expand(container, 'Project files');
     await expand(container, 'Project files launch-site');
     assert.match(line(container, 'launch-site AGENTS.md'), /AGENTS\.md· 4 KB · Oct 18Could not import$/);
@@ -306,7 +307,7 @@ test('a refused import run marks every file and finishes no run', async () => {
     await expand(container, 'Project files');
     await expand(container, 'Project files launch-site');
     await expand(container, 'Project files docs-site');
-    assert.equal(container.textContent?.match(/Another import is running\./g)?.length, 3);
+    assert.equal(container.textContent?.match(/Another import is running\./g)?.length, 4);
   } finally {
     await view.cleanup();
   }
@@ -316,19 +317,118 @@ test('an import run reads each file under it and is completed once', async () =>
   const preview = createPreviewMemoryImporter({ latencyMs: 0, now: NOW });
   const finished: boolean[] = [];
   const read: string[] = [];
+  let complete!: () => void;
+  const completed = new Promise<void>((resolve) => { complete = resolve; });
   const importer: MemoryImporter = {
     ...preview,
     start: async () => ({
       extract: (file, existing) => { read.push(file.path); return preview.extract(file, existing); },
-      finish: async (ok) => { finished.push(ok); },
+      finish: async (ok) => { finished.push(ok); complete(); },
     }),
   };
   const view = await renderSection({ importer });
   try {
-    await act(async () => { importButton(view.container)?.click(); });
-    await settle();
+    await act(async () => { importButton(view.container)?.click(); await completed; });
     assert.equal(read.length, 9);
     assert.deepEqual(finished, [true]);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+
+test('an unacknowledged save is reconciled before reporting nothing new', async () => {
+  const file = (await createPreviewMemoryImporter({ latencyMs: 0, now: NOW }).discover())[0];
+  const text = 'Synthetic preference: keep meeting notes to four headings.';
+  const persisted: MemoryLesson[] = [];
+  let refreshed = 0;
+  const view = await renderSection({
+    importer: { discover: async () => [file], extract: async () => JSON.stringify({ memories: [{ text }] }) },
+    client: {
+      importLesson: async (save) => {
+        persisted.push({ ...save, lessonId: 'synthetic-saved', createdAt: 'now', updatedAt: 'now' });
+        throw new Error('Save response was interrupted.');
+      },
+      listLessons: async () => persisted,
+    },
+    onImported: () => { refreshed += 1; },
+  });
+  try {
+    await act(async () => { importButton(view.container)?.click(); });
+    await settle();
+    assert.equal(persisted.length, 1);
+    assert.match(view.container.textContent ?? '', /Imported 1 memory\./);
+    assert.doesNotMatch(view.container.textContent ?? '', /Nothing new/);
+    assert.equal(refreshed, 1);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test('mixed import results distinguish saved, duplicate and refused memories', async () => {
+  const file = (await createPreviewMemoryImporter({ latencyMs: 0, now: NOW }).discover())[0];
+  const saved: string[] = [];
+  const view = await renderSection({
+    importer: { discover: async () => [file], extract: async () => JSON.stringify({ memories: [
+      { text: 'Existing preference.' }, { text: 'New preference.' }, { text: 'Refused preference.' },
+    ] }) },
+    lessons: [{ text: 'existing preference.' }],
+    client: { importLesson: async (save) => {
+      if (save.text.startsWith('Refused')) throw new Error('Could not save this memory.');
+      saved.push(save.text);
+      return {} as MemoryLesson;
+    } },
+  });
+  try {
+    await act(async () => { importButton(view.container)?.click(); });
+    await settle();
+    assert.deepEqual(saved, ['New preference.']);
+    assert.match(view.container.textContent ?? '', /Imported 1 memory\. 1 duplicate skipped\. 1 memory could not be saved\./);
+    assert.doesNotMatch(view.container.textContent ?? '', /Nothing new/);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test('malformed extraction is a failed file and leaves Import available', async () => {
+  const file = (await createPreviewMemoryImporter({ latencyMs: 0, now: NOW }).discover())[0];
+  const finished: boolean[] = [];
+  const view = await renderSection({ importer: {
+    discover: async () => [file], extract: async () => 'not JSON',
+    start: async () => ({ extract: async () => 'not JSON', finish: async (ok) => { finished.push(ok); } }),
+  } });
+  try {
+    await act(async () => { importButton(view.container)?.click(); });
+    await settle();
+    assert.match(view.container.textContent ?? '', /1 file could not be read\./);
+    assert.doesNotMatch(view.container.textContent ?? '', /Nothing new/);
+    assert.equal(importButton(view.container)?.disabled, false);
+    assert.deepEqual(finished, [false]);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+
+test('repeated activation while starting an import runs only one batch', async () => {
+  const file = (await createPreviewMemoryImporter({ latencyMs: 0, now: NOW }).discover())[0];
+  let starts = 0;
+  let finishStart: (() => void) | undefined;
+  const view = await renderSection({ importer: {
+    discover: async () => [file], extract: async () => '{"memories":[]}',
+    start: async () => {
+      starts += 1;
+      await new Promise<void>((resolve) => { finishStart = resolve; });
+      return { extract: async () => '{"memories":[]}', finish: async () => undefined };
+    },
+  } });
+  try {
+    const button = importButton(view.container)!;
+    await act(async () => { button.click(); button.click(); });
+    assert.equal(starts, 1);
+    await act(async () => { finishStart?.(); });
+    await settle();
+    assert.match(view.container.textContent ?? '', /Nothing new\./);
   } finally {
     await view.cleanup();
   }
