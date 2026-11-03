@@ -448,6 +448,7 @@ export function AgentsPage({
     setPublishFeedback({ tone: 'info', text: skipModelTest || builder.status?.publishReady ? publishingText : 'Testing the draft before publishing…' });
     try {
       const status = await factoryPublishStatus(skipModelTest, builder.status, builder.testDraft);
+      const testedRouting = status.draft ? { ...selectedRouting, ...factoryDraftModelRouting(status.draft) } : selectedRouting;
       setPublishFeedback({ tone: 'info', text: publishingText });
       if (creating) {
         if (creatingSkill) {
@@ -513,8 +514,7 @@ export function AgentsPage({
             content: builderSkills.get(name)?.content ?? null,
           })),
           modelRouting: {
-            ...selectedRouting,
-            ...factoryDraftModelRouting(status.draft),
+            ...testedRouting,
             tools: status.draft?.tools ?? activeAgentConfig.loadedTools,
             plugins: status.draft?.plugins ?? activeAgentConfig.loadedPlugins,
           },
@@ -544,9 +544,9 @@ export function AgentsPage({
           for (const skill of removedSkills) await onSetAgentSkillEnabled?.(selectedAgent, skill, false);
           for (const skill of addedSkills) await onSetAgentSkillEnabled?.(selectedAgent, skill, true);
         }
-        if (routingChanged) {
+        if (!sameModelRouting(testedRouting, publishedRouting)) {
           if (!onUpdateAgentModelRouting) throw new Error('Model routing updates are unavailable for this runtime.');
-          await onUpdateAgentModelRouting(selectedAgent, { ...selectedRouting, ...factoryDraftModelRouting(status.draft) });
+          await onUpdateAgentModelRouting(selectedAgent, testedRouting);
         }
         await publishDefaultAgentIdentity({ agent: selectedAgent, draft: builderDraft, mutation: factoryAvatar.mutation, avatarKey: selectedAvatarKey, onRenameLocalAgent, onUpdateLocalAgentAvatar });
         await publishDefaultAgentSettings(defaultProactive, activeDraftChanges, activeAgentConfig);

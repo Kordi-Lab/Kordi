@@ -3,7 +3,7 @@ import test from 'node:test';
 import React, { act } from 'react';
 import { AgentStudioRoutingEditor } from '../src/kordi-app/agents/AgentStudioRoutingEditor';
 import type { AgentModelRoutingDraft } from '../src/kordi-app/agents/factoryAgentUtils';
-import { factoryDraftModelRouting, factoryDraftWithRouting } from '../src/kordi-app/agents/factoryAgentUtils';
+import { factoryDraftModelRouting, factoryDraftWithRouting, sameModelRouting } from '../src/kordi-app/agents/factoryAgentUtils';
 import type { DesktopAgentBuilderDraft } from '../src/lib/desktop';
 import { withJsdomRoot } from './helpers/mountWithJsdom';
 
@@ -38,4 +38,16 @@ test('a stale Factory account can be replaced without changing the selected Luna
       defaultAuthChoice: saved?.defaultAuthChoice, thinking: 'low',
     });
   });
+});
+
+
+test('a legacy account resolved by testing is a publication routing change', () => {
+  const previous = { defaultModel: 'openai/gpt-6-luna', defaultAuthProvider: 'openai-codex', defaultAuthChoice: null, thinking: 'low' };
+  const testedDraft = factoryDraftWithRouting({ name: 'Synthetic' } as DesktopAgentBuilderDraft, {
+    ...previous, defaultAuthChoice: 'cloud-login:synthetic-tested',
+  });
+  assert.equal(sameModelRouting(previous, previous), true);
+  const tested = { ...previous, ...factoryDraftModelRouting(testedDraft) };
+  assert.equal(sameModelRouting(tested, previous), false);
+  assert.equal(tested.defaultAuthChoice, 'cloud-login:synthetic-tested');
 });
