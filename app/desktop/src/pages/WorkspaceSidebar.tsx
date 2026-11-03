@@ -305,6 +305,7 @@ export function WorkspaceSidebar({
                     ) : null}
 
                     <WorkspaceChatLists
+                      onClearSearch={() => setChatSearch('')}
                       model={chatModel}
                       activeConvId={activeConvId}
                       contactActions={{

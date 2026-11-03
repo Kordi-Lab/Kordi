@@ -1,5 +1,5 @@
 import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useChatProjects } from '@/features/projects/chatProjects';
 import { projectChatGroups } from '@/features/projects/projectChatGroups';
 import { ChevronRight, Folder, FolderOpen, FolderSearch, Plus } from 'lucide-react';
@@ -18,7 +18,7 @@ import { ContactSidebarRow } from '@/pages/workspaceSidebar.contactRows';
 import type { WorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel';
 import { VirtualChatList } from '@/pages/sidebar/VirtualChatList';
 
-function SidebarEmptyState({ children }: { children: string }) {
+function SidebarEmptyState({ children }: { children: ReactNode }) {
   return (
     <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
       {children}
@@ -31,11 +31,13 @@ export function WorkspaceChatLists({
   activeConvId,
   contactActions,
   onOpenAgentCreate,
+  onClearSearch,
 }: {
   model: WorkspaceChatSidebarModel;
   activeConvId: string;
   contactActions: ContactSidebarRowActions;
   onOpenAgentCreate: () => void;
+  onClearSearch: () => void;
 }) {
   const projects = useChatProjects();
   const scrollOffsets = useRef(new Map<string, number>());
@@ -114,6 +116,14 @@ export function WorkspaceChatLists({
       });
     }
   };
+  const searchEmptyState = model.chatSearch.trim() ? (
+    <SidebarEmptyState>
+      <p role="status">No matching conversations.</p>
+      <button type="button" className="mt-2 underline underline-offset-2" onClick={onClearSearch}>
+        Clear search
+      </button>
+    </SidebarEmptyState>
+  ) : null;
   if (model.chatChannel === 'contact') {
     return (
       <VirtualChatList
@@ -132,7 +142,7 @@ export function WorkspaceChatLists({
             activeConvId={activeConvId}
           />
         )}
-        emptyState={
+        emptyState={searchEmptyState ?? (
           <>
           {!model.showArchived ? <HelpEmptyExample kind="chat" /> : null}
           <SidebarEmptyState>
@@ -141,7 +151,7 @@ export function WorkspaceChatLists({
               : 'No conversations yet. Start a chat to see it here.'}
           </SidebarEmptyState>
           </>
-        }
+        )}
       />
     );
   }
@@ -238,7 +248,7 @@ export function WorkspaceChatLists({
             onOpenSessionContextMenu={contactActions.onOpenSessionContextMenu}
           />
         )}
-        emptyState={
+        emptyState={searchEmptyState ?? (
           <>
           {!model.showArchived ? <HelpEmptyExample kind="chat" /> : null}
           <SidebarEmptyState>
@@ -247,7 +257,7 @@ export function WorkspaceChatLists({
               : 'No agent conversations yet. Start one to see it here.'}
           </SidebarEmptyState>
           </>
-        }
+        )}
       />
     </>
   );

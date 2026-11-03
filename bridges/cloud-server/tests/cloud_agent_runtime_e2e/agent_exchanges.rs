@@ -380,3 +380,6 @@ async fn exchange_cloud_fallback_and_root_cancellation_use_the_same_run() {
 
 #[path = "agent_exchange_quiet.rs"]
 mod quiet;
+
+#[path = "agent_exchange_failure.rs"]
+mod failure;

@@ -200,3 +200,9 @@
   .digest-calendar-event > span { font-size: 9px; }
   .digest-page .digest-calendar-event { padding: 2px; font-size: 10px; }
 }
+
+.digest-import-link > summary { display: flex; align-items: center; gap: 6px; min-height: 32px; cursor: pointer; list-style: none; }
+.digest-import-link > summary::-webkit-details-marker { display: none; }
+.digest-import-link > summary > svg { flex: none; }
+.digest-import-link[open] > summary > svg { transform: rotate(90deg); }
+.digest-import-link > summary:focus-visible { outline: 2px solid var(--digest-accent); outline-offset: 2px; border-radius: 4px; }
