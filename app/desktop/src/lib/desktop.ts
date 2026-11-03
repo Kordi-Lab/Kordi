@@ -447,6 +447,7 @@ export type DesktopAgentBuilderSeed = {
   boundaries?: string[];
   access?: string;
   provider?: string | null;
+  authChoice?: string | null;
   model?: string | null;
   thinking?: string | null;
   tools?: string[];
@@ -470,6 +471,7 @@ export type DesktopAgentBuilderDraft = {
   boundaries: string[];
   access: string;
   provider?: string | null;
+  authChoice?: string | null;
   model?: string | null;
   thinking?: string | null;
   tools: string[];
@@ -554,9 +556,7 @@ export async function updateDesktopAgentBuilderDraft(
   });
 }
 
-export async function testDesktopAgentBuilderDraft(draftId: string, expectedFingerprint: string) {
-  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_test', { draftId, expectedFingerprint });
-}
+export { testDesktopAgentBuilderDraft } from './desktopAgentBuilderTest';
 
 export async function markDesktopAgentBuilderPublished(draftId: string, expectedFingerprint: string) {
   return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_mark_published', {

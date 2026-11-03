@@ -81,6 +81,7 @@ use self::workspace::{
     materialize_builder_skills, materialize_seed, migrate_legacy_workspace, write_draft,
 };
 
+mod hosted_test;
 mod runtime;
 
 pub(super) use self::runtime::{is_agent_builder_session_id, resume_agent_builder_runtime};
@@ -192,6 +193,8 @@ pub async fn desktop_agent_builder_update_draft(
 pub async fn desktop_agent_builder_test(
     draft_id: String,
     expected_fingerprint: String,
+    run_id: Option<String>,
+    claim_id: Option<String>,
 ) -> Result<DesktopAgentBuilderStatus, String> {
     let _mutation_guard = builder_mutation_lock().lock().await;
     let (workspace, metadata) = load_metadata(&draft_id)?;
@@ -209,7 +212,8 @@ pub async fn desktop_agent_builder_test(
     drop(_mutation_guard);
     if validation.valid {
         let draft = draft.ok_or_else(|| "Validated draft is unavailable".to_string())?;
-        match run_draft_smoke_test(&workspace, &draft).await {
+        match run_draft_smoke_test(&workspace, &draft, run_id.as_deref(), claim_id.as_deref()).await
+        {
             Ok(summary) => {
                 report.passed = true;
                 report.summary = format!("Runtime responded successfully: {summary}");

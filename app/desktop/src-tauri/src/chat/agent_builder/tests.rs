@@ -381,3 +381,48 @@ fn artifact_association_stays_on_the_exact_session_and_reports_missing_storage()
     assert!(error.contains("unavailable"));
     let _ = fs::remove_dir_all(root);
 }
+
+#[tokio::test]
+async fn hosted_draft_keeps_account_choice_and_requires_its_factory_lease() {
+    let workspace =
+        std::env::temp_dir().join(format!("factory-account-test-{}", uuid::Uuid::new_v4()));
+    let seed = DesktopAgentBuilderSeed {
+        name: "Synthetic reviewer".into(),
+        role: "Review synthetic text".into(),
+        provider: Some("openai-codex".into()),
+        auth_choice: Some("cloud-login:synthetic-owner".into()),
+        model: Some("openai/gpt-6-luna".into()),
+        thinking: Some("low".into()),
+        ..DesktopAgentBuilderSeed::default()
+    };
+    materialize_seed(&workspace, Some(&seed)).unwrap();
+    let (draft, validation) = validate_workspace(&workspace);
+    assert!(validation.valid, "{:?}", validation.errors);
+    let mut draft = draft.unwrap();
+    assert_eq!(
+        draft.auth_choice.as_deref(),
+        Some("cloud-login:synthetic-owner")
+    );
+    let missing = super::runtime::run_draft_smoke_test(&workspace, &draft, None, None).await;
+    assert!(missing.unwrap_err().contains("needs a new execution lease"));
+    let unrelated = super::runtime::run_draft_smoke_test(
+        &workspace,
+        &draft,
+        Some("import_synthetic"),
+        Some("claim"),
+    )
+    .await;
+    assert!(unrelated
+        .unwrap_err()
+        .contains("needs a new execution lease"));
+    draft.auth_choice = Some("cloud-login:synthetic-second".into());
+    write_draft(&workspace, draft).unwrap();
+    let (saved, changed) = validate_workspace(&workspace);
+    assert!(changed.valid);
+    assert_ne!(validation.fingerprint, changed.fingerprint);
+    assert_eq!(
+        saved.unwrap().auth_choice.as_deref(),
+        Some("cloud-login:synthetic-second")
+    );
+    fs::remove_dir_all(workspace).unwrap();
+}

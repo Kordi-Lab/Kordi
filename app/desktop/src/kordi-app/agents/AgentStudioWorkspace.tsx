@@ -1,3 +1,4 @@
+import { factoryDraftModelRouting } from './factoryAgentUtils';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
@@ -646,11 +647,7 @@ export function AgentStudioWorkspace({
     if (creating) onCreationAccessScopeChange(scope);
     else onUpdateAgentAccess?.(scope);
   };
-  const routing: AgentModelRoutingDraft = creating ? {
-    defaultModel: builderStatus?.draft?.model ?? null,
-    defaultAuthProvider: builderStatus?.draft?.provider ?? null,
-    thinking: builderStatus?.draft?.thinking ?? null,
-  } : {
+  const routing: AgentModelRoutingDraft = creating ? factoryDraftModelRouting(builderStatus?.draft) : {
     defaultModel: agent?.defaultModel ?? null,
     defaultAuthProvider: agent?.defaultAuthProvider ?? null,
     defaultAuthChoice: agent?.defaultAuthChoice ?? null,

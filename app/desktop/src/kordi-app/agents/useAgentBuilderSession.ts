@@ -1,3 +1,8 @@
+import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import { loadSession } from '@/features/cloud/session';
+import type { ComposerProviderOption } from '../components';
+import { factoryDraftWithAccount, runFactoryDraftTest } from './factoryTestRun';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
@@ -52,6 +57,7 @@ export function useAgentBuilderSession({
   seed,
   seedKey,
   onSessionResolved,
+  providerOptions = [],
   enabled = true,
 }: {
   targetKey: string;
@@ -59,6 +65,7 @@ export function useAgentBuilderSession({
   seed: DesktopAgentBuilderSeed;
   seedKey: string;
   onSessionResolved?: (status: DesktopAgentBuilderStatus) => void;
+  providerOptions?: ComposerProviderOption[];
   enabled?: boolean;
 }) {
   const [status, setStatus] = useState<DesktopAgentBuilderStatus | null>(null);
@@ -109,6 +116,7 @@ export function useAgentBuilderSession({
     const generation = generationRef.current + 1;
     generationRef.current = generation;
     setActiveTurn(null);
+    setTesting(false);
     setOptimisticPrompt(null);
     setOptimisticAttachments([]);
     setError(null);
@@ -243,25 +251,36 @@ export function useAgentBuilderSession({
 
   const testDraft = useCallback(async () => {
     if (testing) return null;
+    const generation = generationRef.current;
     setTesting(true);
     setError(null);
     try {
       await updateQueueRef.current;
-      const currentStatus = statusRef.current;
-      if (!currentStatus) return null;
-      const next = await testDesktopAgentBuilderDraft(
-        currentStatus.draftId,
-        currentStatus.validation.fingerprint,
-      );
+      if (generationRef.current !== generation) return null;
+      let currentStatus = statusRef.current;
+      if (!currentStatus?.draft) return null;
+      const draft = factoryDraftWithAccount(currentStatus.draft, providerOptions);
+      if (draft !== currentStatus.draft) {
+        currentStatus = await updateDesktopAgentBuilderDraft(currentStatus.draftId, draft, currentStatus.validation.fingerprint);
+        if (generationRef.current !== generation) return null;
+        commitStatus(currentStatus);
+      }
+      const { draftId, validation } = currentStatus;
+      const next = await runFactoryDraftTest({
+        draft, session: loadSession, client: defaultCloudAuthClient(),
+        isCurrent: () => generationRef.current === generation,
+        invoke: (lease) => testDesktopAgentBuilderDraft(draftId, validation.fingerprint, lease),
+      });
+      if (generationRef.current !== generation) return null;
       commitStatus(next);
       return next;
     } catch (testError) {
-      setError(errorMessage(testError, 'Unable to test the agent draft.'));
+      if (generationRef.current === generation) setError(errorMessage(testError, 'Unable to test the agent draft.'));
       return null;
     } finally {
-      setTesting(false);
+      if (generationRef.current === generation) setTesting(false);
     }
-  }, [commitStatus, testing]);
+  }, [commitStatus, testing, providerOptions]);
 
   const updateDraft = useCallback((update: DesktopAgentBuilderDraft | ((current: DesktopAgentBuilderDraft) => DesktopAgentBuilderDraft)) => {
     const generation = generationRef.current;
