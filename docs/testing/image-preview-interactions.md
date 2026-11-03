@@ -68,7 +68,7 @@ After reconciling main at `13731b61c`, the same production build contains 5,612,
 budgeted application bytes, leaving 261 bytes under the unchanged 5,613,000 cap.
 The six image interaction source files remain unchanged by that integration.
 The compact-fit CSS initially added 211 bytes. After moving copy feedback into
-the existing action row, the final build is 5,612,854 budgeted application bytes,
+the existing action row, that build was 5,612,854 budgeted application bytes,
 with 146 bytes of headroom. No further allowance was added.
 
 ## Native acceptance checklist
@@ -138,3 +138,20 @@ These are browser measurements against the old CSS, not claimed native captures.
 Letterboxing remains where the source and viewport aspect ratios differ. The
 native initial size remains 1080x760 with a 520x360 minimum; a resized window keeps
 its user-selected dimensions, and no source pixels are cropped or rewritten.
+
+## Reconciliation with the prioritized login configuration merge
+
+Main `038c76016c2afeb83ae50c3f42719a02e4f559ae` (#2217) was merged after the
+native acceptance. Its independently allocated 1,000-byte login/configuration
+allowance and this PR's 4,000-byte interaction allowance both changed the prior
+5,609,000-byte cap. The sole merge conflict was resolved by preserving both,
+for a combined 5,614,000-byte cap. No other limits changed. The measured combined
+build is 5,613,042 budgeted application bytes, leaving 958 bytes of headroom.
+
+All seven accepted image interaction/layout source files remain unchanged and
+match the existing isolated client, so the recorded native acceptance remains
+applicable. The integrated tree passes 80 focused attachment/login tests, nine
+distribution/staging configuration tests, full desktop typecheck, three production
+browser tests, and the real build and budget guards. Required CI must pass on the
+new integrated head before merge. No backend, native profile, or production
+service was changed during reconciliation.

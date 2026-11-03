@@ -3,6 +3,8 @@ import Foundation
 enum KordiDistributionChannel: String, Equatable {
     case production
     case research
+    case staging
+    case researchStaging = "research-staging"
     case beta
 }
 
@@ -66,7 +68,7 @@ struct KordiAppEnvironment: Equatable {
         }
 
         switch channel {
-        case .production, .research:
+        case .production, .research, .staging, .researchStaging:
             guard let expected = KordiReleaseConfiguration.read(infoDictionary),
                   channel.rawValue == expected.channel,
                   bundleIdentifier == expected.iosIdentifier,

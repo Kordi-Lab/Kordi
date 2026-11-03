@@ -72,13 +72,15 @@ try {
       mkdirSync(iconDestination);
       copiedIcon = iconDestination;
       cpSync(path.join(prepared, 'Distribution.xcassets/DistributionIcon.appiconset'), copiedIcon, { recursive: true });
-      const scheme = profile.routing.edition === 'research' ? 'Kordi Research' : 'Kordi';
-      const config = profile.routing.edition === 'research' ? 'Research' : 'Release';
+      const research = profile.routing.edition === 'research';
+      const staging = profile.routing.environment === 'staging';
+      const scheme = `Kordi${research ? ' Research' : ''}${staging ? ' Staging' : ''}`;
+      const config = staging ? (research ? 'ResearchStaging' : 'Staging') : (research ? 'Research' : 'Release');
       const signing = unsigned ? ['CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO']
         : [`DEVELOPMENT_TEAM=${binding(profile.apple.teamBinding)}`];
       run('xcodebuild', ['-project', 'app/ios/Kordi.xcodeproj', '-scheme', scheme, '-configuration', config,
         '-xcconfig', path.join(prepared, 'ios.xcconfig'), '-destination', unsigned ? 'generic/platform=iOS Simulator' : 'generic/platform=iOS',
-        '-derivedDataPath', path.join(root, '.build', `ios-${profile.routing.edition}`),
+        '-derivedDataPath', path.join(root, '.build', `ios-${profile.routing.edition}-${profile.routing.environment}`),
         ...signing, 'build'], root);
     }
   }

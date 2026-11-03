@@ -342,9 +342,137 @@
           ]
         }
       }
+    },
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "admission",
+        "verifiedDomains",
+        "approvedEmailsBinding",
+        "oauthBindings",
+        "loginPage"
+      ],
+      "properties": {
+        "admission": {
+          "enum": [
+            "existing",
+            "verified-domain",
+            "approved-testers"
+          ]
+        },
+        "verifiedDomains": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*\\.[a-z]{2,}$"
+          }
+        },
+        "approvedEmailsBinding": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+        },
+        "oauthBindings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "googleClientId",
+            "googleClientSecret",
+            "githubClientId",
+            "githubClientSecret"
+          ],
+          "properties": {
+            "googleClientId": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "googleClientSecret": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "githubClientId": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "githubClientSecret": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            }
+          }
+        },
+        "loginPage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "subtitle",
+            "signupTitle",
+            "signupSubtitle"
+          ],
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "pattern": "^[^\\r\\n\\u0000]+$"
+            },
+            "subtitle": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "pattern": "^[^\\r\\n\\u0000]+$"
+            },
+            "signupTitle": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "pattern": "^[^\\r\\n\\u0000]+$"
+            },
+            "signupSubtitle": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "pattern": "^[^\\r\\n\\u0000]+$"
+            }
+          }
+        }
+      }
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Kordi distribution configuration",
-  "$comment": "The shared runtime validator also enforces independent target binding, edition/storage separation, update-key consistency and bounded contained assets."
+  "$comment": "The shared runtime validator also enforces independent target binding, edition/storage separation, update-key consistency and bounded contained assets.",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "routing": {
+            "anyOf": [
+              {
+                "properties": {
+                  "edition": {
+                    "const": "research"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "environment": {
+                    "const": "staging"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "authentication"
+        ]
+      }
+    }
+  ]
 }
