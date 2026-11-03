@@ -12,8 +12,9 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Actual-size gestures, panning, and original-image clipboard copying add 3.9 kB.
 // Ops-owned login copy and admission guidance add a separate bounded 1 kB.
 // Compact shell materials, corner geometry, and sidebar cover motion add less than 5 kB.
-// Inline tool previews and disclosure scroll anchoring receive a bounded 1 kB allowance.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_620_000;
+// Inline tool previews and disclosure scroll anchoring receive a bounded 2 kB allowance,
+// including the community API configuration used by production browser tests.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_621_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;
