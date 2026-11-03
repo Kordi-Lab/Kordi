@@ -1,3 +1,4 @@
+import { authenticationBindings } from '../shared/configuration/authentication.mjs';
 import { spawn } from 'node:child_process';
 import { distributionFromEnvironment, serviceEnvironment } from '../shared/configuration/distribution-files.mjs';
 // This is a process adapter for an already authorized environment, not a deploy command.
@@ -12,7 +13,7 @@ try {
     if (required.some((key) => !process.env[key]?.trim())) throw new Error();
   }
   const child = spawn(binary, args, { stdio: 'inherit', shell: false,
-    env: { ...process.env, ...serviceEnvironment(profile, service) } });
+    env: { ...process.env, ...serviceEnvironment(profile, service), ...(service === 'server' ? authenticationBindings(profile, process.env) : {}) } });
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));
   child.on('error', () => { console.error('Configured service could not start.'); process.exitCode = 1; });
   child.on('exit', (code) => { process.exitCode = code ?? 1; });

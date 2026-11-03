@@ -99,7 +99,7 @@ struct LoginView: View {
             KordiMark(size: dynamicTypeSize.isAccessibilitySize ? 62 : 74)
 
             VStack(spacing: 7) {
-                Text(isSignup ? "Create your account" : "Welcome to Kordi")
+                Text(KordiLoginCopy.title(signup: isSignup))
                     .font(dynamicTypeSize.isAccessibilitySize ? .title.bold() : .largeTitle.bold())
                     .tracking(-0.6)
                     .multilineTextAlignment(.center)
@@ -115,7 +115,7 @@ struct LoginView: View {
     }
 
     private var headerSubtitle: String {
-        if dynamicTypeSize.isAccessibilitySize { return "People and agents, together." }
+        if let notice = KordiLoginCopy.subtitle(signup: isSignup, accessibility: dynamicTypeSize.isAccessibilitySize) { return notice }
         return isSignup
             ? "Sign up for Next-generation Supercollaboration"
             : "Building Next-generation Supercollaboration"

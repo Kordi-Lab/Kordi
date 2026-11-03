@@ -463,6 +463,7 @@ async fn memory_settings_round_trip_and_guard_behaviour() {
 #[test]
 fn capabilities_report_memory_version() {
     let value = serde_json::to_value(AuthCapabilitiesResponse {
+        admission: None,
         password: true,
         oauth_providers: Vec::new(),
         connectors_version: None,
