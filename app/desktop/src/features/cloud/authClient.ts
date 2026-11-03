@@ -75,7 +75,6 @@ export {
   cloudApiBaseUrl,
   cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
-  DEFAULT_CLOUD_API_BASE_URL,
   operatorCloudOAuthProviderFallback
 } from './cloudApiEnvironment';
 export type { CloudApiEnvironment } from './cloudApiEnvironment';

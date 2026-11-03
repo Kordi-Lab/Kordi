@@ -2,6 +2,7 @@ import Foundation
 
 enum KordiDistributionChannel: String, Equatable {
     case production
+    case research
     case beta
 }
 
@@ -20,9 +21,7 @@ enum KordiAppEnvironmentError: LocalizedError, Equatable {
 }
 
 struct KordiAppEnvironment: Equatable {
-    static let productionBundleIdentifier = "ai.kordi.ios"
     static let betaBundleIdentifier = "ai.kordi.ios.beta"
-    static let productionBaseURL = URL(string: "https://kordi.ai")!
     #if BETA
     static let betaBaseURL = URL(string: "http://127.0.0.1:17081")!
     #endif
@@ -67,15 +66,13 @@ struct KordiAppEnvironment: Equatable {
         }
 
         switch channel {
-        case .production:
-            guard bundleIdentifier == productionBundleIdentifier else {
-                throw KordiAppEnvironmentError.invalidSetting("CFBundleIdentifier")
-            }
-            guard callbackScheme == "kordi" else {
-                throw KordiAppEnvironmentError.invalidSetting("KordiOAuthCallbackScheme")
-            }
-            guard isExactProductionURL(baseURL) else {
-                throw KordiAppEnvironmentError.invalidSetting("KordiCloudBaseURL")
+        case .production, .research:
+            guard let expected = KordiReleaseConfiguration.read(infoDictionary),
+                  channel.rawValue == expected.channel,
+                  bundleIdentifier == expected.iosIdentifier,
+                  callbackScheme == expected.callbackScheme,
+                  baseURL.absoluteString == expected.backendOrigin else {
+                throw KordiAppEnvironmentError.invalidSetting("KordiExpectedDistribution")
             }
         case .beta:
             #if BETA
@@ -122,13 +119,6 @@ struct KordiAppEnvironment: Equatable {
             throw KordiAppEnvironmentError.invalidSetting(key)
         }
         return normalized
-    }
-
-    private static func isExactProductionURL(_ url: URL) -> Bool {
-        url.scheme?.lowercased() == "https"
-            && url.host?.lowercased() == "kordi.ai"
-            && url.port == nil
-            && hasNoExtraURLComponents(url)
     }
 
     #if BETA

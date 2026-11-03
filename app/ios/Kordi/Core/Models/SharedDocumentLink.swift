@@ -8,7 +8,16 @@ struct SharedDocumentLink: Equatable, Hashable, Identifiable {
     let token: String
 
     var id: String { token }
-    var shareURL: URL? { URL(string: "https://kordi.ai/d/\(token)") }
+    var shareURL: URL? { URL(string: "\(Self.publicOrigin)/d/\(token)") }
+
+    static var publicOrigin: String {
+        #if BETA
+        // Preserve Beta's existing shared-link behavior; its API remains loopback-only.
+        return "https://kordi.ai"
+        #else
+        return KordiAppEnvironment.current.cloudBaseURL.absoluteString
+        #endif
+    }
 
     /// The app's own URL scheme from Info.plist, which differs per build channel.
     static var hostAppScheme: String? {
@@ -23,11 +32,15 @@ struct SharedDocumentLink: Equatable, Hashable, Identifiable {
               let scheme = url.scheme?.lowercased(),
               let host = url.host?.lowercased() else { return nil }
         let parts = url.path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        #if BETA
         let customSchemes = Set(["kordi", hostScheme].compactMap { $0?.nonEmpty })
+        #else
+        let customSchemes = Set([hostScheme].compactMap { $0?.nonEmpty })
+        #endif
         let token: String?
         if customSchemes.contains(scheme), host == "document", parts.count == 1 {
             token = parts[0]
-        } else if scheme == "https", host == "kordi.ai", url.port == nil, parts.count == 2, parts[0] == "d" {
+        } else if scheme == "https", host == URL(string: publicOrigin)?.host, url.port == URL(string: publicOrigin)?.port, parts.count == 2, parts[0] == "d" {
             token = parts[1]
         } else {
             token = nil

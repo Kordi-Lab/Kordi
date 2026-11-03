@@ -119,6 +119,7 @@ impl fmt::Debug for SystemAgentProviderAuth {
 
 #[derive(Debug, Clone)]
 pub struct PendingSystemAgentConfig {
+    pub system_prompt: String,
     pub group_chat_enabled: bool,
     pub account_id: String,
     pub owner_email: String,
@@ -130,6 +131,7 @@ pub struct PendingSystemAgentConfig {
 
 #[derive(Debug, Clone)]
 pub struct SystemAgentConfig {
+    pub system_prompt: String,
     pub group_chat_enabled: bool,
     pub account_id: String,
     pub owner_email: String,
@@ -275,7 +277,11 @@ impl PendingSystemAgentConfig {
                 "KORDI_SYSTEM_AGENT_OWNER_EMAIL must be an email address",
             ));
         }
+        let system_prompt =
+            super::prompt::system_prompt(get("KORDI_SYSTEM_AGENT_PERSONA").as_deref())
+                .map_err(SystemAgentConfigError::Invalid)?;
         Ok(Some(Self {
+            system_prompt,
             group_chat_enabled: !switched_off(setting(&mut get, "GROUP_CHAT_ENABLED").as_deref()),
             account_id: required_or_default(
                 &mut get,
@@ -316,6 +322,7 @@ impl SystemAgentConfig {
 #[cfg(test)]
 pub(crate) fn test_config(account_id: &str) -> SystemAgentConfig {
     SystemAgentConfig {
+        system_prompt: super::prompt::system_prompt(Some("Synthetic system persona.")).unwrap(),
         group_chat_enabled: true,
         account_id: account_id.to_string(),
         owner_email: "system-agent-test@example.invalid".to_string(),

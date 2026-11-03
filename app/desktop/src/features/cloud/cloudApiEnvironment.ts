@@ -1,8 +1,10 @@
+import { clientDistribution } from './distribution';
 import type { CloudOAuthProvider } from './authClient';
 
-export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.ai';
-const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai']);
-const APPROVED_OPERATOR_CLOUD_API_ORIGINS = new Set([DEFAULT_CLOUD_API_BASE_URL]);
+// This allowlist is a development safeguard, never a release routing fallback.
+const OPERATOR_CLOUD_API_BASE_URL = 'https://kordi.ai';
+const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai', 'research.kordi.ai']);
+const APPROVED_OPERATOR_CLOUD_API_ORIGINS = new Set([OPERATOR_CLOUD_API_BASE_URL]);
 
 export type CloudApiEnvironment = {
   DEV?: boolean;
@@ -10,6 +12,7 @@ export type CloudApiEnvironment = {
   VITE_KORDI_DEV_PROFILE?: string;
   VITE_KORDI_PRODUCTION_DEBUG_ACK?: string;
   VITE_KORDI_ENABLE_LOOPBACK_REALTIME?: string;
+  distribution?: ReturnType<typeof clientDistribution>;
 };
 
 function cleanBaseUrl(value: string): string {
@@ -21,7 +24,7 @@ export function isProductionCloudOrigin(value: string): boolean {
     const hostname = new URL(value).hostname.toLowerCase().replace(/\.+$/, '');
     return PRODUCTION_CLOUD_API_HOSTNAMES.has(hostname);
   } catch {
-    return value === DEFAULT_CLOUD_API_BASE_URL;
+    return value === OPERATOR_CLOUD_API_BASE_URL;
   }
 }
 
@@ -80,8 +83,18 @@ export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {
     return cleaned;
   }
 
-  if (configured) return cleanBaseUrl(configured);
-  return DEFAULT_CLOUD_API_BASE_URL;
+  // Compiled browser fixtures and portable community previews retain loopback-only routing.
+  if (activeEnv?.VITE_KORDI_DEV_PROFILE === 'community' && configured) {
+    const url = new URL(cleanBaseUrl(configured));
+    if (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return url.origin;
+    throw new Error('Community builds must use a loopback origin.');
+  }
+  const distribution = activeEnv?.distribution ?? clientDistribution();
+  if (!distribution) throw new Error('An ops distribution profile is required for this release.');
+  if (configured && cleanBaseUrl(configured) !== distribution.backendOrigin) {
+    throw new Error('Cloud API override does not match the selected distribution.');
+  }
+  return distribution.backendOrigin;
 }
 
 export function cloudRealtimeWebSocketEnabled(

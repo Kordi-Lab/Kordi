@@ -7,11 +7,15 @@ pub struct K8sSandboxConfig {
     pub image: String,
     pub ttl_seconds_after_finished: i64,
     pub storage_request: String,
+    pub cpu_millis: u32,
+    pub memory_mib: u32,
 }
 
 impl Default for K8sSandboxConfig {
     fn default() -> Self {
         Self {
+            cpu_millis: bounded_resource("KORDI_CLOUD_SANDBOX_CPU_MILLIS", 1000, 100, 16000),
+            memory_mib: bounded_resource("KORDI_CLOUD_SANDBOX_MEMORY_MIB", 1024, 128, 32768),
             namespace: std::env::var("KORDI_CLOUD_SANDBOX_NAMESPACE")
                 .ok()
                 .filter(|value| !value.trim().is_empty())
@@ -99,6 +103,10 @@ pub fn build_sandbox_job_spec(
                         "name": "sandbox-op",
                         "image": config.image,
                         "workingDir": "/workspace",
+                        "resources": {
+                            "limits": { "cpu": format!("{}m", config.cpu_millis), "memory": format!("{}Mi", config.memory_mib) },
+                            "requests": { "cpu": "50m", "memory": "64Mi" }
+                        },
                         "command": ["/bin/sh", "-lc", command],
                         "securityContext": {
                             "allowPrivilegeEscalation": false,
@@ -177,4 +185,51 @@ fn operation_command(operation: K8sSandboxOperation) -> String {
 
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn bounded_resource(name: &str, default: u32, min: u32, max: u32) -> u32 {
+    let value = match std::env::var(name) {
+        Ok(value) => value
+            .parse::<u32>()
+            .expect("Sandbox resource limit must be an integer"),
+        Err(std::env::VarError::NotPresent) => default,
+        Err(_) => panic!("Invalid sandbox resource limit"),
+    };
+    assert!(
+        (min..=max).contains(&value),
+        "Sandbox resource limit is outside safe bounds"
+    );
+    value
+}
+
+#[cfg(test)]
+mod distribution_resource_tests {
+    use super::*;
+
+    #[test]
+    fn selected_resource_limits_preserve_sandbox_security() {
+        let config = K8sSandboxConfig {
+            cpu_millis: 750,
+            memory_mib: 768,
+            ..Default::default()
+        };
+        let job = build_sandbox_job_spec(
+            &config,
+            "synthetic-sandbox",
+            K8sSandboxOperation::List {
+                path: ".".to_string(),
+            },
+        );
+        let pod = &job["spec"]["template"]["spec"];
+        let container = &pod["containers"][0];
+        assert_eq!(container["resources"]["limits"]["cpu"], "750m");
+        assert_eq!(container["resources"]["limits"]["memory"], "768Mi");
+        assert_eq!(container["securityContext"]["privileged"], false);
+        assert_eq!(
+            container["securityContext"]["allowPrivilegeEscalation"],
+            false
+        );
+        assert_eq!(pod["automountServiceAccountToken"], false);
+        assert_eq!(pod["securityContext"]["runAsNonRoot"], true);
+    }
 }

@@ -46,7 +46,8 @@ export { releaseTreeScanArguments, vendoredRuntimeScanArguments };
 export { redactPublisherText } from './desktop-release-privacy-scan.mjs';
 
 export { PRODUCT_ORIGIN } from './desktop-release-public.mjs';
-export const TAURI_UPDATER_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3N0JBRkMwRDRDNzFEOUIKUldTYkhjZlV3Szk3WjVXWWVmNzZGanNDakFlRkxTZ3UwZ1dLelpJenl3NnY3YmkvZCtEcUxxUWcK';
+import { releaseDistribution, updaterPublicKey } from './release-distribution.mjs';
+export const TAURI_UPDATER_PUBLIC_KEY = updaterPublicKey;
 
 const REPO_ROOT = dirname(fileURLToPath(new URL('../../package.json', import.meta.url)));
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
@@ -228,8 +229,10 @@ export async function prepareDesktopRelease(options, dependencies = {}) {
   await requireDirectory(normalized.releaseDir, 'Release directory');
   await requireDirectory(normalized.appBundle, 'Application bundle');
 
-  const manualName = `Kordi_${normalized.version}_aarch64.dmg`;
-  const updaterName = 'Kordi.app.tar.gz';
+  const distribution = releaseDistribution();
+  if (!distribution.clients.updates.enabled) throw new Error('Updates are disabled for this distribution.');
+  const manualName = `${distribution.clients.updates.artifactName}_${normalized.version}_aarch64.dmg`;
+  const updaterName = `${distribution.clients.updates.artifactName}.app.tar.gz`;
   const signatureName = `${updaterName}.sig`;
   const manualPath = join(normalized.releaseDir, manualName);
   const updaterPath = join(normalized.releaseDir, updaterName);
@@ -482,7 +485,7 @@ function validateStoredAsset(asset, version, { updater }) {
     keys.push('minimumSystemVersion');
   }
   assertExactKeys(asset, keys, updater ? 'Prior updater asset' : 'Prior manual asset');
-  const expectedName = updater ? 'Kordi.app.tar.gz' : `Kordi_${version}_aarch64.dmg`;
+  const expectedName = updater ? `${releaseDistribution().clients.updates.artifactName}.app.tar.gz` : `${releaseDistribution().clients.updates.artifactName}_${version}_aarch64.dmg`;
   if (asset.fileName !== expectedName) throw new Error('Prior release asset filename is invalid');
   if (asset.objectKey !== `desktop/releases/${version}/macos/aarch64/${expectedName}`) {
     throw new Error('Prior release asset key is invalid');
@@ -881,14 +884,13 @@ async function assertAcceptanceConfigParity(repoRoot) {
     readFile(join(tauriRoot, 'tauri.cloud.acceptance.conf.json'), 'utf8').then(JSON.parse),
     readFile(join(tauriRoot, 'tauri.cloud.acceptance-bootstrap.conf.json'), 'utf8').then(JSON.parse),
   ]);
-  const endpoint = 'https://kordi.ai/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
   for (const config of [target, bootstrap]) {
     if (
-      config.productName !== 'Kordi'
-      || config.identifier !== 'io.kordi.cloud'
+      config.productName !== undefined
+      || config.identifier !== undefined
       || config.bundle?.macOS?.signingIdentity !== '-'
       || config.plugins?.updater?.pubkey !== undefined
-      || JSON.stringify(config.plugins?.updater?.endpoints) !== JSON.stringify([endpoint])
+      || JSON.stringify(config.plugins?.updater?.endpoints) !== JSON.stringify([])
     ) {
       throw new Error('Acceptance Tauri configuration does not match the ad-hoc preview contract');
     }
@@ -900,7 +902,7 @@ async function assertAcceptanceConfigParity(repoRoot) {
 
 export function assertAppBundleContract(run, appBundle, {
   version,
-  identifier = 'io.kordi.cloud',
+  identifier = releaseDistribution().clients.desktopIdentifier,
   releaseProfile,
 }) {
   const plist = (key) => requireRun(
@@ -917,9 +919,9 @@ export function assertAppBundleContract(run, appBundle, {
   }
   const trust = verifyMacAppSignature({ run, appBundle, profile: releaseProfile });
   const acceptanceEndpoint =
-    'https://kordi.ai/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
+    `${PRODUCT_ORIGIN}/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}`;
   const productionEndpoint =
-    'https://kordi.ai/updates/desktop/{{target}}/{{arch}}/{{current_version}}';
+    `${PRODUCT_ORIGIN}/updates/desktop/{{target}}/{{arch}}/{{current_version}}`;
   const endpoint = releaseProfile === 'adhoc-preview' ? acceptanceEndpoint : productionEndpoint;
   const forbiddenEndpoint = releaseProfile === 'adhoc-preview' ? productionEndpoint : acceptanceEndpoint;
   requireRun(
@@ -964,7 +966,7 @@ async function findAppBundle(root, depth = 0) {
   for (const entry of await readdir(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const path = join(root, entry.name);
-    if (entry.name === 'Kordi.app') return path;
+    if (entry.name === `${releaseDistribution().clients.updates.artifactName}.app`) return path;
     const nested = await findAppBundle(path, depth + 1);
     if (nested) return nested;
   }
@@ -1025,7 +1027,7 @@ function createArtifactVerifier({
         checkMacOSRuntimeMinimumImpl(appBundle, { expectedMinimum: minimumSystemVersion, run });
         assertAppBundleContract(run, appBundle, {
           version: input.version,
-          identifier: 'io.kordi.cloud',
+          identifier: releaseDistribution().clients.desktopIdentifier,
           releaseProfile,
         });
         scanReleaseTree(run, appBundle);
@@ -1035,8 +1037,8 @@ function createArtifactVerifier({
 
       const mounted = mountDmgImpl(input.manualPath);
       try {
-        validateDmgVolumeLayoutImpl(mounted.mountPoint, { appName: 'Kordi' });
-        const mountedApp = join(mounted.mountPoint, 'Kordi.app');
+        validateDmgVolumeLayoutImpl(mounted.mountPoint, { appName: releaseDistribution().clients.updates.artifactName });
+        const mountedApp = join(mounted.mountPoint, `${releaseDistribution().clients.updates.artifactName}.app`);
         verifyBundle(mountedApp);
         scanReleaseTree(run, mounted.mountPoint);
       } finally {

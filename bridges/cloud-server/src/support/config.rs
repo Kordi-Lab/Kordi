@@ -97,6 +97,7 @@ impl fmt::Debug for SupportProviderAuth {
 
 #[derive(Debug, Clone)]
 pub struct PendingSupportConfig {
+    pub system_prompt: String,
     pub owner_account_id: String,
     pub owner_email: String,
     pub agent_id: String,
@@ -108,6 +109,7 @@ pub struct PendingSupportConfig {
 
 #[derive(Debug, Clone)]
 pub struct SupportConfig {
+    pub system_prompt: String,
     pub owner_account_id: String,
     pub owner_email: String,
     pub agent_id: String,
@@ -232,7 +234,10 @@ impl PendingSupportConfig {
             }
         };
 
+        let system_prompt = super::agent::system_prompt(get("KORDI_SUPPORT_PERSONA").as_deref())
+            .map_err(SupportConfigError::Invalid)?;
         Ok(Some(Self {
+            system_prompt,
             owner_account_id: required_or_default(
                 &mut get,
                 "KORDI_SUPPORT_OWNER_ACCOUNT_ID",
