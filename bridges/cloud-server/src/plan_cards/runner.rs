@@ -21,9 +21,11 @@ use crate::server::ServerState;
 use super::routes::{dispatch_row, Actor};
 use super::wire::Request;
 
-fn represented_accounts(prompt: &str) -> BTreeSet<String> {
+/// Only new, human messages addressed to System can authorize a mutation.
+/// Use the canonical messageId emitted by context::budget_messages.
+fn source_messages(prompt: &str) -> Vec<Value> {
     let Ok(input) = serde_json::from_str::<Value>(prompt) else {
-        return BTreeSet::new();
+        return Vec::new();
     };
     input["messages"]
         .as_array()
@@ -31,10 +33,22 @@ fn represented_accounts(prompt: &str) -> BTreeSet<String> {
         .flatten()
         .filter(|message| message["isNew"] == true)
         .filter(|message| {
-            message["id"]
-                .as_str()
-                .is_some_and(|message_id| !message_id.is_empty())
+            message["fromSystemAgent"] != true
+                && message["addressesAgent"] != true
+                && message["answeredByAgent"] != true
         })
+        .filter(|message| {
+            message["messageId"]
+                .as_str()
+                .is_some_and(|id| !id.is_empty())
+        })
+        .cloned()
+        .collect()
+}
+
+fn represented_accounts(prompt: &str) -> BTreeSet<String> {
+    source_messages(prompt)
+        .iter()
         .filter_map(|message| message["senderId"].as_str().map(str::to_string))
         .collect()
 }
@@ -123,6 +137,10 @@ pub async fn runner_action(
         account_id: system_agent_account_id,
         on_behalf_of_conversation: Some(conversation_id),
         represented_accounts: represented_accounts(&prompt),
+        source_message_ids: source_messages(&prompt)
+            .iter()
+            .filter_map(|message| message["messageId"].as_str().map(str::to_string))
+            .collect(),
     };
     match dispatch_row(state.db_pool(), &actor, request).await {
         Ok(row) => {
@@ -174,15 +192,22 @@ mod tests {
     fn represented_accounts_require_new_message_provenance() {
         let prompt = json!({
             "messages": [
-                {"id": "old", "senderId": "old-member", "isNew": false},
-                {"id": "new", "senderId": "new-member", "isNew": true},
-                {"id": "", "senderId": "missing-source", "isNew": true}
+                {"messageId": "old", "senderId": "old-member", "isNew": false},
+                {"messageId": "new", "senderId": "new-member", "isNew": true},
+                {"messageId": "", "senderId": "missing-source", "isNew": true},
+                {"id": "wrong-field", "senderId": "wrong-field", "isNew": true},
+                {"messageId": "system", "senderId": "system", "isNew": true, "fromSystemAgent": true},
+                {"messageId": "other", "senderId": "other", "isNew": true, "addressesAgent": true},
+                {"messageId": "answered", "senderId": "answered", "isNew": true, "answeredByAgent": true}
             ]
-        })
-        .to_string();
+        }).to_string();
         assert_eq!(
             represented_accounts(&prompt),
             std::collections::BTreeSet::from(["new-member".to_string()])
         );
+        let sources = super::source_messages(&prompt);
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0]["messageId"], "new");
+        assert!(super::source_messages("invalid JSON").is_empty());
     }
 }
