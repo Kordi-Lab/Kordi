@@ -106,3 +106,17 @@ test('source instants and card build dates share the local day while date-only s
     else process.env.TZ = previous;
   }
 });
+
+test('a match response started before withdrawal cannot restore a cached shared card', async () => {
+  const { client } = mockServer({ 'PUT card/settings': { status: 200, body: owner({ sharing: false }) } });
+  let finish!: (value: typeof match) => void;
+  client.match = () => new Promise((resolve) => { finish = resolve; });
+  client.setSharing = async () => owner({ sharing: false });
+  const store = new CommonGroundStore(client);
+  store.set({ loaded: true, owner: owner() });
+  const pending = store.loadScreen({ name: 'match', accountId: 'peer' });
+  await store.setSharing(false);
+  finish(match);
+  await pending;
+  assert.deepEqual(store.getSnapshot().matches, {});
+});

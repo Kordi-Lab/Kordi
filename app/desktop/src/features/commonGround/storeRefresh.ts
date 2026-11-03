@@ -1,5 +1,5 @@
 import { CommonGroundError, commonGroundErrorMessage } from './client';
-import { personKey, type CgScreen, type CommonGroundStore } from './store';
+import { personKey, type CgScreen, type CgState, type CommonGroundStore } from './store';
 import type { CgRoomSummary } from './types';
 
 /** A fresh denial invalidates loaded content; a network failure does not. */
@@ -32,31 +32,35 @@ export function reconcileRooms(store: CommonGroundStore, roomList: CgRoomSummary
 
 export async function refreshScreen(store: CommonGroundStore, screen: CgScreen): Promise<void> {
   const snapshot = store.getSnapshot;
+  const before = snapshot();
+  const apply = (patch: Partial<CgState>) => {
+    if (snapshot() === before) store.set(patch);
+  };
   try {
     switch (screen.name) {
       case 'home': return store.loadHome();
-      case 'lobby': return store.set({ rooms: { ...snapshot().rooms, [screen.code]: await store.client.room(screen.code) } });
+      case 'lobby': return apply({ rooms: { ...snapshot().rooms, [screen.code]: await store.client.room(screen.code) } });
       case 'results': {
         const room = store.client.room(screen.code).catch(() => null);
         const results = await store.client.results(screen.code);
         const loaded = await room;
-        return store.set({
+        return apply({
           results: { ...snapshot().results, [screen.code]: results },
           rooms: loaded ? { ...snapshot().rooms, [screen.code]: loaded } : snapshot().rooms,
         });
       }
       case 'match': {
         const match = await store.client.match(screen.accountId, screen.profileId);
-        return store.set({ matches: { ...snapshot().matches, [personKey(screen.accountId, screen.profileId)]: match } });
+        return apply({ matches: { ...snapshot().matches, [personKey(screen.accountId, screen.profileId)]: match } });
       }
       case 'person': {
         const view = await store.client.person(screen.accountId, screen.profileId);
-        return store.set({ people: { ...snapshot().people, [personKey(screen.accountId, screen.profileId)]: view } });
+        return apply({ people: { ...snapshot().people, [personKey(screen.accountId, screen.profileId)]: view } });
       }
       default: return undefined;
     }
   } catch (error) {
     clearUnavailableScreen(store, screen, error);
-    store.set({ notice: commonGroundErrorMessage(error) });
+    apply({ notice: commonGroundErrorMessage(error) });
   }
 }

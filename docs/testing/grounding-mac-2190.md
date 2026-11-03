@@ -10,7 +10,8 @@ responses and the real client store/components, without shared accounts or a dep
   pages reconcile with the server every 30 seconds; pending work keeps its faster polling.
 - A fresh sharing withdrawal replaces a loaded match. A denied room read clears
   cached membership/results; transient service errors preserve content for retry.
-- A delayed card poll cannot replace the selected profile's card.
+- A delayed card poll cannot replace the selected profile's card. A match read
+  started before sharing withdrawal cannot restore the withdrawn cached card.
 - Focus resumes polling immediately, including when a hidden WebView timer has not fired.
   Unmount removes the timer and listeners.
 - Pasting a full four-digit code fills all boxes. Escape also clears the pending code.

@@ -12,11 +12,10 @@ type PollingEnvironment = {
 export function startCommonGroundPolling(poll: () => Promise<number | null>, env: PollingEnvironment): () => void {
   let stopped = false;
   let running = false;
-  let resume = false;
   let timer: Timer | undefined;
   const loop = async () => {
     if (stopped) return;
-    if (running) { resume = true; return; }
+    if (running) return;
     env.cancel(timer);
     running = true;
     let next: number | null = null;
@@ -24,8 +23,7 @@ export function startCommonGroundPolling(poll: () => Promise<number | null>, env
       if (!env.doc.hidden) next = await poll();
     } finally {
       running = false;
-      if (!stopped) timer = env.schedule(() => { void loop(); }, resume ? 0 : next ?? 1_000);
-      resume = false;
+      if (!stopped) timer = env.schedule(() => { void loop(); }, next ?? 1_000);
     }
   };
   const stopSync = syncOnVisible(() => { void loop(); }, env.win, env.doc);
