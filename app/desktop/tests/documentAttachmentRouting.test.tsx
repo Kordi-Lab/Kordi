@@ -65,7 +65,7 @@ async function mountWithListener(mount: (element: ReactElement) => Promise<HTMLE
 
 for (const [label, sender, viewer] of [['the viewer sent it', OWNER, OWNER], ['another member sent it', MEMBER, OWNER]] as const) {
   for (const localPath of [null, '/Users/example/Library/Caches/design-review.md']) {
-    for (const name of ['design-review.md', 'prototype.html']) {
+    for (const name of ['design-review.md', 'prototype.html', 'notes.txt']) {
       test(`a ${name} chip opens the reader (${label}, ${localPath ? 'downloaded before' : 'not downloaded'}) and never opens or downloads the file`, async () => {
         await withJsdomRoot(async (mount) => {
           const commands = installDesktopBridge();
@@ -163,3 +163,20 @@ test('a request made while no chat page listens waits for the next one instead o
     assert.equal(opened[0].artifact.attachmentId, 'att_example_review');
   });
 });
+
+for (const [label, command] of [['Open in default app', 'desktop_open_external_url'], ['Show in Finder', 'desktop_reveal_in_finder']] as const) {
+  test(`explicit ${label} bypasses the parallel pane`, async () => {
+    await withJsdomRoot(async (mount) => {
+      const commands = installDesktopBridge();
+      const attachment: MessageAttachment = { kind: 'file', name: 'notes.txt', attachmentId: 'att_notes', localPath: '/tmp/notes.txt' };
+      const { root, opened } = await mountWithListener(mount, createElement(AttachmentPreview, { msg: groupMessage(MEMBER, OWNER, [attachment]) }));
+      await act(async () => { root.querySelector('[data-attachment-file-chip]')!.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true })); });
+      const action = [...document.querySelectorAll<HTMLButtonElement>('[data-attachment-file-menu] button')].find(button => button.textContent === label);
+      assert.ok(action);
+      await act(async () => { action.click(); });
+      await settle();
+      assert.equal(opened.length, 0);
+      assert.ok(commands.includes(command), commands.join(', '));
+    });
+  });
+}

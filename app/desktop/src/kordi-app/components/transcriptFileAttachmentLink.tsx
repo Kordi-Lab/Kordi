@@ -20,7 +20,7 @@ import { loadSession } from '@/features/cloud/session';
 import { attachmentFileFamily, attachmentFileTileLabel, splitAttachmentName } from '@/features/chat/attachmentFileFamily';
 import { revealDesktopAttachment, saveDesktopAttachmentAs } from '@/features/chat/attachmentDesktopActions';
 import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
-import { openAttachmentInCompanion, withUploadedAttachmentId } from '@/features/documents/companionDocument';
+import { canPreviewAttachment, openAttachmentInCompanion, withUploadedAttachmentId } from '@/features/documents/companionDocument';
 import { documentDisplayName, useDocumentTitle } from '@/features/documents/documentTitles';
 import { attachmentFormatLabel } from '@/features/chat/composerAttachments';
 import {
@@ -197,7 +197,6 @@ export function TranscriptFileAttachmentLink({
   }
 
   async function handleDownload() {
-    if (openAttachmentInCompanion(attachment)) return;
     setIsDownloading(true);
     setError(null);
     try {
@@ -213,14 +212,15 @@ export function TranscriptFileAttachmentLink({
   }
 
   async function handleOpen() {
-    if (openAttachmentInCompanion(attachment)) return;
-    const target = downloadedPath ?? attachment.localPath;
-    if (!target) return;
+    setIsDownloading(true);
     setError(null);
     try {
-      await openDesktopExternalUrl(target);
+      const target = downloadedPath ?? await ensureLocalPath();
+      if (target) await openDesktopExternalUrl(target);
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : 'Unable to open attachment');
+    } finally {
+      setIsDownloading(false);
     }
   }
 
@@ -301,7 +301,8 @@ export function TranscriptFileAttachmentLink({
     }
   }
 
-  const isActionable = canDownload || canOpen;
+  const canPreview = canPreviewAttachment(attachment);
+  const isActionable = canPreview || canDownload || canOpen;
   const family = attachmentFileFamily(attachment);
   const typeLabel = attachmentFormatLabel(attachment.name, attachment.mimeType ?? undefined);
   const tileLabel = attachmentFileTileLabel(typeLabel);
@@ -368,8 +369,8 @@ export function TranscriptFileAttachmentLink({
           onContextMenu={openMenu}
           disabled={isDownloading}
           className="app-attachment-file-chip"
-          aria-label={`${canOpen ? 'Open' : 'Download'} ${attachment.name}`}
-          title={`${canOpen ? 'Open' : 'Download'} ${attachment.name} · Right-click for file actions`}
+          aria-label={`${canPreview || canOpen ? 'Open' : 'Download'} ${attachment.name}`}
+          title={`${canPreview || canOpen ? 'Open' : 'Download'} ${attachment.name} · Right-click for file actions`}
         >
           {chipContent}
         </button>
@@ -399,6 +400,13 @@ export function TranscriptFileAttachmentLink({
                   icon={ExternalLink}
                   label="Open"
                   onClick={() => { closeMenu(); void handlePrimary(); }}
+                />
+              ) : null}
+              {isActionable && isNativeShell() ? (
+                <FileMenuAction
+                  icon={ExternalLink}
+                  label="Open in default app"
+                  onClick={() => { closeMenu(); void handleOpen(); }}
                 />
               ) : null}
               <FileMenuAction
