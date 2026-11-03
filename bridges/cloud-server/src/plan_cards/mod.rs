@@ -55,3 +55,6 @@ mod runner_tests;
 pub(crate) mod tests;
 #[cfg(test)]
 mod vote_tests;
+
+#[cfg(test)]
+mod reschedule_tests;

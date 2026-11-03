@@ -304,7 +304,7 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
                     StatusCode::BAD_REQUEST,
                 ));
             }
-            store::propose(pool, &actor.account_id, args)
+            store::propose_for_system_agent(pool, &actor.account_id, args)
                 .await
                 .map_err(store_error)
         }

@@ -134,3 +134,10 @@ KORDI_SIM_TEST_DATABASE_URL="$(migration_database_url kordi_migration_test_simul
   KORDI_CHAT_SYNC_CURSOR_SECRET=synthetic-simulator-ci-cursor-signing-secret \
   cargo test -p kordi-cloud-server --lib simulator_accounts --locked -- \
     --include-ignored --test-threads=1
+
+# Rescheduling must run against PostgreSQL, including rejected replacements and
+# per-attendee calendar projections. Keep its synthetic data task-local.
+migration_create_database kordi_migration_test_reschedule
+KORDI_DIGEST_TEST_DATABASE_URL="$(migration_database_url kordi_migration_test_reschedule)" \
+  cargo test -p kordi-cloud-server --lib plan_cards::reschedule_tests --locked -- \
+    --include-ignored --test-threads=1

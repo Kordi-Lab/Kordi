@@ -200,6 +200,25 @@ pub async fn propose(
     acting_account_id: &str,
     args: PlanCardProposeArgs,
 ) -> Result<PlanCardRow, PlanCardStoreError> {
+    propose_inner(pool, acting_account_id, args, false).await
+}
+
+/// A scoped System agent proposal replaces a confirmed plan atomically. A
+/// rejected replacement leaves its revision and calendar projection untouched.
+pub(super) async fn propose_for_system_agent(
+    pool: &PgPool,
+    acting_account_id: &str,
+    args: PlanCardProposeArgs,
+) -> Result<PlanCardRow, PlanCardStoreError> {
+    propose_inner(pool, acting_account_id, args, true).await
+}
+
+async fn propose_inner(
+    pool: &PgPool,
+    acting_account_id: &str,
+    args: PlanCardProposeArgs,
+    allow_confirmed: bool,
+) -> Result<PlanCardRow, PlanCardStoreError> {
     if !matches!(
         args.state,
         PlanCardState::Polling | PlanCardState::AwaitingConfirmation
@@ -258,7 +277,7 @@ pub async fn propose(
                 location = $6, state = $7, unresolved_fields = $8, \
                 source_message_ids = $9, options = $11, revision = revision + 1, updated_at = now() \
              WHERE event_id = $1 AND revision = $2 AND conversation_id = $10 \
-               AND state NOT IN ('confirmed', 'canceled') \
+               AND state <> 'canceled' AND (state <> 'confirmed' OR $12) \
              RETURNING event_id",
         )
         .bind(&existing_event_id)
@@ -284,6 +303,7 @@ pub async fn propose(
         ))
         .bind(args.conversation_id)
         .bind(options_to_json(&options))
+        .bind(allow_confirmed)
         .fetch_optional(&mut *tx)
         .await?;
 
@@ -301,7 +321,9 @@ pub async fn propose(
             .await?;
             return Err(match current {
                 None => PlanCardStoreError::NotFound,
-                Some((state, _)) if state == "confirmed" || state == "canceled" => {
+                Some((state, _))
+                    if state == "canceled" || (state == "confirmed" && !allow_confirmed) =>
+                {
                     PlanCardStoreError::InvalidTransition(format!(
                         "cannot update a plan card that is already {state}"
                     ))

@@ -54,7 +54,7 @@ fn parameters() -> Value {
             },
             "existingEventId": {
                 "type": "string",
-                "description": "If updating an already-open (not yet confirmed/canceled) card for this conversation instead of starting a new one, its event ID."
+                "description": "When revising an existing plan, its event ID. A confirmed plan is reopened and replaced atomically by propose; do not call reopen first for concrete replacement details. Canceled plans cannot be revised."
             },
             "existingRevision": {
                 "type": "number",
