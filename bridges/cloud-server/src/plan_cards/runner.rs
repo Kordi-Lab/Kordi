@@ -221,7 +221,8 @@ mod tests {
             "messages": [
                 {"messageId": "old", "senderId": "old-member", "isNew": false},
                 {"messageId": "new", "senderId": "new-member", "isNew": true},
-                {"messageId": "", "senderId": "missing-source", "isNew": true},
+                {"messageId": "", "senderId": "empty-source", "isNew": true},
+                {"senderId": "missing-source", "isNew": true},
                 {"id": "wrong-field", "senderId": "wrong-field", "isNew": true},
                 {"messageId": "system", "senderId": "system", "isNew": true, "fromSystemAgent": true},
                 {"messageId": "other", "senderId": "other", "isNew": true, "addressesAgent": true},
@@ -235,6 +236,9 @@ mod tests {
         let sources = super::source_messages(&prompt);
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0]["messageId"], "new");
-        assert!(super::source_messages("invalid JSON").is_empty());
+        for prompt in ["not json", "{}", r#"{"messages":null}"#] {
+            assert!(represented_accounts(prompt).is_empty());
+            assert!(super::source_messages(prompt).is_empty());
+        }
     }
 }
