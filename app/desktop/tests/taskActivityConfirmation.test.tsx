@@ -8,7 +8,7 @@ import type { DesktopChatTurnSnapshot } from '../src/kordi-app/types';
 import { TaskActivityDashboardPanel } from '../src/pages/TaskActivityDashboardPanel';
 import { assistantTurnMessage, userMessage } from './helpers/taskActivityDashboardFixtures';
 
-test('task dashboard keeps completed plan tasks open until human confirmation', () => {
+test('task dashboard completes successful plans without requiring human confirmation', () => {
   const completedTurn: DesktopChatTurnSnapshot = {
     id: 'turn-waiting-confirmation',
     sessionId: 'session-1',
@@ -44,13 +44,13 @@ test('task dashboard keeps completed plan tasks open until human confirmation', 
   const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(completedTurn)] });
 
   assert.equal(dashboard.tasks.length, 1);
-  assert.equal(dashboard.tasks[0].status, 'waiting');
-  assert.equal(dashboard.tasks[0].statusLabel, 'Needs input');
+  assert.equal(dashboard.tasks[0].status, 'completed');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Done');
   assert.equal(dashboard.tasks[0].subtasks.length, 2);
   assert.equal(dashboard.tasks[0].subtasks[0].status, 'completed');
 });
 
-test('task dashboard marks the parent done only after human confirmation', () => {
+test('task dashboard keeps a completed parent done after a later user message', () => {
   const completedTurn: DesktopChatTurnSnapshot = {
     id: 'turn-human-confirmed',
     sessionId: 'session-1',
@@ -142,25 +142,26 @@ test('task dashboard shows failed tools as subtasks without failing the parent t
   assert.match(dashboard.tasks[0].subtasks[0].title, /read/i);
 });
 
-test('task panel labels waiting failed-turn time as last activity instead of failed', () => {
+test('task panel displays an explicit input request and labels its time as last activity', () => {
   const waitingTurn: DesktopChatTurnSnapshot = {
     id: 'turn-waiting-after-recovered-failure',
     sessionId: 'session-1',
     prompt: '@Kordi implement the shortcut issue',
     status: 'failed',
     message: 'Response complete',
-    assistantText: 'I need input before continuing.',
+    assistantText: 'Which shortcut should trigger the action?',
     thinkingText: '',
     completed: true,
     succeeded: false,
     tools: [
       {
         id: 'plan-1',
-        name: 'update_plan',
+        name: 'task_operator',
         status: 'done',
         arguments: JSON.stringify({
+          action: 'create',
           taskTitle: 'Review and implement shortcut',
-          plan: [{ step: 'Fix shortcut', status: 'completed' }],
+          status: 'waiting',
         }),
         liveOutput: '',
         resultText: 'Plan updated',
@@ -178,7 +179,7 @@ test('task panel labels waiting failed-turn time as last activity instead of fai
     emptyMessage: 'No tasks',
   }));
 
-  assert.match(markup, /Awaiting human input/);
+  assert.match(markup, /Which shortcut should trigger the action/);
   assert.match(markup, /Last activity 10:00/);
   assert.doesNotMatch(markup, /Failed 10:00/);
 });
@@ -237,7 +238,7 @@ test('task dashboard clears a failed tool issue after a later same-tool retry su
   const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(retriedTurn)] });
 
   assert.equal(dashboard.tasks.length, 1);
-  assert.equal(dashboard.tasks[0].status, 'waiting');
+  assert.equal(dashboard.tasks[0].status, 'completed');
   assert.equal(dashboard.tasks[0].subtasks.some((subtask) => subtask.status === 'failed'), false);
   assert.doesNotMatch(dashboard.tasks[0].summary, /failed/i);
 });
@@ -273,6 +274,6 @@ test('task dashboard keeps completed titled tasks visible after the live turn fi
 
   assert.equal(dashboard.tasks.length, 1);
   assert.equal(dashboard.tasks[0].title, 'Review Open Claw Code');
-  assert.equal(dashboard.tasks[0].status, 'waiting');
-  assert.equal(dashboard.tasks[0].statusLabel, 'Needs input');
+  assert.equal(dashboard.tasks[0].status, 'completed');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Done');
 });

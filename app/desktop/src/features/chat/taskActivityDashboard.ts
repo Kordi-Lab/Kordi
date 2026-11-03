@@ -343,7 +343,7 @@ function taskLifecycleStatusFromToolArguments(tools: DesktopChatToolSnapshot[]):
     if (tool.name.trim().toLowerCase() !== 'task_operator' || tool.isError) continue;
     const args = safeParseToolArguments(tool.arguments);
     const action = stringValue(args?.action)?.toLowerCase();
-    if (action === 'create') status = 'planned';
+    if (action === 'create') status = durableStatusToSubtaskStatus(stringValue(args?.status), tool);
     if (action === 'close') status = 'closed';
   }
   return status;
@@ -523,7 +523,7 @@ function spawnSubtask(tool: DesktopChatToolSnapshot, args: Record<string, unknow
   if (!taskName && !target) return null;
 
   const failed = tool.isError || /task failed|failed|error/i.test(resultText);
-  const status: TaskDashboardStatus = failed ? 'failed' : live && toolIsStillRunning(tool) ? 'active' : 'completed';
+  const status: TaskDashboardStatus = failed ? 'failed' : /task completed/i.test(resultText) ? 'completed' : 'active';
   return {
     id: `spawn:${sequence}:${target ?? taskName}`,
     nameKey: taskName ?? (target ? targetName(target) : null),
@@ -577,6 +577,8 @@ function durableStatusToSubtaskStatus(status: string | null, tool: DesktopChatTo
     case 'failed':
     case 'error':
       return 'failed';
+    case 'waiting':
+      return 'waiting';
     case 'open':
     case 'planned':
     default:
@@ -654,25 +656,6 @@ function collectTurns(messages: Message[], liveTurn?: DesktopChatTurnSnapshot | 
   }
 
   return turns;
-}
-
-function isHumanCompletionConfirmation(text: string) {
-  const value = text.trim().replace(/\s+/g, ' ').toLowerCase();
-  if (!value || /[?？]/.test(value)) return false;
-  if (/^(done|finished|complete|completed|approved|accepted|ship it|looks good|lgtm)\b/.test(value)) return true;
-  if (/^yes\b.*\b(done|finished|complete|completed|approved|accepted)\b/.test(value)) return true;
-  if (/\b(this|it|the work|the task|the issue)\s+(is|'s|was)?\s*(done|finished|complete|completed|approved|accepted)\b/.test(value)) return true;
-  return false;
-}
-
-function humanCompletionConfirmationSequences(messages: Message[]) {
-  return messages.flatMap((message, sequence) => (
-    message.role === 'user' && isHumanCompletionConfirmation(message.text) ? [sequence] : []
-  ));
-}
-
-function hasHumanConfirmationAfter(sequence: number, confirmationSequences: number[]) {
-  return confirmationSequences.some((confirmationSequence) => confirmationSequence > sequence);
 }
 
 function createParentTask({ turn, live, sequence, responseMessageId, timeLabel }: TurnWithSequence): MutableParentTask {
@@ -773,15 +756,15 @@ function clearRecoveredToolFailure(parents: MutableParentTask[], tool: DesktopCh
   }
 }
 
-function deriveParentStatus(parent: MutableParentTask, subtasks: TaskDashboardSubtask[], humanConfirmed: boolean): TaskDashboardStatus {
+function deriveParentStatus(parent: MutableParentTask, subtasks: TaskDashboardSubtask[]): TaskDashboardStatus {
   if (parent.lifecycleStatus === 'closed') return 'closed';
   if (parent.live && !parent.completed) return 'active';
   if (subtasks.some((subtask) => subtask.status === 'active')) return 'active';
   if (subtasks.some((subtask) => subtask.status === 'planned')) return 'planned';
   if (subtasks.some((subtask) => subtask.status === 'failed')) return 'active';
-  if (subtasks.length > 0 && subtasks.every((subtask) => subtask.status === 'closed')) return humanConfirmed ? 'closed' : 'waiting';
-  if (subtasks.length > 0 && subtasks.every((subtask) => subtask.status === 'completed' || subtask.status === 'closed')) return humanConfirmed ? 'completed' : 'waiting';
-  if (parent.completed && parent.succeeded) return humanConfirmed ? 'completed' : 'waiting';
+  if (parent.lifecycleStatus === 'waiting' || subtasks.some((subtask) => subtask.status === 'waiting')) return 'waiting';
+  // Completing the request needs no invented confirmation from a later message.
+  if (parent.completed && parent.succeeded) return 'completed';
   if (parent.completed && !parent.succeeded) return 'active';
   return 'active';
 }
@@ -807,18 +790,18 @@ function waitingTimeLabel(timeLabel?: string | null) {
     : value;
 }
 
-function finalizeParent(parent: MutableParentTask, confirmationSequences: number[]): TaskDashboardItem {
+function finalizeParent(parent: MutableParentTask): TaskDashboardItem {
   const subtasks = Array.from(parent.subtasksByKey.values())
     .sort((left, right) => left.sequence - right.sequence)
     .map(({ nameKey: _nameKey, parentTaskId: _parentTaskId, sequence: _sequence, ...subtask }) => subtask);
-  const status = deriveParentStatus(parent, subtasks, hasHumanConfirmationAfter(parent.sequence, confirmationSequences));
+  const status = deriveParentStatus(parent, subtasks);
   const meta = statusMeta(status);
   const activeSubtaskCount = subtasks.filter((subtask) => subtask.status === 'active').length;
 
   return {
     id: parent.id,
     title: parent.title,
-    summary: status === 'waiting' ? 'Awaiting human input.' : parentSummary(parent, subtasks),
+    summary: status === 'waiting' ? compact(subtasks.find((subtask) => subtask.status === 'waiting')?.summary || parent.assistantText || parent.message || 'Open the related response for the requested input.') : parentSummary(parent, subtasks),
     status,
     ...meta,
     target: parent.target,
@@ -841,7 +824,6 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
   const parents: MutableParentTask[] = [];
   const parentsByTurnId = new Map<string, MutableParentTask>();
   const parentsByMergeKey = new Map<string, MutableParentTask>();
-  const confirmationSequences = humanCompletionConfirmationSequences(messages);
   let toolSequence = 0;
 
   const ensureParent = (turnWithSequence: TurnWithSequence) => {
@@ -892,7 +874,7 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
 
   const tasks = parents
     .sort((left, right) => left.sequence - right.sequence)
-    .map((parent) => finalizeParent(parent, confirmationSequences));
+    .map((parent) => finalizeParent(parent));
   const activeCount = tasks.filter((task) => task.status === 'active').length;
   const completedCount = tasks.filter((task) => task.status === 'completed').length;
 

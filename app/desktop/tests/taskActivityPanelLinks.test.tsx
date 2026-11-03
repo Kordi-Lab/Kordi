@@ -44,14 +44,14 @@ test('task panel renders the whole task as an expandable row with a checkbox-sty
   assert.match(markup, /<details/);
   assert.match(markup, /data-task-status-icon="checkbox"/);
   assert.doesNotMatch(markup, />▸</);
-  assert.match(markup, /data-subtask-status-label="true"[^>]*>Done</);
+  assert.match(markup, /data-subtask-status-label="true"[^>]*>Subagent active</);
   assert.match(markup, /review code/);
-  assert.equal(markup.match(/1 subtask/g)?.length, 1);
+  assert.equal(markup.match(/1 active subtask/g)?.length, 1);
   assert.match(markup, /research_docs/);
-  assert.match(markup, /data-task-meta="true"[^>]*>Awaiting human input · \d{2}:\d{2} · 1 subtask</);
+  assert.match(markup, /data-task-meta="true"[^>]*>1 active subtask · \d{2}:\d{2}/);
   assert.equal(markup.match(/data-task-meta="true"/g)?.length, 1);
   const nestedRow = markup.slice(markup.indexOf('data-subtask-status-icon'));
-  assert.match(nestedRow, /research_docs<\/div>.*?data-subtask-status-label="true"[^>]*>Done<.*?>\/root\/research_docs</);
+  assert.match(nestedRow, /research_docs<\/div>.*?data-subtask-status-label="true"[^>]*>Subagent active<.*?>\/root\/research_docs</);
   assert.equal(nestedRow.match(/\/root\/research_docs/g)?.length, 1);
 });
 
