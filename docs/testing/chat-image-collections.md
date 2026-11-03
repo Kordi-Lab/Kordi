@@ -38,3 +38,11 @@ Point `DATABASE_URL` only at a disposable task-owned PostgreSQL database and run
 ## Remaining acceptance
 
 The parent testing session must verify the complete current application page and sender/recipient actions in its existing clients, then run Luna with Low reasoning on newly received unread synthetic images. Require answers grounded in image-only information, repeat for mixed attachments and a newer image, and inspect provider input separately from read receipts. No live model invocation, deployed-client result, iOS UI validation, or production rollout is claimed here.
+
+## November 3 native follow-up
+
+Image collections now keep a sender avatar even when adjacent messages are from the same sender. The avatar aligns with the first image rather than the bottom of the caption/files bubble. This covers own, peer, and agent collections; peer avatars retain the profile action. Six regression cases cover pure and mixed collections, adjacent same-sender messages, expansion, and peer profile navigation.
+
+A fresh two-image-plus-file message was sent through the native test client. The filenames and caption did not disclose the images' printed codes, shape counts, colors, or positions. The recipient's personal agent, using Luna with Low reasoning, could not retrieve the group: the initial session lookup returned no results, and retries using only the group keyword and only the channel keyword also returned no matching sessions. The native tool output confirmed the discovery failure. Image retrieval and visual comprehension were therefore not reached by this history test; this is not a passing unread-image result. See #2194 for the separate discovery boundary.
+
+The sender avatar was verified in the native mixed-attachment history. All 47 focused image/grouping tests, TypeScript checks, and the production frontend build with unchanged bundle limits passed. The Cloud runner adapter remains undeployed. A fresh direct-image control was not completed because the native attachment picker did not accept the selection; no API credential fallback was used.

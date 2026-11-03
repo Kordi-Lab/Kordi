@@ -56,3 +56,51 @@ for (const own of [true, false]) {
     }
   });
 }
+
+for (const role of ['user', 'person', 'assistant'] as const) {
+  for (const mixed of [false, true]) {
+    test(`${role} image group keeps its sender avatar beside the images despite adjacent same-sender messages, mixed=${mixed}`, async () => {
+      const environment = installDom();
+      const host = document.createElement('div');
+      document.body.append(host);
+      const root = createRoot(host);
+      const message: Message = {
+        id: 'group-avatar', role, sender: 'Synthetic sender',
+        senderType: role === 'assistant' ? 'agent' : 'human', isOwnMessage: role === 'user',
+        senderProfileImageUrl: 'https://files.test/sender.png', text: mixed ? 'Synthetic caption.' : '', time: '12:30',
+        attachments: [
+          { kind: 'image', name: 'first.png', previewUrl: 'https://files.test/first.png', mimeType: 'image/png' },
+          { kind: 'image', name: 'second.png', previewUrl: 'https://files.test/second.png', mimeType: 'image/png' },
+          ...(mixed ? [{ kind: 'file' as const, name: 'notes.txt', mimeType: 'text/plain', attachmentId: 'notes' }] : []),
+        ],
+      };
+      let openedSender: Message | undefined;
+      try {
+        await act(async () => root.render(createElement(MessageBubble, {
+          msg: message, isGroupedWithPrevious: true, isGroupedWithNext: true,
+          onOpenSenderProfile: (sender: Message) => { openedSender = sender; },
+        })));
+        const surface = host.querySelector('[data-message-context-menu-anchor]');
+        const row = surface?.parentElement;
+        const avatar = row?.querySelector('[data-avatar-kind]');
+        assert.ok(avatar, 'every image group must identify its sender');
+        assert.equal(avatar.getAttribute('data-avatar-kind'), role === 'assistant' ? 'agent' : 'human');
+        assert.ok(row?.classList.contains('items-start'), 'avatar stays level with the first image, not the caption bottom');
+        assert.ok(!surface?.contains(avatar), 'avatar belongs beside the group');
+        const expand = host.querySelector<HTMLButtonElement>('[data-attachment-image-group-disclosure]');
+        assert.ok(expand);
+        await act(async () => expand.click());
+        assert.equal(row?.querySelector('[data-avatar-kind]'), avatar, 'expansion preserves sender identity');
+        if (role === 'person') {
+          const profile = row?.querySelector<HTMLButtonElement>('[data-message-sender-profile]');
+          assert.ok(profile);
+          await act(async () => profile.click());
+          assert.equal(openedSender, message);
+        }
+      } finally {
+        await act(async () => root.unmount());
+        environment.restore();
+      }
+    });
+  }
+}

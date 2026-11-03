@@ -628,7 +628,8 @@ function MessageBubbleView({
       && onRequestCollaborationContact
       && contactRequestFailureCanBeRetried(msg.detail),
   );
-  const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = threadLayout || !isAgentMessage || groupChatAgentAvatar; const smallAvatar = threadLayout || useHumanCompactDensity || groupChatAgentAvatar; const showAvatar = showAvatarSlot && (threadLayout ? !isGroupedWithPrevious || Boolean(msg.sourceMessage) : !isGroupedWithNext);
+  const imageGroupAvatar = hasGroupedImageAttachments || hasDetachedImageGroup;
+  const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = threadLayout || !isAgentMessage || groupChatAgentAvatar || imageGroupAvatar; const smallAvatar = threadLayout || useHumanCompactDensity || groupChatAgentAvatar; const showAvatar = showAvatarSlot && (imageGroupAvatar || (threadLayout ? !isGroupedWithPrevious || Boolean(msg.sourceMessage) : !isGroupedWithNext));
   const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode && !isSystemAvatarUrl(msg.senderProfileImageUrl)); const isForwardedMessage = msg.messageAction?.kind === 'forward'; const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
   const standaloneEmojiItem = standaloneEmojiItemForMessage(msg, { isHuman: showCompactFooter, showsSender: showInlineHumanSender, footerDetail });
   const bubbleAttachmentPreview = hasBubbleAttachments ? <AttachmentPreview msg={msg} scope={hasDetachedImageGroup ? 'non-images' : 'all'} imageGallery={imageGallery} imageDeliveryStatus={hasOnlyBorderlessMediaAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null} /> : null;
@@ -733,7 +734,7 @@ function MessageBubbleView({
       <div className={cn(
         'flex w-full max-w-full',
         threadLayout && 'app-thread-message-main',
-        hasOnlyBorderlessMediaAttachments || (isAgentMessage && groupChatAgentAvatar) ? 'items-start' : 'items-end',
+        hasOnlyBorderlessMediaAttachments || imageGroupAvatar || (isAgentMessage && groupChatAgentAvatar) ? 'items-start' : 'items-end',
         isAgentMessage ? 'w-fit max-w-full gap-2' : showAvatarSlot || selectionControl ? (useHumanCompactDensity ? 'gap-1.5' : 'gap-2') : 'gap-0',
         isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row',
       )}>
