@@ -90,3 +90,6 @@ agent/licenses/
 bridges/licenses/
 bridges/cloud-temporal-bridge/licenses/
 legal/distribution/sources/
+
+# Generated backend routing inputs from private ops configuration.
+.kordi-configuration/

@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "edition": "research",
+  "environment": "production",
+  "backend": { "origin": "https://research.example.test" }
+}
