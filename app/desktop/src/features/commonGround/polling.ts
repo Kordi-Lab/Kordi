@@ -9,24 +9,24 @@ type PollingEnvironment = {
 };
 
 /** Resume pending work immediately on focus, even when a hidden WebView throttled its timer. */
-export function startCommonGroundPolling(poll: () => Promise<number | null>, env: PollingEnvironment): () => void {
+export function startCommonGroundPolling(poll: () => Promise<number | null>, { win, doc, schedule, cancel }: PollingEnvironment): () => void {
   let stopped = false;
   let running = false;
   let timer: Timer | undefined;
   const loop = async () => {
     if (stopped) return;
     if (running) return;
-    env.cancel(timer);
+    cancel(timer);
     running = true;
     let next: number | null = null;
     try {
-      if (!env.doc.hidden) next = await poll();
+      if (!doc.hidden) next = await poll();
     } finally {
       running = false;
-      if (!stopped) timer = env.schedule(() => { void loop(); }, next ?? 1_000);
+      if (!stopped) timer = schedule(() => { void loop(); }, next ?? 1_000);
     }
   };
-  const stopSync = syncOnVisible(() => { void loop(); }, env.win, env.doc);
-  timer = env.schedule(() => { void loop(); }, 1_000);
-  return () => { stopped = true; env.cancel(timer); stopSync(); };
+  const stopSync = syncOnVisible(() => { void loop(); }, win, doc);
+  timer = schedule(() => { void loop(); }, 1_000);
+  return () => { stopped = true; cancel(timer); stopSync(); };
 }

@@ -74,8 +74,8 @@ test('polling resumes pending work immediately on focus and stops after unmount'
   let polls = 0;
   const stop = startCommonGroundPolling(async () => { polls += 1; return 3_000; }, {
     win, doc,
-    schedule: (run) => { callback = run; return 1 as unknown as ReturnType<typeof setTimeout>; },
-    cancel: () => { callback = undefined; },
+    schedule: function (this: unknown, run) { assert.equal(this, undefined); callback = run; return 1 as unknown as ReturnType<typeof setTimeout>; },
+    cancel: function (this: unknown) { assert.equal(this, undefined); callback = undefined; },
   });
   callback!();
   assert.equal(polls, 0);
