@@ -71,3 +71,17 @@ The packaging command builds locally. Archive export, notarization, App Store/Te
 CI uses synthetic profiles and disposable fixtures. It does not require access to either private ops repository. Ops CI checks a clean pinned public checkout and validates its real profile without signing or deploying.
 
 This change does not migrate accounts, sessions or data, implement Research admission, rotate keys, register Apple identities, provision GCP resources, change DNS, or deploy. Research's updater remains disabled until an independent key is reviewed. Resource sizes in ops are proposed bounded selections; they are not claims about live capacity. Live App parity and a staged Research rollout require a separate authorized release procedure.
+
+## Staging and instance login
+
+Each ops repository now selects production or staging explicitly. Staging profiles require separate identities and an explicit approved-tester admission policy. App Staging and Research Staging have separate Xcode schemes/configurations; Beta remains unchanged. The staging updater has no inherited production key or feed.
+
+The `authentication.loginPage` titles and subtitles are compiled into the shared desktop and iOS login renderers. The public output never includes OAuth bindings or tester lists. Shared components still implement Google, GitHub and email/password flows; edition branding is selected through the existing ops-owned primary icon assets. An ops value cannot add executable login UI or a new trusted OAuth provider.
+
+The four `authentication.oauthBindings` fields refer to independently registered Google/GitHub client IDs and secrets. The configured service launcher resolves them only from the selected instance's bindings and refuses missing values; it never inherits ambient production OAuth credentials. Registration callbacks use the selected backend origin. Native return callbacks use the selected app scheme. Provider credential setup and live provider-to-app verification remain rollout steps.
+
+App production uses `existing` admission, preserving current login behavior. Research production uses `verified-domain`: only exact configured domains with server-verified email ownership, or explicitly approved verified emails, enter directly. Other verified users are recorded in `cloud_access_waitlist` without creating an account, device or session. Both staging instances use `approved-testers`, with no automatic domain admission.
+
+The environment binding selected by `approvedEmailsBinding` is a JSON array of exact email addresses. Keep its values outside Git. An explicit empty array approves nobody. Missing or malformed restricted configuration fails startup. Approval changes require a controlled restart; no public approval API is introduced. HTTP sessions, WebSocket handshakes/revalidation and desktop connector leases enforce the current policy. Beta and unconfigured legacy development servers retain their existing behavior.
+
+The waitlist migration is additive. It stores only verified email and request timestamps. It does not migrate existing users or sessions. Operators must define retention and restricted review procedures before collecting real requests. See the edition ops runbook for approval handling. Tests use disposable databases and synthetic identities; no DNS, OAuth provider registrations or deployments are performed by this change.

@@ -101,6 +101,9 @@ pub(in crate::auth::routes) async fn login(
             StatusCode::UNAUTHORIZED,
         );
     }
+    if let Err(error) = state.admission().authorize_account(pool, &account_id).await {
+        return error.response();
+    }
     rate_limiter
         .record_login_success(&normalized_email, peer_ip)
         .await;

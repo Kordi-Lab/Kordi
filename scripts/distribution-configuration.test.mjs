@@ -13,6 +13,7 @@ const app = () => JSON.parse(readFileSync(fixture, 'utf8'));
 const expected = { edition: 'app', environment: 'production', backendOrigin: 'https://kordi.ai' };
 function research() {
   const value = app();
+  value.authentication = { admission: 'verified-domain', verifiedDomains: ['example.edu'], approvedEmailsBinding: 'TEST_APPROVED', oauthBindings: { googleClientId: 'TEST_GOOGLE_ID', googleClientSecret: 'TEST_GOOGLE_SECRET', githubClientId: 'TEST_GITHUB_ID', githubClientSecret: 'TEST_GITHUB_SECRET' }, loginPage: {title: 'Research', subtitle: 'Verified email access', signupTitle: 'Join Research', signupSubtitle: 'Verify your email'} };
   value.routing.edition = 'research';
   value.routing.backend.origin = 'https://research.example.test';
   value.resources.provider = 'gcp';

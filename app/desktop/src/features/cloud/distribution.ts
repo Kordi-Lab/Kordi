@@ -1,4 +1,5 @@
 export type ClientDistribution = {
+  loginPage?: { title: string; subtitle: string; signupTitle: string; signupSubtitle: string };
   backendOrigin: string;
   callbackScheme: string;
   updates: { enabled: boolean; artifactName: string };
