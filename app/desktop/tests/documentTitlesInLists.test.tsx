@@ -180,7 +180,7 @@ test('title requests run a few at a time', async () => {
   assert.equal(documentTitleFor('e'), 'Title e');
 });
 
-test('the chat attachment card shows a renamed document under its title and keeps the file name for downloads', () => {
+test('the chat attachment card shows a renamed document under its title and keeps the file name in the open action', () => {
   const attachment = { kind: 'file' as const, name: 'Untitled 2.md', attachmentId: 'att_untitled_2', mimeType: 'text/markdown' };
   const before = renderToStaticMarkup(createElement(TranscriptFileAttachmentLink, { attachment }));
   assert.match(before, /app-attachment-file-name-base">Untitled 2</);
@@ -190,7 +190,7 @@ test('the chat attachment card shows a renamed document under its title and keep
   const after = renderToStaticMarkup(createElement(TranscriptFileAttachmentLink, { attachment }));
   assert.match(after, /app-attachment-file-name-base">xixi xhiqueuqoe</);
   assert.doesNotMatch(after, /app-attachment-file-name-ext/);
-  assert.match(after, /aria-label="Download Untitled 2\.md"/, 'the download keeps the file name');
+  assert.match(after, /aria-label="Open Untitled 2\.md"/, 'the open action keeps the original file name');
 
   rememberDocumentTitle('att_pdf', 'Paper title');
   const pdf = renderToStaticMarkup(createElement(TranscriptFileAttachmentLink, { attachment: { kind: 'file', name: 'paper.pdf', attachmentId: 'att_pdf' } }));

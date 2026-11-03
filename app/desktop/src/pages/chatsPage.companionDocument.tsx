@@ -1,3 +1,5 @@
+import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import { loadSession } from '@/features/cloud/session';
 import { useCallback, useEffect, useState } from 'react';
 import { CompanionSourceView } from '@/features/documents/CompanionSourceView';
 import { LoaderCircle } from 'lucide-react';
@@ -27,21 +29,31 @@ function CompanionDocumentReader({ document, api, onTitle, onRenameAvailable }: 
   const [reloads, setReloads] = useState(0);
   const key = `${document.previewBaseRoot ?? ''}:${artifact.id}:${artifact.path}`;
   const canReadLocally = !document.preview && document.readLocally !== false && isNativeDesktopShell();
+  const cloudSourceId = document.sourceView ? artifact.attachmentId : null;
   const [loaded, setLoaded] = useState<LoadedPreview | null>(null);
   useEffect(() => {
-    if (!canReadLocally) return undefined;
+    if (!canReadLocally && !cloudSourceId) return undefined;
     let cancelled = false;
-    fetchDesktopChatArtifactPreview(artifact.path, document.previewBaseRoot ?? null)
+    const request = cloudSourceId ? (async () => {
+      const session = await loadSession();
+      if (!session?.token) throw new Error('Not signed in.');
+      const blob = await defaultCloudAuthClient().downloadAttachmentContent(session.token, cloudSourceId);
+      const limit = 256 * 1024;
+      const text = await blob.slice(0, limit).text();
+      const lines = text.split(/\r?\n/);
+      return { path: artifact.path, lines: lines.slice(0, 2000).map((text, index) => ({ number: index + 1, text })), truncated: blob.size > limit || lines.length > 2000 };
+    })() : fetchDesktopChatArtifactPreview(artifact.path, document.previewBaseRoot ?? null);
+    request
       .then((preview) => { if (!cancelled) setLoaded({ key, preview }); })
       .catch(() => { if (!cancelled) setLoaded({ key, preview: null }); });
     return () => { cancelled = true; };
-  }, [artifact.path, canReadLocally, document.previewBaseRoot, key, reloads]);
+  }, [artifact.path, canReadLocally, cloudSourceId, document.previewBaseRoot, key, reloads]);
   const reportTitle = useCallback((title: string) => onTitle(artifact.id, title), [artifact.id, onTitle]);
   const reportRename = useCallback((rename: ((title: string) => void) | null) => onRenameAvailable(artifact.id, rename), [artifact.id, onRenameAvailable]);
   const reload = useCallback(() => setReloads((count) => count + 1), []);
 
   const preview = document.preview ?? (loaded?.key === key ? loaded.preview : null);
-  const waitingForFile = canReadLocally && loaded?.key !== key && !artifact.attachmentId;
+  const waitingForFile = (canReadLocally || cloudSourceId) && loaded?.key !== key && (document.sourceView || !artifact.attachmentId);
   const localSource = preview ? preview.lines.map((line) => line.text).join('\n') : null;
 
   if (waitingForFile) return <p className="app-companion-status" role="status"><LoaderCircle className="inline h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Loading</p>;

@@ -163,7 +163,7 @@ impl Fixture {
         objects.lock().await.insert(id.clone(), bytes.to_vec());
         query("INSERT INTO cloud_attachments(attachment_id,owner_account_id,object_key,content_type,size_bytes,created_at,finalized_at) VALUES($1,$2,$1,'image/png',$3,now()::text,now()::text)")
             .bind(&id).bind(&peer.account_id).bind(bytes.len() as i64).execute(pool).await.unwrap();
-        query("INSERT INTO cloud_chat_message_attachments(message_id,attachment_id,position) VALUES($1::text::uuid,$2,0)").bind(message).bind(&id).execute(pool).await.unwrap();
+        query("INSERT INTO cloud_chat_message_attachments(message_id,attachment_id,position) SELECT $1::text::uuid,$2,COALESCE(MAX(position),-1)+1 FROM cloud_chat_message_attachments WHERE message_id::text=$1").bind(message).bind(&id).execute(pool).await.unwrap();
         id
     }
 
@@ -354,3 +354,6 @@ async fn cloud_runner_reads_the_same_authorized_image_contract() {
 
 #[path = "context_media/member_tests.rs"]
 mod member_tests;
+
+#[path = "context_media/unread_tests.rs"]
+mod unread_tests;

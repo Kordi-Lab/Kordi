@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { JSDOM } from 'jsdom';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -101,4 +102,58 @@ test('captioned image groups render outside the message bubble', () => {
   assert.ok(markup.indexOf('data-attachment-image-group-shell') < markup.indexOf('data-message-caption-bubble="true"'));
   assert.match(markup, /max-w-\[31rem\]/);
   assert.doesNotMatch(markup, /max-w-\[52rem\]/);
+});
+
+for (const own of [true, false]) {
+  for (const text of ['Synthetic mixed send.', '']) {
+    for (const imageCount of [1, 2]) {
+      test(`mixed send keeps ${imageCount} images outside the ${own ? 'own' : 'peer'} bubble with caption=${Boolean(text)}`, () => {
+        const images = Array.from({ length: imageCount }, (_, index) => ({
+          ...ownImageMessage.attachments![0]!, name: `image-${index}.png`, attachmentId: `image-${index}`,
+        }));
+        const message: Message = {
+          ...ownImageMessage, id: 'mixed-send', sender: 'Synthetic Sender', showSenderMeta: true,
+          role: own ? 'user' : 'person', isOwnMessage: own, text, statusChips: ['read'],
+          attachments: [
+            images[0], { kind: 'file', name: 'first.txt', attachmentId: 'file-1', mimeType: 'text/plain' },
+            ...images.slice(1), { kind: 'file', name: 'second.txt', attachmentId: 'file-2', mimeType: 'text/plain' },
+          ],
+        };
+        const dom = new JSDOM(renderToStaticMarkup(createElement(MessageBubble, { msg: message })));
+        try {
+          const document = dom.window.document;
+          const surface = document.querySelector('[data-message-detached-image-group="true"]');
+          const caption = surface?.querySelector('[data-message-caption-bubble="true"]');
+          assert.ok(surface);
+          assert.ok(caption);
+          assert.equal(caption.querySelectorAll('[data-attachment-image-card]').length, 0);
+          assert.equal(surface.querySelectorAll('[data-attachment-image-card]').length, imageCount);
+          assert.equal(surface.querySelectorAll('[data-message-caption-bubble]').length, 1);
+          assert.ok(caption.textContent?.includes('Synthetic Sender'));
+          assert.ok(caption.textContent?.includes(text));
+          assert.ok(caption.textContent?.includes('first.txt'));
+          assert.ok(caption.textContent?.includes('second.txt'));
+          assert.ok(caption.textContent!.indexOf('first.txt') < caption.textContent!.indexOf('second.txt'));
+          assert.deepEqual(Array.from(surface.querySelectorAll('[data-attachment-image-card] img')).map(img => img.getAttribute('alt')), images.map(img => img.name));
+          assert.equal(document.querySelectorAll('[data-message-delivery-status="read"][data-message-delivery-glyph]').length, own ? 1 : 0);
+          assert.ok(surface.querySelector('[data-attachment-image-preview-trigger]'));
+        } finally { dom.window.close(); }
+      });
+    }
+  }
+}
+
+test('images without an inline preview remain downloadable beside detached previews', () => {
+  const dom = new JSDOM(renderToStaticMarkup(createElement(MessageBubble, {msg: {
+    ...ownImageMessage, text: 'Synthetic attachments.', attachments: [
+      ownImageMessage.attachments![0]!,
+      {kind:'image',name:'original.png',mimeType:'image/png',sizeBytes:12 * 1024 * 1024,attachmentId:'original'},
+    ],
+  }})));
+  try {
+    const caption = dom.window.document.querySelector('[data-message-caption-bubble]');
+    assert.ok(caption?.querySelector('[data-attachment-file-chip]')?.textContent?.includes('original.png'));
+    assert.equal(dom.window.document.querySelectorAll('[data-attachment-image-card]').length, 1);
+    assert.equal(caption?.querySelectorAll('[data-attachment-image-card]').length, 0);
+  } finally { dom.window.close(); }
 });
