@@ -251,6 +251,20 @@ pub async fn reopen(
     acting_account_id: &str,
     reason: &str,
 ) -> Result<PlanCardRow, PlanCardStoreError> {
+    reopen_with_sources(pool, event_id, revision, acting_account_id, reason, None).await
+}
+
+/// A service run must supply new chat evidence newer than the authoritative
+/// card. Check under the same lock as the write, so an organizer confirmation
+/// cannot race this decision. None is reserved for authenticated member actions.
+pub(super) async fn reopen_with_sources(
+    pool: &PgPool,
+    event_id: &str,
+    revision: i64,
+    acting_account_id: &str,
+    reason: &str,
+    source_message_ids: Option<&[String]>,
+) -> Result<PlanCardRow, PlanCardStoreError> {
     let mut tx = pool.begin().await?;
     lock_event(&mut tx, event_id).await?;
 
@@ -270,6 +284,34 @@ pub async fn reopen(
     }
     if current_revision != revision {
         return Err(PlanCardStoreError::RevisionConflict);
+    }
+
+    if let Some(source_message_ids) = source_message_ids {
+        let (has_new_instruction,): (bool,) = query_as(
+            "SELECT EXISTS (
+                SELECT 1 FROM cloud_chat_messages message
+                JOIN cloud_plan_cards card ON card.conversation_id = message.conversation_id
+                JOIN cloud_chat_conversation_members member
+                  ON member.conversation_id = message.conversation_id
+                 AND member.account_id = message.sender_account_id
+                WHERE card.event_id = $1 AND message.message_id::text = ANY($2)
+                  AND message.sender_account_id <> $3
+                  AND member.membership_state = 'active'
+                  AND message.deleted_at IS NULL
+                  AND message.message_kind IN ('text', 'voice')
+                  AND message.created_at > card.updated_at
+            )",
+        )
+        .bind(event_id)
+        .bind(source_message_ids)
+        .bind(acting_account_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !has_new_instruction {
+            return Err(PlanCardStoreError::InvalidTransition(
+                "Reopening requires a new human message after the current plan revision. Keep the current plan and wait for new instructions.".to_string(),
+            ));
+        }
     }
 
     query(

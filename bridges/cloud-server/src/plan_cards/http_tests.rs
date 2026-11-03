@@ -81,11 +81,18 @@ async fn full_lifecycle_over_real_http() {
     let jordan = format!("jordan-{suffix}");
     let maya = format!("maya-{suffix}");
     let riya = format!("riya-{suffix}");
-    for account in [&jordan, &maya, &riya] {
+    let system_account = format!("system-agent-{suffix}");
+    for account in [&jordan, &maya, &riya, &system_account] {
         seed_account(&pool, account).await;
     }
     let conversation_id = Uuid::new_v4();
-    seed_conversation(&pool, conversation_id, &jordan, &[&jordan, &maya, &riya]).await;
+    seed_conversation(
+        &pool,
+        conversation_id,
+        &jordan,
+        &[&jordan, &maya, &riya, &system_account],
+    )
+    .await;
 
     let jordan_token = bearer_token_for(&pool, &jordan).await;
     let riya_token = bearer_token_for(&pool, &riya).await;
@@ -141,9 +148,10 @@ async fn full_lifecycle_over_real_http() {
     // chat.
     let request: super::wire::Request = serde_json::from_value(propose_body).unwrap();
     let system_agent = super::routes::Actor {
-        account_id: jordan.clone(),
+        account_id: system_account,
         on_behalf_of_conversation: Some(conversation_id),
         represented_accounts: std::collections::BTreeSet::new(),
+        source_message_ids: Vec::new(),
     };
     let card = super::routes::dispatch_row(&pool, &system_agent, request)
         .await

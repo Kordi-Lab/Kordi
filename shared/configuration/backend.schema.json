@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Kordi backend configuration v1",
+  "description": "Public backend routing only. Credentials, feature policy, native identity and deployment targets are outside this contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "edition", "environment", "backend"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "edition": { "enum": ["app", "research"] },
+    "environment": { "enum": ["staging", "production"] },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin"],
+      "properties": {
+        "origin": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "format": "uri",
+          "pattern": "^https://[a-z0-9.-]+(:[0-9]+)?$",
+          "description": "A canonical HTTPS DNS origin. The reference validator also rejects local/IP hosts and checks the independently supplied expected target."
+        }
+      }
+    }
+  }
+}
