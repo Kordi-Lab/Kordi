@@ -46,7 +46,7 @@ export { releaseTreeScanArguments, vendoredRuntimeScanArguments };
 export { redactPublisherText } from './desktop-release-privacy-scan.mjs';
 
 export { PRODUCT_ORIGIN } from './desktop-release-public.mjs';
-import { releaseDistribution, updaterPublicKey } from './release-distribution.mjs';
+import { releaseArtifactNames, releaseDistribution, updaterPublicKey } from './release-distribution.mjs';
 export const TAURI_UPDATER_PUBLIC_KEY = updaterPublicKey;
 
 const REPO_ROOT = dirname(fileURLToPath(new URL('../../package.json', import.meta.url)));
@@ -229,10 +229,7 @@ export async function prepareDesktopRelease(options, dependencies = {}) {
   await requireDirectory(normalized.releaseDir, 'Release directory');
   await requireDirectory(normalized.appBundle, 'Application bundle');
 
-  const distribution = releaseDistribution();
-  if (!distribution.clients.updates.enabled) throw new Error('Updates are disabled for this distribution.');
-  const manualName = `${distribution.clients.updates.artifactName}_${normalized.version}_aarch64.dmg`;
-  const updaterName = `${distribution.clients.updates.artifactName}.app.tar.gz`;
+  const { manualName, updaterName } = releaseArtifactNames(normalized.version);
   const signatureName = `${updaterName}.sig`;
   const manualPath = join(normalized.releaseDir, manualName);
   const updaterPath = join(normalized.releaseDir, updaterName);
