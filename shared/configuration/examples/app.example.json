@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "edition": "app",
+  "environment": "production",
+  "backend": { "origin": "https://app.example.test" }
+}
