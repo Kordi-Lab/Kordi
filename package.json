@@ -33,7 +33,7 @@
     "maintainability:scan": "node scripts/report-overlong-files.mjs",
     "maintainability:check": "node scripts/check-maintainability-ratchet.mjs",
     "lint:suppressions:check": "node scripts/check-eslint-suppressions-ratchet.mjs",
-    "test:scripts": "node --test scripts/*.test.mjs",
+    "test:scripts": "node --import ./scripts/test_support/distribution-setup.mjs --test scripts/*.test.mjs",
     "privacy:check": "node scripts/repository-privacy-guard.mjs",
     "lint:web": "pnpm --dir app/desktop lint",
     "typecheck:web": "pnpm --dir app/desktop typecheck",
@@ -80,7 +80,9 @@
     "check:omp": "cd shared/omp-runtime && bun install --frozen-lockfile && bun run typecheck && bun test",
     "licenses:refresh": "python3 scripts/licenses/refresh.py && node scripts/licenses.mjs stage legal/distribution",
     "licenses:check": "node scripts/licenses.mjs check",
-    "licenses:verify": "node scripts/licenses.mjs verify"
+    "licenses:verify": "node scripts/licenses.mjs verify",
+    "config:validate": "node scripts/prepare-distribution.mjs",
+    "package:plan": "node scripts/package-distribution.mjs"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.1085.0"

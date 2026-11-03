@@ -10,7 +10,7 @@ import {
   operatorCloudOAuthProviderFallback,
 } from '../src/features/cloud/authClient';
 
-test('cloud API defaults to the hosted product origin outside development', () => {
+test('cloud API uses the configured distribution origin outside development', () => {
   assert.equal(cloudApiBaseUrl({}), 'https://kordi.ai');
 });
 
@@ -76,7 +76,7 @@ test('operator development requires both the operator profile and production ack
       VITE_KORDI_DEV_PROFILE: 'operator',
       VITE_KORDI_PRODUCTION_DEBUG_ACK: '1',
     }),
-    /approved .* product origin/i,
+    /approved product origin/i,
   );
 });
 

@@ -48,6 +48,11 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if !cfg!(debug_assertions) {
+        kordi_cloud_server::distribution::public_origin();
+        kordi_cloud_server::distribution::callback_scheme();
+    }
+
     let cli = Cli::parse();
     match cli.command {
         Commands::Serve {

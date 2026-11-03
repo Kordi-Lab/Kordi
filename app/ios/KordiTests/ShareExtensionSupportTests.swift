@@ -35,6 +35,8 @@ final class ShareExtensionSupportTests: XCTestCase {
         let configuration = try KordiShareConfiguration.configured(infoDictionary: [
             "KordiCloudBaseURL": "https://kordi.ai",
             "KordiDistributionChannel": "production",
+            "KordiExpectedDistribution": DistributionTestFixture.encoded(),
+            "CFBundleIdentifier": "ai.kordi.ios.share",
             "KordiShareAppGroup": "group.ai.kordi.share",
             "KordiShareCredentialService": "ai.kordi.share-session",
             "KordiShareKeychainAccessGroup": "TEAM.ai.kordi.share-session",
@@ -45,6 +47,8 @@ final class ShareExtensionSupportTests: XCTestCase {
         XCTAssertThrowsError(try KordiShareConfiguration.configured(infoDictionary: [
             "KordiCloudBaseURL": "https://kordi.ai.evil.example",
             "KordiDistributionChannel": "production",
+            "KordiExpectedDistribution": DistributionTestFixture.encoded(),
+            "CFBundleIdentifier": "ai.kordi.ios.share",
             "KordiShareAppGroup": "group.ai.kordi.share",
             "KordiShareCredentialService": "ai.kordi.share-session",
             "KordiShareKeychainAccessGroup": "TEAM.ai.kordi.share-session",
@@ -90,6 +94,8 @@ final class ShareExtensionSupportTests: XCTestCase {
         XCTAssertThrowsError(try KordiShareConfiguration.configured(infoDictionary: [
             "KordiCloudBaseURL": "https://kordi.ai",
             "KordiDistributionChannel": "production",
+            "KordiExpectedDistribution": DistributionTestFixture.encoded(),
+            "CFBundleIdentifier": "ai.kordi.ios.share",
             "KordiShareAppGroup": "group.ai.kordi.share",
             "KordiShareCredentialService": "ai.kordi.share-session",
             "KordiShareKeychainAccessGroup": "ai.kordi.share-session",

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e55ee93f6e33a6dbf6871bb095d1badbea80a0a0f18478a45d64f61591998069",
+  "catalogSha256": "893ff36207839286a399657526f81ba8cc23b2db1a528ef4fd025e41fb5e7fe6",
   "inputs": {
     "Cargo.lock": "2a5a728ed229416245b5521ddce65b119281d0e59b45f7ab82099dad6b3e2eb8",
     "pnpm-lock.yaml": "b1ab9e2c06646f73288db2ef5075bf48107bc0f4a8364e1a3726f5e8dee85e30",
@@ -12,7 +12,7 @@
     "legal/runtime-sources.json": "19b23dc48c6e5f1ae535454bc46350f7530d1a653ae12b00bddb7d07b688c11e",
     "legal/native/archive-evidence.json": "90f8c673a36c1557adda2b118c3b2b5c29200c252c35d01a7b3ce4610ce99598",
     "legal/public-contact-hashes.json": "241ddd7846876dcb475628fb6b57a7797a438cee0e2a669a9bfa2871c54a8ae1",
-    "app/desktop/package.json": "67f035479649230f18515b8ac43e1ba20cf66ca4d2b1b79ce4e596000542325e",
+    "app/desktop/package.json": "a3e7acd1efd543e7da9256827248f95d0515f5033a10df32232af3abaf41f082",
     "legal/runtime-relink-verification.json": "f69b0ab7976cdf30cc076e243ed6180b2c7cc4fc7e3289c06e37957ae7eeafdb",
     "legal/runtime-bundle-review.json": "c026d9b9ad1fe8ada7f29d2a86e7b9178ef8616bb6bffef5125fe970320dbb5c",
     "legal/native/Bun-THIRD-PARTY-NOTICES.txt": "f4ca369a72fd02167f2dd774cfde9bdc2aed2e9d919119679d6028e3b8568646",
