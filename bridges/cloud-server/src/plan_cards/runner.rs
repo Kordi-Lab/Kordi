@@ -186,7 +186,34 @@ pub async fn runner_action(
 #[cfg(test)]
 mod tests {
     use super::represented_accounts;
+    use crate::system_agent::context::{budget_messages, ContextMessage};
     use serde_json::json;
+
+    #[test]
+    fn represented_accounts_accept_the_system_agent_context_wire_shape() {
+        let message = |id: &str, sequence, sender: &str| ContextMessage {
+            id: id.to_string(),
+            sequence,
+            sender_id: sender.to_string(),
+            sender_name: sender.to_string(),
+            kind: "text".to_string(),
+            text: "Lunch works for me".to_string(),
+            created_at: "2026-11-01T12:00:00Z".to_string(),
+        };
+        let messages = budget_messages(
+            vec![
+                message("new", 2, "new-member"),
+                message("old", 1, "old-member"),
+            ],
+            0,
+            1,
+            "system-agent",
+        );
+        assert_eq!(
+            represented_accounts(&json!({"messages": messages}).to_string()),
+            std::collections::BTreeSet::from(["new-member".to_string()])
+        );
+    }
 
     #[test]
     fn represented_accounts_require_new_message_provenance() {
@@ -194,7 +221,8 @@ mod tests {
             "messages": [
                 {"messageId": "old", "senderId": "old-member", "isNew": false},
                 {"messageId": "new", "senderId": "new-member", "isNew": true},
-                {"messageId": "", "senderId": "missing-source", "isNew": true},
+                {"messageId": "", "senderId": "empty-source", "isNew": true},
+                {"senderId": "missing-source", "isNew": true},
                 {"id": "wrong-field", "senderId": "wrong-field", "isNew": true},
                 {"messageId": "system", "senderId": "system", "isNew": true, "fromSystemAgent": true},
                 {"messageId": "other", "senderId": "other", "isNew": true, "addressesAgent": true},
@@ -208,6 +236,9 @@ mod tests {
         let sources = super::source_messages(&prompt);
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0]["messageId"], "new");
-        assert!(super::source_messages("invalid JSON").is_empty());
+        for prompt in ["not json", "{}", r#"{"messages":null}"#] {
+            assert!(represented_accounts(prompt).is_empty());
+            assert!(super::source_messages(prompt).is_empty());
+        }
     }
 }

@@ -81,8 +81,8 @@ async fn full_lifecycle_over_real_http() {
     let jordan = format!("jordan-{suffix}");
     let maya = format!("maya-{suffix}");
     let riya = format!("riya-{suffix}");
-    let system = format!("system-{suffix}");
-    for account in [&jordan, &maya, &riya, &system] {
+    let system_account = format!("system-agent-{suffix}");
+    for account in [&jordan, &maya, &riya, &system_account] {
         seed_account(&pool, account).await;
     }
     let conversation_id = Uuid::new_v4();
@@ -90,7 +90,7 @@ async fn full_lifecycle_over_real_http() {
         &pool,
         conversation_id,
         &jordan,
-        &[&jordan, &maya, &riya, &system],
+        &[&jordan, &maya, &riya, &system_account],
     )
     .await;
 
@@ -148,7 +148,7 @@ async fn full_lifecycle_over_real_http() {
     // chat.
     let request: super::wire::Request = serde_json::from_value(propose_body).unwrap();
     let system_agent = super::routes::Actor {
-        account_id: system,
+        account_id: system_account,
         on_behalf_of_conversation: Some(conversation_id),
         represented_accounts: std::collections::BTreeSet::new(),
         source_message_ids: Vec::new(),
