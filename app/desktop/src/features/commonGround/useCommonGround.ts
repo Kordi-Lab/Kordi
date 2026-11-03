@@ -7,9 +7,8 @@ import { COMMON_GROUND_PAIR_LINK_EVENT, takePendingPairLink } from './pairLink';
 import { localProfileMemory } from './profiles';
 import { CommonGroundStore } from './store';
 import { redeemPairLink } from './storePairing';
-import { syncOnVisible } from './syncOnVisible';
+import { startCommonGroundPolling } from './polling';
 
-const IDLE_CHECK_MS = 1_000;
 const stores = new Map<string, CommonGroundStore>();
 let listening = false;
 
@@ -37,23 +36,12 @@ export function commonGroundStoreFor(accountId: string, profiles = false): Commo
 export function useCommonGround(store: CommonGroundStore) {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   useEffect(() => {
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const loop = async () => {
-      let next: number | null = null;
-      if (!document.hidden) next = await store.poll();
-      if (!stopped) timer = setTimeout(loop, next ?? IDLE_CHECK_MS);
-    };
     if (!store.getSnapshot().loaded) void store.loadHome();
     else if (store.top().name === 'home') void store.loadRooms();
     if (store.top().name !== 'home') void store.loadScreen();
-    timer = setTimeout(loop, IDLE_CHECK_MS);
-    const stopSync = syncOnVisible(() => store.syncFromServer(), window, document);
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-      stopSync();
-    };
+    return startCommonGroundPolling(() => store.poll(), {
+      win: window, doc: document, schedule: setTimeout, cancel: clearTimeout,
+    });
   }, [store]);
   return state;
 }

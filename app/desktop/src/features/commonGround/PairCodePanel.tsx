@@ -15,10 +15,11 @@ import { latestOnly, suggestedProfile } from './wallet';
 function Digits({ disabled, missing, onCode }: { disabled: boolean; missing: boolean; onCode: (code: string | null) => void }) {
   const [digits, setDigits] = useState(['', '', '', '']);
   const refs = useRef<Array<HTMLInputElement | null>>([]);
-  const reset = useCallback(() => {
+  const reset = () => {
     setDigits(['', '', '', '']);
+    onCode(null);
     refs.current[0]?.focus();
-  }, []);
+  };
   return (
     <span className={missing ? 'cg-digits is-missing' : 'cg-digits'} role="group" aria-label={missing ? 'Pair code, room not found' : 'Pair code'}>
       {digits.map((digit, index) => (
@@ -39,6 +40,14 @@ function Digits({ disabled, missing, onCode }: { disabled: boolean; missing: boo
             const code = next.join('');
             onCode(code.length === 4 ? code : null);
             if (code.length === 4) refs.current[index]?.blur();
+          }}
+          onPaste={(event) => {
+            const code = event.clipboardData.getData('text').replace(/\D/g, '');
+            if (code.length !== 4) return;
+            event.preventDefault();
+            setDigits([...code]);
+            onCode(code);
+            refs.current[index]?.blur();
           }}
           onKeyDown={(event) => {
             if (event.key === 'Backspace' && !digit) refs.current[index - 1]?.focus();
