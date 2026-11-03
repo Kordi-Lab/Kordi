@@ -50,6 +50,8 @@ mod projection_tests;
 #[cfg(test)]
 mod revise_tests;
 #[cfg(test)]
+mod runner_tests;
+#[cfg(test)]
 pub(crate) mod tests;
 #[cfg(test)]
 mod vote_tests;
