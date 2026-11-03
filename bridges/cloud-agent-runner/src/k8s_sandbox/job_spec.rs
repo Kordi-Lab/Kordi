@@ -20,21 +20,21 @@ impl Default for K8sSandboxConfig {
                 .ok()
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or_else(|| {
-                    assert!(
-                        cfg!(debug_assertions),
-                        "An explicit sandbox namespace is required"
-                    );
-                    "kordi-cloud".to_string()
+                    if cfg!(debug_assertions) {
+                        "kordi-cloud".to_string()
+                    } else {
+                        panic!("An explicit sandbox namespace is required")
+                    }
                 }),
             image: std::env::var("KORDI_CLOUD_SANDBOX_IMAGE")
                 .ok()
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or_else(|| {
-                    assert!(
-                        cfg!(debug_assertions),
-                        "An explicit sandbox image is required"
-                    );
-                    "alpine:3.20".to_string()
+                    if cfg!(debug_assertions) {
+                        "alpine:3.20".to_string()
+                    } else {
+                        panic!("An explicit sandbox image is required")
+                    }
                 }),
             ttl_seconds_after_finished: std::env::var("KORDI_CLOUD_SANDBOX_JOB_TTL_SECONDS")
                 .ok()

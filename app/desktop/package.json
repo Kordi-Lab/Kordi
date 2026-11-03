@@ -31,7 +31,7 @@
     "release:prerequisites": "node scripts/check-release-prerequisites.mjs",
     "tauri:build": "pnpm tauri:build:cloud",
     "tauri:build:cloud": "../../scripts/build-macos-desktop.sh",
-    "release:verify-cloud-dmg": "node scripts/assert-macos-dmg-release.mjs --app-name Kordi",
+    "release:verify-cloud-dmg": "node ../../scripts/verify-distribution-dmg.mjs",
     "tauri:build:cloud:dmg": "../../scripts/build-macos-desktop.sh --bundles app,dmg",
     "tauri:build:cloud:adhoc-preview": "../../scripts/build-macos-desktop.sh --unsigned --acceptance --bundles app,dmg",
     "tauri:build:cloud:adhoc-bootstrap": "../../scripts/build-macos-desktop.sh --unsigned --acceptance --bootstrap --bundles app,dmg",

@@ -63,6 +63,15 @@ pub fn callback_scheme() -> String {
     }
 }
 
+/// Preserve existing debug/Beta defaults without assigning a release deployment policy.
+pub(crate) const fn development_default(value: &'static str) -> &'static str {
+    if cfg!(debug_assertions) {
+        value
+    } else {
+        ""
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::agent_persona;
@@ -75,14 +84,5 @@ mod tests {
             agent_persona(Some("Research persona"), Some("Development persona")).unwrap(),
             "Research persona"
         );
-    }
-}
-
-/// Preserve existing debug/Beta defaults without assigning a release deployment policy.
-pub(crate) const fn development_default(value: &'static str) -> &'static str {
-    if cfg!(debug_assertions) {
-        value
-    } else {
-        ""
     }
 }

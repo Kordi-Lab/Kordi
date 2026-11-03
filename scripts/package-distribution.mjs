@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { verifyDmgArtifact } from '../app/desktop/scripts/assert-macos-dmg-release.mjs';
 import { distributionFromEnvironment, writeDistributionArtifacts } from '../shared/configuration/distribution-files.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -63,6 +64,7 @@ try {
       const bundles = bundlesAt >= 0 ? args[bundlesAt + 1] : 'app,dmg';
       if (!['app,dmg', 'app', 'dmg'].includes(bundles)) throw new Error('Invalid bundle selection.');
       run('pnpm', ['exec', 'tauri', 'build', '--config', 'src-tauri/.tauri-dev/omp-sidecars.json', '--config', overlay, '--bundles', bundles], cwd);
+      if (bundles.includes('dmg')) verifyDmgArtifact({ appName: profile.clients.updates.artifactName });
     } else {
       const iconDestination = path.join(root, 'app/ios/Distribution.xcassets/DistributionIcon.appiconset');
       // Exclusive directory creation prevents replacing another task's prepared artwork.
