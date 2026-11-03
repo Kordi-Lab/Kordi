@@ -15,9 +15,14 @@ import { latestOnly, suggestedProfile } from './wallet';
 function Digits({ disabled, missing, onCode }: { disabled: boolean; missing: boolean; onCode: (code: string | null) => void }) {
   const [digits, setDigits] = useState(['', '', '', '']);
   const refs = useRef<Array<HTMLInputElement | null>>([]);
+  const update = (next: string[], index: number) => {
+    setDigits(next);
+    const code = next.join('');
+    onCode(code.length === 4 ? code : null);
+    if (code.length === 4) refs.current[index]?.blur();
+  };
   const reset = () => {
-    setDigits(['', '', '', '']);
-    onCode(null);
+    update(['', '', '', ''], 0);
     refs.current[0]?.focus();
   };
   return (
@@ -35,19 +40,14 @@ function Digits({ disabled, missing, onCode }: { disabled: boolean; missing: boo
           onChange={(event) => {
             const value = event.target.value.replace(/\D/g, '').slice(-1);
             const next = digits.map((item, i) => (i === index ? value : item));
-            setDigits(next);
             if (value) refs.current[index + 1]?.focus();
-            const code = next.join('');
-            onCode(code.length === 4 ? code : null);
-            if (code.length === 4) refs.current[index]?.blur();
+            update(next, index);
           }}
           onPaste={(event) => {
             const code = event.clipboardData.getData('text').replace(/\D/g, '');
             if (code.length !== 4) return;
             event.preventDefault();
-            setDigits([...code]);
-            onCode(code);
-            refs.current[index]?.blur();
+            update([...code], index);
           }}
           onKeyDown={(event) => {
             if (event.key === 'Backspace' && !digit) refs.current[index - 1]?.focus();

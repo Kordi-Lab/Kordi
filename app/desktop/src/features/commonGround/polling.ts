@@ -14,8 +14,7 @@ export function startCommonGroundPolling(poll: () => Promise<number | null>, { w
   let running = false;
   let timer: Timer | undefined;
   const loop = async () => {
-    if (stopped) return;
-    if (running) return;
+    if (stopped || running) return;
     cancel(timer);
     running = true;
     let next: number | null = null;

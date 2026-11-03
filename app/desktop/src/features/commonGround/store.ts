@@ -8,7 +8,7 @@ import type { CgProfileMemory } from './profiles';
 import * as pairOps from './storePairing';
 import * as profileOps from './storeProfiles';
 import * as roomOps from './storeRooms';
-import { clearUnavailableScreen, reconcileRooms, refreshScreen } from './storeRefresh';
+import { reconcileRooms, refreshScreen } from './storeRefresh';
 import type {
   CgBuildRequest, CgCardLook, CgCreateRoomInput, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPersonCard, CgProfile, CgProfileInput, CgProfilePatch, CgRecentEntry,
   CgNearbyScreen, CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
@@ -157,14 +157,13 @@ export class CommonGroundStore {
 
   // Navigation
 
-  open(screen: CgScreen) {
-    this.set({ stack: [...this.state.stack, screen], notice: null });
+  open(screen: CgScreen, replaceTop = false) {
+    this.set({ stack: [...(replaceTop ? this.state.stack.slice(0, -1) : this.state.stack), screen], notice: null });
     void this.loadScreen(screen);
   }
 
   replace(screen: CgScreen) {
-    this.set({ stack: [...this.state.stack.slice(0, -1), screen], notice: null });
-    void this.loadScreen(screen);
+    this.open(screen, true);
   }
 
   back() {
@@ -191,8 +190,7 @@ export class CommonGroundStore {
       const owner = this.state.profileId === expected ? await early : await this.client.card(this.state.profileId);
       this.set({ owner, loaded: true });
       if (!hasAnyCard(this.state)) return;
-      const [recent] = await Promise.all([this.client.recent().catch(() => ({ people: this.state.recent })), this.loadRooms()]);
-      this.set({ recent: recent.people });
+      await this.loadActivity();
     } catch (error) {
       this.set({ loaded: true, notice: commonGroundErrorMessage(error) });
     }
@@ -211,12 +209,16 @@ export class CommonGroundStore {
       const profileId = this.state.profileId;
       const owner = await this.client.card(profileId);
       if (this.state.profileId === profileId && !this.state.busy) this.applyOwner(owner);
-      await Promise.all([this.loadRooms(), this.client.recent().then(({ people }) => this.set({ recent: people })).catch(() => undefined)]);
+      await this.loadActivity();
       if (this.top().name !== 'home') await this.loadScreen();
       return true;
     } catch {
       return false;
     }
+  }
+
+  private loadActivity() {
+    return Promise.all([this.loadRooms(), this.client.recent().then(({ people }) => this.set({ recent: people })).catch(() => undefined)]);
   }
 
   /** Refreshes the Rooms list; an older server without the route hides it. */
@@ -239,19 +241,17 @@ export class CommonGroundStore {
         if (this.state.profileId === profileId) this.applyOwner(owner);
         return owner.build.status === 'building' ? BUILD_POLL_MS : null;
       }
-      const pending = (status?: string) => !status || status === 'matching';
-      if (screen.name === 'lobby' ||
-        (screen.name === 'results' && pending(this.state.results[screen.code]?.status) && !roomClosed(this.state, screen.code)) ||
-        (screen.name === 'match' && pending(this.state.matches[personKey(screen.accountId, screen.profileId)]?.status))) {
+      const matching = () => {
+        const status = screen.name === 'results' ? this.state.results[screen.code]?.status
+          : screen.name === 'match' ? this.state.matches[personKey(screen.accountId, screen.profileId)]?.status : 'ready';
+        return !status || status === 'matching';
+      };
+      if (screen.name === 'lobby' || (matching() && (screen.name !== 'results' || !roomClosed(this.state, screen.code)))) {
         await this.loadScreen(screen);
         if (this.top() !== screen) return null;
-        if (screen.name === 'lobby') return LOBBY_POLL_MS;
-        const status = screen.name === 'results' ? this.state.results[screen.code]?.status
-          : this.state.matches[personKey(screen.accountId, screen.profileId)]?.status;
-        return pending(status) ? MATCH_POLL_MS : null;
+        return screen.name === 'lobby' ? LOBBY_POLL_MS : matching() ? MATCH_POLL_MS : null;
       }
-    } catch (error) {
-      if (clearUnavailableScreen(this, screen, error)) return null;
+    } catch {
       return screen.name === 'lobby' ? LOBBY_POLL_MS : MATCH_POLL_MS;
     }
     await this.syncFromServer();
