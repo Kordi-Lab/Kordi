@@ -4,6 +4,26 @@ use serde_json::{json, Value};
 use sqlx_core::query_as::query_as;
 use uuid::Uuid;
 
+async fn message(pool: &sqlx_postgres::PgPool, conversation: Uuid, sender: &str) -> String {
+    // Server-assigned time and canonical ID, as in a real incoming chat message.
+    let (id,): (String,) = query_as(
+        "INSERT INTO cloud_chat_messages
+         (message_id, conversation_id, conversation_sequence, sender_account_id,
+          client_message_id, request_fingerprint, message_kind, content)
+         VALUES ($1, $2, (SELECT COALESCE(MAX(conversation_sequence), 0) + 1
+                          FROM cloud_chat_messages WHERE conversation_id = $2),
+                 $3, $4, 'stale-plan-test', 'text', '{}') RETURNING message_id::text",
+    )
+    .bind(Uuid::new_v4())
+    .bind(conversation)
+    .bind(sender)
+    .bind(Uuid::new_v4())
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    id
+}
+
 #[tokio::test]
 #[ignore = "requires a task-owned PostgreSQL database in KORDI_DIGEST_TEST_DATABASE_URL"]
 async fn system_replaces_confirmed_plan_atomically_and_recovers_from_rejection() {
@@ -22,10 +42,11 @@ async fn system_replaces_confirmed_plan_atomically_and_recovers_from_rejection()
     }
     let chat = Uuid::new_v4();
     seed_conversation(&pool, chat, &owner, &[&owner, &guest, &other, &agent]).await;
-    let actor = Actor {
+    let mut actor = Actor {
         account_id: agent.clone(),
         on_behalf_of_conversation: Some(chat),
         represented_accounts: std::collections::BTreeSet::from([owner.clone()]),
+        source_message_ids: Vec::new(),
     };
     let now =
         chrono::DateTime::from_timestamp_micros(chrono::Utc::now().timestamp_micros()).unwrap();
@@ -91,6 +112,7 @@ async fn system_replaces_confirmed_plan_atomically_and_recovers_from_rejection()
         account_id: owner.clone(),
         on_behalf_of_conversation: None,
         represented_accounts: Default::default(),
+        source_message_ids: Vec::new(),
     };
     assert_eq!(
         super::routes::dispatch_row(&pool, &member_actor, request(replacement.clone()))
@@ -105,6 +127,7 @@ async fn system_replaces_confirmed_plan_atomically_and_recovers_from_rejection()
         account_id: agent.clone(),
         on_behalf_of_conversation: Some(Uuid::new_v4()),
         represented_accounts: Default::default(),
+        source_message_ids: Vec::new(),
     };
     assert_eq!(
         super::routes::dispatch_row(&pool, &foreign_actor, request(replacement.clone()))
@@ -115,6 +138,17 @@ async fn system_replaces_confirmed_plan_atomically_and_recovers_from_rejection()
         403,
         "a run cannot replace another conversation's plan"
     );
+
+    let rejected = super::routes::dispatch_row(&pool, &actor, request(replacement.clone()))
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(
+        rejected.status(),
+        409,
+        "no fresh instruction must not reopen a confirmed plan"
+    );
+    actor.source_message_ids = vec![message(&pool, chat, &owner).await];
 
     // Reusing the old end after moving the start must give a recoverable error,
     // with neither a reopened card nor a changed projection committed.
@@ -146,11 +180,14 @@ async fn system_replaces_confirmed_plan_atomically_and_recovers_from_rejection()
         .into_args(Some(chat))
         .unwrap_or_else(|_| panic!("valid replacement"));
     invalid_store_args.end_at = Some(at(2, 1));
-    assert!(
-        store::propose_for_system_agent(&pool, &agent, invalid_store_args)
-            .await
-            .is_err()
-    );
+    assert!(store::propose_for_system_agent(
+        &pool,
+        &agent,
+        invalid_store_args,
+        &actor.source_message_ids
+    )
+    .await
+    .is_err());
     let unchanged = store::load(&pool, &row.event_id).await.unwrap().unwrap();
     assert_eq!(unchanged.revision, confirmed.revision);
     assert_eq!(unchanged.state, PlanCardState::Confirmed);
@@ -218,6 +255,27 @@ async fn system_replaces_confirmed_plan_atomically_and_recovers_from_rejection()
         .await
         .unwrap();
     assert_eq!(count.0, 1);
+    // The replacement message is now older than the new confirmation. Even
+    // supplying the latest revision cannot authorize replaying it.
+    replacement["existingRevision"] = json!(confirmed.revision);
+    assert_eq!(
+        super::routes::dispatch_row(&pool, &actor, request(replacement.clone()))
+            .await
+            .err()
+            .unwrap()
+            .status(),
+        409
+    );
+    assert_eq!(
+        store::load(&pool, &row.event_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .state,
+        PlanCardState::Confirmed
+    );
+    assert_eq!(entries().await, after);
+
     let canceled = store::cancel(&pool, &row.event_id, confirmed.revision, &owner, None)
         .await
         .unwrap();

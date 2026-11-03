@@ -200,7 +200,7 @@ pub async fn propose(
     acting_account_id: &str,
     args: PlanCardProposeArgs,
 ) -> Result<PlanCardRow, PlanCardStoreError> {
-    propose_inner(pool, acting_account_id, args, false).await
+    propose_inner(pool, acting_account_id, args, None).await
 }
 
 /// A scoped System agent proposal replaces a confirmed plan atomically. A
@@ -209,16 +209,18 @@ pub(super) async fn propose_for_system_agent(
     pool: &PgPool,
     acting_account_id: &str,
     args: PlanCardProposeArgs,
+    source_message_ids: &[String],
 ) -> Result<PlanCardRow, PlanCardStoreError> {
-    propose_inner(pool, acting_account_id, args, true).await
+    propose_inner(pool, acting_account_id, args, Some(source_message_ids)).await
 }
 
 async fn propose_inner(
     pool: &PgPool,
     acting_account_id: &str,
     args: PlanCardProposeArgs,
-    allow_confirmed: bool,
+    source_message_ids: Option<&[String]>,
 ) -> Result<PlanCardRow, PlanCardStoreError> {
+    let allow_confirmed = source_message_ids.is_some();
     if !matches!(
         args.state,
         PlanCardState::Polling | PlanCardState::AwaitingConfirmation
@@ -267,6 +269,19 @@ async fn propose_inner(
         let previous = fetch_row(&mut tx, &existing_event_id)
             .await?
             .filter(|row| row.conversation_id == args.conversation_id.to_string());
+        if previous.as_ref().is_some_and(|row| {
+            row.state == PlanCardState::Confirmed && row.revision == existing_revision
+        }) {
+            if let Some(sources) = source_message_ids {
+                super::transitions::require_newer_instruction(
+                    &mut tx,
+                    &existing_event_id,
+                    acting_account_id,
+                    sources,
+                )
+                .await?;
+            }
+        }
         let options = match &previous {
             Some(row) => carry_votes(&row.options, args.options.clone(), &participant_ids),
             None => args.options.clone(),

@@ -47,6 +47,7 @@ async fn calendar_requires_a_time_and_the_viewers_own_rsvp() {
         account_id: peer.clone(),
         on_behalf_of_conversation: None,
         represented_accounts: std::collections::BTreeSet::new(),
+        source_message_ids: Vec::new(),
     };
     let confirm = |row: &super::models::PlanCardRow| {
         serde_json::from_value(json!({
@@ -100,6 +101,7 @@ async fn calendar_requires_a_time_and_the_viewers_own_rsvp() {
         account_id: peer.clone(),
         on_behalf_of_conversation: None,
         represented_accounts: std::collections::BTreeSet::new(),
+        source_message_ids: Vec::new(),
     };
     let request = serde_json::from_value(
         json!({"action":"rsvp","eventId":confirmed.event_id,"participantId":peer,"rsvp":"yes"}),
@@ -173,6 +175,7 @@ async fn represented_confirm_and_cancel_require_provenance_and_manager_authority
         account_id: "system-agent-service".to_string(),
         on_behalf_of_conversation: Some(conversation),
         represented_accounts,
+        source_message_ids: Vec::new(),
     };
 
     let missing_provenance = super::routes::dispatch_row(
