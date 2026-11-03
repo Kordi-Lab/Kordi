@@ -89,7 +89,7 @@ live on the card, never in its chat lines.
 | A member cannot make it | `rsvp` no for that member only; the plan stands |
 | The organizer cancels, or the group calls it off | `cancel` |
 | An explicit replacement date, time, or place | `propose` with the same event ID and current revision; atomically reopens and replaces even a confirmed plan |
-| Genuinely unclear whether a confirmed plan stands | asks one question and `reopen`s the card |
+| Genuinely unclear whether a confirmed plan stands | asks one question and preserves the current card |
 | 24 hours and 2 hours before start | one reminder each, while the card is open |
 
 Confirming with an option marks everyone who voted for it as attending.
@@ -165,7 +165,7 @@ calendar card on confirm, and writing calendars never use the model.
    limits above, and the hooks that woke the agent.
 3. The cloud runner (`bridges/cloud-agent-runner/src/system_agent.rs`) runs
    the model with exactly one tool, `plan_card` (propose with options, rsvp,
-   vote, confirm with an option, reopen, cancel), defined only for the System
+   vote, confirm with an option, cancel), defined only for the System
    agent in `bridges/cloud-agent-runner/src/system_agent_tool.rs`; members'
    own agents do not get it. Every call is forwarded to
    `POST /v1/cloud/agent-runs/:run_id/plan-card`, authenticated with the
@@ -218,7 +218,7 @@ Validation and replacement share one mutation: a rejected replacement preserves
 the prior card and its calendar entries. Invalid time ranges return an actionable
 validation error. A successful replacement resets affected attendee answers and
 awaits confirmation before recreating the same per-member calendar event IDs.
-A plain reopen is reserved for uncertainty without concrete replacement details.
+Standalone System reopen calls are rejected with `atomic_replacement_required`, including calls from older runners. When details are unclear, System asks a question without mutating the current plan. Authorized member reopen actions remain available.
 
 A member's button press goes to `POST /v1/cloud/plan_cards` as that member. On
 `plan_card_revision_conflict`, desktop and iOS read the latest snapshot from

@@ -101,6 +101,33 @@ async fn system_replaces_confirmed_plan_atomically_and_recovers_from_rejection()
     };
     let before = entries().await;
     assert_eq!(before.len(), 3);
+    // Even a model following an older tool definition cannot commit the first
+    // half of a reschedule. Its rejected reopen leaves all projections intact.
+    let rejected = super::routes::dispatch_row(
+        &pool,
+        &actor,
+        request(json!({"action":"reopen", "eventId":row.event_id,
+            "revision":confirmed.revision, "reason":"New time requested"})),
+    )
+    .await
+    .err()
+    .unwrap();
+    assert_eq!(rejected.status(), 400);
+    let body = axum::body::to_bytes(rejected.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let error: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(error["errorCode"], "atomic_replacement_required");
+    assert_eq!(
+        store::load(&pool, &row.event_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .revision,
+        confirmed.revision
+    );
+    assert_eq!(entries().await, before);
+
     let mut replacement = proposal;
     replacement["existingEventId"] = json!(row.event_id);
     replacement["existingRevision"] = json!(confirmed.revision);
