@@ -21,7 +21,7 @@
   border-radius: 7px; background: transparent;
 }
 .digest-page button:hover, .digest-sheet button:hover { background: var(--app-quiet-control-hover-bg, #8888880c); }
-.digest-page button:focus-visible, .digest-sheet :is(button,input,textarea,select):focus-visible { outline: 2px solid var(--digest-accent, #4977c8); outline-offset: 2px; }
+.digest-page button:focus-visible, .digest-sheet :is(button,input,textarea,select,summary):focus-visible { outline: 2px solid var(--digest-accent, #4977c8); outline-offset: 2px; }
 .digest-page button:disabled, .digest-sheet button:disabled { opacity: .5; cursor: default; }
 .digest-header { flex: none; }
 .digest-header > div:first-child { display: flex; align-items: center; justify-content: space-between; min-height: 32px; }
@@ -201,8 +201,7 @@
   .digest-page .digest-calendar-event { padding: 2px; font-size: 10px; }
 }
 
-.digest-import-link > summary { display: flex; align-items: center; gap: 6px; min-height: 32px; cursor: pointer; list-style: none; }
+.digest-import-link > summary { display: flex; align-items: center; gap: 6px; min-height: 32px; cursor: pointer; }
 .digest-import-link > summary::-webkit-details-marker { display: none; }
 .digest-import-link > summary > svg { flex: none; }
-.digest-import-link[open] > summary > svg { transform: rotate(90deg); }
-.digest-import-link > summary:focus-visible { outline: 2px solid var(--digest-accent); outline-offset: 2px; border-radius: 4px; }
+.digest-import-link[open] > summary > svg { rotate: 90deg; }

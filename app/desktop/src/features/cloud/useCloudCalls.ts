@@ -79,7 +79,7 @@ export function useCloudCalls({
     toggleCamera,
     resumeAudio,
     switchMediaDevice,
-    clearMediaDevices,
+    setMediaDevices,
     isMicrophoneEnabled,
     isCameraEnabled,
     isAudioPlaybackBlocked,
@@ -142,10 +142,10 @@ export function useCloudCalls({
     callSnapshotGenerationRef.current += 1;
     activeCallsRequestRef.current += 1;
     setCallsBySessionId({});
-    clearMediaDevices();
+    setMediaDevices([]);
     setError(null);
     void resetCurrent().catch(() => undefined);
-  }, [account?.accountId, clearMediaDevices, resetCurrent]);
+  }, [account?.accountId, setMediaDevices, resetCurrent]);
 
   const beginMediaSession = useCallback(async (
     kind: CloudCallKind,
@@ -268,8 +268,7 @@ export function useCloudCalls({
   const refreshActiveCalls = useCallback(async () => {
     // Account changes already invalidate requests and clear state above.
     if (!account) return;
-    const request = activeCallsRequestRef.current + 1;
-    activeCallsRequestRef.current = request;
+    const request = ++activeCallsRequestRef.current;
     try {
       const snapshotGeneration = callSnapshotGenerationRef.current;
       const stored = await loadSession();

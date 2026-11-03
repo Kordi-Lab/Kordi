@@ -22,6 +22,8 @@ import type {
 } from './cloudCallController';
 import { canSwitchAudioOutput, mediaDeviceFallbackLabel } from './cloudCallState';
 
+const mediaDeviceKinds: MediaDeviceKind[] = ['audioinput', 'audiooutput', 'videoinput'];
+
 type UseCloudCallMediaInput = {
   operationRef: MutableRefObject<number>;
   currentRef: MutableRefObject<CurrentCallState | null>;
@@ -29,9 +31,7 @@ type UseCloudCallMediaInput = {
   setError: Dispatch<SetStateAction<string | null>>;
 };
 
-export function callUsesAdaptiveVideo(kind: CloudCall['kind']): boolean {
-  return kind === 'meeting';
-}
+export const callUsesAdaptiveVideo = (kind: CloudCall['kind']): boolean => kind === 'meeting';
 
 export function useCloudCallMedia({
   operationRef,
@@ -48,10 +48,6 @@ export function useCloudCallMedia({
   const [activeDeviceIds, setActiveDeviceIds] = useState<Partial<Record<MediaDeviceKind, string>>>({});
   const roomRef = useRef<Room | null>(null);
   const [disconnectedOperation, setDisconnectedOperation] = useState<number | null>(null);
-
-  const clearMediaDevices = useCallback(() => {
-    setMediaDevices([]);
-  }, []);
 
   const clearRoom = useCallback(async () => {
     const room = roomRef.current;
@@ -75,9 +71,7 @@ export function useCloudCallMedia({
       const devices = await navigator.mediaDevices.enumerateDevices();
       const positions: Partial<Record<MediaDeviceKind, number>> = {};
       setMediaDevices(devices.flatMap((device) => {
-        if (device.kind !== 'audioinput'
-          && device.kind !== 'audiooutput'
-          && device.kind !== 'videoinput') return [];
+        if (!mediaDeviceKinds.includes(device.kind)) return [];
         const position = (positions[device.kind] ?? 0) + 1;
         positions[device.kind] = position;
         return [{
@@ -88,11 +82,7 @@ export function useCloudCallMedia({
       }));
       const room = roomRef.current;
       if (room) {
-        setActiveDeviceIds({
-          audioinput: room.getActiveDevice('audioinput'),
-          audiooutput: room.getActiveDevice('audiooutput'),
-          videoinput: room.getActiveDevice('videoinput'),
-        });
+        setActiveDeviceIds(Object.fromEntries(mediaDeviceKinds.map(kind => [kind, room.getActiveDevice(kind)])));
       }
     } catch {
       setError('Kordi could not read the media devices on this Mac. Check System Settings and try again.');
@@ -138,13 +128,16 @@ export function useCloudCallMedia({
     currentRef.current = nextCurrent;
     const refresh = () => { void rebuildMediaParticipants(room); };
     const isCurrentRoom = () => roomRef.current === room && operationRef.current === operation;
-    room.on(RoomEvent.Reconnecting, () => { if (isCurrentRoom()) setPhase('reconnecting'); });
-    room.on(RoomEvent.Reconnected, () => {
+    const markConnected = () => {
       if (!isCurrentRoom()) return;
-      setError(null);
       setPhase('connected');
       setConnectedAtMs((value) => value ?? Date.now());
       refresh();
+    };
+    room.on(RoomEvent.Reconnecting, () => { if (isCurrentRoom()) setPhase('reconnecting'); });
+    room.on(RoomEvent.Reconnected, () => {
+      if (isCurrentRoom()) setError(null);
+      markConnected();
     });
     room.on(RoomEvent.Disconnected, () => {
       if (roomRef.current !== room) return;
@@ -155,24 +148,16 @@ export function useCloudCallMedia({
       setDisconnectedOperation(operation);
       setMediaParticipants([]);
     });
-    room.on(RoomEvent.ParticipantConnected, () => {
-      if (!isCurrentRoom()) return;
-      setPhase('connected');
-      setConnectedAtMs((value) => value ?? Date.now());
-      refresh();
-    });
-    room.on(RoomEvent.ParticipantDisconnected, refresh);
-    room.on(RoomEvent.TrackSubscribed, refresh);
+    room.on(RoomEvent.ParticipantConnected, markConnected);
+    for (const event of [
+      RoomEvent.ParticipantDisconnected, RoomEvent.TrackSubscribed, RoomEvent.TrackUnsubscribed,
+      RoomEvent.TrackMuted, RoomEvent.TrackUnmuted, RoomEvent.LocalTrackPublished,
+      RoomEvent.LocalTrackUnpublished, RoomEvent.ActiveSpeakersChanged,
+    ]) room.on(event, refresh);
     room.on(RoomEvent.TrackSubscriptionFailed, () => {
       if (!isCurrentRoom()) return;
       setError('A remote camera or microphone track could not be subscribed.');
     });
-    room.on(RoomEvent.TrackUnsubscribed, refresh);
-    room.on(RoomEvent.TrackMuted, refresh);
-    room.on(RoomEvent.TrackUnmuted, refresh);
-    room.on(RoomEvent.LocalTrackPublished, refresh);
-    room.on(RoomEvent.LocalTrackUnpublished, refresh);
-    room.on(RoomEvent.ActiveSpeakersChanged, refresh);
     room.on(RoomEvent.AudioPlaybackStatusChanged, (playing) => {
       if (!isCurrentRoom()) return;
       setIsAudioPlaybackBlocked(!playing || !room.canPlaybackAudio);
@@ -185,7 +170,7 @@ export function useCloudCallMedia({
     } catch (caught) {
       throw new Error(callConnectionErrorMessage(caught));
     }
-    if (operationRef.current !== operation) {
+    if (!isCurrentRoom()) {
       await room.disconnect(true);
       return;
     }
@@ -303,7 +288,7 @@ export function useCloudCallMedia({
     toggleCamera,
     resumeAudio,
     switchMediaDevice,
-    clearMediaDevices,
+    setMediaDevices,
     isMicrophoneEnabled,
     isCameraEnabled,
     isAudioPlaybackBlocked,
