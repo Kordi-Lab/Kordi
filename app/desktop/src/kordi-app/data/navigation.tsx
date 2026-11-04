@@ -8,9 +8,9 @@ import type { NavId } from '../types';
 type NavItem = { id: NavId; label: string; icon: ComponentType<{ className?: string }> };
 
 export const navItems: NavItem[] = [
+  { id: 'contacts', label: 'Contacts', icon: Users },
   { id: 'chats', label: 'Chats', icon: MessageSquare },
   { id: 'agent-chats', label: 'Agent Chats', icon: AgentChatIcon },
-  { id: 'contacts', label: 'Contacts', icon: Users },
   { id: 'agents', label: 'Factory', icon: FactoryRobotIcon },
   { id: 'digest', label: 'Digest', icon: NotebookPen },
 ];
