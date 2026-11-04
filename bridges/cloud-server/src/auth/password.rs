@@ -59,19 +59,19 @@ pub enum PasswordPolicyError {
 impl fmt::Display for PasswordPolicyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Empty => write!(f, "password must contain printable characters"),
+            Self::Empty => write!(f, "Password must contain printable characters."),
             Self::TooShort => write!(
                 f,
-                "password must be at least {PASSWORD_MIN_LENGTH} characters"
+                "Password must be at least {PASSWORD_MIN_LENGTH} characters."
             ),
             Self::TooLong => write!(
                 f,
-                "password must be at most {PASSWORD_MAX_LENGTH} characters"
+                "Password must be at most {PASSWORD_MAX_LENGTH} characters."
             ),
-            Self::ContainsControlChar => write!(f, "password must not contain control characters"),
+            Self::ContainsControlChar => write!(f, "Password must not contain control characters."),
             Self::MissingCharacterMix => write!(
                 f,
-                "password must include an uppercase letter, a lowercase letter, and a number"
+                "Password must include an uppercase letter, a lowercase letter, and a number."
             ),
         }
     }

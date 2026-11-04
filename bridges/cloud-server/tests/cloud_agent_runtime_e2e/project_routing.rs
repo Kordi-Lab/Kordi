@@ -9,7 +9,7 @@ async fn signup_with_email(router: &axum::Router, email: &str) -> TestAccount {
             Body::from(
                 signup_email_fixture::with_proof(json!({
                     "email": email,
-                    "password": "correct horse",
+                    "password": TEST_PASSWORD,
                     "displayName": "Owner",
                     "avatarSeed": "agent_runtime_avatar",
                 }))
@@ -34,7 +34,7 @@ async fn sign_in_another_mac(router: &axum::Router, email: &str) -> String {
             .clone()
             .oneshot(post(
                 "/v1/cloud/auth/login",
-                Body::from(json!({"email":email,"password":"correct horse"}).to_string()),
+                Body::from(json!({"email":email,"password":TEST_PASSWORD}).to_string()),
             ))
             .await
             .unwrap(),

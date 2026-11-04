@@ -17,7 +17,7 @@ async fn scheduled_task_run_now_and_new_cloud_tasks_share_the_agent_run_budget()
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse").await,
+            signup_body(&email, TEST_PASSWORD).await,
         ))
         .await
         .unwrap();

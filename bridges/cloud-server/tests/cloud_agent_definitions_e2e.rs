@@ -14,6 +14,9 @@ use kordi_cloud_server::server::router_with_rate_limiter;
 use serde_json::{json, Value};
 use tower::util::ServiceExt;
 
+/// Sign-up requires mixed case and a number, so every fixture account uses this.
+const TEST_PASSWORD: &str = "Correct-horse-7";
+
 async fn try_pool() -> Option<sqlx_postgres::PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
     Some(init_pool(&url).await.unwrap_or_else(|_| {
@@ -69,7 +72,7 @@ async fn signup(router: &axum::Router, prefix: &str) -> (String, String) {
             Body::from(
                 signup_email_fixture::with_proof(json!({
                     "email": email,
-                    "password": "correct horse",
+                    "password": TEST_PASSWORD,
                     "displayName": prefix,
                     "avatarSeed": "agent_definition_avatar",
                 }))
