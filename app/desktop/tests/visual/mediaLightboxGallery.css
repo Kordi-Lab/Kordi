@@ -30,6 +30,11 @@ body,
   background: #c8a9b9;
 }
 
+/* Keep the synthetic backdrop behind the real gallery content. */
+.media-lightbox-visual-shell > .app-attachment-image-lightbox {
+  z-index: 1;
+}
+
 body.theme-dark .media-lightbox-visual-shell::before {
   background: #253b55;
 }
