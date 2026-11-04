@@ -96,3 +96,21 @@ test('pair code: Enter pair room opens a room you are in, and a code with no roo
     assert.equal(calls.some((call) => call.url.includes('/join')), false);
   });
 });
+
+test('pair code: pasting a full code distributes digits and Escape clears the pending code', async () => {
+  const { client } = mockServer({});
+  const store = new CommonGroundStore(client);
+  store.set({ owner: owner(), loaded: true });
+  await withPanel(store, async (host) => {
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="Digit 1"]')!;
+    await act(async () => {
+      const event = new window.Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', { value: { getData: () => '51 60' } });
+      input.dispatchEvent(event);
+    });
+    assert.deepEqual([...host.querySelectorAll<HTMLInputElement>('.cg-digits input')].map((box) => box.value), ['5', '1', '6', '0']);
+    assert.equal(button(host)?.textContent, 'Enter pair room');
+    await act(async () => input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    assert.equal(button(host)?.textContent, 'Create');
+  });
+});

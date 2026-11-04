@@ -8,6 +8,7 @@ import type { CgProfileMemory } from './profiles';
 import * as pairOps from './storePairing';
 import * as profileOps from './storeProfiles';
 import * as roomOps from './storeRooms';
+import { reconcileRooms, refreshScreen } from './storeRefresh';
 import type {
   CgBuildRequest, CgCardLook, CgCreateRoomInput, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPersonCard, CgProfile, CgProfileInput, CgProfilePatch, CgRecentEntry,
   CgNearbyScreen, CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
@@ -107,7 +108,7 @@ export class CommonGroundStore {
   private state: CgState;
   private listeners = new Set<() => void>();
   private disposed = false;
-  private lastSync = 0;
+  private lastSync = Date.now();
   readonly memory: CgProfileMemory;
 
   constructor(readonly client: CommonGroundClient, options: CommonGroundStoreOptions = {}) {
@@ -156,14 +157,13 @@ export class CommonGroundStore {
 
   // Navigation
 
-  open(screen: CgScreen) {
-    this.set({ stack: [...this.state.stack, screen], notice: null });
+  open(screen: CgScreen, replaceTop = false) {
+    this.set({ stack: [...(replaceTop ? this.state.stack.slice(0, -1) : this.state.stack), screen], notice: null });
     void this.loadScreen(screen);
   }
 
   replace(screen: CgScreen) {
-    this.set({ stack: [...this.state.stack.slice(0, -1), screen], notice: null });
-    void this.loadScreen(screen);
+    this.open(screen, true);
   }
 
   back() {
@@ -177,34 +177,7 @@ export class CommonGroundStore {
     void (reload ? this.loadHome() : this.loadRooms());
   }
 
-  async loadScreen(screen: CgScreen = this.top()): Promise<void> {
-    try {
-      switch (screen.name) {
-        case 'home': return await this.loadHome();
-        case 'lobby': return this.set({ rooms: { ...this.state.rooms, [screen.code]: await this.client.room(screen.code) } });
-        case 'results': {
-          const room = this.client.room(screen.code).catch(() => null);
-          const results = await this.client.results(screen.code);
-          const loaded = await room;
-          return this.set({
-            results: { ...this.state.results, [screen.code]: results },
-            rooms: loaded ? { ...this.state.rooms, [screen.code]: loaded } : this.state.rooms,
-          });
-        }
-        case 'match': {
-          const match = await this.client.match(screen.accountId, screen.profileId);
-          return this.set({ matches: { ...this.state.matches, [personKey(screen.accountId, screen.profileId)]: match } });
-        }
-        case 'person': {
-          const view = await this.client.person(screen.accountId, screen.profileId);
-          return this.set({ people: { ...this.state.people, [personKey(screen.accountId, screen.profileId)]: view } });
-        }
-        default: return undefined;
-      }
-    } catch (error) {
-      this.set({ notice: commonGroundErrorMessage(error) });
-    }
-  }
+  loadScreen = (screen: CgScreen = this.top()) => refreshScreen(this, screen);
 
   async loadHome(): Promise<void> {
     this.lastSync = Date.now();
@@ -217,8 +190,7 @@ export class CommonGroundStore {
       const owner = this.state.profileId === expected ? await early : await this.client.card(this.state.profileId);
       this.set({ owner, loaded: true });
       if (!hasAnyCard(this.state)) return;
-      const [recent] = await Promise.all([this.client.recent().catch(() => ({ people: this.state.recent })), this.loadRooms()]);
-      this.set({ recent: recent.people });
+      await this.loadActivity();
     } catch (error) {
       this.set({ loaded: true, notice: commonGroundErrorMessage(error) });
     }
@@ -237,17 +209,23 @@ export class CommonGroundStore {
       const profileId = this.state.profileId;
       const owner = await this.client.card(profileId);
       if (this.state.profileId === profileId && !this.state.busy) this.applyOwner(owner);
+      await this.loadActivity();
+      if (this.top().name !== 'home') await this.loadScreen();
       return true;
     } catch {
       return false;
     }
   }
 
+  private loadActivity() {
+    return Promise.all([this.loadRooms(), this.client.recent().then(({ people }) => this.set({ recent: people })).catch(() => undefined)]);
+  }
+
   /** Refreshes the Rooms list; an older server without the route hides it. */
   async loadRooms(): Promise<void> {
     if (!this.state.support.rooms) return;
     try {
-      this.set({ roomList: await this.client.rooms() });
+      reconcileRooms(this, await this.client.rooms());
     } catch (error) {
       if (isRouteMissing(error)) this.set({ support: { ...this.state.support, rooms: false }, roomList: [] });
     }
@@ -258,40 +236,31 @@ export class CommonGroundStore {
     const screen = this.top();
     try {
       if (this.state.owner?.build.status === 'building') {
-        const owner = await this.client.card(this.state.profileId);
-        this.applyOwner(owner);
+        const profileId = this.state.profileId;
+        const owner = await this.client.card(profileId);
+        if (this.state.profileId === profileId) this.applyOwner(owner);
         return owner.build.status === 'building' ? BUILD_POLL_MS : null;
       }
-      if (screen.name === 'lobby') {
-        const room = await this.client.room(screen.code);
-        this.set({ rooms: { ...this.state.rooms, [screen.code]: room } });
-        return LOBBY_POLL_MS;
+      const matching = () => {
+        const status = screen.name === 'results' ? this.state.results[screen.code]?.status
+          : screen.name === 'match' ? this.state.matches[personKey(screen.accountId, screen.profileId)]?.status : 'ready';
+        return !status || status === 'matching';
+      };
+      if (screen.name === 'lobby' || (matching() && (screen.name !== 'results' || !roomClosed(this.state, screen.code)))) {
+        await this.loadScreen(screen);
+        if (this.top() !== screen) return null;
+        return screen.name === 'lobby' ? LOBBY_POLL_MS : matching() ? MATCH_POLL_MS : null;
       }
-      if (screen.name === 'results' && this.state.results[screen.code]?.status === 'matching' && !roomClosed(this.state, screen.code)) {
-        const results = await this.client.results(screen.code);
-        this.set({ results: { ...this.state.results, [screen.code]: results } });
-        return results.status === 'matching' ? MATCH_POLL_MS : null;
-      }
-      const key = screen.name === 'match' ? personKey(screen.accountId, screen.profileId) : '';
-      if (screen.name === 'match' && this.state.matches[key]?.status === 'matching') {
-        const match = await this.client.match(screen.accountId, screen.profileId);
-        this.set({ matches: { ...this.state.matches, [key]: match } });
-        return match.status === 'matching' ? MATCH_POLL_MS : null;
-      }
-    } catch (error) {
-      if (commonGroundErrorCode(error) === 'common_ground_room_not_found' && screen.name === 'lobby') {
-        this.home();
-        this.set({ notice: 'Room not found.' });
-        return null;
-      }
+    } catch {
       return screen.name === 'lobby' ? LOBBY_POLL_MS : MATCH_POLL_MS;
     }
+    await this.syncFromServer();
     return null;
   }
 
   private applyOwner(owner: CgOwnerView) {
     const wasBuilding = this.state.owner?.build.status === 'building';
-    this.set({ owner, loaded: true });
+    this.set({ owner, loaded: true, ...(this.state.owner?.sharing && !owner.sharing ? { matches: {}, people: {}, results: {}, recent: [] } : {}) });
     if (!wasBuilding || owner.build.status === 'building') return;
     if (this.state.profilesOn) void profileOps.loadProfiles(this).catch(() => undefined);
     if (owner.build.status === 'failed') {
@@ -333,7 +302,7 @@ export class CommonGroundStore {
 
   async setSharing(sharing: boolean): Promise<void> {
     const saved = await this.run('sharing', () => this.client.setSharing(sharing, this.state.profileId));
-    if (saved) this.set({ owner: saved });
+    if (saved) this.applyOwner(saved);
   }
 
   async deleteCard(): Promise<boolean> {
