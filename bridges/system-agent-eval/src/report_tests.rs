@@ -135,3 +135,98 @@ fn comparison_lists_regressions_and_improvements_per_candidate() {
     let loaded: RunReport = serde_json::from_str(&saved).unwrap();
     assert_eq!(loaded.summary.metrics, baseline.summary.metrics);
 }
+
+fn usage_pass(model_calls: u64, reported_calls: u64) -> PassResult {
+    let mut pass = pass(true, 500, Some((1000, 100)), &[]);
+    pass.usage = Some(UsageRecord {
+        input_tokens: 1000 * reported_calls,
+        output_tokens: 100 * reported_calls,
+        model_calls,
+        reported_calls,
+    });
+    pass
+}
+
+#[test]
+fn cost_is_marked_partial_when_some_runs_report_no_usage() {
+    let prices = Some(Prices {
+        input_per_million: 1.0,
+        output_per_million: 4.0,
+    });
+    let fixtures = vec![FixtureResult {
+        id: "plan".into(),
+        kind: "systemAgent".into(),
+        passed: true,
+        passes: vec![
+            usage_pass(1, 1),
+            usage_pass(2, 1),
+            usage_pass(1, 0),
+            // A run that failed before any model call has nothing to report.
+            usage_pass(0, 0),
+        ],
+    }];
+    let summary = summarize(&fixtures, prices);
+    assert_eq!(summary.model_runs, 4);
+    assert_eq!(summary.runs_with_usage, 2);
+    assert_eq!(summary.runs_missing_usage, 2);
+    assert!(summary.cost_partial);
+    assert_eq!(
+        cost(&summary),
+        "≥ $0.0028 (partial: 2 of 4 runs reported usage)"
+    );
+    let saved: Summary = serde_json::from_value(serde_json::to_value(&summary).unwrap()).unwrap();
+    assert!(saved.cost_partial);
+
+    let complete = summarize(
+        &[FixtureResult {
+            passes: vec![usage_pass(1, 1), usage_pass(0, 0)],
+            ..fixtures[0].clone()
+        }],
+        prices,
+    );
+    assert!(!complete.cost_partial);
+    assert_eq!(cost(&complete), "$0.0014");
+
+    let unreported = summarize(
+        &[FixtureResult {
+            passes: vec![usage_pass(1, 0)],
+            ..fixtures[0].clone()
+        }],
+        prices,
+    );
+    assert_eq!(
+        (unreported.cost_usd, unreported.cost_partial),
+        (None, false)
+    );
+    assert_eq!(cost(&unreported), "not reported");
+    assert_eq!(cost(&Summary::default()), "set prices to estimate");
+}
+
+#[test]
+fn comparison_warns_when_fixture_sets_differ() {
+    let baseline = report("baseline", true, true, None);
+    let mut candidate = report("candidate", true, true, None);
+    candidate.fixtures.retain(|fixture| fixture.id != "quiet");
+    let mut extra = candidate.fixtures[0].clone();
+    extra.id = "new-case".into();
+    candidate.fixtures.push(extra);
+    assert_eq!(
+        fixture_set_diff(&baseline, &candidate),
+        (vec!["new-case".to_string()], vec!["quiet".to_string()])
+    );
+    let (md, json) = compare(&baseline, &[candidate]);
+    assert!(
+        md.contains("> - candidate ran a different fixture set than baseline; added: new-case; removed: quiet"),
+        "{md}"
+    );
+    assert!(md.contains("| quiet | pass | missing |"), "{md}");
+    assert!(md.contains("| new-case | missing | pass |"), "{md}");
+    assert_eq!(json["candidates"][0]["fixturesAdded"][0], "new-case");
+    assert_eq!(json["candidates"][0]["fixturesRemoved"][0], "quiet");
+    assert_eq!(json["warnings"].as_array().unwrap().len(), 1);
+
+    let same = report("same", true, true, None);
+    let (md, json) = compare(&baseline, &[same]);
+    assert!(!md.contains("Warning"));
+    assert!(json["warnings"].as_array().unwrap().is_empty());
+}

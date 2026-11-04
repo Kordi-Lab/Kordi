@@ -147,7 +147,7 @@ pub async fn build(
             }
             outcome.output = Some(text);
         }
-        Err(error) => outcome.error = Some(error.chars().take(300).collect()),
+        Err(error) => outcome.error = Some(crate::redact::provider_error(&error)),
     }
     Ok(outcome)
 }

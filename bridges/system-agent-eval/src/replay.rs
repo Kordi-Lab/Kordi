@@ -167,8 +167,10 @@ where
     (result, latency, meter.snapshot())
 }
 
+/// Provider errors can echo request headers or keys; reports keep a masked,
+/// shortened copy.
 fn short(error: &ModelLoopError) -> String {
-    error.to_string().chars().take(300).collect()
+    crate::redact::provider_error(&error.to_string())
 }
 
 pub async fn card_snapshot(pool: &PgPool, seeded: &Seeded) -> Result<Option<CardSnapshot>> {

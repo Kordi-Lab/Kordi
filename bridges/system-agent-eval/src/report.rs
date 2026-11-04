@@ -94,7 +94,14 @@ pub struct Summary {
     pub output_tokens: u64,
     /// Runs whose provider reported token counts.
     pub runs_with_usage: usize,
+    /// Runs with model calls whose token counts the provider did not report.
+    #[serde(default)]
+    pub runs_missing_usage: usize,
+    /// A lower bound only: computed from the runs that reported usage.
     pub cost_usd: Option<f64>,
+    /// True when some runs did not report usage, so `costUsd` is partial.
+    #[serde(default)]
+    pub cost_partial: bool,
 }
 
 fn percentile(sorted: &[u64], fraction: f64) -> Option<u64> {
@@ -118,6 +125,10 @@ pub fn summarize(fixtures: &[FixtureResult], prices: Option<Prices>) -> Summary 
             if pass.ran {
                 summary.model_runs += 1;
                 latencies.extend(pass.latency_ms);
+                let complete = pass
+                    .usage
+                    .is_some_and(|usage| usage.reported_calls >= usage.model_calls);
+                summary.runs_missing_usage += usize::from(!complete);
             } else {
                 summary.skipped_by_sweep += 1;
             }
@@ -147,6 +158,7 @@ pub fn summarize(fixtures: &[FixtureResult], prices: Option<Prices>) -> Summary 
                 + summary.output_tokens as f64 * prices.output_per_million)
                 / 1_000_000.0
         });
+    summary.cost_partial = summary.cost_usd.is_some() && summary.runs_missing_usage > 0;
     summary
 }
 
@@ -197,11 +209,32 @@ fn per_run(report: &RunReport) -> String {
     )
 }
 
-fn cost(report: &RunReport) -> String {
-    match report.summary.cost_usd {
+pub fn cost(summary: &Summary) -> String {
+    match summary.cost_usd {
+        Some(cost) if summary.cost_partial => format!(
+            "≥ ${cost:.4} (partial: {} of {} runs reported usage)",
+            summary
+                .model_runs
+                .saturating_sub(summary.runs_missing_usage),
+            summary.model_runs
+        ),
         Some(cost) => format!("${cost:.4}"),
+        None if summary.model_runs > 0 && summary.runs_with_usage == 0 => "not reported".into(),
         None => "set prices to estimate".into(),
     }
+}
+
+/// Fixture ids only the candidate has (added) and only the baseline has
+/// (removed). Different sets make the totals incomparable.
+pub fn fixture_set_diff(baseline: &RunReport, candidate: &RunReport) -> (Vec<String>, Vec<String>) {
+    let ids = |report: &RunReport| -> std::collections::BTreeSet<String> {
+        report.fixtures.iter().map(|f| f.id.clone()).collect()
+    };
+    let (base, other) = (ids(baseline), ids(candidate));
+    (
+        other.difference(&base).cloned().collect(),
+        base.difference(&other).cloned().collect(),
+    )
 }
 
 /// Every check of a run by a stable key: fixture, pass, check name and its
@@ -259,6 +292,30 @@ pub fn compare(baseline: &RunReport, candidates: &[RunReport]) -> (String, Value
             report.started_at
         ));
     }
+    let mut warnings = Vec::new();
+    for candidate in candidates {
+        let (added, removed) = fixture_set_diff(baseline, candidate);
+        if added.is_empty() && removed.is_empty() {
+            continue;
+        }
+        let mut warning = format!(
+            "{} ran a different fixture set than {}",
+            candidate.label, baseline.label
+        );
+        if !added.is_empty() {
+            warning.push_str(&format!("; added: {}", added.join(", ")));
+        }
+        if !removed.is_empty() {
+            warning.push_str(&format!("; removed: {}", removed.join(", ")));
+        }
+        warnings.push(warning);
+    }
+    if !warnings.is_empty() {
+        md.push_str("\n> **Warning:** totals are not comparable.\n");
+        for warning in &warnings {
+            md.push_str(&format!(">\n> - {warning}\n"));
+        }
+    }
     let header: Vec<String> = runs.iter().map(|r| r.label.clone()).collect();
     md.push_str(&format!("\n| Metric | {} |", header.join(" | ")));
     md.push_str("\n|---|");
@@ -305,36 +362,46 @@ pub fn compare(baseline: &RunReport, candidates: &[RunReport]) -> (String, Value
         runs.iter().map(|r| ms(r.summary.latency_p95_ms)).collect(),
     );
     row("Tokens per run", runs.iter().map(|r| per_run(r)).collect());
-    row("Estimated cost", runs.iter().map(|r| cost(r)).collect());
+    row(
+        "Estimated cost",
+        runs.iter().map(|r| cost(&r.summary)).collect(),
+    );
 
     md.push_str(&format!(
         "\n\n## Fixtures\n\n| Fixture | {} |\n|---|",
         header.join(" | ")
     ));
     md.push_str(&"---|".repeat(runs.len()));
-    for fixture in &baseline.fixtures {
+    let mut fixture_ids: Vec<&str> = Vec::new();
+    for report in &runs {
+        for fixture in &report.fixtures {
+            if !fixture_ids.contains(&fixture.id.as_str()) {
+                fixture_ids.push(&fixture.id);
+            }
+        }
+    }
+    for id in fixture_ids {
         let cells: Vec<String> = runs
             .iter()
-            .map(
-                |report| match report.fixtures.iter().find(|f| f.id == fixture.id) {
-                    Some(found) if found.passed => "pass".into(),
-                    Some(found) => {
-                        let failed: usize = found
-                            .passes
-                            .iter()
-                            .map(|p| p.checks.iter().filter(|c| !c.passed).count())
-                            .sum();
-                        format!("**fail** ({failed})")
-                    }
-                    None => "missing".into(),
-                },
-            )
+            .map(|report| match report.fixtures.iter().find(|f| f.id == id) {
+                Some(found) if found.passed => "pass".into(),
+                Some(found) => {
+                    let failed: usize = found
+                        .passes
+                        .iter()
+                        .map(|p| p.checks.iter().filter(|c| !c.passed).count())
+                        .sum();
+                    format!("**fail** ({failed})")
+                }
+                None => "missing".into(),
+            })
             .collect();
-        md.push_str(&format!("\n| {} | {} |", fixture.id, cells.join(" | ")));
+        md.push_str(&format!("\n| {id} | {} |", cells.join(" | ")));
     }
 
     let mut candidate_json = Vec::new();
     for candidate in candidates {
+        let (added, removed) = fixture_set_diff(baseline, candidate);
         let regressions = flipped(baseline, candidate);
         let improvements = flipped(candidate, baseline);
         for (title, list) in [
@@ -364,6 +431,8 @@ pub fn compare(baseline: &RunReport, candidates: &[RunReport]) -> (String, Value
             "summary": candidate.summary,
             "regressions": list(&regressions),
             "improvements": list(&improvements),
+            "fixturesAdded": added,
+            "fixturesRemoved": removed,
         }));
     }
     md.push('\n');
@@ -371,6 +440,7 @@ pub fn compare(baseline: &RunReport, candidates: &[RunReport]) -> (String, Value
         "schemaVersion": SCHEMA_VERSION,
         "baseline": {"label": baseline.label, "provider": baseline.provider, "summary": baseline.summary},
         "candidates": candidate_json,
+        "warnings": warnings,
     });
     (md, json)
 }

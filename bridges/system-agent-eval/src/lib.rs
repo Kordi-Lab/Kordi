@@ -7,8 +7,10 @@
 //! the harness itself tested. See docs/testing/system-agent-quality.md.
 
 pub mod client;
+pub mod database;
 pub mod fixture;
 pub mod grounding;
+pub mod redact;
 pub mod replay;
 pub mod report;
 pub mod score;

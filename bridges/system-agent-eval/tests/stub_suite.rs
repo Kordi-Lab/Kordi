@@ -1,7 +1,9 @@
 //! The harness itself, driven by the scripted stub model. Grounding builds
 //! need no database and run in every CI pass; the System agent fixtures need a
-//! disposable PostgreSQL database and run where CI provides one.
+//! local PostgreSQL server, where each test creates and drops its own
+//! database, and run where CI provides one.
 
+use kordi_system_agent_eval::database::DisposableDatabase;
 use kordi_system_agent_eval::fixture::{self, Fixture};
 use kordi_system_agent_eval::replay::Engine;
 use kordi_system_agent_eval::report::RunReport;
@@ -67,33 +69,93 @@ async fn grounding_fixtures_pass_with_the_stub_model() {
     assert!(report.summary.metrics["grounding"].total >= 8);
 }
 
-async fn stub_harness() -> Option<kordi_system_agent_eval::replay::Harness> {
-    let url = std::env::var(setup::DATABASE_URL_VAR).ok()?;
-    let pool = setup::connect(&url).await.expect("quality test database");
+fn server_url() -> String {
+    std::env::var(setup::DATABASE_URL_VAR).expect("database URL")
+}
+
+/// Replays `fixtures` with the stub model into a new database, which is
+/// dropped before the caller asserts anything.
+async fn replay_with_stub(label: &str, fixtures: &[Fixture]) -> RunReport {
+    let database = DisposableDatabase::prepare(&server_url())
+        .await
+        .expect("quality test server");
     let settings = setup::stub_settings();
-    Some(
-        setup::harness(pool, settings.pending, Engine::Stub)
-            .await
-            .expect("System agent provisioning"),
+    let result = async {
+        let pool = database.create().await?;
+        let harness = setup::harness(pool, settings.pending, Engine::Stub).await?;
+        setup::run_suite(
+            label,
+            fixtures,
+            &harness.config,
+            Some(&harness),
+            Engine::Stub,
+            None,
+            chrono::Utc::now(),
+        )
+        .await
+    }
+    .await;
+    assert!(database.drop_database().await, "dropping the database");
+    result.unwrap()
+}
+
+async fn database_exists(admin: &sqlx_postgres::PgPool, name: &str) -> bool {
+    sqlx_core::query_scalar::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)",
     )
+    .bind(name)
+    .fetch_one(admin)
+    .await
+    .unwrap()
 }
 
 #[tokio::test]
-#[ignore = "requires a disposable PostgreSQL database in KORDI_SYSTEM_AGENT_EVAL_DATABASE_URL"]
-async fn system_agent_fixtures_pass_with_the_stub_model() {
-    let harness = stub_harness().await.expect("database URL");
-    let fixtures = fixtures("systemAgent");
-    let report = setup::run_suite(
-        "stub",
-        &fixtures,
-        &harness.config,
-        Some(&harness),
-        Engine::Stub,
-        None,
-        chrono::Utc::now(),
+#[ignore = "requires a local PostgreSQL server in KORDI_SYSTEM_AGENT_EVAL_DATABASE_URL"]
+async fn each_run_gets_its_own_database_and_drops_it() {
+    let url = server_url();
+    let admin = sqlx_postgres::PgPool::connect(&url).await.unwrap();
+    let database = DisposableDatabase::prepare(&url).await.unwrap();
+    let name = database.name().to_string();
+    assert!(name.starts_with("kordi_eval_"), "{name}");
+    assert!(
+        !database_exists(&admin, &name).await,
+        "prepare creates nothing"
+    );
+    let pool = database.create().await.unwrap();
+    assert!(database_exists(&admin, &name).await);
+    let (current, migrated): (String, i64) = sqlx_core::query_as::query_as(
+        "SELECT current_database(), (SELECT count(*) FROM cloud_schema_versions)",
     )
+    .fetch_one(&pool)
     .await
     .unwrap();
+    assert_eq!(current, name);
+    assert!(migrated > 0);
+    // The named database is only an administration connection.
+    let touched: bool = sqlx_core::query_scalar::query_scalar(
+        "SELECT to_regclass('cloud_schema_versions') IS NOT NULL",
+    )
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert!(!touched, "the server URL's own database was migrated");
+    // The run's pool is closed first; dropping twice is harmless.
+    let again = database.clone();
+    assert!(database.drop_database().await);
+    assert!(pool.is_closed());
+    assert!(!database_exists(&admin, &name).await);
+    // A database that was never created drops cleanly too.
+    let never = DisposableDatabase::prepare(&url).await.unwrap();
+    assert!(never.drop_database().await);
+    drop(again);
+    admin.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires a local PostgreSQL server in KORDI_SYSTEM_AGENT_EVAL_DATABASE_URL"]
+async fn system_agent_fixtures_pass_with_the_stub_model() {
+    let fixtures = fixtures("systemAgent");
+    let report = replay_with_stub("stub", &fixtures).await;
     assert_eq!(failures(&report), Vec::<String>::new());
     let summary = &report.summary;
     assert_eq!(summary.fixtures.passed, fixtures.len());
@@ -129,9 +191,8 @@ fn set_stub(fixtures: &mut [Fixture], id: &str, turn: usize, stub: serde_json::V
 }
 
 #[tokio::test]
-#[ignore = "requires a disposable PostgreSQL database in KORDI_SYSTEM_AGENT_EVAL_DATABASE_URL"]
+#[ignore = "requires a local PostgreSQL server in KORDI_SYSTEM_AGENT_EVAL_DATABASE_URL"]
 async fn scoring_catches_a_model_that_misbehaves() {
-    let harness = stub_harness().await.expect("database URL");
     let mut fixtures: Vec<Fixture> = fixtures("systemAgent")
         .into_iter()
         .filter(|fixture| {
@@ -181,17 +242,7 @@ async fn scoring_catches_a_model_that_misbehaves() {
             {"final": {"message": null, "hooksHandled": []}}
         ]),
     );
-    let report = setup::run_suite(
-        "misbehaving",
-        &fixtures,
-        &harness.config,
-        Some(&harness),
-        Engine::Stub,
-        None,
-        chrono::Utc::now(),
-    )
-    .await
-    .unwrap();
+    let report = replay_with_stub("misbehaving", &fixtures).await;
     let failed = failures(&report);
     let has = |needle: &str| failed.iter().any(|failure| failure.contains(needle));
     assert!(

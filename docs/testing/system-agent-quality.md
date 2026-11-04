@@ -6,7 +6,7 @@ It calls a real model, so it is opt-in and never part of default CI. A scripted 
 
 ## What is real
 
-Each System agent fixture is written into a disposable PostgreSQL database through the server's own stores. Then, for every pass:
+Each System agent fixture is written into a disposable PostgreSQL database, created for that run, through the server's own stores. Then, for every pass:
 
 1. The server's sweep decides whether the conversation needs a model call (including its free plan-word check) and builds the run input.
 2. The runner's System agent loop (the `omp` or `rust` engine) calls the configured model with the production prompt and the `plan_card` tool.
@@ -31,10 +31,10 @@ Each pass states its expected outcome: whether the System agent replies or stays
 
 ## Run a comparison
 
-1. Create a disposable PostgreSQL database on this machine. The harness refuses any host other than `127.0.0.1`, `localhost` or `[::1]`, and applies migrations itself.
+1. Point the harness at a PostgreSQL server on this machine whose role may create databases. The database in the URL is used only to connect for administration and is never written to: every run creates its own `kordi_eval_<pid>_<time>_<random>` database on that server, applies the migrations there, replays into it, and drops it when the run ends, also after an error, a panic, or Ctrl-C (`DROP DATABASE ... WITH (FORCE)` on PostgreSQL 13 and later). The harness refuses any server that is not a Unix socket, `localhost`, or a loopback address, judged from the parsed connection settings (URL host, `host`/`hostaddr` parameters, `PGHOST`). A loopback port can be a tunnel to a shared server, so never point it at a shared development tunnel even though nothing outside the run's own database is touched.
 
    ```bash
-   export KORDI_SYSTEM_AGENT_EVAL_DATABASE_URL=postgresql://postgres@127.0.0.1:5432/system_agent_eval
+   export KORDI_SYSTEM_AGENT_EVAL_DATABASE_URL=postgresql://postgres@127.0.0.1:5432/postgres
    ```
 
 2. Configure the baseline provider with the same environment variables a deployment uses, then run:
@@ -55,7 +55,7 @@ Each pass states its expected outcome: whether the System agent replies or stays
    cargo run --release -p kordi-system-agent-eval -- compare target/system-agent-eval/baseline.json target/system-agent-eval/candidate.json --markdown comparison.md --json comparison.json
    ```
 
-Use `--only <id>,<id>` to replay a subset. Model output varies between runs, so run each configuration more than once before deciding.
+Use `--only <id>,<id>` to replay a subset. Model output varies between runs, so run each configuration more than once before deciding. `compare` warns, on stderr and at the top of the comparison, when a candidate ran a different set of fixtures than the baseline, and lists the added and removed fixture ids; totals are then not comparable.
 
 ## Settings
 
@@ -73,6 +73,19 @@ Everything comes from environment variables; nothing is read from files and no k
 
 The provider fallback (`KORDI_SYSTEM_AGENT_FALLBACK_*`) must be unset, so each run measures one model.
 
+### OpenAI-compatible gateways
+
+Any endpoint that serves OpenAI chat completions over HTTPS works, for example OpenRouter:
+
+```bash
+export KORDI_SYSTEM_AGENT_PROVIDER=openai-compatible
+export KORDI_SYSTEM_AGENT_OPENAI_BASE_URL=https://openrouter.ai/api/v1
+export KORDI_SYSTEM_AGENT_OPENAI_MODEL=anthropic/claude-sonnet-4.5
+export KORDI_SYSTEM_AGENT_OPENAI_API_KEY=...   # from your shell or secret store, never a file in the repository
+```
+
+The base URL must be `https`, and the runner refuses local or private-network endpoints. Reports name the provider as `openai` with the gateway's host. The System agent route strips a leading `openai/` from the model ID, as it does in production, so a gateway model such as `openai/gpt-5.1` is requested as `gpt-5.1`; models under other vendor prefixes are sent unchanged.
+
 ## Metrics
 
 | Metric | Meaning |
@@ -86,16 +99,18 @@ The provider fallback (`KORDI_SYSTEM_AGENT_FALLBACK_*`) must be unset, so each r
 | Runs completed | The run finished without a provider error or timeout |
 | Passes the sweep skipped correctly | Passes with no model call; the same for every provider |
 
-Each report also records latency per run (p50, p95, max), tokens per run as the provider reports them, and an estimated cost when prices are set. The comparison lists every check that passed in the baseline and failed in a candidate, and the reverse.
+Each report also records latency per run (p50, p95, max), tokens per run as the provider reports them, and an estimated cost when prices are set. When some runs made model calls without reporting token counts, the cost covers only the runs that did and is marked partial (`costPartial` in JSON, `≥ $X (partial: n of m runs reported usage)` in text). Provider error text in reports is cut to 300 characters, and anything that looks like a credential (bearer tokens, `sk-` keys, Google keys and access tokens, JWTs, `key=` query parameters, long hex or base64 strings) is replaced with `[redacted]`. The comparison lists every check that passed in the baseline and failed in a candidate, and the reverse.
 
 ## In CI
 
 `pnpm check:server` runs the unit tests and the Grounding fixtures with the stub model. `pnpm check:migrations` replays every System agent fixture with the stub model on its PostgreSQL database and checks that the scoring catches a misbehaving model.
 
-To run the stub suite locally:
+To run the stub suite locally, including the database tests (each creates and drops its own database on the server):
 
 ```bash
 cargo run -p kordi-system-agent-eval -- run --stub --label stub
+KORDI_SYSTEM_AGENT_EVAL_DATABASE_URL=postgresql://postgres@127.0.0.1:5432/postgres \
+  cargo test -p kordi-system-agent-eval -- --include-ignored --test-threads=1
 ```
 
 ## Add a fixture

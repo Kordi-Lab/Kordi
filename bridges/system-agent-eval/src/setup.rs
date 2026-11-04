@@ -1,4 +1,5 @@
-//! Settings from the environment, the disposable database, and the suite run.
+//! Settings from the environment and the suite run. The disposable database
+//! lives in `crate::database`.
 //!
 //! The provider is configured exactly like a deployment's System agent
 //! (`KORDI_SYSTEM_AGENT_PROVIDER`, `KORDI_SYSTEM_AGENT_OPENAI_*`,
@@ -14,7 +15,6 @@ use kordi_cloud_server::system_agent::{
     bootstrap_system_agent, PendingSystemAgentConfig, SystemAgentConfig, SystemAgentService,
 };
 use kordi_cloud_server::ServerState;
-use sqlx_core::query::query;
 use sqlx_postgres::PgPool;
 
 use crate::fixture::Fixture;
@@ -22,7 +22,7 @@ use crate::replay::{self, Engine, Harness};
 use crate::report::{summarize, FixtureResult, PassResult, Prices, ProviderInfo, RunReport};
 use crate::score::{score_build, score_turn};
 
-pub const DATABASE_URL_VAR: &str = "KORDI_SYSTEM_AGENT_EVAL_DATABASE_URL";
+pub use crate::database::DATABASE_URL_VAR;
 const INPUT_PRICE_VAR: &str = "KORDI_SYSTEM_AGENT_EVAL_INPUT_USD_PER_MTOK";
 const OUTPUT_PRICE_VAR: &str = "KORDI_SYSTEM_AGENT_EVAL_OUTPUT_USD_PER_MTOK";
 /// A fallback would mix two models into one result.
@@ -106,7 +106,7 @@ pub fn live_settings() -> Result<Settings> {
     })
 }
 
-/// The host of a URL, or "unknown".
+/// The host of a provider URL, or "unknown"; reports keep nothing else of it.
 pub fn host(url: &str) -> String {
     url.split_once("://")
         .map(|(_, rest)| rest)
@@ -125,19 +125,6 @@ pub fn host(url: &str) -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
-/// Connects to the disposable database, which must be on this machine, and
-/// brings its schema up to date.
-pub async fn connect(url: &str) -> Result<PgPool> {
-    let host = host(url);
-    if !["127.0.0.1", "localhost", "[::1]"].contains(&host.as_str()) {
-        bail!("{DATABASE_URL_VAR} must point to a disposable database on 127.0.0.1, localhost, or [::1]");
-    }
-    // The server's own pool setup, which applies every migration.
-    kordi_cloud_server::pg::init_pool(url)
-        .await
-        .map_err(|error| anyhow::anyhow!("opening the quality test database: {error}"))
-}
-
 pub async fn harness(
     pool: PgPool,
     pending: PendingSystemAgentConfig,
@@ -146,19 +133,6 @@ pub async fn harness(
     let config = bootstrap_system_agent(&pool, pending)
         .await
         .map_err(|error| anyhow::anyhow!("provisioning the System agent: {error}"))?;
-    // Earlier runs' conversations stay in the database; keep the sweep on
-    // the current one.
-    query(
-        "UPDATE cloud_chat_conversation_members member
-         SET membership_state = 'left', left_at = now()
-         FROM cloud_chat_conversations conversation
-         WHERE conversation.conversation_id = member.conversation_id
-           AND conversation.creation_fingerprint = 'system-agent-eval'
-           AND member.account_id = $1 AND member.membership_state = 'active'",
-    )
-    .bind(&config.account_id)
-    .execute(&pool)
-    .await?;
     let state = Arc::new(
         ServerState::new(pool.clone(), EventBus::noop())
             .with_system_agent(SystemAgentService::new(config.clone())),
@@ -252,4 +226,72 @@ pub async fn run_suite(
         fixtures: results,
         summary,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kordi_cloud_agent_runner::client::AgentRuntimeRoute;
+    use kordi_cloud_agent_runner::model_loop::OpenAiProviderConfig;
+
+    fn openai_compatible(model: &str) -> PendingSystemAgentConfig {
+        let model = model.to_string();
+        PendingSystemAgentConfig::from_lookup(move |key| {
+            let value = match key {
+                "KORDI_SYSTEM_AGENT_PROVIDER" => "openai-compatible",
+                "KORDI_SYSTEM_AGENT_OPENAI_API_KEY" => "synthetic-gateway-key",
+                "KORDI_SYSTEM_AGENT_OPENAI_BASE_URL" => "https://openrouter.ai/api/v1",
+                "KORDI_SYSTEM_AGENT_OPENAI_MODEL" => model.as_str(),
+                "KORDI_SYSTEM_AGENT_PERSONA" => "Synthetic persona.",
+                _ => return None,
+            };
+            Some(value.to_string())
+        })
+        .unwrap()
+        .unwrap()
+    }
+
+    /// What the runner would send for an OpenAI-compatible gateway, through
+    /// the same material and route a live run uses.
+    async fn runner_config(model: &str) -> (SystemAgentConfig, OpenAiProviderConfig) {
+        let config = openai_compatible(model).unprovisioned();
+        let material = crate::replay::provider_material(&config, Engine::Rust)
+            .await
+            .unwrap();
+        let mut runner = OpenAiProviderConfig::from_material(&material).unwrap();
+        let route: AgentRuntimeRoute = serde_json::from_value(config.model_routing()).unwrap();
+        runner
+            .apply_runtime_route(&route, &material.provider)
+            .unwrap();
+        (config, runner)
+    }
+
+    #[tokio::test]
+    async fn openai_compatible_gateways_reach_the_runner_unchanged() {
+        let (config, runner) = runner_config("anthropic/claude-sonnet-4.5").await;
+        assert_eq!(runner.base_url, "https://openrouter.ai/api/v1");
+        assert_eq!(runner.model, "anthropic/claude-sonnet-4.5");
+        assert_eq!(runner.api_key, "synthetic-gateway-key");
+        let info = provider_info(&config, Engine::Rust);
+        assert_eq!(info.endpoint_host, "openrouter.ai");
+        assert_eq!(info.model, "anthropic/claude-sonnet-4.5");
+    }
+
+    /// The System agent route drops an `openai/` prefix, as it does in
+    /// production; the documentation tells gateway users about it.
+    #[tokio::test]
+    async fn the_route_drops_an_openai_prefix() {
+        let (_, runner) = runner_config("openai/gpt-5.1").await;
+        assert_eq!(runner.model, "gpt-5.1");
+    }
+
+    #[test]
+    fn provider_hosts_keep_nothing_but_the_host() {
+        assert_eq!(
+            host("https://user:pw@openrouter.ai/api/v1?key=x"),
+            "openrouter.ai"
+        );
+        assert_eq!(host("https://[::1]:8443/v1"), "[::1]");
+        assert_eq!(host(""), "unknown");
+    }
 }

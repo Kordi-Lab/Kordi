@@ -5,12 +5,19 @@
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
+use kordi_system_agent_eval::database::DisposableDatabase;
 use kordi_system_agent_eval::{fixture, report, setup};
 
 const USAGE: &str = "usage:
   system-agent-eval run --label NAME [--stub] [--fixtures DIR] [--only ID,ID] [--out FILE]
   system-agent-eval compare BASELINE.json CANDIDATE.json... [--markdown FILE] [--json FILE]
-  system-agent-eval list [--fixtures DIR]";
+  system-agent-eval list [--fixtures DIR]
+
+System agent fixtures need KORDI_SYSTEM_AGENT_EVAL_DATABASE_URL: a PostgreSQL
+server on this machine (Unix socket, localhost or a loopback address) and a
+database to connect to for administration. Each run creates its own
+kordi_eval_* database there, replays into it, and drops it afterwards; the
+named database is never written to. The role needs CREATEDB.";
 
 struct Args(Vec<String>);
 
@@ -79,44 +86,110 @@ async fn run(mut args: Args) -> Result<()> {
     let needs_database = fixtures
         .iter()
         .any(|fixture| matches!(fixture, fixture::Fixture::SystemAgent(_)));
-    let (config, harness) = if needs_database {
+    let database = if needs_database {
         let url = std::env::var(setup::DATABASE_URL_VAR).with_context(|| {
             format!(
-                "set {} to a disposable local database",
+                "set {} to a PostgreSQL server on this machine",
                 setup::DATABASE_URL_VAR
             )
         })?;
-        let pool = setup::connect(&url).await?;
-        let harness = setup::harness(pool, settings.pending, settings.engine).await?;
-        (harness.config.clone(), Some(harness))
+        Some(DisposableDatabase::prepare(&url).await?)
     } else {
-        (settings.pending.unprovisioned(), None)
+        None
     };
-    let report = setup::run_suite(
-        &label,
-        &fixtures,
-        &config,
-        harness.as_ref(),
-        settings.engine,
-        settings.prices,
-        now,
-    )
-    .await?;
-    let out = out
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("target/system-agent-eval").join(format!("{label}.json")));
+    // Listen before anything is created, so an interrupt at any point still
+    // reaches the cleanup below.
+    let interrupted = interrupts()?;
+    tokio::pin!(interrupted);
+    let result = async {
+        // The server's migration future is not `Send`, so the database is
+        // created here rather than in the spawned task.
+        let pool = match &database {
+            Some(database) => {
+                let pool = tokio::select! {
+                    pool = database.create() => pool?,
+                    () = &mut interrupted => bail!("interrupted"),
+                };
+                eprintln!("replaying into the new database {}", database.name());
+                Some(pool)
+            }
+            None => None,
+        };
+        // The suite runs on its own task, so a panic also reaches the cleanup.
+        let mut task = tokio::spawn(async move {
+            let (config, harness) = match pool {
+                Some(pool) => {
+                    let harness = setup::harness(pool, settings.pending, settings.engine).await?;
+                    (harness.config.clone(), Some(harness))
+                }
+                None => (settings.pending.unprovisioned(), None),
+            };
+            setup::run_suite(
+                &label,
+                &fixtures,
+                &config,
+                harness.as_ref(),
+                settings.engine,
+                settings.prices,
+                now,
+            )
+            .await
+        });
+        tokio::select! {
+            joined = &mut task => joined.unwrap_or_else(|error| Err(anyhow::anyhow!("the run stopped: {error}"))),
+            () = &mut interrupted => {
+                task.abort();
+                let _ = (&mut task).await;
+                Err(anyhow::anyhow!("interrupted"))
+            }
+        }
+    }
+    .await;
+    if let Some(database) = database {
+        let name = database.name().to_string();
+        if database.drop_database().await {
+            eprintln!("dropped the database {name}");
+        }
+    }
+    let report = result?;
+    let out = out.map(PathBuf::from).unwrap_or_else(|| {
+        PathBuf::from("target/system-agent-eval").join(format!("{}.json", report.label))
+    });
     if let Some(parent) = out.parent().filter(|parent| !parent.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(&out, serde_json::to_string_pretty(&report)? + "\n")?;
     let summary = &report.summary;
     eprintln!(
-        "{}/{} fixtures passed; report written to {}",
+        "{}/{} fixtures passed; estimated cost {}; report written to {}",
         summary.fixtures.passed,
         summary.fixtures.total,
+        report::cost(summary),
         out.display()
     );
     Ok(())
+}
+
+/// Resolves on Ctrl-C (or SIGTERM on Unix). The Unix handlers are installed
+/// when this is called, not when the future is first polled.
+#[cfg(unix)]
+fn interrupts() -> Result<impl std::future::Future<Output = ()>> {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut interrupt = signal(SignalKind::interrupt())?;
+    let mut terminate = signal(SignalKind::terminate())?;
+    Ok(async move {
+        tokio::select! {
+            _ = interrupt.recv() => {}
+            _ = terminate.recv() => {}
+        }
+    })
+}
+
+#[cfg(not(unix))]
+fn interrupts() -> Result<impl std::future::Future<Output = ()>> {
+    Ok(async {
+        let _ = tokio::signal::ctrl_c().await;
+    })
 }
 
 fn compare(mut args: Args) -> Result<()> {
@@ -141,6 +214,26 @@ fn compare(mut args: Args) -> Result<()> {
     };
     let baseline = read(&files[0])?;
     let candidates = files[1..].iter().map(read).collect::<Result<Vec<_>>>()?;
+    for candidate in &candidates {
+        let (added, removed) = report::fixture_set_diff(&baseline, candidate);
+        if !added.is_empty() || !removed.is_empty() {
+            eprintln!(
+                "warning: {} and {} ran different fixtures (added: {}; removed: {})",
+                baseline.label,
+                candidate.label,
+                if added.is_empty() {
+                    "none".into()
+                } else {
+                    added.join(", ")
+                },
+                if removed.is_empty() {
+                    "none".into()
+                } else {
+                    removed.join(", ")
+                },
+            );
+        }
+    }
     let (md, value) = report::compare(&baseline, &candidates);
     match markdown {
         Some(path) => std::fs::write(path, &md)?,

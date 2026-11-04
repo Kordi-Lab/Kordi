@@ -20,6 +20,7 @@ base64.workspace = true
 chrono.workspace = true
 kordi-cloud-agent-runner = { path = "../cloud-agent-runner" }
 kordi-cloud-server = { path = "../cloud-server" }
+regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlx-core = { version = "0.8", default-features = false, features = ["_rt-tokio"] }
