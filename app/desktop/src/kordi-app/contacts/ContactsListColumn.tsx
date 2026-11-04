@@ -128,7 +128,7 @@ export function ContactsListColumn({
       aria-label="Contacts list"
       className={cn(
         'app-contacts-list-column flex h-full min-h-0 flex-col p-2.5',
-        inSidebar ? 'w-full' : fullWidth ? 'is-standalone w-full' : 'is-standalone w-[248px] shrink-0',
+        inSidebar ? 'app-sidebar-list-content w-full' : fullWidth ? 'is-standalone w-full' : 'is-standalone w-[248px] shrink-0',
       )}
     >
       <SidebarListHeader title="Contacts">
