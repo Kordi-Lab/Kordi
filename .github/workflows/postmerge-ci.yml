@@ -200,10 +200,7 @@ jobs:
         run: npm install --global bun@1.4.2
 
       - name: Build desktop without signing credentials
-        run: >-
-          pnpm --dir app/desktop tauri:build:cloud
-          --config '{"bundle":{"createUpdaterArtifacts":false}}'
-          --bundles app
+        run: node scripts/ci/build-desktop-smoke.mjs
 
   result:
     name: Post-merge CI required
