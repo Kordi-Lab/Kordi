@@ -39,9 +39,9 @@ function WelcomeScreen({ signIn }: { signIn: BrowserSignInState }) {
       <h1 className="app-cloud-welcome-title">{loginHeading(false)}</h1>
       <p className="app-cloud-welcome-subtitle">{loginSubtitle(false)}</p>
       {signIn.error ? (
-        <div role="alert" className="app-cloud-login-error app-cloud-welcome-error rounded-[14px] border px-4 py-2.5 text-[12px] font-medium">
+        <p role="alert" className="app-cloud-welcome-error">
           {signIn.error}
-        </div>
+        </p>
       ) : null}
       <div className="app-cloud-welcome-actions">
         <button

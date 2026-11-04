@@ -218,9 +218,15 @@
   line-height: 1.4;
 }
 
+/* Errors on the welcome window are plain text: no box. */
 .app-cloud-welcome-error {
   width: 100%;
-  margin-top: 20px;
+  margin: 18px 0 0;
+  color: var(--app-cloud-login-danger-text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .app-cloud-welcome-actions {
