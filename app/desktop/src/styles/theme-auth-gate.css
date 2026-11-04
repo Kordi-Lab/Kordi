@@ -271,8 +271,13 @@ html.kordi-native-shell .app-cloud-workspace-surface {
   box-shadow: 0 10px 24px oklch(0.25 0.03 125 / 0.18);
 }
 
+/* Hover and press only lighten or darken the ink, never the theme accent. */
 .app-cloud-login-submit:hover:not(:disabled) {
-  background: var(--app-button-primary-hover);
+  filter: brightness(1.18);
+}
+
+.app-cloud-login-submit:active:not(:disabled) {
+  filter: brightness(0.92);
 }
 
 .app-cloud-starting-screen {
