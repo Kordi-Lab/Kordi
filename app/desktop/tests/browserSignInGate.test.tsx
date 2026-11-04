@@ -21,8 +21,9 @@ function json(status: number, body: unknown) {
 
 let baseUrlCounter = 0;
 
-function fakeSession({ probeStatus = 400, probeError = 'invalid_redirect_uri' } = {}) {
+function fakeSession({ probeStatus = 400, probeError = 'invalid_redirect_uri', tokenStatus = 200 } = {}) {
   const events: string[] = [];
+  let probes = 0;
   const completed: AppSignInResult[] = [];
   let state = '';
   let returnFromBrowser: (query: string) => void = () => {};
@@ -41,8 +42,11 @@ function fakeSession({ probeStatus = 400, probeError = 'invalid_redirect_uri' } 
   const baseUrl = `https://app${baseUrlCounter}.example.test`;
   const fetchImpl = (async (input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.includes('/authorize?')) return json(probeStatus, { error: probeError });
-    if (url.endsWith('/token')) return json(200, TOKEN_BODY);
+    if (url.includes('/authorize?')) {
+      probes += 1;
+      return json(probeStatus, { error: probeError });
+    }
+    if (url.endsWith('/token')) return tokenStatus === 200 ? json(200, TOKEN_BODY) : json(tokenStatus, { error: 'invalid_grant' });
     return json(404, {});
   }) as typeof fetch;
   const session: CloudBrowserSignInSession = {
@@ -50,7 +54,7 @@ function fakeSession({ probeStatus = 400, probeError = 'invalid_redirect_uri' } 
     complete: async (result) => { completed.push(result); },
   };
   return {
-    session, events, completed, baseUrl,
+    session, events, completed, baseUrl, probes: () => probes,
     returnFromBrowser: (query: (state: string) => string) => returnFromBrowser(query(state)),
   };
 }
@@ -114,6 +118,7 @@ test('the welcome screen opens the browser and finishes from the loopback redire
     await settle();
     assert.deepEqual(fake.events, ['open /v1/cloud/auth/app/authorize']);
     assert.match(text(), /Continue in your browser/);
+    assert.equal(document.activeElement?.textContent, 'Continue in your browser', 'focus moves to the wait screen');
     assert.doesNotMatch(text(), /Log in on|come back here|Link copied/, 'the wait screen has no subtitle');
 
     await act(async () => { button('Open browser again').click(); });
@@ -165,6 +170,42 @@ test('a browser refusal returns to the welcome screen with the error', async () 
     assert.equal(document.querySelector('[role="alert"]')?.textContent, 'Sign-in was canceled in the browser.');
     button('Log in');
     assert.equal(fake.completed.length, 0);
+  });
+});
+
+test('a refused pasted code is announced and described on the field', async () => {
+  await withDom(async (root) => {
+    const fake = fakeSession({ tokenStatus: 400 });
+    await render(root, fake.session);
+    await settle();
+    await act(async () => { button('Log in').click(); });
+    await settle();
+    await act(async () => { button('Paste code').click(); });
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Paste code"]')!;
+    assert.equal(input.getAttribute('aria-describedby'), null);
+    await act(async () => { typeInto(input, 'kac_expired'); });
+    await act(async () => { button('Continue').click(); });
+    await settle();
+    const describedBy = input.getAttribute('aria-describedby');
+    assert.ok(describedBy);
+    assert.match(document.getElementById(describedBy)?.textContent ?? '', /expired or was already used/);
+    assert.equal(fake.completed.length, 0);
+  });
+});
+
+test('an inconclusive availability check keeps browser sign-in and is asked again', async () => {
+  await withDom(async (root) => {
+    const fake = fakeSession({ probeStatus: 429, probeError: 'rate_limited' });
+    await render(root, fake.session);
+    await settle();
+    assert.equal(document.querySelector('input[type="email"]'), null);
+    assert.match(text(), /Welcome to Kordi/);
+    const probes = fake.probes();
+    await render(root, undefined);
+    await settle();
+    await render(root, fake.session);
+    await settle();
+    assert.ok(fake.probes() > probes, 'an unknown answer is not cached');
   });
 });
 

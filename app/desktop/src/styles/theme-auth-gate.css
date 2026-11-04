@@ -280,6 +280,16 @@ html.kordi-native-shell .app-cloud-workspace-surface {
   filter: brightness(0.92);
 }
 
+/* The dark theme's ink is near white, which brightening cannot lift, so
+ * hover and press darken it instead. */
+.kordi-app.theme-dark .app-cloud-login-submit:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.kordi-app.theme-dark .app-cloud-login-submit:active:not(:disabled) {
+  filter: brightness(0.8);
+}
+
 .app-cloud-starting-screen {
   --app-cloud-starting-bird: #f4ede1;
   --app-cloud-starting-bird-cut: #0d0f13;

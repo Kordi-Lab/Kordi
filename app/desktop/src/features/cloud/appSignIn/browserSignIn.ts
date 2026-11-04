@@ -11,6 +11,7 @@ import {
   buildAppAuthorizeUrl,
   exchangeAppAuthorizationCode,
   parseAppSignInCallback,
+  revokeAppSignIn,
   type AppSignInResult,
   type BrowserSignInIntent,
 } from './appSignInClient';
@@ -139,7 +140,12 @@ export class BrowserSignInAttempt {
         codeVerifier: this.verifier,
         device,
       });
-      if (this.cancelled) throw new BrowserSignInCancelledError();
+      if (this.cancelled) {
+        // Canceled while the exchange ran: end the sign-in it created
+        // instead of leaving its tokens alive on the server.
+        void this.revoke(result);
+        throw new BrowserSignInCancelledError();
+      }
       this.stopListening();
       return result;
     })();
@@ -154,6 +160,16 @@ export class BrowserSignInAttempt {
   cancel(): void {
     this.cancelled = true;
     this.stopListening();
+  }
+
+  private revoke(result: AppSignInResult): Promise<unknown> {
+    const session = {
+      token: result.session.token,
+      accountId: result.account.accountId,
+      expiresAt: result.session.expiresAt,
+      ...result.refresh,
+    };
+    return revokeAppSignIn(session, this.config.fetchImpl).catch(() => undefined);
   }
 
   private stopListening(): void {

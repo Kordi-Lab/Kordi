@@ -87,7 +87,8 @@ export type BrowserSignInAvailability = 'available' | 'unavailable' | 'unknown';
  * Asks whether this server offers browser sign-in for this app. A request
  * without a redirect URI is refused before any redirect: a server that knows
  * the client answers `invalid_redirect_uri`; an older server has no route
- * (404) and a server without this client answers `invalid_client`.
+ * (404 or 405) and a server without this client answers `invalid_client`.
+ * Any other answer is `unknown`.
  */
 export async function probeBrowserSignIn({
   baseUrl,
@@ -115,7 +116,9 @@ export async function probeBrowserSignIn({
     const error = oauthErrorCode(body);
     if (error === 'invalid_redirect_uri') return 'available';
     if (error === 'invalid_client') return 'unavailable';
-    return response.status >= 500 ? 'unknown' : 'unavailable';
+    // Rate limits, proxies, captive portals and outages say nothing about
+    // the server's support; ask again next time.
+    return 'unknown';
   } catch {
     return 'unknown';
   } finally {

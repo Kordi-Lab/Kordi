@@ -347,6 +347,11 @@
   line-height: 1.35;
 }
 
+/* Focused by script so screen readers land on the wait screen; not a control. */
+.app-cloud-browser-signin-title:focus {
+  outline: none;
+}
+
 .app-cloud-signin-action:disabled {
   cursor: default;
   opacity: 0.5;

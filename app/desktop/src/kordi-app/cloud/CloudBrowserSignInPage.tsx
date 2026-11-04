@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
 import { APP_WINDOW_RESIZE_EDGE } from '@/app/windowDrag';
 import type { BrowserSignInState } from '@/features/cloud/appSignIn/useBrowserSignIn';
@@ -65,6 +65,7 @@ function WelcomeScreen({ signIn }: { signIn: BrowserSignInState }) {
 
 function PasteCodeForm({ signIn }: { signIn: BrowserSignInState }) {
   const [code, setCode] = useState('');
+  const errorId = useId();
   const busy = signIn.submittingCode || signIn.phase === 'finishing';
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -83,13 +84,14 @@ function PasteCodeForm({ signIn }: { signIn: BrowserSignInState }) {
           value={code}
           disabled={busy}
           aria-invalid={signIn.codeError ? true : undefined}
+          aria-describedby={signIn.codeError ? errorId : undefined}
           onChange={(event) => setCode(event.currentTarget.value)}
         />
         <button type="submit" className="app-cloud-login-submit app-cloud-browser-signin-paste-submit" disabled={busy || !code.trim()}>
           Continue
         </button>
       </div>
-      {signIn.codeError ? <p role="alert" className="app-cloud-browser-signin-paste-error">{signIn.codeError}</p> : null}
+      {signIn.codeError ? <p id={errorId} role="alert" className="app-cloud-browser-signin-paste-error">{signIn.codeError}</p> : null}
     </form>
   );
 }
@@ -97,6 +99,11 @@ function PasteCodeForm({ signIn }: { signIn: BrowserSignInState }) {
 function WaitingScreen({ signIn }: { signIn: BrowserSignInState }) {
   const [pasteOpen, setPasteOpen] = useState(false);
   const finishing = signIn.phase === 'finishing';
+  const titleRef = useRef<HTMLParagraphElement>(null);
+  // The welcome screen's buttons are gone; keep focus on the new screen.
+  useEffect(() => {
+    titleRef.current?.focus({ preventScroll: true });
+  }, []);
   return (
     <div className="app-cloud-browser-signin-content" data-browser-sign-in="waiting" aria-live="polite">
       <div className="app-cloud-signin-badge" aria-hidden="true">
@@ -104,13 +111,13 @@ function WaitingScreen({ signIn }: { signIn: BrowserSignInState }) {
         <span className="app-cloud-signin-ring" />
         <span className="app-cloud-signin-mark"><KordiFlyingBird className="app-cloud-browser-signin-bird" cutout /></span>
       </div>
-      <p className="app-cloud-browser-signin-title">{finishing ? 'Signing in…' : 'Continue in your browser'}</p>
+      <p ref={titleRef} tabIndex={-1} className="app-cloud-browser-signin-title">{finishing ? 'Signing in…' : 'Continue in your browser'}</p>
       <div className="app-cloud-signin-actions">
         <button type="button" className="app-cloud-signin-action" onClick={signIn.reopenBrowser} disabled={finishing}>
           Open browser again
         </button>
         <span className="app-cloud-signin-separator" aria-hidden="true" />
-        <button type="button" className="app-cloud-signin-action app-cloud-signin-action-quiet" onClick={signIn.cancel} disabled={finishing}>
+        <button type="button" className="app-cloud-signin-action app-cloud-signin-action-quiet" onClick={signIn.cancel} disabled={finishing || signIn.submittingCode}>
           Cancel
         </button>
       </div>

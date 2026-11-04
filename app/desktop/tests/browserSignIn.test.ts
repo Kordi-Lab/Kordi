@@ -143,7 +143,13 @@ test('browser sign-in is offered only by servers that know this client', async (
   assert.equal(await probe(() => jsonResponse(400, { error: 'invalid_client' })), 'unavailable');
   assert.equal(await probe(() => jsonResponse(404, { errorCode: 'not_found' })), 'unavailable');
   assert.equal(await probe(() => new Response('<html></html>', { status: 404 })), 'unavailable');
+  assert.equal(await probe(() => new Response('', { status: 405 })), 'unavailable');
   assert.equal(await probe(() => jsonResponse(503, null)), 'unknown');
+  // Rate limits, refusals and captive portals say nothing about support.
+  assert.equal(await probe(() => jsonResponse(429, { error: 'rate_limited' })), 'unknown');
+  assert.equal(await probe(() => jsonResponse(403, { error: 'forbidden' })), 'unknown');
+  assert.equal(await probe(() => new Response('<html>Wi-Fi login</html>', { status: 200 })), 'unknown');
+  assert.equal(await probe(() => jsonResponse(400, { error: 'invalid_request' })), 'unknown');
   assert.equal(await probe(() => { throw new TypeError('offline'); }), 'unknown');
 });
 
@@ -262,7 +268,10 @@ function fakeDriver(overrides: Partial<BrowserSignInDriver> = {}) {
   };
 }
 
-function attemptConfig(driver: BrowserSignInDriver, respond: (request: Recorded) => Response = () => jsonResponse(200, TOKEN_BODY)) {
+function attemptConfig(
+  driver: BrowserSignInDriver,
+  respond: (request: Recorded) => Response | Promise<Response> = () => jsonResponse(200, TOKEN_BODY),
+) {
   const recorded = recordingFetch(respond);
   return {
     recorded,
@@ -319,6 +328,28 @@ test('canceling stops the listener and settles the wait as canceled', async () =
   await assert.rejects(pending, (caught: unknown) => isBrowserSignInCancelled(caught));
   assert.ok(fake.events.includes('cancel'));
   await assert.rejects(attempt.exchangeCode('kac_1'), (caught: unknown) => isBrowserSignInCancelled(caught));
+});
+
+test('canceling during a code exchange revokes the sign-in it created', async () => {
+  const fake = fakeDriver();
+  let releaseExchange: () => void = () => undefined;
+  const exchangeGate = new Promise<void>((resolve) => { releaseExchange = resolve; });
+  const { config, recorded } = attemptConfig(fake.driver, (request) => (
+    request.url.endsWith('/v1/cloud/auth/app/token')
+      ? exchangeGate.then(() => jsonResponse(200, TOKEN_BODY))
+      : jsonResponse(200, {})
+  ));
+  const attempt = await BrowserSignInAttempt.start(config, 'login');
+  const exchange = attempt.exchangeCode('kac_1');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  attempt.cancel();
+  releaseExchange();
+  await assert.rejects(exchange, (caught: unknown) => isBrowserSignInCancelled(caught));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const revoke = recorded.calls.find((call) => call.url === `${BASE_URL}/v1/cloud/auth/app/revoke`);
+  assert.ok(revoke, 'the discarded sign-in is revoked');
+  assert.equal(formOf(revoke).get('token'), TOKEN_BODY.refresh_token);
+  assert.equal(formOf(revoke).get('client_id'), 'kordi-desktop');
 });
 
 test('a pasted code finishes the attempt once and a failed code can be retried', async () => {
