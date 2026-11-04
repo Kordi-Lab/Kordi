@@ -28,8 +28,7 @@
 }
 
 .app-cloud-profile-row-value:focus-within {
-  outline: 2px solid color-mix(in oklab, var(--app-palette-accent) 42%, transparent);
-  outline-offset: 0;
+  box-shadow: inset 0 -1px color-mix(in oklab, var(--app-transient-muted-text) 45%, transparent);
 }
 
 .app-cloud-account-profile .app-cloud-profile-input {
@@ -49,6 +48,11 @@
   outline: none;
   appearance: none;
   -webkit-appearance: none;
+}
+
+/* The row supplies the focus cue; do not add the dialog's outer control ring. */
+.app-cloud-account-profile .app-cloud-profile-input:focus-visible {
+  outline: none;
 }
 
 .app-cloud-account-profile .app-cloud-profile-input::placeholder {
