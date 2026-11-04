@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
-  appSignInHost,
   probeBrowserSignIn,
   type BrowserSignInAvailability,
   type BrowserSignInIntent,
@@ -63,13 +62,12 @@ function BrowserSignIn({
   }, [onBrowserSignInChange]);
   const { start } = signIn;
   // Settle availability first so an older server falls back to the form.
-  const startWhenAvailable = useCallback<BrowserSignInState['start']>(async (intent: BrowserSignInIntent, options) => {
-    if ((await probe()) !== 'unavailable') await start(intent, options);
+  const startWhenAvailable = useCallback<BrowserSignInState['start']>(async (intent: BrowserSignInIntent) => {
+    if ((await probe()) !== 'unavailable') await start(intent);
   }, [probe, start]);
   return (
     <CloudBrowserSignInPage
       signIn={{ ...signIn, start: startWhenAvailable }}
-      host={appSignInHost(session.config.baseUrl)}
     />
   );
 }

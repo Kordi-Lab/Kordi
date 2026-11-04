@@ -49,15 +49,6 @@ export function appSignInClientId(
   return scheme.startsWith('kordi-') ? `kordi-desktop-${scheme.slice('kordi-'.length)}` : `${scheme}-desktop`;
 }
 
-/** The host the user signs in on, for copy such as "Log in on example.com". */
-export function appSignInHost(baseUrl: string): string {
-  try {
-    return new URL(baseUrl).host;
-  } catch {
-    return cleanBaseUrl(baseUrl);
-  }
-}
-
 export function appTokenEndpoint(baseUrl: string): string {
   return `${cleanBaseUrl(baseUrl)}${APP_TOKEN_PATH}`;
 }

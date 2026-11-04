@@ -3,7 +3,6 @@ import { test } from 'node:test';
 
 import {
   appSignInClientId,
-  appSignInHost,
   buildAppAuthorizeUrl,
   exchangeAppAuthorizationCode,
   parseAppSignInCallback,
@@ -91,8 +90,6 @@ test('each edition signs in with its own registered client', () => {
   assert.equal(appSignInClientId('kordi-staging', {}), 'kordi-desktop-staging');
   assert.equal(appSignInClientId(undefined, {}), 'kordi-desktop');
   assert.equal(appSignInClientId('kordi', { VITE_KORDI_APP_CLIENT_ID: 'kordi-desktop-beta' }), 'kordi-desktop-beta');
-  assert.equal(appSignInHost('https://app.example.test/'), 'app.example.test');
-  assert.equal(appSignInHost('http://127.0.0.1:17301'), '127.0.0.1:17301');
 });
 
 test('the authorize URL carries PKCE, state and the sign-up hint', () => {
@@ -254,7 +251,6 @@ function fakeDriver(overrides: Partial<BrowserSignInDriver> = {}) {
       rejectWait?.(new Error('Browser sign-in was canceled.'));
     },
     openUrl: async (url) => { events.push(`open ${url}`); },
-    copyText: async (text) => { events.push(`copy ${text}`); },
     ...overrides,
   };
   return {

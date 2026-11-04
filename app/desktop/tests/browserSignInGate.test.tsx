@@ -35,7 +35,6 @@ function fakeSession({ probeStatus = 400, probeError = 'invalid_redirect_uri' } 
     wait: () => new Promise((resolve, reject) => { returnFromBrowser = resolve; rejectWait = reject; }),
     cancel: async () => { events.push('cancel'); rejectWait(new Error('Browser sign-in was canceled.')); },
     openUrl: async (url) => { events.push(`open ${new URL(url).pathname}`); },
-    copyText: async () => { events.push('copy'); },
   };
   // Each case gets its own origin so the gate's availability cache stays per case.
   baseUrlCounter += 1;
@@ -115,7 +114,7 @@ test('the welcome screen opens the browser and finishes from the loopback redire
     await settle();
     assert.deepEqual(fake.events, ['open /v1/cloud/auth/app/authorize']);
     assert.match(text(), /Continue in your browser/);
-    assert.match(text(), new RegExp(`Log in on ${new URL(fake.baseUrl).host}, then come back here.`));
+    assert.doesNotMatch(text(), /Log in on|come back here|Link copied/, 'the wait screen has no subtitle');
 
     await act(async () => { button('Open browser again').click(); });
     assert.equal(fake.events.filter((event) => event.startsWith('open')).length, 2);

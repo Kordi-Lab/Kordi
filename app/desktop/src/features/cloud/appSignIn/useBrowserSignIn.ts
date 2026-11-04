@@ -16,9 +16,8 @@ export type BrowserSignInState = {
   error: string | null;
   /** Shown under the paste-code field. */
   codeError: string | null;
-  linkCopied: boolean;
   submittingCode: boolean;
-  start: (intent: BrowserSignInIntent, options?: { copyLink?: boolean }) => Promise<void>;
+  start: (intent: BrowserSignInIntent) => Promise<void>;
   reopenBrowser: () => void;
   cancel: () => void;
   submitCode: (code: string) => Promise<void>;
@@ -42,7 +41,6 @@ export function useBrowserSignIn({
   const [phase, setPhase] = useState<BrowserSignInPhase>('welcome');
   const [error, setError] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
-  const [linkCopied, setLinkCopied] = useState(false);
   const [submittingCode, setSubmittingCode] = useState(false);
   const attemptRef = useRef<BrowserSignInAttempt | null>(null);
   const startingRef = useRef(false);
@@ -59,7 +57,6 @@ export function useBrowserSignIn({
     attemptRef.current = null;
     setPhase('welcome');
     setCodeError(null);
-    setLinkCopied(false);
     setSubmittingCode(false);
     setError(message);
   }, []);
@@ -78,7 +75,7 @@ export function useBrowserSignIn({
     }
   }, [onSignedIn, returnToWelcome]);
 
-  const start = useCallback<BrowserSignInState['start']>(async (intent, options) => {
+  const start = useCallback<BrowserSignInState['start']>(async (intent) => {
     if (attemptRef.current || startingRef.current) return;
     startingRef.current = true;
     setError(null);
@@ -93,13 +90,8 @@ export function useBrowserSignIn({
     }
     startingRef.current = false;
     attemptRef.current = attempt;
-    setLinkCopied(false);
     setPhase('waiting');
-    if (options?.copyLink) {
-      await attempt.copyLink().then(() => setLinkCopied(true), () => attempt.openBrowser().catch(() => undefined));
-    } else {
-      void attempt.openBrowser().catch(() => undefined);
-    }
+    void attempt.openBrowser().catch(() => undefined);
     attempt.waitForBrowser().then(
       (result) => finish(attempt, result),
       (caught: unknown) => {
@@ -132,5 +124,5 @@ export function useBrowserSignIn({
     }
   }, [finish]);
 
-  return { phase, error, codeError, linkCopied, submittingCode, start, reopenBrowser, cancel, submitCode };
+  return { phase, error, codeError, submittingCode, start, reopenBrowser, cancel, submitCode };
 }

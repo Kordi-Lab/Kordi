@@ -94,7 +94,7 @@ function PasteCodeForm({ signIn }: { signIn: BrowserSignInState }) {
   );
 }
 
-function WaitingScreen({ signIn, host }: { signIn: BrowserSignInState; host: string }) {
+function WaitingScreen({ signIn }: { signIn: BrowserSignInState }) {
   const [pasteOpen, setPasteOpen] = useState(false);
   const finishing = signIn.phase === 'finishing';
   return (
@@ -105,11 +105,6 @@ function WaitingScreen({ signIn, host }: { signIn: BrowserSignInState; host: str
         <span className="app-cloud-signin-mark"><KordiFlyingBird className="app-cloud-browser-signin-bird" cutout /></span>
       </div>
       <p className="app-cloud-browser-signin-title">{finishing ? 'Signing in…' : 'Continue in your browser'}</p>
-      {finishing ? null : (
-        <p className="app-cloud-browser-signin-sub">
-          {signIn.linkCopied ? `Link copied. Open it in your browser and log in on ${host}.` : `Log in on ${host}, then come back here.`}
-        </p>
-      )}
       <div className="app-cloud-signin-actions">
         <button type="button" className="app-cloud-signin-action" onClick={signIn.reopenBrowser} disabled={finishing}>
           Open browser again
@@ -129,10 +124,10 @@ function WaitingScreen({ signIn, host }: { signIn: BrowserSignInState; host: str
   );
 }
 
-export function CloudBrowserSignInPage({ signIn, host }: { signIn: BrowserSignInState; host: string }) {
+export function CloudBrowserSignInPage({ signIn }: { signIn: BrowserSignInState }) {
   return (
     <GateFrame>
-      {signIn.phase === 'welcome' ? <WelcomeScreen signIn={signIn} /> : <WaitingScreen signIn={signIn} host={host} />}
+      {signIn.phase === 'welcome' ? <WelcomeScreen signIn={signIn} /> : <WaitingScreen signIn={signIn} />}
     </GateFrame>
   );
 }

@@ -24,7 +24,6 @@ export type BrowserSignInDriver = {
   wait(requestId: string, timeoutMs: number): Promise<string>;
   cancel(requestId: string): Promise<void>;
   openUrl(url: string): Promise<unknown>;
-  copyText(text: string): Promise<void>;
   focusApp?(): Promise<void>;
 };
 
@@ -47,7 +46,7 @@ export function isBrowserSignInCancelled(error: unknown): boolean {
   return error instanceof BrowserSignInCancelledError;
 }
 
-/** The native shell's loopback listener, system browser and clipboard. */
+/** The native shell's loopback listener and system browser. */
 export function nativeBrowserSignInDriver(): BrowserSignInDriver | null {
   if (!isNativeDesktopShell()) return null;
   return {
@@ -55,7 +54,6 @@ export function nativeBrowserSignInDriver(): BrowserSignInDriver | null {
     wait: (requestId, timeoutMs) => invokeDesktop<string>('cloud_oauth_loopback_wait', { requestId, timeoutMs }),
     cancel: (requestId) => invokeDesktop<void>('cloud_oauth_loopback_cancel', { requestId }),
     openUrl: (url) => openDesktopExternalUrl(url),
-    copyText: (text) => navigator.clipboard.writeText(text),
     focusApp: async () => {
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       await getCurrentWindow().setFocus();
@@ -96,10 +94,6 @@ export class BrowserSignInAttempt {
 
   openBrowser(): Promise<unknown> {
     return this.config.driver.openUrl(this.authorizeUrl);
-  }
-
-  copyLink(): Promise<void> {
-    return this.config.driver.copyText(this.authorizeUrl);
   }
 
   /** Resolves when the browser returns to the loopback redirect. */

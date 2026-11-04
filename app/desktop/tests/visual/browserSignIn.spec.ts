@@ -13,7 +13,7 @@ for (const theme of ['light', 'dark'] as const) {
 
     await logIn.click();
     await expect(page.getByText('Continue in your browser')).toBeVisible();
-    await expect(page.getByText('Log in on app.example.test, then come back here.')).toBeVisible();
+    await expect(page.getByText(/Log in on|come back here/)).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Open browser again' })).toBeInViewport({ ratio: 1 });
     await page.screenshot({ path: `test-results/browser-sign-in-waiting-${theme}.png` });
 

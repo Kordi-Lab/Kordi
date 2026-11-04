@@ -14,7 +14,6 @@ const driver: BrowserSignInDriver = {
   wait: () => new Promise<string>(() => {}),
   cancel: async () => {},
   openUrl: async () => {},
-  copyText: async () => {},
 };
 const fetchImpl = (async (input: RequestInfo | URL) => {
   const url = String(input);
