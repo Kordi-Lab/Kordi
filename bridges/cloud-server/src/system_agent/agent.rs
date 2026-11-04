@@ -91,6 +91,7 @@ pub async fn bootstrap_system_agent(
         name: pending.name,
         subtitle: pending.subtitle,
         provider_auth: pending.provider_auth,
+        resource_pools: pending.resource_pools,
         system_prompt: pending.system_prompt,
     };
 

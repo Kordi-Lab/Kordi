@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "defaultPool": "shared",
+  "pools": [
+    {
+      "id": "shared",
+      "systemAgent": {
+        "provider": "openrouter",
+        "baseUrl": "https://openrouter.ai/api/v1",
+        "model": "openai/gpt-6.1-terra",
+        "apiKeyEnv": "KORDI_POOL_SHARED_API_KEY",
+        "headers": {
+          "HTTP-Referer": "https://app.example.test",
+          "X-Title": "Kordi"
+        }
+      },
+      "limits": {
+        "systemAgentRunsPerConversationPerDay": 50,
+        "groundingRunsPerPersonPerDay": null
+      }
+    },
+    {
+      "id": "team-example",
+      "systemAgent": {
+        "provider": "openai-compatible",
+        "baseUrl": "https://models.example.test/v1",
+        "model": "example-large-model",
+        "apiKeyEnv": "KORDI_POOL_TEAM_EXAMPLE_API_KEY",
+        "estimatedCostMicrosPerRun": 2000
+      },
+      "grounding": {
+        "provider": "openai-compatible",
+        "baseUrl": "https://models.example.test/v1",
+        "model": "example-small-model",
+        "apiKeyEnv": "KORDI_POOL_TEAM_EXAMPLE_API_KEY"
+      },
+      "limits": {
+        "systemAgentRunsPerConversationPerDay": 200,
+        "groundingRunsPerPersonPerDay": 20,
+        "poolRunsPerDay": 10000,
+        "poolSpendMicrosPerDay": 20000000
+      },
+      "stopped": false,
+      "organizations": ["org_00000000000000000000000000000001"]
+    }
+  ]
+}

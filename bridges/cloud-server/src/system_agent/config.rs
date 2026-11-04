@@ -5,7 +5,10 @@
 //! member's own key. Everything here is read once at startup from the
 //! environment.
 
+use std::sync::Arc;
 use std::{env, fmt};
+
+use crate::resource_pools::{Feature, ResourcePoolConfigError, ResourcePools};
 
 use crate::service_model::{vertex_configuration, ServiceCredential};
 use crate::service_model_config::{shared_setting, validate_base_url};
@@ -35,6 +38,9 @@ pub struct SystemAgentProviderAuth {
     credential: ServiceCredential,
     model: String,
     base_url: String,
+    /// The runner's provider id for an API key: `openai`, or `openrouter`
+    /// for a gateway whose model ids carry a vendor prefix.
+    api_key_provider: &'static str,
 }
 
 impl SystemAgentProviderAuth {
@@ -58,7 +64,14 @@ impl SystemAgentProviderAuth {
             credential: ServiceCredential::ApiKey(api_key),
             model,
             base_url: DEFAULT_SYSTEM_AGENT_OPENAI_BASE_URL.to_string(),
+            api_key_provider: SYSTEM_AGENT_OPENAI_PROVIDER,
         })
+    }
+
+    /// Names the runner provider for an API key, such as `openrouter`.
+    pub fn with_provider_id(mut self, provider: &'static str) -> Self {
+        self.api_key_provider = provider;
+        self
     }
 
     /// Points the credential at an OpenAI-compatible gateway.
@@ -71,7 +84,7 @@ impl SystemAgentProviderAuth {
         if self.credential.is_google_cloud() {
             "vertex-ai"
         } else {
-            SYSTEM_AGENT_OPENAI_PROVIDER
+            self.api_key_provider
         }
     }
 
@@ -132,6 +145,9 @@ pub struct PendingSystemAgentConfig {
     pub name: String,
     pub subtitle: String,
     pub provider_auth: SystemAgentProviderAuth,
+    /// The pools that serve System agent and Grounding runs. The default
+    /// pool's System agent provider is `provider_auth`.
+    pub resource_pools: Arc<ResourcePools>,
 }
 
 #[derive(Debug, Clone)]
@@ -144,11 +160,13 @@ pub struct SystemAgentConfig {
     pub name: String,
     pub subtitle: String,
     pub(super) provider_auth: SystemAgentProviderAuth,
+    pub(crate) resource_pools: Arc<ResourcePools>,
 }
 
 #[derive(Debug)]
 pub enum SystemAgentConfigError {
     Invalid(&'static str),
+    ResourcePools(ResourcePoolConfigError),
     Database(sqlx_core::Error),
 }
 
@@ -156,6 +174,7 @@ impl fmt::Display for SystemAgentConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Invalid(message) => write!(f, "{message}"),
+            Self::ResourcePools(error) => write!(f, "resource pools: {error}"),
             Self::Database(error) => write!(f, "{error}"),
         }
     }
@@ -220,7 +239,9 @@ fn required_or_default(
 
 impl PendingSystemAgentConfig {
     pub fn from_env() -> Result<Option<Self>, SystemAgentConfigError> {
-        let config = Self::from_lookup(|key| env::var(key).ok())?;
+        let pools =
+            ResourcePools::from_file_env().map_err(SystemAgentConfigError::ResourcePools)?;
+        let config = Self::from_lookup_with_pools(|key| env::var(key).ok(), pools)?;
         if let Some(config) = &config {
             if config.name.trim().is_empty() || config.subtitle.trim().is_empty() {
                 return Err(SystemAgentConfigError::Invalid(
@@ -237,7 +258,17 @@ impl PendingSystemAgentConfig {
     }
 
     pub fn from_lookup(
+        get: impl FnMut(&str) -> Option<String>,
+    ) -> Result<Option<Self>, SystemAgentConfigError> {
+        Self::from_lookup_with_pools(get, None)
+    }
+
+    /// Like [`Self::from_lookup`]. With a pool file, the default pool's
+    /// System agent provider replaces the `*_OPENAI_*` and `*_VERTEX_*`
+    /// provider settings; the agent's identity still comes from `get`.
+    pub fn from_lookup_with_pools(
         mut get: impl FnMut(&str) -> Option<String>,
+        pools: Option<ResourcePools>,
     ) -> Result<Option<Self>, SystemAgentConfigError> {
         // The System agent is always on once its key is configured;
         // KORDI_SYSTEM_AGENT_ENABLED=false is the only way to turn it off, and
@@ -246,7 +277,13 @@ impl PendingSystemAgentConfig {
         if switched_off(switch.as_deref()) {
             return Ok(None);
         }
-        let provider_auth =
+        let provider_auth = if let Some(pools) = &pools {
+            pools
+                .default_pool()
+                .provider(Feature::SystemAgent)
+                .auth()
+                .clone()
+        } else {
             match setting(&mut get, "PROVIDER").as_deref() {
                 Some("vertex-ai") => {
                     let model = setting(&mut get, "VERTEX_MODEL");
@@ -256,6 +293,7 @@ impl PendingSystemAgentConfig {
                         credential,
                         base_url,
                         model,
+                        api_key_provider: SYSTEM_AGENT_OPENAI_PROVIDER,
                     }
                 }
                 None | Some("openai" | "openai-compatible") => {
@@ -279,7 +317,10 @@ impl PendingSystemAgentConfig {
                 Some(_) => return Err(SystemAgentConfigError::Invalid(
                     "KORDI_SYSTEM_AGENT_PROVIDER must be openai, openai-compatible, or vertex-ai",
                 )),
-            };
+            }
+        };
+        let resource_pools =
+            Arc::new(pools.unwrap_or_else(|| ResourcePools::from_system_agent(&provider_auth)));
         let owner_email =
             required_or_default(&mut get, "OWNER_EMAIL", DEFAULT_SYSTEM_AGENT_OWNER_EMAIL);
         if !owner_email.contains('@') {
@@ -307,6 +348,7 @@ impl PendingSystemAgentConfig {
                 DEFAULT_SYSTEM_AGENT_SUBTITLE,
             ),
             provider_auth,
+            resource_pools,
         }))
     }
 }
@@ -314,6 +356,10 @@ impl PendingSystemAgentConfig {
 impl SystemAgentConfig {
     pub fn provider_auth(&self) -> &SystemAgentProviderAuth {
         &self.provider_auth
+    }
+
+    pub fn resource_pools(&self) -> &ResourcePools {
+        &self.resource_pools
     }
 
     /// The runtime route stored on every System agent run so the runner
@@ -331,6 +377,8 @@ impl SystemAgentConfig {
 /// tests that drive the real sweep.
 #[cfg(test)]
 pub(crate) fn test_config(account_id: &str) -> SystemAgentConfig {
+    let provider_auth = SystemAgentProviderAuth::openai_api_key("synthetic-key", "synthetic-model")
+        .expect("synthetic System agent key");
     SystemAgentConfig {
         system_prompt: super::prompt::system_prompt(Some("Synthetic system persona.")).unwrap(),
         group_chat_enabled: true,
@@ -339,8 +387,8 @@ pub(crate) fn test_config(account_id: &str) -> SystemAgentConfig {
         agent_id: format!("system-agent-{account_id}"),
         name: DEFAULT_SYSTEM_AGENT_NAME.to_string(),
         subtitle: DEFAULT_SYSTEM_AGENT_SUBTITLE.to_string(),
-        provider_auth: SystemAgentProviderAuth::openai_api_key("synthetic-key", "synthetic-model")
-            .expect("synthetic System agent key"),
+        resource_pools: Arc::new(ResourcePools::from_system_agent(&provider_auth)),
+        provider_auth,
     }
 }
 

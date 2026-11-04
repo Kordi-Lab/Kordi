@@ -125,6 +125,11 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
 # Organization tests (docs/development/organizations.md) follow the same rule.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib organizations:: -- --test-threads=1
+# Resource pool tests (docs/development/resource-pools.md): admission under
+# concurrency, settlement, silent exhaustion, and per-organization routing.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib -- resource_pools system_agent::pool_tests \
+    common_ground::runs::pool_tests --include-ignored --test-threads=1
 
 # Simulator regression tests use their own fresh database and scripted local
 # model. Never enable the opt-in live-provider tests in unattended CI.

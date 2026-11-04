@@ -179,10 +179,16 @@ pub(in crate::common_ground) async fn queue_matches(
     let new_run = NewRun {
         run_id: &run_id,
         requester: &viewer.account_id,
+        conversation_id: None,
         prompt: prompt::match_prompt(viewer, batch),
         system_prompt: MATCH_SYSTEM,
     };
-    runs::insert(&mut tx, service, new_run).await?;
+    if !runs::insert(&mut tx, service, new_run).await? {
+        // The resource pool's daily limit is used up until the next UTC day.
+        return Ok(Queued::Limited(
+            crate::resource_pools::usage::until_next_day(),
+        ));
+    }
     tx.commit().await?;
     Ok(Queued::Pending(Pending::Running))
 }
@@ -261,10 +267,16 @@ pub(super) async fn queue_themes(
     let new_run = NewRun {
         run_id: &run_id,
         requester,
+        conversation_id: None,
         prompt: prompt::room_prompt(members),
         system_prompt: ROOM_SYSTEM,
     };
-    runs::insert(&mut tx, service, new_run).await?;
+    if !runs::insert(&mut tx, service, new_run).await? {
+        // The resource pool's daily limit is used up until the next UTC day.
+        return Ok(Queued::Limited(
+            crate::resource_pools::usage::until_next_day(),
+        ));
+    }
     tx.commit().await?;
     Ok(Queued::Pending(Pending::Running))
 }

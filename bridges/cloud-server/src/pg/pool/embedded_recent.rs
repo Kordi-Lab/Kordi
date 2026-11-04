@@ -417,4 +417,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "organization ownership indexes",
         "0164_organization_ownership_indexes.sql"
     ),
+    migration!(165, "resource pool usage", "0165_resource_pool_usage.sql"),
 ];

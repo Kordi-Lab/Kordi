@@ -68,6 +68,7 @@ pub async fn fail(
         .bind(run_id)
         .fetch_optional(&mut *tx)
         .await?;
+        crate::resource_pools::usage::settle_ended_run(&mut tx, run_id).await?;
         let (attempts, prompt) = state.unwrap_or((1, String::new()));
         let retry_from = retry_sequence(&prompt);
         query(
@@ -109,6 +110,9 @@ pub async fn release_stale_runs(pool: &PgPool) -> Result<u64, sqlx_core::Error> 
     let mut released = 0;
     for (run_id, ended) in stale {
         if ended {
+            // The run ended elsewhere; its pool reservation settles here.
+            let mut conn = pool.acquire().await?;
+            crate::resource_pools::usage::settle_ended_run(&mut conn, &run_id).await?;
             query(
                 "UPDATE cloud_pip_conversation_state SET active_run_id = NULL, updated_at = now()
                  WHERE active_run_id = $1",

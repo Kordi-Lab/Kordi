@@ -72,7 +72,9 @@ async fn provider_context_excludes_pre_join_messages_across_retry_and_completion
     .fetch_one(&pool)
     .await
     .unwrap();
+    let resource_pools = super::test_config(&system_agent).resource_pools;
     let config = super::SystemAgentConfig {
+        resource_pools,
         system_prompt: super::prompt::system_prompt(Some("Synthetic system persona.")).unwrap(),
         group_chat_enabled: true,
         account_id: system_agent.clone(),

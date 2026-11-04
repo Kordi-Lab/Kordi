@@ -411,6 +411,18 @@ pub async fn run(
             "Kordi System agent configured as {} ({})",
             system_agent_config.name, system_agent_config.account_id
         );
+        // Pool ids and limits only; providers and keys are never printed.
+        let pools = system_agent_config.resource_pools();
+        println!(
+            "Kordi resource pools: {} (default {})",
+            pools
+                .pools()
+                .iter()
+                .map(|pool| pool.summary())
+                .collect::<Vec<_>>()
+                .join(", "),
+            pools.default_pool().id()
+        );
         state = state.with_system_agent(SystemAgentService::new(system_agent_config));
     } else {
         println!("Kordi System agent is disabled");

@@ -28,6 +28,13 @@ use crate::{auth::routes::CloudSession, server::ServerState};
 use documents::{gather_documents, DOCUMENTS_SOURCE};
 use gather::{gather, BuildRequest};
 
+enum Start {
+    Started,
+    InProgress,
+    /// The resource pool did not admit the build.
+    Declined,
+}
+
 pub(super) async fn start(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
@@ -132,7 +139,7 @@ pub(super) async fn start(
             .execute(&mut *tx)
             .await?;
         if reserved.rows_affected() == 0 {
-            return Ok(false);
+            return Ok(Start::InProgress);
         }
         // The picks are remembered only with a build that starts.
         if let Some(picks) = &picks {
@@ -148,19 +155,23 @@ pub(super) async fn start(
         let new_run = NewRun {
             run_id: &run_id,
             requester: account,
+            conversation_id: None,
             prompt: user_prompt,
             system_prompt: &system_prompt,
         };
-        runs::insert(&mut tx, config, new_run).await?;
+        if !runs::insert(&mut tx, config, new_run).await? {
+            // The resource pool's daily limit is used up; nothing changes.
+            return Ok(Start::Declined);
+        }
         tx.commit().await?;
-        Ok::<_, sqlx_core::Error>(true)
+        Ok::<_, sqlx_core::Error>(Start::Started)
     }
     .await;
-    if matches!(result, Ok(true)) && picks.is_some() {
+    if matches!(result, Ok(Start::Started)) && picks.is_some() {
         profile.sources = picks;
     }
     match result {
-        Ok(true) => match card::owner_view(pool, account, Some(&profile)).await {
+        Ok(Start::Started) => match card::owner_view(pool, account, Some(&profile)).await {
             Ok(mut view) => {
                 use axum::response::IntoResponse;
                 view["used"] = json!(used);
@@ -168,7 +179,8 @@ pub(super) async fn start(
             }
             Err(error) => db_error(error),
         },
-        Ok(false) => err(
+        Ok(Start::Declined) => super::unavailable(),
+        Ok(Start::InProgress) => err(
             "common_ground_build_in_progress",
             "Your card is already being built.",
             StatusCode::CONFLICT,
