@@ -75,17 +75,50 @@ fn development_origin() -> Option<&'static str> {
 }
 
 pub fn callback_scheme() -> String {
-    match std::env::var("KORDI_CLIENT_CALLBACK_SCHEME") {
-        Ok(value)
+    let configured = std::env::var("KORDI_CLIENT_CALLBACK_SCHEME").ok();
+    match (configured.as_deref(), cfg!(debug_assertions)) {
+        (None, true) => "kordi".to_string(),
+        (value, _) => validate_callback_scheme(value).unwrap_or_else(|err| panic!("{err}")),
+    }
+}
+
+fn validate_callback_scheme(value: Option<&str>) -> Result<String, &'static str> {
+    match value {
+        Some(value)
             if !value.is_empty()
                 && value
                     .bytes()
                     .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-') =>
         {
-            value
+            Ok(value.to_string())
         }
-        Err(_) if cfg!(debug_assertions) => "kordi".to_string(),
-        _ => panic!("An ops client callback scheme is required"),
+        _ => Err("An ops client callback scheme is required"),
+    }
+}
+
+/// The settings a release build needs before it serves anything, checked
+/// with release rules regardless of how this binary was built. The binary
+/// runs it at startup in release builds, and a test runs it against the
+/// development compose environment.
+pub fn check_release_startup(get: impl Fn(&str) -> Option<String>) -> Result<(), String> {
+    let mut problems = Vec::new();
+    match get("KORDI_CLOUD_PUBLIC_BASE_URL") {
+        Some(value) => {
+            if let Err(err) = validate_public_origin(&value, false) {
+                problems.push(format!("KORDI_CLOUD_PUBLIC_BASE_URL: {err}"));
+            }
+        }
+        None => {
+            problems.push("KORDI_CLOUD_PUBLIC_BASE_URL: An ops public origin is required".into())
+        }
+    }
+    if let Err(err) = validate_callback_scheme(get("KORDI_CLIENT_CALLBACK_SCHEME").as_deref()) {
+        problems.push(format!("KORDI_CLIENT_CALLBACK_SCHEME: {err}"));
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems.join("; "))
     }
 }
 
@@ -97,6 +130,9 @@ pub(crate) const fn development_default(value: &'static str) -> &'static str {
         ""
     }
 }
+
+#[cfg(test)]
+mod dev_compose_tests;
 
 #[cfg(test)]
 mod tests {
@@ -153,6 +189,26 @@ mod tests {
                 "{origin}"
             );
         }
+    }
+
+    #[test]
+    fn release_startup_names_every_missing_setting() {
+        use super::check_release_startup;
+        let err = check_release_startup(|_| None).unwrap_err();
+        assert!(err.contains("KORDI_CLOUD_PUBLIC_BASE_URL"), "{err}");
+        assert!(err.contains("KORDI_CLIENT_CALLBACK_SCHEME"), "{err}");
+        let err = check_release_startup(|key| match key {
+            "KORDI_CLOUD_PUBLIC_BASE_URL" => Some("http://example.test".into()),
+            _ => Some("Kordi Beta".into()),
+        })
+        .unwrap_err();
+        assert!(err.contains("requires HTTPS"), "{err}");
+        assert!(err.contains("callback scheme"), "{err}");
+        assert!(check_release_startup(|key| match key {
+            "KORDI_CLOUD_PUBLIC_BASE_URL" => Some("https://example.test".into()),
+            _ => Some("kordi-beta".into()),
+        })
+        .is_ok());
     }
 
     #[test]

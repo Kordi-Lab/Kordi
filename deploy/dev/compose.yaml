@@ -167,6 +167,12 @@ services:
       KORDI_SYSTEM_AGENT_OPENAI_API_KEY: ${KORDI_SYSTEM_AGENT_OPENAI_API_KEY:-}
       KORDI_SYSTEM_AGENT_OPENAI_MODEL: ${KORDI_SYSTEM_AGENT_OPENAI_MODEL:-}
       KORDI_SYSTEM_AGENT_OPENAI_BASE_URL: ${KORDI_SYSTEM_AGENT_OPENAI_BASE_URL:-}
+      # Release builds have no defaults for these. Set them in deploy/dev/.env
+      # together with an API key to turn the System agent on.
+      KORDI_SYSTEM_AGENT_AGENT_NAME: ${KORDI_SYSTEM_AGENT_AGENT_NAME:-}
+      KORDI_SYSTEM_AGENT_AGENT_SUBTITLE: ${KORDI_SYSTEM_AGENT_AGENT_SUBTITLE:-}
+      KORDI_SYSTEM_AGENT_OWNER_EMAIL: ${KORDI_SYSTEM_AGENT_OWNER_EMAIL:-}
+      KORDI_SYSTEM_AGENT_PERSONA: ${KORDI_SYSTEM_AGENT_PERSONA:-}
       # Old names from existing .env files. The server reads each one only
       # when the new name above is empty.
       KORDI_PIP_ENABLED: ${KORDI_PIP_ENABLED:-false}

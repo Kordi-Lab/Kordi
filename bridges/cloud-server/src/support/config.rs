@@ -191,7 +191,7 @@ impl PendingSupportConfig {
         Ok(config)
     }
 
-    fn from_lookup(
+    pub(crate) fn from_lookup(
         mut get: impl FnMut(&str) -> Option<String>,
     ) -> Result<Option<Self>, SupportConfigError> {
         if !enabled(get("KORDI_SUPPORT_ENABLED").as_deref()) {

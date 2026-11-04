@@ -49,8 +49,7 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if !cfg!(debug_assertions) {
-        kordi_cloud_server::distribution::public_origin();
-        kordi_cloud_server::distribution::callback_scheme();
+        kordi_cloud_server::distribution::check_release_startup(|key| std::env::var(key).ok())?;
     }
 
     // A set but unusable pages directory is a configuration error, not a
