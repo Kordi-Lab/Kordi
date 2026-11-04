@@ -80,12 +80,12 @@ test('right-panel task dashboard nests subagent tasks under the whole request', 
 
   assert.equal(dashboard.tasks.length, 1);
   assert.equal(dashboard.tasks[0].title, 'review the code and give me a report');
-  assert.equal(dashboard.tasks[0].statusLabel, 'Needs input');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Active');
   assert.equal(dashboard.tasks[0].subtasks.length, 2);
   assert.equal(dashboard.tasks[0].subtasks[0].title, 'Inspect');
   assert.equal(dashboard.tasks[0].subtasks[0].statusLabel, 'Done');
   assert.equal(dashboard.tasks[0].subtasks[1].title, 'research_docs');
-  assert.equal(dashboard.tasks[0].subtasks[1].statusLabel, 'Done');
+  assert.equal(dashboard.tasks[0].subtasks[1].statusLabel, 'Subagent active');
   assert.equal(dashboard.tasks[0].subtasks[1].target, '/root/research_docs');
   assert.deepEqual(dashboard.tasks[0].subtasks[1].writeScope, ['docs']);
 });
@@ -132,8 +132,8 @@ test('task dashboard updates nested subagent state when a later task operator re
   const dashboard = buildTaskActivityDashboard({ messages });
 
   assert.equal(dashboard.tasks.length, 1);
-  assert.equal(dashboard.tasks[0].status, 'waiting');
-  assert.equal(dashboard.tasks[0].statusLabel, 'Needs input');
+  assert.equal(dashboard.tasks[0].status, 'completed');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Done');
   assert.equal(dashboard.tasks[0].subtasks.length, 1);
   assert.equal(dashboard.tasks[0].subtasks[0].status, 'completed');
   assert.equal(dashboard.tasks[0].subtasks[0].statusLabel, 'Done');
