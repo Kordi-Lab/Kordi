@@ -113,3 +113,22 @@
 @media (prefers-reduced-motion: reduce) {
   .app-chat-split-workspace { transition-duration: 0s !important; }
 }
+
+/* Shared pane tabs already supply the title row; align chat destinations with the main pane. */
+.app-page-header.app-chat-pane-header.app-companion-tabbed-header {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 4px;
+  height: calc(var(--app-chat-pane-header-height) - 40px);
+  min-height: calc(var(--app-chat-pane-header-height) - 40px);
+  padding: 0 var(--app-chat-pane-header-inline) 0 calc(var(--app-chat-pane-header-inline) - var(--app-chat-pane-tab-inline));
+}
+.app-page-header.app-chat-pane-header.app-companion-tabbed-header.app-chat-native-metadata-header {
+  height: calc(var(--app-chat-pane-tab-height) + 5px);
+  min-height: calc(var(--app-chat-pane-tab-height) + 5px);
+}
+.app-companion-tabbed-header > .app-chat-destination-tabs { position: static; }
+.app-companion-tabbed-header > .app-companion-header-controls {
+  align-self: end; align-items: center; height: var(--app-chat-pane-tab-height); margin-top: 0;
+}
+.app-companion-menu-session { padding: 6px 10px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--app-divider); }
+.app-companion-menu-session h2 { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.app-companion-menu-session p { margin-top: 3px; font-size: 11px; color: var(--app-transient-subtle-text); }

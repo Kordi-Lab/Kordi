@@ -1,4 +1,14 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
+
+/** Session identity lives in the options menu once the shared tab strip owns the title row. */
+async function expectSessionIdentity(page: Page, panel: Locator, title: string, detail: string | RegExp) {
+  await panel.getByRole('button', { name: 'Side chat options', exact: true }).click();
+  const identity = panel.locator('.app-companion-menu-session');
+  await expect(identity.getByRole('heading')).toHaveText(title);
+  await expect(identity.locator('p')).toHaveText(detail);
+  await page.keyboard.press('Escape');
+  await expect(identity).toHaveCount(0);
+}
 
 for (const role of ['owned-agent','external-agent']) {
   test(`thread Agent quotes the exact current question for ${role} after reopening`, async ({page},testInfo) => {
@@ -170,8 +180,7 @@ test('private Ask Agent and shared Agent threads keep separate identities, avata
   await page.goto('/tests/visual/subsessionConversation.html');
   await page.getByRole('button', { name: 'Chat', exact: true }).click();
   const panel = page.locator('[data-chat-side-agent-panel="true"]');
-  await expect(panel.getByText('Ask Agent · Private workspace', { exact: true })).toBeVisible();
-  await expect(panel.getByText('Only you · Agent session', { exact: true })).toBeVisible();
+  await expectSessionIdentity(page, panel, 'Private workspace', 'Ask Agent · Only you · Agent session');
   const field = panel.getByRole('textbox');
   await field.fill('PRIVATE_DRAFT_CANARY');
   await panel.getByRole('button', { name: 'Close side chat', exact: true }).click();
@@ -212,8 +221,7 @@ test('subsession has a bounded transcript, visible composer, and explicit identi
   expect(panelBounds!.x).toBeGreaterThan(0);
   expect(panelBounds!.width).toBeLessThan(page.viewportSize()!.width);
   const field = panel.getByRole('textbox');
-  await expect(panel.getByText('Agent thread · Planet research', { exact: true })).toBeVisible();
-  await expect(panel.getByText(/Shared with chat members/)).toBeVisible();
+  await expectSessionIdentity(page, panel, 'Planet research', /^Agent thread · Shared with chat members/);
   await expect(panel.getByText(/Only you/)).toHaveCount(0);
   await expect(panel.getByText('Queued', { exact: true })).toHaveCount(2);
   await expect(panel.locator('.app-queued-message').filter({ hasText: 'Owner queued follow' })).toContainText('Alex');
@@ -232,7 +240,7 @@ test('subsession has a bounded transcript, visible composer, and explicit identi
     const snapshot = (window as unknown as {fixtureSubsession: {agentDisplayName: string; version: number}}).fixtureSubsession;
     snapshot.agentDisplayName = 'Research Agent'; snapshot.version += 1;
   });
-  await expect(panel.getByText(/Shared with chat members · Research Agent · Owner · Alex/)).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Side chat options', exact: true })).toHaveAttribute('title', /Shared with chat members · Research Agent · Owner · Alex/);
   await field.pressSequentially(' continue');
   await panel.getByRole('button', { name: 'Send to Planet research', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as {sentSubsessionRequests: unknown[]}).sentSubsessionRequests[1])).toEqual({ clientMessageId: expect.any(String), text: expect.stringMatching(/^@KordiAlex\s+continue$/), mentions: [expect.objectContaining({ agentId: 'fixture-agent' })] });

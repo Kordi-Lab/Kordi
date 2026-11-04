@@ -68,6 +68,8 @@ test('panel switching and hiding retain the agent session, draft, and mounted in
     assert.equal(document.querySelector('[aria-label="Calendar"]')?.getAttribute('aria-pressed'), 'true');
     await click('Digest');
     await click('Digest');
+    assert.equal(layout.isVisible, true, 'Repeated tool clicks select its existing tab');
+    await click('Fold pane');
     assert.equal(layout.isVisible, false);
     assert.equal(document.querySelector('[aria-label="Digest"]')?.getAttribute('aria-pressed'), 'false');
     await click('Chat');
@@ -75,15 +77,15 @@ test('panel switching and hiding retain the agent session, draft, and mounted in
     assert.equal(input?.value, 'Unsent attachment note');
     assert.equal(chat.draftText, 'Keep this draft');
     assert.equal(document.querySelector('.app-companion-more'), null);
-    assert.equal(document.querySelectorAll('.app-companion-toolbar button').length, 3);
+    assert.equal(document.querySelectorAll('.app-companion-toolbar button').length, 4);
     // The second click of a double click must not reopen the panel.
     for (const detail of [1, 2]) {
-      await act(() => document.querySelector('[aria-label="Chat"]')!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, detail })));
+      await act(() => document.querySelector('.app-companion-toolbar button:last-child')!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, detail })));
     }
     assert.equal(layout.isVisible, false);
     await click('Calendar');
     assert.equal(layout.isVisible, true);
-    await click('Calendar');
+    await click('Fold pane');
     assert.equal(layout.isVisible, false);
     await click('Chat');
     assert.equal(chat.draftText, 'Keep this draft');

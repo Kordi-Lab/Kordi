@@ -1,4 +1,4 @@
-import { useEffect, useRef, type DragEventHandler } from 'react';
+import { useContext, useEffect, useRef, type DragEventHandler } from 'react';
 import {
   ChevronDown,
   ChevronLeft,
@@ -19,7 +19,8 @@ import {
 import { participantSpaceSessionRowTitle } from '@/pages/workspaceSidebar.chatHelpers';
 import { BackgroundSessionHeaderControl } from '@/kordi-app/components/backgroundSessionStopControl';
 import { CompanionTitlebar } from './CompanionTitlebar';
-import { useCompanionTitlebarPortal } from './companionTitlebarContext';
+import { NativeChatTitlebarContext } from '@/app/nativeChatTitlebarContext';
+import { CompanionTitlebarContext, useCompanionTitlebarPortal } from './companionTitlebarContext';
 
 type CompanionHeaderMenu = {
   actionsOpen: boolean;
@@ -57,6 +58,8 @@ export function CompanionHeader({
   menu,
   actions,
 }: CompanionHeaderProps) {
+  const tabbed = Boolean(useContext(CompanionTitlebarContext)?.hasTabs);
+  const native = Boolean(useContext(NativeChatTitlebarContext)?.companion);
   const titlebarHosted = useCompanionTitlebarPortal();
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const actionsTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -116,7 +119,7 @@ export function CompanionHeader({
 
   const header = (
     <div
-      className="app-page-header app-chat-pane-header app-companion-pane-header relative z-40 flex shrink-0 cursor-grab items-start justify-between gap-3 active:cursor-grabbing"
+      className={cn("app-page-header app-chat-pane-header app-companion-pane-header relative z-40 flex shrink-0 cursor-grab items-start justify-between gap-3 active:cursor-grabbing", tabbed && "app-companion-tabbed-header", tabbed && native && "app-chat-native-metadata-header")}
       draggable
       onDragStart={actions.onDragStart}
       onDragEnd={actions.onDragEnd}
@@ -124,7 +127,7 @@ export function CompanionHeader({
       data-companion-side={side}
       data-has-destinations={titlebarHosted ? undefined : true}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+      {tabbed ? destinationTabs : <div className="flex min-w-0 flex-1 items-center gap-2">
         <div className="min-w-0 flex-1">
           <div className="app-page-header-title-row app-chat-pane-title-row flex min-w-0 w-full items-center text-white">
             <h2
@@ -143,7 +146,7 @@ export function CompanionHeader({
             <span data-chat-session-subtitle="true" className="min-w-0 truncate" title={subtitle}>{subtitle}</span>
           </div>
         </div>
-      </div>
+      </div>}
       <div
         ref={controlsRef}
         className="app-companion-header-controls relative flex shrink-0 items-center self-start"
@@ -158,7 +161,7 @@ export function CompanionHeader({
           ref={actionsTriggerRef}
           type="button"
           className="app-companion-header-control"
-          title="Side chat options"
+          title={tabbed ? `${conversation.name} · ${subtitle}` : 'Side chat options'}
           aria-label="Side chat options"
           aria-expanded={menu.actionsOpen}
           onClick={actions.onToggleActions}
@@ -171,6 +174,10 @@ export function CompanionHeader({
             data-side-chat-root-menu="true"
             className="app-transient-surface absolute right-8 top-full z-50 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-[18px] border p-1.5"
           >
+            {tabbed ? <div className="app-companion-menu-session">
+              <h2>{conversation.name}</h2>
+              <p>{contextLabel} · {subtitle}</p>
+            </div> : null}
             {menu.sessionListOpen ? (
               <div
                 ref={sessionListRef}
@@ -286,7 +293,7 @@ export function CompanionHeader({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      {titlebarHosted ? null : destinationTabs}
+      {titlebarHosted || tabbed ? null : destinationTabs}
     </div>
   );
   return (

@@ -5,6 +5,9 @@ import { CompanionTitlebarContext } from './companionTitlebarContext';
 import { ChatCompanionSplitDivider } from './chatsPage.companionWorkspace';
 import type { CompanionView } from './chatsPage.companionToolbar';
 import type { useChatCompanionLayout } from './useChatCompanionLayout';
+import { CompanionTitlebar } from './CompanionTitlebar';
+import { companionDocumentTabIds } from '@/features/documents/companionTabsState';
+import { companionViewTabId, type CompanionToolView } from './useCompanionPaneTabs';
 
 const CompanionOverview = lazy(() => import('./chatsPage.companionOverview'));
 
@@ -16,11 +19,13 @@ type Props = {
   companionPane: ReactNode;
   /** Reader shown for the `document` view. */
   documentPane?: ReactNode;
+  tabBar?: ReactNode;
+  openedViews?: CompanionToolView[];
   children: ReactNode;
 };
 
 /** Own the split geometry and keep companion content alive through its exit. */
-export function ChatCompanionLayout({ containerRef, layout, view, accountId, companionPane, documentPane, children }: Props) {
+export function ChatCompanionLayout({ containerRef, layout, view, accountId, companionPane, documentPane, tabBar, openedViews, children }: Props) {
   const setTitlebarLayout = useContext(NativeChatTitlebarContext)?.setCompanionLayout;
   const { gridColumns, side, motionDuration } = layout;
   useLayoutEffect(() => {
@@ -52,14 +57,28 @@ export function ChatCompanionLayout({ containerRef, layout, view, accountId, com
     <div className="app-companion-panel-motion" data-open={layout.isVisible} data-side={layout.side}
       aria-hidden={!layout.isVisible} inert={!layout.isVisible}>
       <div className="app-companion-panel-surface" style={{ width: layout.panelWidth }}>
-        <CompanionTitlebarContext value={{ width: layout.panelWidth, side: layout.side, isVisible: layout.isVisible }}>
+        <CompanionTitlebarContext value={{ width: layout.panelWidth, side: layout.side, isVisible: layout.isVisible, hasTabs: !!tabBar }}>
+          {tabBar ? <CompanionTitlebar primary>{tabBar}</CompanionTitlebar> : null}
           <Activity mode={layout.isPresent && view === 'chat' ? 'visible' : 'hidden'}>
-            {companionPane}
+            <div className="app-companion-tab-content" role={tabBar ? 'tabpanel' : undefined}
+              id={companionDocumentTabIds(companionViewTabId('chat')).panel}
+              aria-labelledby={tabBar ? companionDocumentTabIds(companionViewTabId('chat')).tab : undefined}>
+              {companionPane}
+            </div>
           </Activity>
-          {layout.isPresent && view === 'document' ? documentPane : null}
-          {layout.isPresent && view !== 'chat' && view !== 'document' ? <Suspense fallback={<aside className="app-companion-overview" role="status">Loading panel…</aside>}>
-            <CompanionOverview accountId={accountId} view={view} onClose={() => layout.setFolded(true)} />
-          </Suspense> : null}
+          <Activity mode={layout.isPresent && view === 'document' ? 'visible' : 'hidden'}>
+            {documentPane}
+          </Activity>
+          {(['digest', 'calendar'] as const).filter(tool => openedViews ? openedViews.includes(tool) : view === tool).map(tool => {
+            const ids = companionDocumentTabIds(companionViewTabId(tool));
+            return <Activity key={tool} mode={layout.isPresent && view === tool ? 'visible' : 'hidden'}>
+              <div className="app-companion-tab-content" role={tabBar ? 'tabpanel' : undefined} id={ids.panel} aria-labelledby={tabBar ? ids.tab : undefined}>
+                <Suspense fallback={<aside className="app-companion-overview" role="status">Loading panel…</aside>}>
+                  <CompanionOverview accountId={accountId} view={tool} showHeader={!tabBar} onClose={() => layout.setFolded(true)} />
+                </Suspense>
+              </div>
+            </Activity>;
+          })}
         </CompanionTitlebarContext>
       </div>
     </div>
