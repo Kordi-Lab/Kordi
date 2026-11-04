@@ -148,7 +148,7 @@ export function AgentStudioRail({
   const inSidebar = useSessionPanelSlot() !== null;
   return (
     <SessionPanelPortal>
-    <aside className={cn('app-agent-studio-rail', inSidebar && 'is-in-sidebar')}>
+    <aside className={cn('app-agent-studio-rail', inSidebar && 'app-sidebar-list-content is-in-sidebar')}>
       <header className="app-agent-studio-rail-head">
         <SidebarListHeader title="Factory">
           <details
