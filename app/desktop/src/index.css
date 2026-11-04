@@ -82,3 +82,5 @@
 
 @import './styles/message-layout.css';
 @import './styles/theme-palette.css';
+
+@import './styles/shell-compact.css';

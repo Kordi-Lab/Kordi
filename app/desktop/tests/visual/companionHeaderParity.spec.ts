@@ -199,6 +199,10 @@ for (const appearance of ['light', 'dark'] as const) {
 
   test(`${appearance}: native title row hosts tool tabs while preserving Ask Agent controls`, async ({ page }, testInfo) => {
     const errors = await openPanel(page, `theme=${appearance}`);
+    await page.evaluate(() => {
+      document.documentElement.classList.add('kordi-native-shell');
+      document.body.classList.add('kordi-native-shell');
+    });
     const titlebar = page.locator('.app-native-companion-titlebar');
     await expect(titlebar.getByRole('tab', { name: 'Fix transcript scroll jitter', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(titlebar.getByRole('button', { name: 'Close Fix transcript scroll jitter', exact: true })).toBeVisible();
@@ -206,8 +210,7 @@ for (const appearance of ['light', 'dark'] as const) {
     await expect(page.locator(`${panel} .app-chat-pane-title-row`)).toHaveCount(0);
     await expect(page.locator(panel).getByRole('button', { name: 'Side chat options' })).toBeVisible();
     const side = await expectMatchingHeaders(page, nativeSelectors, true);
-    // Both title rows are painted by the window titlebar, which shares the sidebar's material across
-    // the conversation column, at the same height.
+    // Both transparent title rows share the continuous shell backing at the same height.
     const titleRows = await page.evaluate(() => {
       const describe = (selector: string) => {
         const row = document.querySelector<HTMLElement>(selector)!;
@@ -222,7 +225,7 @@ for (const appearance of ['light', 'dark'] as const) {
       };
     });
     expect(titleRows.panel).toEqual(titleRows.main);
-    expect(titleRows.main.painter?.split(/\s+/)).toContain('app-native-titlebar');
+    expect(titleRows.main.painter?.split(/\s+/)).toContain('app-shell');
     expect(titleRows.main.own).toBe('rgba(0, 0, 0, 0)');
     await expectContinuousDivider(page, '.app-chat-native-metadata-header', '.app-chat-pane-header');
     await expectTabHoverParity(page);
