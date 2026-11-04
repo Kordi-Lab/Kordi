@@ -1,0 +1,2 @@
+#root { height: calc(100% - 40px); }
+.companion-documents-fixture-label { position: fixed; inset: auto 0 0; height: 40px; display: flex; align-items: center; padding: 0 16px; background: #172927; color: #e4eeeb; font: 12px system-ui; }

@@ -207,7 +207,7 @@ test('a double click on a tab label renames the document; a single click still s
       api,
       onClose: () => undefined,
     }));
-    await waitForReactCondition(() => tabs(root).map((entry) => entry.textContent).join() === 'Untitled,Their notes', 'the readers report their titles');
+    await waitForReactCondition(() => tabs(root).map((entry) => entry.getAttribute('aria-label')).join() === 'Untitled,Their notes', 'the readers report their titles');
 
     await fire(tabs(root)[1], 'click');
     assert.deepEqual(activated, ['attachment:att_theirs'], 'a single click switches tabs');
@@ -221,12 +221,12 @@ test('a double click on a tab label renames the document; a single click still s
     assert.equal(input.selectionEnd, 'Untitled'.length);
     await press(input, 'Escape');
     assert.equal(field(root), null);
-    assert.equal(tabs(root)[0].textContent, 'Untitled');
+    assert.equal(tabs(root)[0].getAttribute('aria-label'), 'Untitled');
 
     await fire(tabs(root)[0], 'dblclick');
     (field(root) as HTMLInputElement).value = 'Q4 plan';
     await press(field(root) as HTMLInputElement, 'Enter');
-    await waitForReactCondition(() => tabs(root)[0].textContent === 'Q4 plan', 'the tab shows the new title');
+    await waitForReactCondition(() => tabs(root)[0].getAttribute('aria-label') === 'Q4 plan', 'the tab shows the new title');
     assert.deepEqual(calls.filter((call) => call.method === 'renameDocument').map((call) => call.args), [['att_mine', 'Q4 plan']]);
     assert.equal(root.querySelector('[role="tabpanel"]:not([hidden]) .app-document-header-title')?.textContent, 'Q4 plan', 'the header follows');
 

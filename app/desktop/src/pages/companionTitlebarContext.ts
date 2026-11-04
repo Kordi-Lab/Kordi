@@ -7,11 +7,12 @@ export const CompanionTitlebarContext = createContext<{
   width: string;
   side: CompanionSide;
   isVisible: boolean;
+  hasTabs?: boolean;
 } | null>(null);
 
 /** True when the panel title row is hosted on the native main-chat title row. */
 export function useCompanionTitlebarPortal() {
   const native = useContext(NativeChatTitlebarContext);
   const panel = useContext(CompanionTitlebarContext);
-  return Boolean(native?.companion && panel);
+  return Boolean(native?.companion && panel && !panel.hasTabs);
 }

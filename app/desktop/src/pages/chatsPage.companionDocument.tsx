@@ -5,6 +5,7 @@ import { CompanionSourceView } from '@/features/documents/CompanionSourceView';
 import { LoaderCircle } from 'lucide-react';
 
 import type { CompanionDocument } from '@/features/documents/companionDocument';
+import { useCompanionDocumentLabels } from '@/features/documents/useCompanionDocumentLabels';
 import { CompanionDocumentTabs } from '@/features/documents/CompanionDocumentTabs';
 import { companionDocumentTabIds } from '@/features/documents/companionTabsState';
 import { DocumentReader } from '@/features/documents/DocumentReader';
@@ -80,33 +81,23 @@ function CompanionDocumentReader({ document, api, onTitle, onRenameAvailable }: 
  * position, unsaved edits and the collaboration room survive a tab switch.
  * Closing the last tab, like hiding the pane, closes it.
  */
-export function CompanionDocumentPane({ tabs, host, onClose, api }: {
+export function CompanionDocumentPane({ tabs, host, onClose, api, labels, showTabs = true }: {
   tabs: Pick<CompanionDocumentTabsModel, 'documents' | 'activeId' | 'activate' | 'closeTab'>;
   host: DocumentReaderHost;
   onClose: () => void;
   api?: DocumentShareApi;
+  labels?: ReturnType<typeof useCompanionDocumentLabels>;
+  showTabs?: boolean;
 }) {
   const { documents, activeId } = tabs;
-  const [titles, setTitles] = useState<Record<string, string>>({});
-  const setTitle = useCallback((id: string, title: string) => {
-    setTitles((current) => (current[id] === title ? current : { ...current, [id]: title }));
-  }, []);
-  const [renames, setRenames] = useState<Record<string, (title: string) => void>>({});
-  const setRename = useCallback((id: string, rename: ((title: string) => void) | null) => {
-    setRenames((current) => {
-      if ((current[id] ?? null) === rename) return current;
-      const next = { ...current };
-      if (rename) next[id] = rename;
-      else delete next[id];
-      return next;
-    });
-  }, []);
+  const ownLabels = useCompanionDocumentLabels();
+  const { titles, renames, setTitle, setRename } = labels ?? ownLabels;
   const closeTab = (id: string) => (documents.length <= 1 ? onClose() : tabs.closeTab(id));
 
   return <aside className="app-companion-overview app-companion-document" aria-label="Document panel">
-    <CompanionTitlebar>
+    {showTabs ? <CompanionTitlebar>
       <CompanionDocumentTabs documents={documents} activeId={activeId} titles={titles} renames={renames} onActivate={tabs.activate} onCloseTab={closeTab} onHide={onClose} />
-    </CompanionTitlebar>
+    </CompanionTitlebar> : null}
     <DocumentReaderHostContext.Provider value={host}>
       <div className="app-companion-document-panels">
         {documents.map((document) => {

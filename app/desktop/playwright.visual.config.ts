@@ -28,6 +28,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'webkit-forwarded-content', testMatch: '**/forwardedContent.spec.ts', use: { ...devices['Desktop Safari'] } },
+    { name: 'webkit-document-tabs', testMatch: '**/companionDocuments.spec.ts', use: { ...devices['Desktop Safari'] } },
     { name: 'webkit-text-selection', testMatch: '**/textSelection.spec.ts', use: { ...devices['Desktop Safari'] } },
     { name: 'webkit-cloud-transport', testMatch: '**/cloudTransport.spec.ts', use: { ...devices['Desktop Safari'] } },
     { name: 'webkit-live-photo', testMatch: '**/livePhoto.spec.ts', use: { ...devices['Desktop Safari'] } },
