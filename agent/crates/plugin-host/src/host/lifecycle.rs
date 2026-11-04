@@ -22,11 +22,13 @@ impl PluginHost {
             return Err(PluginHostError::NoPlugins);
         }
 
-        // Write host.js to a temp file
-        let temp_dir = std::env::temp_dir().join("kordi-plugin-host");
-        std::fs::create_dir_all(&temp_dir)
+        // Each host owns a private script for its entire lifetime. Concurrent
+        // processes (including different runtime versions) cannot overwrite it.
+        let runtime_dir = tempfile::Builder::new()
+            .prefix("kordi-plugin-host-")
+            .tempdir()
             .map_err(|e| PluginHostError::Io(format!("create temp dir: {e}")))?;
-        let host_js_path = temp_dir.join("host.js");
+        let host_js_path = runtime_dir.path().join("host.js");
         std::fs::write(&host_js_path, HOST_JS)
             .map_err(|e| PluginHostError::Io(format!("write host.js: {e}")))?;
 
@@ -41,7 +43,8 @@ impl PluginHost {
             .args(&args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());
+            .stderr(Stdio::inherit())
+            .kill_on_drop(true);
         #[cfg(unix)]
         command.as_std_mut().process_group(0);
         let mut child = command
@@ -65,6 +68,7 @@ impl PluginHost {
 
         let mut host = Self {
             child,
+            runtime_dir: Some(runtime_dir),
             stdin,
             stdout_reader: BufReader::new(stdout),
             next_id: AtomicU64::new(1),
@@ -75,7 +79,10 @@ impl PluginHost {
         };
 
         // Read startup notifications until plugins_loaded
-        host.read_startup_notifications().await?;
+        if let Err(error) = host.read_startup_notifications().await {
+            host.kill().await;
+            return Err(error);
+        }
 
         info!(
             "Plugin host ready: {} plugin(s), {} tool(s), {} command(s)",
@@ -144,6 +151,7 @@ impl PluginHost {
             let _ = unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
         }
         let _ = self.child.kill().await;
+        self.runtime_dir.take();
     }
 }
 
