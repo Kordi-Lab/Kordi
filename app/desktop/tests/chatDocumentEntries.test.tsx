@@ -115,7 +115,7 @@ test('Add file takes Markdown and HTML only and types them for the server', asyn
   assert.equal(item.mimeType, 'text/markdown');
   await chatDocumentAttachment(new File(['<p>Hi</p>'], 'page.htm', { type: 'text/html' }), store);
   assert.equal(stored[1].type, 'text/html');
-  await assert.rejects(chatDocumentAttachment(new File(['x'], 'notes.txt', { type: 'text/plain' }), store), new RegExp(ADD_DOCUMENT_FAILED));
+  await assert.rejects(chatDocumentAttachment(new File(['x'], 'notes.txt', { type: 'text/plain' }), store), /Choose a Markdown or HTML document/);
   assert.equal(stored.length, 2, 'a file that is not a document is never stored');
 });
 
@@ -270,7 +270,7 @@ test('Add file sends the picked document the same way, and a failed send says so
     fail = false;
     await pick(new File(['x'], 'notes.txt', { type: 'text/plain' }));
     assert.equal(sent.length, 1, 'a file that is not a document is not sent');
-    assert.equal(root.querySelector('[role="alert"]')?.textContent, 'Could not add the document.');
+    assert.equal(root.querySelector('[role="alert"]')?.textContent, 'Choose a Markdown or HTML document (.md, .markdown, .html, or .htm). Send other files from the chat composer.');
   });
 });
 

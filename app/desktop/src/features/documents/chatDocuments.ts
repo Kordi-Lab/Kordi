@@ -9,6 +9,13 @@ import { documentContentType, documentFileName, documentFormatForPath } from './
 export const ADD_DOCUMENT_ACCEPT = '.md,.markdown,.html,.htm';
 
 export const ADD_DOCUMENT_FAILED = 'Could not add the document.';
+export const ADD_DOCUMENT_UNSUPPORTED_FORMAT = 'Choose a Markdown or HTML document (.md, .markdown, .html, or .htm). Send other files from the chat composer.';
+
+export class UnsupportedDocumentFormatError extends Error {
+  constructor() {
+    super(ADD_DOCUMENT_UNSUPPORTED_FORMAT);
+  }
+}
 
 /**
  * A new document starts as one line break: an empty Markdown body that the
@@ -110,7 +117,7 @@ export async function chatDocumentAttachment(
   store: (file: File) => Promise<AttachmentItem>,
 ): Promise<AttachmentItem> {
   const contentType = addableDocumentContentType(file.name);
-  if (!contentType) throw new Error(ADD_DOCUMENT_FAILED);
+  if (!contentType) throw new UnsupportedDocumentFormatError();
   // Pickers often leave Markdown untyped; the server reads the format from the content type.
   const typed = file.type === contentType ? file : new File([file], file.name, { type: contentType });
   return store(typed);

@@ -7,11 +7,13 @@ import type { Message, MessageAttachment, SessionArtifact } from '@/kordi-app/ty
 
 import {
   ADD_DOCUMENT_FAILED,
+  ADD_DOCUMENT_UNSUPPORTED_FORMAT,
   blankDocumentFile,
   chatDocumentAttachment,
   chatDocumentNames,
   nextUntitledDocumentName,
   sentChatDocument,
+  UnsupportedDocumentFormatError,
 } from './chatDocuments';
 import { openAttachmentInCompanion } from './companionDocument';
 
@@ -51,7 +53,7 @@ export function useChatDocumentEntries({
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingDocument | null>(null);
   const [arrived, setArrived] = useState<{ path: string; attachment: MessageAttachment } | null>(null);
-  const [failure, setFailure] = useState<{ conversationId: string } | null>(null);
+  const [failure, setFailure] = useState<{ conversationId: string; message: string } | null>(null);
   const sendingRef = useRef(false);
   const openedRef = useRef<{ path: string; attachment: MessageAttachment } | null>(null);
   const conversationRef = useRef(conversationId);
@@ -76,11 +78,11 @@ export function useChatDocumentEntries({
         setPending(null);
         setArrived({ path, attachment: { kind: 'file', name: attachment.name, mimeType: attachment.mimeType ?? null, localPath: path, attachmentId } });
       }
-    } catch {
+    } catch (error) {
       // A send that fails after its document opened (say, one group member still pending) reports in the chat.
       if (path && openedRef.current?.path === path) return;
       setPending(null);
-      setFailure({ conversationId });
+      setFailure({ conversationId, message: error instanceof UnsupportedDocumentFormatError ? ADD_DOCUMENT_UNSUPPORTED_FORMAT : ADD_DOCUMENT_FAILED });
     } finally {
       sendingRef.current = false;
       setSending(false);
@@ -111,7 +113,7 @@ export function useChatDocumentEntries({
     // The send reports its own failure in the chat; this keeps the entry from waiting forever.
     const timer = setTimeout(() => {
       setPending(null);
-      setFailure({ conversationId: awaited.conversationId });
+      setFailure({ conversationId: awaited.conversationId, message: ADD_DOCUMENT_FAILED });
     }, Math.max(0, awaited.deadline - Date.now()));
     return () => clearTimeout(timer);
   }, [awaited]);
@@ -119,7 +121,7 @@ export function useChatDocumentEntries({
   return {
     available: Boolean(addDocument),
     busy: sending || Boolean(awaited),
-    error: failure?.conversationId === conversationId ? ADD_DOCUMENT_FAILED : null,
+    error: failure?.conversationId === conversationId ? failure.message : null,
     createDocument,
     addFile,
   };

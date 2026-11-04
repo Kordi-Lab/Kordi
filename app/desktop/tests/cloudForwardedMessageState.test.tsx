@@ -51,6 +51,7 @@ test('direct Cloud forwarded envelopes survive bridge transcript mapping', () =>
       schemaVersion: 1,
       kind: 'forward',
       source,
+      forwardedContent: { text: '@MyKordi test\n\n**Complete copy**', comment: 'Review this' },
     },
   });
   const bridgeMessage = cloudMessageToCollaborationMessage(account, {
@@ -80,6 +81,7 @@ test('direct Cloud forwarded envelopes survive bridge transcript mapping', () =>
   assert.equal(bridgeMessage.requestId, null);
   assert.equal(view.messages[0]?.messageAction?.kind, 'forward');
   assert.equal(view.messages[0]?.messageAction?.source.senderLabel, 'Peer Person');
+  assert.deepEqual(view.messages[0]?.messageAction?.forwardedContent, { text: '@MyKordi test\n\n**Complete copy**', comment: 'Review this' });
 });
 
 test('forwarded mentions stay inert across direct execution and pending UI', () => {

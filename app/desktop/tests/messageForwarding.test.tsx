@@ -29,7 +29,8 @@ test('createForwardedMessageDraft stores forwardedFrom metadata and text fallbac
 
 test('createForwardedMessageDraft keeps user caption while preserving source metadata', () => {
   const draft = createForwardedMessageDraft({ source, caption: 'FYI', destinationSessionId: 'session:two' });
-  assert.equal(draft.text, 'FYI');
+  assert.equal(draft.text, 'FYI\n\nForward this');
+  assert.deepEqual(draft.messageAction.forwardedContent, { text: 'Forward this', comment: 'FYI' });
   assert.equal(draft.messageAction.source.sourceMessageId, 'msg:source');
 });
 
