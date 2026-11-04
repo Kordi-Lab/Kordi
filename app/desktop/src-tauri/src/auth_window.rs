@@ -25,7 +25,7 @@ impl AuthWindowSurface {
 /// the window's content size, in logical points. The gate lays its screens
 /// out in that visible rectangle. A zero size means the web view fills the
 /// window.
-#[derive(Clone, Copy, Default, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
 pub(crate) struct AuthWindowCrop {
     x: f64,
     y: f64,
@@ -98,6 +98,48 @@ fn last_crop() -> AuthWindowCrop {
         .unwrap_or_default()
 }
 
+/// A rectangle in a window's base coordinates: origin at the bottom left,
+/// y growing upward, in points.
+#[cfg(any(target_os = "macos", test))]
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WindowRect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+#[cfg(any(target_os = "macos", test))]
+impl WindowRect {
+    fn top(self) -> f64 {
+        self.y + self.height
+    }
+
+    /// A rectangle of the given size centered on this one, on whole points.
+    fn centered(self, width: f64, height: f64) -> Self {
+        Self {
+            x: self.x + ((self.width - width) / 2.0).round(),
+            y: self.y + ((self.height - height) / 2.0).round(),
+            width,
+            height,
+        }
+    }
+}
+
+/// The crop the page needs to place its gate screens: how far the web view
+/// reaches past the visible area's left and top edges, and that area's size.
+/// Both rectangles are measured in the same window coordinates, so where the
+/// web view's superview sits in the window does not matter.
+#[cfg(any(target_os = "macos", test))]
+fn crop_between(webview: WindowRect, visible: WindowRect) -> AuthWindowCrop {
+    AuthWindowCrop {
+        x: (visible.x - webview.x).max(0.0),
+        y: (webview.top() - visible.top()).max(0.0),
+        width: visible.width,
+        height: visible.height,
+    }
+}
+
 // WKWebView commits layers asynchronously (WebKit bug 323132), so a web view
 // that grows with an animating window exposes uncommitted strips at its right
 // and bottom edges. During gate transitions the web view therefore keeps the
@@ -105,7 +147,7 @@ fn last_crop() -> AuthWindowCrop {
 // the same when cropped. It rejoins autoresizing once the main shell is shown.
 #[cfg(target_os = "macos")]
 mod macos {
-    use super::{AuthWindowCrop, AuthWindowSurface};
+    use super::{crop_between, AuthWindowCrop, AuthWindowSurface, WindowRect};
     use objc2::{
         class, ffi, msg_send,
         rc::Retained,
@@ -234,22 +276,53 @@ mod macos {
         let _ = window.emit(CROP_EVENT, crop);
     }
 
-    /// Centers `webview` in `parent` without changing its size.
+    fn window_rect(rect: NSRect) -> WindowRect {
+        WindowRect {
+            x: rect.origin.x,
+            y: rect.origin.y,
+            width: rect.size.width,
+            height: rect.size.height,
+        }
+    }
+
+    fn ns_rect(rect: WindowRect) -> NSRect {
+        NSRect::new(
+            NSPoint::new(rect.x, rect.y),
+            NSSize::new(rect.width, rect.height),
+        )
+    }
+
+    /// The area the window shows its content in, in window coordinates. With
+    /// a full-size content view that is the whole window, title bar included.
+    unsafe fn visible_rect(webview: &AnyObject) -> Option<WindowRect> {
+        let window: *const AnyObject = msg_send![webview, window];
+        let content: *const AnyObject = msg_send![window.as_ref()?, contentView];
+        let content = content.as_ref()?;
+        let bounds: NSRect = msg_send![content, bounds];
+        let nil = std::ptr::null::<AnyObject>();
+        let rect: NSRect = msg_send![content, convertRect: bounds, toView: nil];
+        Some(window_rect(rect))
+    }
+
+    /// Centers `webview` on the window's visible area without changing its
+    /// size, and reports the crop measured from where it actually landed.
+    /// Both steps convert through window coordinates, so a superview that is
+    /// offset from the window, flipped, or a different size cannot skew the
+    /// crop the page lays out with.
     unsafe fn center(webview: &AnyObject, parent: &AnyObject) -> AuthWindowCrop {
-        let bounds: NSRect = msg_send![parent, bounds];
+        let nil = std::ptr::null::<AnyObject>();
         let frame: NSRect = msg_send![webview, frame];
-        let offset_x = ((bounds.size.width - frame.size.width) / 2.0).round();
-        let offset_y = ((bounds.size.height - frame.size.height) / 2.0).round();
-        let origin = NSPoint::new(bounds.origin.x + offset_x, bounds.origin.y + offset_y);
-        if origin != frame.origin {
-            let _: () = msg_send![webview, setFrameOrigin: origin];
+        let Some(visible) = visible_rect(webview) else {
+            return AuthWindowCrop::default();
+        };
+        let target = visible.centered(frame.size.width, frame.size.height);
+        let target: NSRect = msg_send![parent, convertRect: ns_rect(target), fromView: nil];
+        if target.origin != frame.origin {
+            let _: () = msg_send![webview, setFrameOrigin: target.origin];
         }
-        AuthWindowCrop {
-            x: (-offset_x).max(0.0),
-            y: (-offset_y).max(0.0),
-            width: bounds.size.width,
-            height: bounds.size.height,
-        }
+        let placed: NSRect = msg_send![webview, frame];
+        let placed: NSRect = msg_send![parent, convertRect: placed, toView: nil];
+        crop_between(window_rect(placed), visible)
     }
 
     /// Returns the web view to window-sized autoresizing.
@@ -562,5 +635,69 @@ mod macos {
             let _: () = msg_send![class!(NSAnimationContext), runAnimationGroup: &*changes, completionHandler: &*completion];
             Ok(receiver)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{crop_between, AuthWindowCrop, WindowRect};
+
+    fn rect(x: f64, y: f64, width: f64, height: f64) -> WindowRect {
+        WindowRect {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn a_centered_web_view_reports_its_overhang_and_the_visible_size() {
+        let visible = rect(0.0, 0.0, 440.0, 560.0);
+        let webview = visible.centered(1480.0, 983.0);
+        assert_eq!(webview, rect(-520.0, -212.0, 1480.0, 983.0));
+        // 983 - 560 is odd: the extra point falls above the window.
+        assert_eq!(
+            crop_between(webview, visible),
+            AuthWindowCrop {
+                x: 520.0,
+                y: 211.0,
+                width: 440.0,
+                height: 560.0
+            }
+        );
+    }
+
+    #[test]
+    fn the_crop_follows_where_the_web_view_actually_sits() {
+        // A web view 68 points higher than centered shows rows 280..840.
+        let visible = rect(0.0, 0.0, 440.0, 560.0);
+        let webview = rect(-520.0, -143.0, 1480.0, 983.0);
+        let crop = crop_between(webview, visible);
+        assert_eq!((crop.x, crop.y), (520.0, 280.0));
+        assert_eq!(crop.y + crop.height + 143.0, webview.height);
+    }
+
+    #[test]
+    fn centering_uses_the_visible_area_not_the_origin() {
+        let visible = rect(100.0, 40.0, 440.0, 560.0);
+        let webview = visible.centered(1480.0, 980.0);
+        assert_eq!(webview, rect(-420.0, -170.0, 1480.0, 980.0));
+        let crop = crop_between(webview, visible);
+        assert_eq!((crop.x, crop.y), (520.0, 210.0));
+    }
+
+    #[test]
+    fn a_web_view_inside_the_window_has_no_crop() {
+        let visible = rect(0.0, 0.0, 1480.0, 980.0);
+        assert_eq!(
+            crop_between(visible, visible),
+            AuthWindowCrop {
+                x: 0.0,
+                y: 0.0,
+                width: 1480.0,
+                height: 980.0
+            }
+        );
     }
 }
