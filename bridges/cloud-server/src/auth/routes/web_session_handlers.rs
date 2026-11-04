@@ -376,7 +376,7 @@ pub(super) async fn web_oauth_start(
         Ok(auth_url) => {
             super::app_sign_in_handlers::no_store(Redirect::to(&auth_url).into_response())
         }
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
