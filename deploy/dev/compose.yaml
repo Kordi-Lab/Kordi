@@ -205,6 +205,9 @@ services:
     build:
       context: ../..
       dockerfile: bridges/cloud-agent-runner/Dockerfile.runtime
+      args:
+        # Allows the host-local sandbox backend set below.
+        KORDI_DEVELOPMENT_BUILD: "1"
     environment:
       KORDI_CLOUD_API_BASE: http://cloud-server:17081
       KORDI_CLOUD_RUNNER_ID: kordi-debug-runner

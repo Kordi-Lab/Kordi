@@ -3,6 +3,12 @@ import { test } from 'node:test';
 
 import { read } from './local-debug-stack-helpers.mjs';
 
+function composeService(compose, name) {
+  const match = compose.match(new RegExp(`^  ${name}:\\n((?:(?:    .*)?\\n)*)`, 'm'));
+  assert.ok(match, `missing compose service ${name}`);
+  return match[1];
+}
+
 test('debug stack captures sign-up email in a loopback-only Mailpit inbox', () => {
   const compose = read('deploy/dev/compose.yaml');
 
@@ -13,7 +19,29 @@ test('debug stack captures sign-up email in a loopback-only Mailpit inbox', () =
   assert.match(compose, /KORDI_AUTH_SMTP_PORT: \$\{KORDI_AUTH_SMTP_PORT:-1025\}/);
   assert.match(compose, /KORDI_AUTH_SMTP_SECURITY: \$\{KORDI_AUTH_SMTP_SECURITY:-none\}/);
   assert.match(compose, /KORDI_AUTH_SMTP_FROM: "\$\{KORDI_AUTH_SMTP_FROM:-Kordi Dev <no-reply@example\.test>\}"/);
-  assert.match(compose, /KORDI_DEVELOPMENT_BUILD: "1"/);
+  assert.match(composeService(compose, 'cloud-server'), /^        KORDI_DEVELOPMENT_BUILD: "1"$/m);
+});
+
+test('debug stack runner is a development build so it accepts the local sandbox', () => {
+  const runner = composeService(read('deploy/dev/compose.yaml'), 'cloud-agent-runner');
+
+  assert.match(runner, /dockerfile: bridges\/cloud-agent-runner\/Dockerfile\.runtime/);
+  assert.match(runner, /^      args:\n(?:        #.*\n)*        KORDI_DEVELOPMENT_BUILD: "1"$/m);
+  assert.match(runner, /^      KORDI_CLOUD_SANDBOX_BACKEND: local$/m);
+  assert.match(read('bridges/cloud-agent-runner/Dockerfile.runtime'), /^ARG KORDI_DEVELOPMENT_BUILD=$/m);
+});
+
+test('hosted image builds never pass the development build marker', () => {
+  for (const path of [
+    '.github/workflows/backend-delivery.yml',
+    'bridges/cloud-server/deploy/k3s/deploy-cloud-agent-runner.sh',
+    'bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh',
+    'bridges/cloud-server/deploy/k3s/manifests/cloud-agent-runner-deployment.yaml',
+    'scripts/build-backend-bundle.sh',
+    'scripts/build-vps-images.sh',
+  ]) {
+    assert.doesNotMatch(read(path), /KORDI_DEVELOPMENT_BUILD/, path);
+  }
 });
 
 test('hosted server images never opt into development-only mail options', () => {

@@ -48,7 +48,7 @@ test('runner runtime Dockerfile builds and runs against one glibc baseline', () 
   assert.ok(fs.existsSync(dockerfilePath));
   const dockerfile = read(dockerfilePath);
   assert.match(dockerfile, /^FROM docker\.io\/library\/rust:[^\s]+-bookworm AS builder/m);
-  assert.match(dockerfile, /RUN cargo build --release -p kordi-cloud-agent-runner/);
+  assert.match(dockerfile, /^RUN KORDI_DEVELOPMENT_BUILD="\$KORDI_DEVELOPMENT_BUILD" cargo build --release -p kordi-cloud-agent-runner$/m);
   assert.match(dockerfile, /^FROM docker\.io\/library\/debian:bookworm-slim AS runtime/m);
   assert.match(dockerfile, /COPY --from=builder \/workspace\/target\/release\/kordi-cloud-agent-runner/);
   assert.match(dockerfile, /ENTRYPOINT \["\/usr\/local\/bin\/kordi-cloud-agent-runner"\]/);
