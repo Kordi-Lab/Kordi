@@ -1,3 +1,4 @@
+import { validateAuthentication } from './authentication.mjs';
 import { ConfigurationError, validateBackendConfiguration } from './backend.mjs';
 
 const fail = (message) => { throw new ConfigurationError(message); };
@@ -32,9 +33,11 @@ export function validateDistributionConfiguration(input, expected) {
   }
   data(input);
   const value = JSON.parse(JSON.stringify(input));
-  object(value, ['schemaVersion', 'routing', 'clients', 'services', 'resources', 'apple'], 'Distribution');
+  object(value, ['schemaVersion', 'routing', 'clients', 'services', 'resources', 'apple', ...(Object.hasOwn(value, 'authentication') ? ['authentication'] : [])], 'Distribution');
   if (value.schemaVersion !== 1) fail('Unsupported distribution schema version.');
   validateBackendConfiguration(value.routing, expected);
+  if (value.authentication) validateAuthentication(value.authentication, expected);
+  else if (expected.environment === 'staging' || expected.edition === 'research') fail('Research and staging require an explicit authentication policy.');
   const c = value.clients;
   object(c, ['displayName', 'callbackScheme', 'desktopIdentifier', 'iosIdentifier', 'iosShareIdentifier', 'appGroup', 'credentialService', 'desktopIcon', 'desktopIcns', 'iosIcon', 'updates'], 'Clients');
   text(c.displayName, /^[A-Za-z][A-Za-z0-9 -]{0,39}$/, 'Display name');
@@ -100,6 +103,7 @@ export function validateDistributionConfiguration(input, expected) {
 /** Only this subset may be compiled into a client. No service/resource/signing fields. */
 export function publicClientConfiguration(profile) {
   return {
+    ...(profile.authentication ? { loginPage: profile.authentication.loginPage } : {}),
     edition: profile.routing.edition,
     environment: profile.routing.environment,
     backendOrigin: profile.routing.backend.origin,
@@ -118,6 +122,7 @@ export function publicClientConfiguration(profile) {
 export function publicDesktopConfiguration(profile) {
   const client = publicClientConfiguration(profile);
   return {
+    ...(client.loginPage ? { loginPage: client.loginPage } : {}),
     backendOrigin: client.backendOrigin,
     callbackScheme: client.callbackScheme,
     updates: { enabled: client.updates.enabled, artifactName: client.updates.artifactName },

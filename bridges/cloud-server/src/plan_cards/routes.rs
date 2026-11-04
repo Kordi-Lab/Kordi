@@ -307,9 +307,14 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
                     StatusCode::BAD_REQUEST,
                 ));
             }
-            store::propose(pool, &actor.account_id, args)
-                .await
-                .map_err(store_error)
+            store::propose_for_system_agent(
+                pool,
+                &actor.account_id,
+                args,
+                &actor.source_message_ids,
+            )
+            .await
+            .map_err(store_error)
         }
         Request::Vote {
             event_id,
@@ -380,6 +385,13 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
             revision,
             reason,
         } => {
+            if actor.on_behalf_of_conversation.is_some() {
+                return Err(error(
+                    "atomic_replacement_required",
+                    "System must replace a plan atomically with propose(existingEventId, existingRevision). Do not reopen first. If replacement details are unclear, ask a question and preserve the current plan.",
+                    StatusCode::BAD_REQUEST,
+                ));
+            }
             if reason.trim().is_empty() {
                 return Err(error(
                     "invalid_reason",

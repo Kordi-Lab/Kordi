@@ -210,7 +210,7 @@ struct KordiShareConfiguration: Equatable, Sendable {
             && baseURL.query == nil
             && baseURL.fragment == nil
         switch channel {
-        case "production", "research":
+        case "production", "research", "staging", "research-staging":
             guard let expected, channel == expected.channel,
                   bundleIdentifier == expected.iosIdentifier || bundleIdentifier == expected.iosShareIdentifier else { return false }
             return baseURL.absoluteString == expected.backendOrigin

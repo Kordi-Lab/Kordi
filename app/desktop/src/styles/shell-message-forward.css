@@ -20,7 +20,7 @@
 .forward-field-label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
 .forward-field-label span { font-weight: 400; color: var(--app-transient-muted-text); }
 .forward-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--app-transient-border); border-radius: 12px; padding-left: 12px; color: var(--app-transient-muted-text); background: var(--app-transient-raised-bg); }
-.forward-search:focus-within { outline: 2px solid var(--forward-accent); outline-offset: 1px; }
+.forward-search:focus-within { border-color: color-mix(in oklab, var(--app-transient-border) 62%, var(--app-transient-muted-text)); }
 .forward-search input { border: 0; background: transparent; outline: none; color: var(--app-transient-text); height: 36px; width: 100%; min-width: 0; padding-right: 8px; font-size: 13px; }
 .forward-search input::-webkit-search-cancel-button { display: none; }
 .forward-content :is(input, textarea)::placeholder { color: var(--app-transient-muted-text); opacity: 1; }
