@@ -97,3 +97,22 @@ fn invalid_client_configuration_is_rejected() {
         assert!(AppClientRegistry::from_json(invalid).is_err(), "{invalid}");
     }
 }
+
+#[test]
+fn browser_handled_schemes_cannot_be_callbacks() {
+    for uri in [
+        "javascript:alert(1)",
+        "JavaScript://cb/%0aalert(1)",
+        "data:text/html,x",
+        "file:///tmp/cb",
+        "blob:https://app.example.test/x",
+        "vbscript:msgbox",
+        "about:blank",
+    ] {
+        let config = serde_json::json!([{ "clientId": "a", "name": "x", "redirectUris": [uri] }]);
+        assert!(
+            AppClientRegistry::from_json(&config.to_string()).is_err(),
+            "{uri}"
+        );
+    }
+}

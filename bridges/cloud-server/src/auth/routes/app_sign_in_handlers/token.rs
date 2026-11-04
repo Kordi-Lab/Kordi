@@ -30,6 +30,31 @@ const CLIENT_REDEMPTION_LIMIT: AccountActionLimit = AccountActionLimit {
     window: std::time::Duration::from_secs(10 * 60),
 };
 
+/// Refreshes and revocations from one app at one client address. Far above
+/// what any number of installations refreshing hourly need, and separate
+/// from the per-address sign-in limit.
+const APP_CLIENT_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "app-sign-in-client-address",
+    limit: 600,
+    window: std::time::Duration::from_secs(60),
+};
+
+async fn observe_app_client(
+    rate_limiter: &CloudRateLimiter,
+    registry: &AppClientRegistry,
+    client_id: Option<&str>,
+    peer_ip: Option<IpAddr>,
+) -> RateLimitDecision {
+    let address = crate::auth::rate_limit::rate_limit_client_key(peer_ip);
+    // Unregistered client IDs share one key, so inventing IDs gains nothing.
+    let client_id = client_id
+        .and_then(|id| registry.client(id))
+        .map_or("unregistered", |client| client.client_id.as_str());
+    rate_limiter
+        .observe_account_limit(APP_CLIENT_LIMIT, &format!("{client_id}:{address}"))
+        .await
+}
+
 #[derive(Debug, Default, Deserialize)]
 pub(super) struct TokenRequest {
     grant_type: Option<String>,
@@ -97,18 +122,30 @@ pub(in crate::auth::routes) async fn app_token(
     body: axum::body::Bytes,
 ) -> Response {
     let peer_ip = client_ip(&headers, connect_info.as_ref());
-    if let RateLimitDecision::Limited { retry_after } = rate_limiter.observe_ip(peer_ip).await {
+    let request: Result<TokenRequest, _> = parse_form_or_json(&headers, &body);
+    // Refreshes keep signed-in apps working, so they do not spend the
+    // per-address sign-in budget that many users behind one address share.
+    let decision = match &request {
+        Ok(request) if request.grant_type.as_deref() == Some("refresh_token") => {
+            observe_app_client(
+                &rate_limiter,
+                &registry,
+                request.client_id.as_deref(),
+                peer_ip,
+            )
+            .await
+        }
+        _ => rate_limiter.observe_ip(peer_ip).await,
+    };
+    if let RateLimitDecision::Limited { retry_after } = decision {
         return limited_response(retry_after);
     }
-    let request: TokenRequest = match parse_form_or_json(&headers, &body) {
-        Ok(request) => request,
-        Err(_) => {
-            return oauth_error(
-                StatusCode::BAD_REQUEST,
-                "invalid_request",
-                "The token request is malformed.",
-            );
-        }
+    let Ok(request) = request else {
+        return oauth_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "The token request is malformed.",
+        );
     };
     let Some(client_id) = request
         .client_id
@@ -371,10 +408,17 @@ pub(in crate::auth::routes) async fn revoke_app_token(
     body: axum::body::Bytes,
 ) -> Response {
     let peer_ip = client_ip(&headers, connect_info.as_ref());
-    if let RateLimitDecision::Limited { retry_after } = rate_limiter.observe_ip(peer_ip).await {
+    let request = parse_form_or_json::<RevokeRequest>(&headers, &body);
+    let client_id = request
+        .as_ref()
+        .ok()
+        .and_then(|request| request.client_id.as_deref());
+    if let RateLimitDecision::Limited { retry_after } =
+        observe_app_client(&rate_limiter, &registry, client_id, peer_ip).await
+    {
         return limited_response(retry_after);
     }
-    let Ok(request) = parse_form_or_json::<RevokeRequest>(&headers, &body) else {
+    let Ok(request) = request else {
         return oauth_error(
             StatusCode::BAD_REQUEST,
             "invalid_request",
