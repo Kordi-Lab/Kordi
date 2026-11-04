@@ -50,11 +50,6 @@
 .app-turn-progress-summary:focus-visible, .app-turn-worked-header:focus-visible, .app-tool-activity-toggle:focus-visible, .app-tool-file-link:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: 3px; border-radius: 3px; }
 @media (pointer: coarse) { .app-tool-activity-toggle, .app-tool-file-link, .app-turn-worked-header { min-height: 44px; } }
 
-.app-companion-source { overflow: auto; height: 100%; padding: 16px 0; background: var(--app-transcript-bg); color: var(--utility-foreground); }
-.app-companion-source pre { margin: 0; font-size: 12px; line-height: 1.75; }
-.app-companion-source-line { display: flex; gap: 20px; padding: 0 16px; }
-.app-companion-source-line > span { color: var(--utility-muted-text); min-width: 3ch; text-align: right; user-select: none; }
-.app-companion-source-line code { white-space: pre; }
 
 .app-tool-activity-toggle > svg:last-child:not(:first-child) { position: absolute; right: 0; }
 

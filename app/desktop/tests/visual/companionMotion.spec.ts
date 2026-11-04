@@ -25,7 +25,7 @@ test('both panels push the workspace continuously and rapid toggles retain draft
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/tests/visual/companionMotion.html');
   await page.getByRole('textbox', { name: 'Agent draft' }).fill('Keep this draft');
-  for (const [label, selector] of [['Hide sidebar', '.app-workspace-sidebar'], ['Show sidebar', '.app-workspace-sidebar'], ['Chat', '.app-companion-panel-motion'], ['Chat', '.app-companion-panel-motion']]) {
+  for (const [label, selector] of [['Hide sidebar', '.app-workspace-sidebar'], ['Show sidebar', '.app-workspace-sidebar'], ['Fold pane', '.app-companion-panel-motion'], ['Expand pane', '.app-companion-panel-motion']]) {
     const widths = await page.evaluate(async ({ label, selector }) => {
       const width = () => document.querySelector(selector)!.getBoundingClientRect().width;
       const samples = [width()];
@@ -40,12 +40,12 @@ test('both panels push the workspace continuously and rapid toggles retain draft
     expect(widths.some(width => width > low + 2 && width < high - 2)).toBe(true);
   }
   await page.evaluate(async () => {
-    const chat = document.querySelector<HTMLButtonElement>('button[aria-label="Chat"]')!;
-    chat.click();
+    const toggle = () => document.querySelector<HTMLButtonElement>('.app-companion-toolbar button:last-child')!;
+    toggle().click();
     await new Promise(resolve => setTimeout(resolve, 60));
-    chat.click();
+    toggle().click();
   });
   await expect(page.getByRole('textbox', { name: 'Agent draft' })).toHaveValue('Keep this draft');
-  await page.getByRole('button', { name: 'Chat', exact: true }).dblclick();
-  await expect(page.getByRole('button', { name: 'Chat', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: 'Fold pane', exact: true }).dblclick();
+  await expect(page.getByRole('button', { name: 'Expand pane', exact: true })).toHaveAttribute('aria-expanded', 'false');
 });

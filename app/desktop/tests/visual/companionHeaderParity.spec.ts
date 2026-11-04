@@ -21,7 +21,7 @@ async function openPanel(page: Page, query: string) {
 async function headerStyle(page: Page, scope: string, headerSelector: string, titleSelector: string) {
   return page.evaluate(({ scope, headerSelector, titleSelector }) => {
     const header = document.querySelector(`${scope} ${headerSelector}`)!;
-    const titleRow = document.querySelector(titleSelector)!;
+    const titleRow = document.querySelector(titleSelector) ?? header;
     const title = titleRow.querySelector('h2') ?? titleRow;
     const tabList = document.querySelector(`${scope} [data-chat-destination-tabs]`)!;
     const active = tabList.querySelector<HTMLElement>('[aria-selected="true"]')!;
@@ -53,10 +53,10 @@ const inPaneSelectors = {
 } as const;
 const nativeSelectors = {
   main: [mainPane, '.app-chat-native-metadata-header', '.app-native-titlebar-title .app-chat-pane-title-row'],
-  panel: [panel, '.app-chat-native-metadata-header', '.app-native-companion-titlebar .app-chat-pane-title-row'],
+  panel: inPaneSelectors.panel,
 } as const;
 
-async function expectMatchingHeaders(page: Page, selectors: typeof inPaneSelectors | typeof nativeSelectors) {
+async function expectMatchingHeaders(page: Page, selectors: typeof inPaneSelectors | typeof nativeSelectors, tabsOnly = false) {
   // A chat theme switch transitions the tab colors: read until two consecutive samples of both headers agree.
   let previous = '';
   let main = await headerStyle(page, ...selectors.main);
@@ -70,14 +70,16 @@ async function expectMatchingHeaders(page: Page, selectors: typeof inPaneSelecto
     return settled;
   }, { timeout: 5000, intervals: [80] }).toBe(true);
   expect(main.tabLabels).toEqual(tabs);
-  expect(side).toEqual(main);
+  if (tabsOnly) {
+    for (const key of ['tabLabels', 'tabRowHeight', 'tabGap', 'activeColor', 'activeUnderline', 'activeFont', 'activePadding', 'inactiveColor', 'inactiveUnderline'] as const) expect(side[key]).toEqual(main[key]);
+  } else expect(side).toEqual(main);
   expect(side.activeUnderline).not.toBe(side.inactiveUnderline);
   return side;
 }
 
 /** The tab rows meet at the shared hairline divider with no body background between them. */
-async function expectContinuousDivider(page: Page, headerSelector: string) {
-  const measure = () => page.evaluate((headerSelector) => {
+async function expectContinuousDivider(page: Page, headerSelector: string, panelHeader = headerSelector) {
+  const measure = () => page.evaluate(({ headerSelector, panelHeader }) => {
     const box = (selector: string) => {
       const { left, right, top, bottom } = document.querySelector(selector)!.getBoundingClientRect();
       return { left, right, top, bottom };
@@ -86,14 +88,14 @@ async function expectContinuousDivider(page: Page, headerSelector: string) {
     const divider = document.querySelector('.app-chat-split-divider')!;
     return {
       main: box(`.app-chat-main-workspace ${headerSelector}`),
-      panel: box(`[data-chat-side-agent-panel] ${headerSelector}`),
+      panel: box(`[data-chat-side-agent-panel] ${panelHeader}`),
       divider: box('.app-chat-split-divider'),
       borderColor: getComputedStyle(mainHeader).borderBottomColor,
-      panelBorderColor: getComputedStyle(document.querySelector(`[data-chat-side-agent-panel] ${headerSelector}`)!).borderBottomColor,
+      panelBorderColor: getComputedStyle(document.querySelector(`[data-chat-side-agent-panel] ${panelHeader}`)!).borderBottomColor,
       borderWidth: getComputedStyle(mainHeader).borderBottomWidth,
       dividerColor: getComputedStyle(divider).backgroundColor,
     };
-  }, headerSelector);
+  }, { headerSelector, panelHeader });
   // Let the panel's opening motion settle before comparing edges.
   await expect.poll(async () => {
     const { main, panel, divider } = await measure();
@@ -150,10 +152,14 @@ for (const appearance of ['light', 'dark'] as const) {
   test(`${appearance}: Ask Agent header and tabs match the main chat`, async ({ page }, testInfo) => {
     const errors = await openPanel(page, `theme=${appearance}&native=0`);
     const header = page.locator(`${panel} .app-chat-pane-header`);
-    await expect(header.getByRole('heading')).toHaveText('Ask Agent · Fix transcript scroll jitter');
+    await expect(header.getByRole('heading')).toHaveCount(0);
+    await header.getByRole('button', { name: 'Side chat options' }).click();
+    await expect(header.getByRole('heading')).toHaveText('Fix transcript scroll jitter');
+    await expect(header.getByText('Ask Agent · Only you · Agent session')).toBeVisible();
+    await page.keyboard.press('Escape');
     await expect(header.getByRole('button', { name: 'Side chat options' })).toBeVisible();
     await expect(header.getByRole('button', { name: 'Close side chat' })).toBeVisible();
-    await expectMatchingHeaders(page, inPaneSelectors);
+    await expectMatchingHeaders(page, inPaneSelectors, true);
     await expectContinuousDivider(page, '.app-chat-pane-header');
     await expectTabHoverParity(page);
     await page.screenshot({ path: testInfo.outputPath(`companion-header-parity-${appearance}.png`) });
@@ -163,7 +169,7 @@ for (const appearance of ['light', 'dark'] as const) {
         if (value === 'default') delete document.body.dataset.kordiChatTheme;
         else document.body.dataset.kordiChatTheme = value;
       }, theme);
-      await expectMatchingHeaders(page, inPaneSelectors);
+      await expectMatchingHeaders(page, inPaneSelectors, true);
     }
     await page.evaluate(() => { delete document.body.dataset.kordiChatTheme; });
 
@@ -191,24 +197,15 @@ for (const appearance of ['light', 'dark'] as const) {
     expect(errors).toEqual([]);
   });
 
-  test(`${appearance}: native title row keeps the Ask Agent tabs aligned with the main chat`, async ({ page }, testInfo) => {
+  test(`${appearance}: native title row hosts tool tabs while preserving Ask Agent controls`, async ({ page }, testInfo) => {
     const errors = await openPanel(page, `theme=${appearance}`);
     const titlebar = page.locator('.app-native-companion-titlebar');
-    await expect(titlebar.getByRole('heading')).toHaveText('Ask Agent · Fix transcript scroll jitter');
-    await expect(titlebar.getByRole('button', { name: 'Close side chat' })).toBeVisible();
+    await expect(titlebar.getByRole('tab', { name: 'Fix transcript scroll jitter', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(titlebar.getByRole('button', { name: 'Close Fix transcript scroll jitter', exact: true })).toBeVisible();
     await expect(titlebar.locator('[data-chat-destination-tabs]')).toHaveCount(0);
     await expect(page.locator(`${panel} .app-chat-pane-title-row`)).toHaveCount(0);
-    const side = await expectMatchingHeaders(page, nativeSelectors);
-    expect(side.titleHeight).toBe(28);
-    const rows = await page.evaluate(() => {
-      const top = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().top;
-      return {
-        tabs: Math.abs(top('.app-chat-main-workspace [data-chat-destination-tabs]') - top('[data-chat-side-agent-panel] [data-chat-destination-tabs]')),
-        titles: Math.abs(top('.app-native-titlebar-title .app-chat-pane-title-row') - top('.app-native-companion-titlebar .app-chat-pane-title-row')),
-      };
-    });
-    expect(rows.tabs).toBeLessThan(1);
-    expect(rows.titles).toBeLessThan(1);
+    await expect(page.locator(panel).getByRole('button', { name: 'Side chat options' })).toBeVisible();
+    const side = await expectMatchingHeaders(page, nativeSelectors, true);
     // Both title rows are painted by the window titlebar, which shares the sidebar's material across
     // the conversation column, at the same height.
     const titleRows = await page.evaluate(() => {
@@ -227,7 +224,7 @@ for (const appearance of ['light', 'dark'] as const) {
     expect(titleRows.panel).toEqual(titleRows.main);
     expect(titleRows.main.painter?.split(/\s+/)).toContain('app-native-titlebar');
     expect(titleRows.main.own).toBe('rgba(0, 0, 0, 0)');
-    await expectContinuousDivider(page, '.app-chat-native-metadata-header');
+    await expectContinuousDivider(page, '.app-chat-native-metadata-header', '.app-chat-pane-header');
     await expectTabHoverParity(page);
     await page.getByRole('navigation', { name: 'Ask Agent destinations' }).getByRole('tab', { name: 'Tasks', exact: true }).click();
     await expect(page.locator('#chat-companion-tasks-panel')).toBeVisible();

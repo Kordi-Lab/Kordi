@@ -14,16 +14,16 @@ import type { CompanionView } from './chatsPage.companionToolbar';
 import { CompanionTitlebar } from './CompanionTitlebar';
 
 type OverviewView = Exclude<CompanionView, 'chat' | 'document'>;
-type Props = { accountId?: string; view: OverviewView; onClose: () => void };
+type Props = { accountId?: string; view: OverviewView; onClose: () => void; showHeader?: boolean };
 
-export default function CompanionOverview({ accountId, view, onClose }: Props) {
+export default function CompanionOverview({ accountId, view, onClose, showHeader = true }: Props) {
   return <aside className="app-companion-overview" aria-label={`${view === 'digest' ? 'Digest' : 'Calendar'} panel`}>
-    <CompanionTitlebar>
+    {showHeader ? <CompanionTitlebar>
       <header className="app-page-header app-chat-pane-header app-companion-overview-header">
         <div><h2>{view === 'digest' ? 'Digest' : 'Calendar'}</h2><p>{view === 'digest' ? 'Across your chats' : 'Your Kordi calendar'}</p></div>
         <button type="button" aria-label="Hide panel" title="Hide panel" onClick={onClose}><X size={16} aria-hidden="true" /></button>
       </header>
-    </CompanionTitlebar>
+    </CompanionTitlebar> : null}
     {accountId ? <ConnectedOverview key={accountId} accountId={accountId} view={view} />
       : <p className="app-companion-status">Sign in to see your {view === 'digest' ? 'digest' : 'calendar'}.</p>}
   </aside>;

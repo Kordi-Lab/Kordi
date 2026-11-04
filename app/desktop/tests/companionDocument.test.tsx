@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { act, createElement, useState } from 'react';
+import { Activity, act, createElement, useState } from 'react';
 
 import { openArtifactInCompanion } from '../src/features/documents/companionDocument';
 import { DocumentReaderHostContext, type DocumentReaderHost } from '../src/features/documents/documentReaderHost';
@@ -52,12 +52,11 @@ function Harness() {
       canOpenChat: true,
       hasChat: false,
       hasDocument: Boolean(companionDocument.document),
-      onSelect: setView,
-      onHide: hide,
+      onSelect: (next) => { setView(next); setFolded(false); },
+      onHide: () => setFolded(true),
     }),
-    !folded && effectiveView === 'document' && companionDocument.document
-      ? createElement(CompanionDocumentPane, { tabs: companionDocument, host, api, onClose: hide })
-      : null,
+    createElement(Activity, { mode: !folded && effectiveView === 'document' ? 'visible' : 'hidden' },
+      companionDocument.document ? createElement(CompanionDocumentPane, { tabs: companionDocument, host, api, onClose: hide }) : null),
   );
 }
 
@@ -75,11 +74,11 @@ async function click(element: Element | null) {
   });
 }
 
-test('selecting a document artifact opens the reader in the companion pane, and hiding it closes the document', async () => {
+test('folding a document retains its reader; expanding restores it and closing removes it', async () => {
   await withJsdomRoot(async (mount) => {
     const root = await mount(createElement(Harness));
     const page = root.querySelector('[data-view]') as HTMLElement;
-    assert.equal(root.querySelector('[aria-label="Document"]'), null, 'no Document button until a document is open');
+    assert.equal(root.querySelector('[aria-label="Fold pane"]'), null, 'no Document button until a document is open');
 
     await click(row(root, 'related-work.md'));
     assert.equal(page.dataset.view, 'document');
@@ -89,13 +88,19 @@ test('selecting a document artifact opens the reader in the companion pane, and 
     assert.ok(pane?.querySelector('.app-document-header'), 'the reader header renders in the pane');
     assert.equal(root.querySelector('[data-artifact-preview-section="true"]'), null, 'no inline document preview');
     assert.equal(row(root, 'related-work.md').getAttribute('aria-current'), 'true', 'the list row stays selected');
-    const documentButton = root.querySelector('[aria-label="Document"]');
-    assert.equal(documentButton?.getAttribute('aria-pressed'), 'true');
+    const documentButton = root.querySelector('[aria-label="Fold pane"]');
+    assert.equal(documentButton?.getAttribute('aria-expanded'), 'true');
 
     await click(documentButton);
     assert.equal(page.dataset.open, 'false');
+    assert.equal(root.querySelector('[aria-label="Document panel"]'), pane, 'folding keeps the reader mounted');
+    await click(root.querySelector('[aria-label="Expand pane"]'));
+    assert.equal(page.dataset.open, 'true');
+    assert.equal(root.querySelector('[aria-label="Document panel"]'), pane);
+    await click(root.querySelector('[aria-label="Hide panel"]'));
+    assert.equal(page.dataset.open, 'false');
     assert.equal(root.querySelector('[aria-label="Document panel"]'), null);
-    assert.equal(root.querySelector('[aria-label="Document"]'), null, 'hiding the pane closes the document');
+    assert.equal(root.querySelector('[aria-label="Expand pane"]'), null, 'closing the panel removes the documents');
   });
 });
 
@@ -115,13 +120,13 @@ function tabs(root: ParentNode) {
 }
 
 function tab(root: ParentNode, name: string) {
-  const match = tabs(root).find((entry) => entry.textContent === name);
+  const match = tabs(root).find((entry) => entry.getAttribute('aria-label') === name);
   assert.ok(match, `tab ${name}`);
   return match;
 }
 
 function selectedTab(root: ParentNode) {
-  return tabs(root).filter((entry) => entry.getAttribute('aria-selected') === 'true').map((entry) => entry.textContent);
+  return tabs(root).filter((entry) => entry.getAttribute('aria-selected') === 'true').map((entry) => entry.getAttribute('aria-label'));
 }
 
 /** The panel a tab controls; inactive panels stay mounted and hidden. */
@@ -152,7 +157,7 @@ test('open documents show as tabs, and switching tabs keeps every reader mounted
     await click(row(root, 'related-work.md'));
     await click(row(root, 'plan.md'));
 
-    assert.deepEqual(tabs(root).map((entry) => entry.textContent), ['related-work.md', 'plan.md']);
+    assert.deepEqual(tabs(root).map((entry) => entry.getAttribute('aria-label')), ['related-work.md', 'plan.md']);
     assert.deepEqual(selectedTab(root), ['plan.md'], 'the document opened last is active');
     assert.equal(root.querySelectorAll('.app-document-reader').length, 2, 'each open document has its reader');
     assert.equal(panel(root, 'related-work.md').hidden, true);
@@ -171,7 +176,7 @@ test('open documents show as tabs, and switching tabs keeps every reader mounted
     assert.deepEqual(selectedTab(root), ['related-work.md']);
 
     await click(root.querySelector('[aria-label="Close related-work.md"]'));
-    assert.deepEqual(tabs(root).map((entry) => entry.textContent), ['plan.md']);
+    assert.deepEqual(tabs(root).map((entry) => entry.getAttribute('aria-label')), ['plan.md']);
     assert.deepEqual(selectedTab(root), ['plan.md'], 'closing the active tab activates its neighbor');
     assert.equal(root.querySelectorAll('.app-document-reader').length, 1, 'the closed reader unmounts');
     assert.equal(panel(root, 'plan.md').querySelector('.app-document-reader'), planReader);
@@ -180,7 +185,7 @@ test('open documents show as tabs, and switching tabs keeps every reader mounted
     await click(root.querySelector('[aria-label="Close plan.md"]'));
     assert.equal(page.dataset.open, 'false', 'closing the last tab closes the pane');
     assert.equal(root.querySelector('[aria-label="Document panel"]'), null);
-    assert.equal(root.querySelector('[aria-label="Document"]'), null);
+    assert.equal(root.querySelector('[aria-label="Fold pane"]'), null);
   });
 });
 
@@ -195,18 +200,18 @@ test('closing the active tab prefers its right neighbor, and the keyboard and a 
     await act(async () => { tab(root, 'c.md').focus(); });
     await key(tab(root, 'c.md'), 'ArrowRight');
     assert.equal(globalThis.document.activeElement, tab(root, 'd.md'), 'arrow keys move focus');
-    assert.deepEqual(selectedTab(root), ['c.md'], 'moving focus does not activate');
+    assert.deepEqual(selectedTab(root), ['d.md'], 'arrow keys select the focused tab');
     await key(tab(root, 'd.md'), 'Enter');
     assert.deepEqual(selectedTab(root), ['d.md']);
     await key(tab(root, 'd.md'), 'Delete');
-    assert.deepEqual(tabs(root).map((entry) => entry.textContent), ['a.md', 'c.md']);
+    assert.deepEqual(tabs(root).map((entry) => entry.getAttribute('aria-label')), ['a.md', 'c.md']);
     assert.deepEqual(selectedTab(root), ['c.md'], 'the last tab falls back to its left neighbor');
 
     await act(async () => {
       tab(root, 'a.md').dispatchEvent(new window.MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }));
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    assert.deepEqual(tabs(root).map((entry) => entry.textContent), ['c.md'], 'a middle click closes a tab');
+    assert.deepEqual(tabs(root).map((entry) => entry.getAttribute('aria-label')), ['c.md'], 'a middle click closes a tab');
   });
 });
 
@@ -218,7 +223,7 @@ test('a thirteenth document replaces the least recently active tab', async () =>
     await click(tab(root, 'doc-1.md'));
 
     await openDocument('doc-13.md');
-    const names = tabs(root).map((entry) => entry.textContent);
+    const names = tabs(root).map((entry) => entry.getAttribute('aria-label'));
     assert.equal(names.length, 12, 'the strip holds twelve tabs');
     assert.equal(names.includes('doc-2.md'), false, 'the least recently active tab closes');
     assert.equal(names.includes('doc-1.md'), true, 'a tab used since stays');
@@ -267,5 +272,26 @@ test('text documents display literal source in the parallel pane', async () => {
     assert.ok(source);
     assert.match(source.textContent ?? '', /<h1>Plain text<\/h1>/);
     assert.equal(source.querySelector('h1'), null);
+  });
+});
+
+test('plain text wraps by default while source code retains horizontal scrolling', async () => {
+  const { CompanionSourceView } = await import('../src/features/documents/CompanionSourceView');
+  await withJsdomRoot(async mount => {
+    const preview = { path: 'notes.txt', truncated: true, lines: [{ number: 1, text: 'A long line with <script>literal text</script>' }] };
+    const root = await mount(createElement('div', {},
+      createElement(CompanionSourceView, { preview, onReload: () => {} }),
+      createElement(CompanionSourceView, { preview: { ...preview, path: 'config.json' }, onReload: () => {} }),
+      createElement(CompanionSourceView, { preview: { ...preview, path: 'project.v2/README' }, onReload: () => {} }),
+    ));
+    const sources = root.querySelectorAll<HTMLElement>('.app-companion-source');
+    assert.equal(sources[0].dataset.wrap, 'true');
+    assert.equal(sources[1].dataset.wrap, 'false');
+    assert.match(root.querySelectorAll('.app-document-source-toolbar')[2].textContent ?? '', /^Source/);
+    assert.equal(sources[0].querySelector('code')?.textContent, preview.lines[0].text);
+    assert.equal(root.querySelector('script'), null);
+    await click(root.querySelector('.app-document-source-toolbar button'));
+    assert.equal(sources[0].dataset.wrap, 'false');
+    assert.match(sources[0].textContent ?? '', /Preview truncated/);
   });
 });

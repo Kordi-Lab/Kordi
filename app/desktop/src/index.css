@@ -22,6 +22,8 @@
 @import './styles/document-annotations.css';
 @import './styles/document-collab.css';
 @import './styles/document-tabs.css';
+@import './styles/document-tab-picker.css';
+@import './styles/document-source.css';
 @import './styles/shell-calls.css';
 @import './styles/shell-bubbles.css';
 @import './styles/plan-card.css';

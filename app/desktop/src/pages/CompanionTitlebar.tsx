@@ -4,10 +4,10 @@ import { NativeChatTitlebarContext } from '@/app/nativeChatTitlebarContext';
 import { CompanionTitlebarContext } from './companionTitlebarContext';
 
 /** Keep the original panel header and menus on the native main-chat title row. */
-export function CompanionTitlebar({ children }: { children: ReactNode }) {
+export function CompanionTitlebar({ children, primary = false }: { children: ReactNode; primary?: boolean }) {
   const native = useContext(NativeChatTitlebarContext);
   const panel = useContext(CompanionTitlebarContext);
-  if (!native?.companion || !panel) return children;
+  if (!native?.companion || !panel || (panel.hasTabs && !primary)) return children;
 
   return createPortal(
     <div className="app-native-companion-titlebar" data-side={panel.side} data-open={panel.isVisible}
