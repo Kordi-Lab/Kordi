@@ -383,3 +383,101 @@ mod quiet;
 
 #[path = "agent_exchange_failure.rs"]
 mod failure;
+
+#[tokio::test]
+async fn overlapping_roots_keep_their_leases_and_downstream_replies_separate() {
+    let Some(f) = Fixture::new().await else {
+        return;
+    };
+    let (conversation,): (uuid::Uuid,) =
+        query_as("SELECT conversation_id FROM cloud_chat_conversations WHERE legacy_session_id=$1")
+            .bind(&f.session)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    let owner = &f.people[0];
+    let logical = uuid::Uuid::new_v4().to_string();
+    let envelope = json!({"kind":"group-message","groupId":f.session,"createdByAccountId":owner.account_id,
+        "actor":{"accountId":owner.account_id,"displayName":"Synthetic owner"},
+        "participants":f.people.iter().map(|p|json!({"accountId":p.account_id,"displayName":"Synthetic participant"})).collect::<Vec<_>>(),
+        "message":{"id":logical,"senderAccountId":owner.account_id,"senderKind":"human","text":"Second independent request","createdAtMs":chrono::Utc::now().timestamp_millis(),"targetCloudAgentId":format!("cloud-agent:{}",owner.account_id),"targetCloudAgentOwnerAccountId":owner.account_id,"targetCloudAgentName":"Kordi"}});
+    insert_test_message(
+        &f.pool,
+        &owner.account_id,
+        conversation,
+        &format!(
+            "kordi-cloud-group:{}",
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(envelope.to_string())
+        ),
+    )
+    .await;
+    let second_claim = uuid::Uuid::new_v4();
+    let second = f
+        .post(
+            0,
+            "/v1/cloud/agent-runs/desktop/claim",
+            json!({
+                "requestMessageId":logical,"sessionId":f.session,"ownerAccountId":owner.account_id,
+                "requesterAccountId":owner.account_id,"prompt":"Second independent request",
+                "idempotencyKey":logical,"claimId":second_claim
+            }),
+        )
+        .await;
+    assert_eq!(second["acquired"], true);
+    let second_root = second["runId"].as_str().unwrap();
+    let path = format!("/v1/cloud/agent-runs/desktop/{second_root}/agent-exchange");
+    let (first, second) = tokio::join!(f.send("first", 1), f.post(0, &path, json!({
+        "claimId":second_claim,"toolCallId":"second", "arguments":{
+            "target":format!("cloud-agent:{}",f.people[1].account_id),"message":"Return the second synthetic status."
+        }
+    })));
+    assert_ne!(first["exchangeId"], second["exchangeId"]);
+    let targets = f.pending(1).await;
+    assert_eq!(targets.len(), 2);
+    let (claim_a, claim_b) = tokio::join!(f.claim(1, &targets[0]), f.claim(1, &targets[1]));
+    for (target, claim) in targets.iter().zip([claim_a, claim_b]) {
+        let reply = if target["prompt"].as_str().unwrap().contains("second") {
+            "SECOND_RESULT 76"
+        } else {
+            "FIRST_RESULT 51"
+        };
+        f.finish(1, target["runId"].as_str().unwrap(), claim, reply)
+            .await;
+    }
+    f.end_parent().await;
+    query("UPDATE cloud_agent_fallback_runs SET status='completed',completed_at=now()::text WHERE run_id=$1")
+        .bind(second_root).execute(&f.pool).await.unwrap();
+    let resumes = f.pending(0).await;
+    assert_eq!(resumes.len(), 2);
+    for result in ["FIRST_RESULT 51", "SECOND_RESULT 76"] {
+        assert_eq!(
+            resumes
+                .iter()
+                .filter(|resume| resume["prompt"].as_str().unwrap().contains(result))
+                .count(),
+            1,
+            "each downstream result resumes exactly one root"
+        );
+    }
+    for resume in &resumes {
+        let prompt = resume["prompt"].as_str().unwrap();
+        assert_ne!(
+            prompt.contains("FIRST_RESULT 51"),
+            prompt.contains("SECOND_RESULT 76")
+        );
+        if prompt.contains("SECOND_RESULT 76") {
+            assert!(prompt.contains("Second independent request"));
+        } else {
+            assert!(prompt.contains("Ask Beta and continue"));
+        }
+        let claim = f.claim(0, resume).await;
+        f.finish(
+            0,
+            resume["runId"].as_str().unwrap(),
+            claim,
+            "Synthetic continuation completed.",
+        )
+        .await;
+    }
+    assert!(f.pending(0).await.is_empty());
+}
