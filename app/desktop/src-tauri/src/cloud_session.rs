@@ -268,6 +268,7 @@ pub fn cloud_session_store(
     client_id: Option<String>,
     token_endpoint: Option<String>,
 ) -> Result<(), String> {
+    let _writes = crate::cloud_session_refresh::lock_session_writes();
     if let Some(previous) = cloud_session_load()? {
         if previous.account_id != account_id {
             tauri::async_runtime::spawn(crate::digest_calendar::clear_reminders(Some(
@@ -324,6 +325,7 @@ pub fn cloud_session_load() -> Result<Option<CloudSessionEntry>, String> {
 
 #[tauri::command]
 pub fn cloud_session_clear() -> Result<(), String> {
+    let _writes = crate::cloud_session_refresh::lock_session_writes();
     let account_id = cloud_session_load()
         .ok()
         .flatten()

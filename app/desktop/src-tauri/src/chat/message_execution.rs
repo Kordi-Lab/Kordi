@@ -170,6 +170,9 @@ pub(super) async fn start_message(
         if !admission::begin_preparation(&snapshot_for_task, &cancel, previous_turn).await {
             return;
         }
+        // Tools built for this turn read the stored session; refresh an access
+        // token that is about to expire before they copy it.
+        let _ = crate::cloud_session_refresh::load_fresh_session().await;
         let hosted_auth = if let Some(inherited) = inherited_hosted_auth {
             Some(inherited.for_turn(route.as_ref()).await)
         } else if super::hosted_provider_auth::route_uses_hosted_auth(route.as_ref()) {
