@@ -9,21 +9,31 @@
 //! loopback, so `cloud_oauth_loopback_wait` and `cloud_oauth_loopback_cancel`
 //! serve both flows.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::State;
+use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot, Semaphore};
 
 use crate::cloud_oauth_loopback::{
-    read_loopback_request, write_response, CloudOAuthLoopbackStart, CloudOAuthLoopbackState,
+    read_loopback_request, CloudOAuthLoopbackStart, CloudOAuthLoopbackState,
 };
 
 pub(crate) const CALLBACK_PATH: &str = "/auth/callback";
 const MAX_STATE_CHARS: usize = 512;
 /// Authorization codes live for 60 seconds, but the user may take longer to
-/// sign in or create an account on the page first.
-const LISTENER_LIFETIME: Duration = Duration::from_secs(15 * 60);
+/// sign in or create an account on the page first. Matches the longest wait
+/// `cloud_oauth_loopback_wait` allows.
+const LISTENER_LIFETIME: Duration = Duration::from_secs(10 * 60);
+/// How long one connection may take to send its request headers.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// Connections served at once; browsers preconnect and fetch a favicon.
+const MAX_CONNECTIONS: usize = 16;
+/// The pages carry an inline style, an inline script and an inline SVG, and
+/// load nothing.
+const SECURITY_HEADERS: &str = "Referrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:\r\n";
 
 #[tauri::command]
 pub async fn cloud_app_sign_in_loopback_prepare(
@@ -77,6 +87,11 @@ async fn run_listener(
     cancel_rx: oneshot::Receiver<()>,
     on_completed: impl FnOnce(),
 ) {
+    // Connections are served concurrently, so an idle preconnect or a slow
+    // request cannot hold up the redirect; the first valid callback wins.
+    let expected_state: Arc<str> = expected_state.into();
+    let slots = Arc::new(Semaphore::new(MAX_CONNECTIONS));
+    let (found_tx, mut found_rx) = mpsc::channel::<String>(1);
     let mut sender = Some(tx);
     let deadline = tokio::time::sleep(LISTENER_LIFETIME);
     tokio::pin!(deadline);
@@ -95,15 +110,23 @@ async fn run_listener(
                 }
                 return;
             }
+            Some(query) = found_rx.recv() => {
+                if let Some(tx) = sender.take() {
+                    let _ = tx.send(Ok(query));
+                }
+                on_completed();
+                return;
+            }
             accepted = listener.accept() => {
                 let Ok((stream, _)) = accepted else { continue; };
-                if let Some(query) = handle_connection(stream, &expected_state).await {
-                    if let Some(tx) = sender.take() {
-                        let _ = tx.send(Ok(query));
+                let Ok(slot) = slots.clone().try_acquire_owned() else { continue; };
+                let (state, found) = (expected_state.clone(), found_tx.clone());
+                tokio::spawn(async move {
+                    let _slot = slot;
+                    if let Some(query) = handle_connection(stream, &state).await {
+                        let _ = found.try_send(query);
                     }
-                    on_completed();
-                    return;
-                }
+                });
             }
         }
     }
@@ -112,7 +135,7 @@ async fn run_listener(
 /// Serves one request. Returns the callback query once a request carries
 /// the expected `state` together with a `code` or an `error`.
 async fn handle_connection(mut stream: TcpStream, expected_state: &str) -> Option<String> {
-    let request = tokio::time::timeout(Duration::from_secs(10), read_loopback_request(&mut stream))
+    let request = tokio::time::timeout(REQUEST_TIMEOUT, read_loopback_request(&mut stream))
         .await
         .ok()
         .flatten()?;
@@ -132,6 +155,24 @@ async fn handle_connection(mut stream: TcpStream, expected_state: &str) -> Optio
         CallbackOutcome::Completed { query, .. } => Some(query),
         _ => None,
     }
+}
+
+async fn write_response(
+    stream: &mut TcpStream,
+    status: &str,
+    content_type: &str,
+    body: &[u8],
+) -> std::io::Result<()> {
+    let headers = response_headers(status, content_type, body.len());
+    stream.write_all(headers.as_bytes()).await?;
+    stream.write_all(body).await?;
+    stream.shutdown().await
+}
+
+fn response_headers(status: &str, content_type: &str, length: usize) -> String {
+    format!(
+        "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {length}\r\nConnection: close\r\nCache-Control: no-store\r\n{SECURITY_HEADERS}\r\n"
+    )
 }
 
 /// The Kordi bird, inline so the page loads nothing.
@@ -210,22 +251,25 @@ pub(crate) fn classify_request(request: &str, expected_state: &str) -> CallbackO
     if path != CALLBACK_PATH {
         return CallbackOutcome::NotFound;
     }
-    let mut state = None;
-    let mut has_code = false;
-    let mut has_error = false;
+    let (mut state, mut code, mut error) = (None, None, None);
     for pair in query.split('&').filter(|pair| !pair.is_empty()) {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
         let Some(value) = decode_component(value) else {
             return CallbackOutcome::Rejected;
         };
-        match key {
-            "state" if state.is_none() => state = Some(value),
-            "state" => return CallbackOutcome::Rejected,
-            "code" => has_code = !value.is_empty(),
-            "error" => has_error = !value.is_empty(),
-            _ => {}
+        let slot = match key {
+            "state" => &mut state,
+            "code" => &mut code,
+            "error" => &mut error,
+            _ => continue,
+        };
+        // A repeated parameter is ambiguous; never pick one of the values.
+        if slot.replace(value).is_some() {
+            return CallbackOutcome::Rejected;
         }
     }
+    let has_code = code.is_some_and(|value| !value.is_empty());
+    let has_error = error.is_some_and(|value| !value.is_empty());
     if state.as_deref() != Some(expected_state) || has_code == has_error {
         return CallbackOutcome::Rejected;
     }
@@ -291,6 +335,8 @@ mod tests {
             "/auth/callback?code=kac_1&state=other",
             "/auth/callback?code=kac_1",
             "/auth/callback?code=kac_1&state=s1&state=s1",
+            "/auth/callback?code=kac_1&code=kac_2&state=s1",
+            "/auth/callback?error=a&error=b&state=s1",
             "/auth/callback?state=s1",
             "/auth/callback?code=kac_1&error=access_denied&state=s1",
         ] {
@@ -393,8 +439,23 @@ mod tests {
             .starts_with("HTTP/1.1 404"));
         assert_eq!(brought_back.load(Ordering::SeqCst), 0);
 
-        let signed_in = request(port, "/auth/callback?code=kac_1&state=s1").await;
+        // An idle preconnect must not hold up the redirect.
+        let _idle = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        let signed_in = tokio::time::timeout(
+            Duration::from_secs(3),
+            request(port, "/auth/callback?code=kac_1&state=s1"),
+        )
+        .await
+        .expect("the callback is served while another connection idles");
         assert!(signed_in.starts_with("HTTP/1.1 200"));
+        for header in [
+            "Referrer-Policy: no-referrer\r\n",
+            "X-Content-Type-Options: nosniff\r\n",
+            "X-Frame-Options: DENY\r\n",
+            "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:\r\n",
+        ] {
+            assert!(signed_in.contains(header), "{header}");
+        }
         assert!(signed_in.contains("Signed in to Kordi"));
         task.await.unwrap();
         assert_eq!(rx.await.unwrap(), Ok("code=kac_1&state=s1".to_string()));
