@@ -77,6 +77,7 @@ export default function AttachmentMediaWindow() {
   ));
   const [selectedIndex, setSelectedIndex] = useState(() => payload?.selectedIndex ?? 0);
   const [zoom, setZoom] = useState(1);
+  const [actualSizeZoom, setActualSizeZoom] = useState(1);
   const [theme, setTheme] = useState<ResolvedThemeMode>(() => payload?.theme ?? initialMediaWindowTheme());
   const [failedDirectIdentity, setFailedDirectIdentity] = useState<string | null>(null);
   const [failedVideoIdentity, setFailedVideoIdentity] = useState<string | null>(null);
@@ -256,7 +257,7 @@ export default function AttachmentMediaWindow() {
         const zoomAction = attachmentMediaZoomActionForKey(event);
         if (zoomAction) {
           event.preventDefault();
-          setZoom((current) => nextAttachmentMediaZoom(current, zoomAction));
+          setZoom((current) => nextAttachmentMediaZoom(current, zoomAction, actualSizeZoom));
           return;
         }
         if (event.key === 'ArrowLeft' && selectedIndex > 0) {
@@ -271,7 +272,7 @@ export default function AttachmentMediaWindow() {
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [contextMenuState, isVideo, navigate, payload, selectedIndex]);
+  }, [actualSizeZoom, contextMenuState, isVideo, navigate, payload, selectedIndex]);
 
   const openContextMenu = useCallback((event: MouseEvent) => {
     if (!attachment) return;
@@ -306,6 +307,7 @@ export default function AttachmentMediaWindow() {
         />
       ) : (
         <AttachmentImageLightbox
+          key={attachmentIdentity}
           attachment={attachment}
           previewUrl={preview.url}
           previewStatus={preview.status}
@@ -327,8 +329,10 @@ export default function AttachmentMediaWindow() {
           onContextMenu={openContextMenu}
           positionLabel={`${selectedIndex + 1} of ${payload.attachments.length}`}
           zoom={zoom}
-          onZoomIn={() => setZoom((current) => nextAttachmentMediaZoom(current, 'in'))}
-          onZoomOut={() => setZoom((current) => nextAttachmentMediaZoom(current, 'out'))}
+          onZoomChange={setZoom}
+          onActualSizeZoomChange={setActualSizeZoom}
+          onZoomIn={() => setZoom((current) => nextAttachmentMediaZoom(current, 'in', actualSizeZoom))}
+          onZoomOut={() => setZoom((current) => nextAttachmentMediaZoom(current, 'out', actualSizeZoom))}
           onZoomReset={() => setZoom(1)}
         />
       )}

@@ -38,6 +38,10 @@ html.app-attachment-media-window-root[data-attachment-media-theme="light"] {
   outline: none;
 }
 
+.app-attachment-media-window-root .app-attachment-image-lightbox {
+  padding: 38px 16px 48px;
+}
+
 .app-attachment-image-lightbox-titlebar {
   position: absolute;
   z-index: 1;
@@ -79,13 +83,13 @@ html.app-attachment-media-window-root[data-attachment-media-theme="light"] {
 
 .app-attachment-image-lightbox-nav {
   position: absolute;
-  top: 50%;
+  bottom: 9px;
   display: inline-flex;
   z-index: 2;
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  min-height: 48px;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
   padding: 0;
   align-items: center;
   justify-content: center;
@@ -97,7 +101,6 @@ html.app-attachment-media-window-root[data-attachment-media-theme="light"] {
   cursor: pointer;
   opacity: 0.56;
   outline: none;
-  transform: translateY(-50%);
   transition:
     background-color 140ms ease-out,
     opacity 140ms ease-out;
@@ -120,11 +123,21 @@ html.app-attachment-media-window-root[data-attachment-media-theme="light"] {
 }
 
 .app-attachment-image-lightbox-nav-previous {
-  left: clamp(8px, 2vw, 24px);
+  right: calc(50% + 4px);
 }
 
 .app-attachment-image-lightbox-nav-next {
-  right: clamp(8px, 2vw, 24px);
+  left: calc(50% + 4px);
+}
+
+@media (max-width: 440px) {
+  .app-attachment-media-window-root .app-attachment-image-lightbox {
+    padding-bottom: 88px;
+  }
+
+  .app-attachment-image-lightbox-nav {
+    bottom: 49px;
+  }
 }
 
 .app-attachment-image-lightbox-position {
