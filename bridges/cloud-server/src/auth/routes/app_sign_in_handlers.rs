@@ -100,6 +100,10 @@ pub(super) struct AppAuthorizationParams {
     /// from their own app on this device.
     #[serde(default, skip_serializing)]
     pub confirmed: Option<bool>,
+    /// Redirect codes only: the user approved this app on the page
+    /// ("Continue as ...") during this request (RFC 8252, section 8.6).
+    #[serde(default, skip_serializing)]
+    pub approved: Option<bool>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -273,7 +277,8 @@ pub const DISPLAY_CODE_WARNING: &str =
     "Only paste this code into the Kordi app on this device. Never share it.";
 
 /// `POST /v1/cloud/auth/app/authorize`: called by the sign-in page with the
-/// web session cookie. Returns the redirect URL carrying the code.
+/// web session cookie after the user approved the app (`"approved": true`).
+/// Returns the redirect URL carrying the code.
 pub(super) async fn app_authorize(
     State(state): State<Arc<ServerState>>,
     Extension(registry): Extension<Arc<AppClientRegistry>>,
@@ -340,6 +345,17 @@ async fn authorize_with_delivery(
         Ok(valid) => valid,
         Err(rejection) => return rejection_response(rejection),
     };
+    // A code sent to the redirect URI reaches whatever app holds that URI,
+    // so the signed-in user must approve each request on the page. A
+    // displayed code reaches only the person reading the page, who confirms
+    // instead.
+    if delivery == CodeDelivery::Redirect && params.approved != Some(true) {
+        return oauth_error(
+            StatusCode::BAD_REQUEST,
+            "approval_required",
+            "Approve this app on the sign-in page to continue.",
+        );
+    }
     if delivery == CodeDelivery::Display && params.confirmed != Some(true) {
         return oauth_error(
             StatusCode::BAD_REQUEST,
