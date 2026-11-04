@@ -12,7 +12,9 @@
 # DATABASE_URL pointing at the in-cluster Postgres service.
 
 # ---------- builder ----------
-FROM rust:1.88-slim-bookworm AS builder
+# Keep this at or above the highest rust-version in Cargo.lock;
+# scripts/ci/check-docker-rust-toolchains.mjs enforces it in CI.
+FROM docker.io/library/rust:1.97-slim-bookworm AS builder
 
 # rusqlite uses the bundled SQLite, which still needs a C toolchain at link time.
 RUN apt-get update && apt-get install -y --no-install-recommends \
