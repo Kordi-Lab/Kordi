@@ -13,12 +13,21 @@ use crate::auth::app_sign_in::tokens::sign_in_for_session;
 use crate::auth::app_sign_in::APP_SIGN_IN_PAGE_PATH;
 use sha2::{Digest, Sha256};
 
+mod web_oauth;
+
+#[cfg(test)]
+pub(super) use web_oauth::WEB_OAUTH_BIND_COOKIE;
+pub(super) use web_oauth::{
+    browser_binding_matches, web_oauth_binding_rejected, web_oauth_complete, web_oauth_return_to,
+    web_oauth_start, web_oauth_success, WebOAuthStart,
+};
+
 /// `__Host-` cookies are host-only, `Secure`, and scoped to `Path=/`, so a
 /// sibling subdomain cannot set or overwrite them.
 pub const WEB_SESSION_COOKIE: &str = "__Host-kordi_web_session";
 pub const WEB_CSRF_COOKIE: &str = "__Host-kordi_web_csrf";
 pub const WEB_CSRF_HEADER: &str = "x-kordi-csrf-token";
-pub(super) const WEB_OAUTH_COMPLETE_PATH: &str = "/v1/cloud/auth/web/oauth/complete";
+pub(super) use crate::auth::oauth::WEB_OAUTH_COMPLETE_PATH;
 const WEB_SESSION_MAX_AGE_SECS: i64 = DEFAULT_SESSION_LIFETIME_DAYS * 24 * 60 * 60;
 const MAX_RETURN_TO_CHARS: usize = 2048;
 
@@ -38,7 +47,7 @@ fn constant_time_eq(left: &str, right: &str) -> bool {
             == 0
 }
 
-fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+pub(super) fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get_all(axum::http::header::COOKIE)
         .iter()
@@ -66,7 +75,7 @@ fn set_cookie_headers(session_token: Option<&str>) -> [String; 2] {
     ]
 }
 
-fn with_cookies(mut response: Response, session_token: Option<&str>) -> Response {
+pub(super) fn with_cookies(mut response: Response, session_token: Option<&str>) -> Response {
     for cookie in set_cookie_headers(session_token) {
         if let Ok(value) = cookie.parse() {
             response
@@ -183,9 +192,34 @@ pub(super) async fn authenticated_web_session(
         .map(|(session, _)| session)
 }
 
+/// The live web session a cookie names, if any. App access tokens never
+/// count, so replacing a web session cannot end an app's sign-in.
+pub(super) async fn web_session_token_id(pool: &PgPool, token: Option<&str>) -> Option<String> {
+    let token = token.filter(|token| token.starts_with(SESSION_TOKEN_PREFIX))?;
+    let row = lookup_session(pool, token).await.ok().flatten()?;
+    match sign_in_for_session(pool, &row.token_id).await {
+        Ok(None) => Some(row.token_id),
+        _ => None,
+    }
+}
+
+/// End the web session a new web sign-in replaces in the cookie.
+pub(super) async fn revoke_replaced_web_session(pool: &PgPool, token_id: Option<&str>) {
+    if let Some(token_id) = token_id {
+        if let Err(error) = revoke_session(pool, token_id).await {
+            eprintln!("[auth] revoke replaced web session: {error:?}");
+        }
+    }
+}
+
 /// Move the session token of a successful sign-in response into the cookie
-/// and remove it from the body. The body gains `csrfToken`.
-async fn into_web_session_response(response: Response) -> Response {
+/// and remove it from the body. The body gains `csrfToken`. The web session
+/// the cookie held before, if any, is revoked.
+async fn into_web_session_response(
+    state: &ServerState,
+    response: Response,
+    previous_token: Option<String>,
+) -> Response {
     if !response.status().is_success() {
         return response;
     }
@@ -211,6 +245,11 @@ async fn into_web_session_response(response: Response) -> Response {
         );
     };
     value["csrfToken"] = serde_json::Value::String(web_csrf_token(&token));
+    let pool = state.db_pool();
+    if previous_token.as_deref() != Some(token.as_str()) {
+        let replaced = web_session_token_id(pool, previous_token.as_deref()).await;
+        revoke_replaced_web_session(pool, replaced.as_deref()).await;
+    }
     with_cookies((parts.status, Json(value)).into_response(), Some(&token))
 }
 
@@ -227,8 +266,16 @@ pub(super) async fn web_login(
     if !origin_is_public(&headers) {
         return *origin_error();
     }
-    let response = login(State(state), rate_limiter, connect_info, headers, request).await;
-    into_web_session_response(response).await
+    let previous = cookie_value(&headers, WEB_SESSION_COOKIE);
+    let response = login(
+        State(state.clone()),
+        rate_limiter,
+        connect_info,
+        headers,
+        request,
+    )
+    .await;
+    into_web_session_response(&state, response, previous).await
 }
 
 /// `POST /v1/cloud/auth/web/signup`: like `/v1/cloud/auth/signup`, with the
@@ -244,8 +291,9 @@ pub(super) async fn web_signup(
     if !origin_is_public(&headers) {
         return *origin_error();
     }
+    let previous = cookie_value(&headers, WEB_SESSION_COOKIE);
     let response = signup(
-        State(state),
+        State(state.clone()),
         rate_limiter,
         hasher_config,
         connect_info,
@@ -253,7 +301,7 @@ pub(super) async fn web_signup(
         request,
     )
     .await;
-    into_web_session_response(response).await
+    into_web_session_response(&state, response, previous).await
 }
 
 /// `GET /v1/cloud/auth/web/session`: the signed-in account and the CSRF
@@ -327,86 +375,4 @@ pub(super) fn sanitize_return_to(value: Option<&str>) -> Option<String> {
     let base = url::Url::parse(&crate::distribution::public_origin()).ok()?;
     let joined = base.join(value).ok()?;
     (joined.origin() == base.origin()).then(|| joined.to_string())
-}
-
-#[derive(Debug, Deserialize)]
-pub(super) struct WebReturnQuery {
-    #[serde(rename = "returnTo")]
-    return_to: Option<String>,
-}
-
-fn web_oauth_complete_url(return_to: &str) -> String {
-    super::app_sign_in_handlers::redirect_uri_with(
-        &format!(
-            "{}{WEB_OAUTH_COMPLETE_PATH}",
-            crate::distribution::public_origin()
-        ),
-        &[("returnTo", return_to)],
-    )
-}
-
-/// `GET /v1/cloud/auth/web/oauth/:provider/start?returnTo=<path>`: Google or
-/// GitHub sign-in for web pages. The callback sets the session cookie and
-/// returns to `returnTo` without putting the session in the URL.
-pub(super) async fn web_oauth_start(
-    State(state): State<Arc<ServerState>>,
-    axum::extract::Path(provider): axum::extract::Path<String>,
-    Query(query): Query<WebReturnQuery>,
-) -> Response {
-    let Some(return_to) = sanitize_return_to(query.return_to.as_deref()) else {
-        return err(
-            "invalid_redirect",
-            "The return path is not allowed.",
-            StatusCode::BAD_REQUEST,
-        );
-    };
-    let path = &return_to[crate::distribution::public_origin().len()..];
-    let start_query = OAuthStartQuery {
-        redirect_after: web_oauth_complete_url(path),
-        device_name: None,
-        device_platform: None,
-        device_os_version: None,
-        device_app_version: None,
-        device_approximate_location: None,
-        device_public_key: None,
-        device_key_algorithm: None,
-    };
-    // The page opens this link directly, so send the browser to the provider.
-    match oauth_authorization_url(&state, &provider, &start_query).await {
-        Ok(auth_url) => {
-            super::app_sign_in_handlers::no_store(Redirect::to(&auth_url).into_response())
-        }
-        Err(response) => *response,
-    }
-}
-
-/// For a provider callback: when the sign-in was started by
-/// [`web_oauth_start`], the page to return to.
-pub(super) fn web_oauth_return_to(redirect_after: &str) -> Option<String> {
-    let url = url::Url::parse(redirect_after).ok()?;
-    let base = url::Url::parse(&crate::distribution::public_origin()).ok()?;
-    if url.origin() != base.origin() || url.path() != WEB_OAUTH_COMPLETE_PATH {
-        return None;
-    }
-    let return_to = url
-        .query_pairs()
-        .find(|(key, _)| key == "returnTo")
-        .map(|(_, value)| value.into_owned());
-    sanitize_return_to(return_to.as_deref())
-}
-
-/// The provider callback's response for a web sign-in: set the cookie and
-/// return to the page.
-pub(super) fn web_oauth_success(session_token: &str, return_to: &str) -> Response {
-    with_cookies(Redirect::to(return_to).into_response(), Some(session_token))
-}
-
-/// `GET /v1/cloud/auth/web/oauth/complete`: where a failed web provider
-/// sign-in lands. It sends the browser back to `returnTo`; the browser
-/// keeps the error fragment.
-pub(super) async fn web_oauth_complete(Query(query): Query<WebReturnQuery>) -> Response {
-    let target = sanitize_return_to(query.return_to.as_deref())
-        .or_else(|| sanitize_return_to(None))
-        .unwrap_or_else(|| "/".to_string());
-    super::app_sign_in_handlers::no_store(Redirect::to(&target).into_response())
 }

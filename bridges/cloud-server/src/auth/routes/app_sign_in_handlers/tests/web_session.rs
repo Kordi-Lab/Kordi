@@ -191,6 +191,40 @@ async fn web_login_keeps_the_session_out_of_page_scripts() {
 
 #[tokio::test]
 #[ignore = "Requires a task-owned disposable PostgreSQL database"]
+async fn signing_in_again_ends_the_session_the_cookie_held() {
+    let harness = harness().await;
+    let email = password_account(&harness).await;
+    let login = serde_json::json!({ "email": email, "password": PASSWORD }).to_string();
+    let origin = ("Origin".to_string(), crate::distribution::public_origin());
+    let mut sessions = Vec::new();
+    for _ in 0..2 {
+        let mut headers = vec![origin.clone()];
+        if let Some(previous) = sessions.last() {
+            headers.push((
+                "Cookie".to_string(),
+                format!("{WEB_SESSION_COOKIE}={previous}"),
+            ));
+        }
+        let (status, body, headers) = harness
+            .send_with(
+                "POST",
+                "/v1/cloud/auth/web/login",
+                headers,
+                Some(("application/json", login.clone())),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        sessions.push(cookie_value(&set_cookies(&headers), WEB_SESSION_COOKIE));
+    }
+    assert_eq!(
+        harness.me_status(&sessions[0]).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(harness.me_status(&sessions[1]).await, StatusCode::OK);
+}
+
+#[tokio::test]
+#[ignore = "Requires a task-owned disposable PostgreSQL database"]
 async fn failed_web_provider_sign_in_returns_to_the_page() {
     let harness = harness().await;
     let (status, _, headers) = harness

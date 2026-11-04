@@ -19,10 +19,11 @@ sign-in page are separate steps.
 3. The page signs the user in or creates an account through the web session
    endpoints below. The session lives in an `HttpOnly` cookie, so page
    scripts never see a session token.
-4. The page calls `POST /v1/cloud/auth/app/authorize` with the cookie and
-   its CSRF token. The response holds the redirect URL with the code, and
-   the page navigates to it. A loopback or custom-scheme redirect is the
-   preferred path.
+4. The page asks the user to approve the app (see
+   [Approval](#approval)), then calls `POST /v1/cloud/auth/app/authorize`
+   with the cookie, its CSRF token, and `"approved": true`. The response
+   holds the redirect URL with the code, and the page navigates to it. A
+   loopback or custom-scheme redirect is the preferred path.
 5. Only if that redirect is blocked does the page fall back to a displayed
    code (see below).
 6. The app checks `state` and calls `POST /v1/cloud/auth/app/token` with the
@@ -36,6 +37,7 @@ The sign-in page holds its session in cookies set by the server:
 | --- | --- | --- |
 | `__Host-kordi_web_session` | `Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000` | The session token. Never readable by scripts. |
 | `__Host-kordi_web_csrf` | `Path=/; Secure; SameSite=Strict; Max-Age=2592000` | The CSRF token, readable by the page. |
+| `__Host-kordi_oauth_bind` | `Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=600` | A random value that binds a web Google or GitHub sign-in to this browser. |
 
 The `__Host-` prefix makes both cookies host-only (no `Domain`), `Secure`,
 and scoped to `Path=/`, so another subdomain cannot set or overwrite them.
@@ -50,16 +52,35 @@ Endpoints:
   set both cookies, remove the session token from the response body, and add
   `csrfToken`. They require the exact public `Origin`.
 - `GET /v1/cloud/auth/web/oauth/:provider/start?returnTo=<path>`: Google or
-  GitHub sign-in. The provider callback sets the cookies and redirects to
-  `returnTo` (a path on the public origin, default `/sign-in/app`) without
-  the session in the URL. A failed sign-in lands on
-  `/v1/cloud/auth/web/oauth/complete`, which returns to `returnTo` with the
-  error in the fragment. App and existing web flows keep their current
-  hand-off.
+  GitHub sign-in. The page links to it directly. It sets
+  `__Host-kordi_oauth_bind` and stores the SHA-256 of its value with the
+  provider state. The provider callback sets the session cookies and
+  redirects to `returnTo` (a path on the public origin, default
+  `/sign-in/app`) without the session in the URL, but only when the browser
+  presents the matching binding cookie; it then clears that cookie. A
+  callback without it (someone else's callback URL, or a start from another
+  browser or an older tab) installs no session and returns to the page with
+  `kordi_cloud_oauth_error_code=oauth_browser_mismatch` in the fragment. A
+  failed sign-in lands on `/v1/cloud/auth/web/oauth/complete`, which returns
+  to `returnTo` with the error in the fragment. Only one web provider
+  sign-in per browser can be in progress; a second start replaces the
+  binding of the first.
+- A provider sign-in that returns to the public origin always uses this
+  cookie hand-off, never a session in a URL fragment: the only accepted
+  target there is `/v1/cloud/auth/web/oauth/complete`, only the web start
+  may use it, and the callback refuses a public-origin target without a
+  valid `returnTo` and the matching binding cookie. The legacy
+  `GET /v1/cloud/auth/oauth/:provider/start` rejects every public-origin
+  target with `400 invalid_redirect`. Loopback and allowlisted app targets
+  keep their fragment hand-off.
 - `GET /v1/cloud/auth/web/session`: `{account, csrfToken}` for the cookie
   session, or `401 login_required`.
 - `POST /v1/cloud/auth/web/logout`: revokes the session and clears both
   cookies.
+
+A web sign-in (password, sign-up, or provider) revokes the web session the
+cookie held before, so replaced sessions do not linger. App access tokens are
+never revoked this way.
 
 Every state-changing request authenticated by the cookie (authorization,
 display code, web sign-out) is checked in this order:
@@ -95,8 +116,11 @@ accepts the same URI with any explicit port, so the desktop app can listen
 on an ephemeral port. `localhost` is not accepted.
 
 `KORDI_AUTH_APP_CLIENTS` replaces the built-in list with a JSON array of
-`{"clientId", "name", "redirectUris"}` objects. An invalid value disables
-browser sign-in rather than falling back to the built-in list.
+`{"clientId", "name", "redirectUris"}` objects. Redirect URIs must be
+`https`, loopback `http`, or a custom scheme; schemes the browser handles
+itself (`javascript`, `data`, `file`, `blob`, `vbscript`, `about`,
+`filesystem`, `view-source`) are refused. An invalid value disables browser
+sign-in rather than falling back to the built-in list.
 
 `KORDI_AUTH_APP_SIGN_IN_PAGE_URL` sets the web sign-in page. It defaults to
 `/sign-in/app` on the public origin.
@@ -117,14 +141,38 @@ Query: `response_type=code`, `client_id`, `redirect_uri`, `code_challenge`,
 ### `POST /v1/cloud/auth/app/authorize`
 
 Called by the web sign-in page with the web session cookie and CSRF header.
-JSON body with the same fields as the query above.
+JSON body with the same fields as the query above, plus `"approved": true`.
 
 - Cookie, `Origin` or CSRF problems: see the web session checks above.
+- `approved` missing or not `true`: `400 approval_required`
+  (`error` and `errorCode`). No code is issued.
 - Account not admitted on this server: the admission error the other sign-in
   endpoints return.
 - Success: `{"redirectUrl", "expiresAt", "expiresIn"}`. `redirectUrl` is the
   redirect URI with `code` and `state` added. The code expires after 60
   seconds.
+
+### Approval
+
+A code sent to a redirect URI reaches whatever program holds that URI. Any
+app on the device can claim a custom scheme or a loopback port, so the
+server issues a redirect code only with the user's approval of this request
+(RFC 8252, section 8.6). The page:
+
+1. Shows the app name and the signed-in account, for example "Kordi for Mac
+   wants to sign in" and a "Continue as Ada (ada@example.com)" button, with a
+   way to switch accounts.
+2. Sends `"approved": true` only after the user clicks that button, or
+   automatically right after the user completed a fresh sign-in (password,
+   sign-up, or provider) in this same tab for this same authorization
+   request. A session that already existed when the page loaded always needs
+   the click.
+3. Never sends `approved` from a timer, an `onload` handler, or any other
+   path without one of those two user actions.
+
+The server can only check that `approved` is present; the page is what makes
+it mean consent. A displayed code needs `confirmed` instead (below), because
+it reaches only the person reading the page.
 
 ### `POST /v1/cloud/auth/app/authorize/display-code`
 
@@ -182,6 +230,12 @@ Success:
 Code exchanges are limited to 30 per account and 10 per account and app per
 10 minutes. A limited exchange leaves the code unused.
 
+A refresh may be retried: presenting a rotated refresh token again within 60
+seconds of its rotation, while its successor is unused, returns the same
+successor pair (same refresh token, same access token) instead of revoking
+the sign-in. This covers a lost response and two refreshes racing. Any other
+reuse revokes the sign-in.
+
 `account` is present for the code exchange only. The access token is an
 ordinary session token, so every existing API and realtime connection accepts
 it. Unlike other sessions, its expiry does not slide forward on use. Realtime
@@ -201,7 +255,10 @@ Signed-in apps of the current account: `signInId`, `clientId`, `appName`,
 `deviceId`, `deviceName`, `platform`, `createdAt`, `lastActiveAt`, and
 `current` for the sign-in behind the calling token. Delete revokes one;
 another account's sign-in returns `404`. Revoking a device through the
-existing devices API also ends its sign-ins.
+existing devices API also ends its sign-ins at once, and they stay ended if
+the same device key signs in again: refresh refuses any sign-in created
+before the device's last revocation, which a database trigger records on
+every revocation.
 
 ## Security properties
 
@@ -214,28 +271,42 @@ existing devices API also ends its sign-ins.
   exchange started (RFC 6749, section 4.1.2).
 - Refresh tokens are stored as hashes, rotate on every use, and expire after
   30 days without use. Presenting a rotated token again revokes the sign-in
-  and every token it issued. Refreshes of one sign-in must not run
-  concurrently.
+  and every token it issued, except within 60 seconds of the rotation while
+  the successor is unused, when it returns that same successor. The
+  successor is derived from the presented token and a random salt stored on
+  the rotated row, so only hashes are stored and only the holder of the
+  rotated token can obtain it again.
 - The web session token lives only in an `HttpOnly`, `Secure`,
   `SameSite=Strict`, host-only cookie. Cookie-authenticated requests need the
   exact public `Origin` and a session-bound CSRF token.
 - The authorization endpoints accept only that cookie session, never an
-  app's access token.
+  app's access token, and a redirect code needs the user's approval.
+- Web provider sign-ins are bound to the starting browser, so a callback URL
+  cannot plant another person's session (login CSRF).
 - Displayed codes need an explicit confirmation, name the app, and are
   limited per account and app.
-- The authorization, token and revocation endpoints share the per-address
-  limit of the other sign-in endpoints, and code issuance and redemption are
-  also limited per account and per account and app.
+- The authorization endpoint and the `authorization_code` grant share the
+  per-address limit of the other sign-in endpoints, and code issuance and
+  redemption are also limited per account and per account and app.
+  Refreshes and revocations do not spend that limit, so many users behind
+  one address stay signed in; they have their own limit of 600 per minute
+  per app and client address.
 
 ## Data
 
 Migration 0165 adds `cloud_app_sign_ins`, `cloud_app_authorization_codes`,
 `cloud_app_refresh_tokens`, and a nullable `app_sign_in_id` on session rows.
+It also adds the successor salt and hash on refresh tokens,
+`last_revoked_at` on devices with the trigger that sets it, and the browser
+binding hash and replaced session on provider states.
 Registered clients live in configuration, not in the database.
 
 ## Tests
 
 `auth::routes::app_sign_in_handlers::tests` needs a disposable database and
 runs from `scripts/test-cloud-migrations.sh`. It covers the cookie, `Origin`
-and CSRF checks, the display-code confirmation and limits, and every code and
-refresh rejection. Client, PKCE and return-path rules have unit tests.
+and CSRF checks, approval, the display-code confirmation and limits, the
+browser binding of web provider sign-ins, session replacement, device
+revocation, the refresh grace period and concurrency, the rate limits, and
+every code and refresh rejection. Client, PKCE, redirect and return-path
+rules have unit tests.

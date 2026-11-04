@@ -24,6 +24,8 @@ type OAuthStateRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<String>,
+    Option<String>,
 );
 
 pub(super) async fn auth_capabilities(
@@ -55,19 +57,20 @@ pub(super) async fn oauth_start(
     axum::extract::Path(provider): axum::extract::Path<String>,
     Query(start_query): Query<OAuthStartQuery>,
 ) -> Response {
-    match oauth_authorization_url(&state, &provider, &start_query).await {
+    match oauth_authorization_url(&state, &provider, &start_query, None).await {
         Ok(auth_url) => Json(OAuthStartResponse { auth_url }).into_response(),
         Err(response) => *response,
     }
 }
 
 /// Records a provider sign-in attempt and returns the provider page to open.
-/// The error is a ready response for the caller to return, boxed to keep
-/// the result small.
+/// `web` binds a web page's sign-in to its browser. The error is a ready
+/// response for the caller to return, boxed to keep the result small.
 pub(super) async fn oauth_authorization_url(
     state: &ServerState,
     provider: &str,
     start_query: &OAuthStartQuery,
+    web: Option<&WebOAuthStart>,
 ) -> Result<String, Box<Response>> {
     let Some(provider) = OAuthProvider::parse(provider) else {
         return Err(Box::new(err(
@@ -76,7 +79,11 @@ pub(super) async fn oauth_authorization_url(
             StatusCode::BAD_REQUEST,
         )));
     };
-    if !is_allowed_oauth_redirect(&start_query.redirect_after) {
+    // Only the web start, which binds the browser, may return to this
+    // server's own pages.
+    if !is_allowed_sign_in_redirect(&start_query.redirect_after)
+        || (web.is_none() && targets_public_server(&start_query.redirect_after))
+    {
         return Err(Box::new(err(
             "invalid_redirect",
             "OAuth redirect target is not allowed.",
@@ -127,8 +134,9 @@ pub(super) async fn oauth_authorization_url(
         "INSERT INTO cloud_oauth_states \
          (state_id, provider, redirect_after, code_verifier, created_at, expires_at, \
           device_name, device_public_key, device_key_algorithm, device_platform, \
-          device_os_version, device_app_version, device_approximate_location) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+          device_os_version, device_app_version, device_approximate_location, \
+          browser_binding_hash, replaces_session_token_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
     )
     .bind(&state_id)
     .bind(provider.id())
@@ -167,6 +175,8 @@ pub(super) async fn oauth_authorization_url(
             .as_ref()
             .and_then(|value| value.approximate_location.as_deref()),
     )
+    .bind(web.map(|web| web.browser_binding_hash.as_str()))
+    .bind(web.and_then(|web| web.replaces_session_token_id.as_deref()))
     .execute(state.db_pool())
     .await
     .is_err()
@@ -201,6 +211,7 @@ pub(super) async fn oauth_callback(
     State(state): State<Arc<ServerState>>,
     axum::extract::Path(provider_path): axum::extract::Path<String>,
     Query(query_params): Query<OAuthCallbackQuery>,
+    headers: HeaderMap,
 ) -> Response {
     let Some(provider) = OAuthProvider::parse(&provider_path) else {
         return err(
@@ -227,7 +238,8 @@ pub(super) async fn oauth_callback(
         "DELETE FROM cloud_oauth_states WHERE state_id = $1 \
          RETURNING provider, redirect_after, code_verifier, expires_at, device_name, \
                    device_public_key, device_key_algorithm, device_platform, \
-                   device_os_version, device_app_version, device_approximate_location",
+                   device_os_version, device_app_version, device_approximate_location, \
+                   browser_binding_hash, replaces_session_token_id",
     )
     .bind(state_id)
     .fetch_optional(pool)
@@ -254,6 +266,8 @@ pub(super) async fn oauth_callback(
         device_os_version,
         device_app_version,
         device_approximate_location,
+        browser_binding_hash,
+        replaces_session_token_id,
     )) = state_row
     else {
         return err(
@@ -262,12 +276,28 @@ pub(super) async fn oauth_callback(
             StatusCode::BAD_REQUEST,
         );
     };
-    if stored_provider != provider.id() || !is_allowed_oauth_redirect(&redirect_after) {
+    if stored_provider != provider.id() || !is_allowed_sign_in_redirect(&redirect_after) {
         return err(
             "invalid_oauth_state",
             "OAuth state is invalid.",
             StatusCode::BAD_REQUEST,
         );
+    }
+    // A return to this server's pages is a web sign-in: it sets the session
+    // cookie, never a URL fragment, and must finish in the browser that
+    // started it. The state is already consumed.
+    let web_return_to = web_oauth_return_to(&redirect_after);
+    if targets_public_server(&redirect_after) {
+        if web_return_to.is_none() {
+            return err(
+                "invalid_oauth_state",
+                "OAuth state is invalid.",
+                StatusCode::BAD_REQUEST,
+            );
+        }
+        if !browser_binding_matches(&headers, browser_binding_hash.as_deref()) {
+            return web_oauth_binding_rejected(&redirect_after);
+        }
     }
     if chrono::DateTime::parse_from_rfc3339(&expires_at)
         .map(|value| value < Utc::now())
@@ -339,8 +369,14 @@ pub(super) async fn oauth_callback(
                     )
                     .await;
             }
-            if let Some(return_to) = web_oauth_return_to(&redirect_after) {
-                return web_oauth_success(&body.session.token, &return_to);
+            if let Some(return_to) = web_return_to {
+                return web_oauth_success(
+                    pool,
+                    &body.session.token,
+                    &return_to,
+                    replaces_session_token_id.as_deref(),
+                )
+                .await;
             }
             let mut url = redirect_after;
             let separator = if url.contains('#') { '&' } else { '#' };
