@@ -165,3 +165,33 @@ fn sign_in_returns_on_the_public_origin_only_reach_the_web_completion() {
         base
     ));
 }
+
+#[test]
+fn a_loopback_public_origin_is_this_server_under_every_loopback_name() {
+    for base in ["http://localhost:17081", "http://127.0.0.1:17081"] {
+        let allowed = |target: &str| is_allowed_sign_in_redirect_with_config(target, None, base);
+        for host in ["localhost", "127.0.0.1"] {
+            assert!(
+                !allowed(&format!("http://{host}:17081/login")),
+                "{base} {host}"
+            );
+            // A desktop app's loopback listener on another port is unchanged.
+            assert!(
+                allowed(&format!("http://{host}:53682/oauth/callback")),
+                "{base} {host}"
+            );
+        }
+        // Only the exact public origin carries the web hand-off.
+        let alias = if base.contains("localhost") {
+            "http://127.0.0.1:17081"
+        } else {
+            "http://localhost:17081"
+        };
+        assert!(allowed(&format!(
+            "{base}/v1/cloud/auth/web/oauth/complete?returnTo=%2Flogin"
+        )));
+        assert!(!allowed(&format!(
+            "{alias}/v1/cloud/auth/web/oauth/complete?returnTo=%2Flogin"
+        )));
+    }
+}

@@ -176,6 +176,18 @@ too, so a loopback development stack works. Check the target browser before
 relying on that. A release build accepts a plain `http` public origin only for
 those loopback hosts; every other host needs `https`.
 
+Cookies are not isolated by port, and every port of one host is the same
+site. On a loopback stack the `__Host-` cookies of an API at
+`http://localhost:17081` are therefore sent to, and the CSRF cookie readable
+by, any other page on `http://localhost:<port>`, such as a Vite dev server.
+The exact `Origin` check still refuses requests from those pages, but keep
+them apart anyway: serve the API and its pages on `localhost`, and run app
+callbacks, loopback listeners and dev servers on `127.0.0.1` (or the other
+way around, but never both on the same name). A loopback public origin is
+also reachable under the other loopback names on its port, so the server
+treats `http://127.0.0.1:<port>` and `http://localhost:<port>` alike when it
+checks sign-in return targets: neither may receive a session in a URL.
+
 ## Page API contract
 
 All requests are same-origin `fetch` calls with `credentials: "same-origin"`
@@ -201,24 +213,32 @@ Error bodies are `{"errorCode", "message"}`.
    normally the current `/login?<query>` so the app request survives. Success
    returns to it with the cookies set. Failure returns to it with
    `#kordi_cloud_oauth_error=<message>&kordi_cloud_oauth_error_code=<code>`.
+   `oauth_browser_mismatch` means the sign-in finished in a browser that did
+   not start it (or a newer start replaced it); offer to start again.
    Always show both buttons. `GET /v1/cloud/auth/capabilities` is
    diagnostic only; a provider that is not configured fails at start with an
    error the page shows.
-5. **Send the code to the app.** With the query the page was opened with
+5. **Ask for approval.** Show the app name and the account, for example
+   "Kordi for Mac wants to sign in" and a "Continue as Ada
+   (ada@example.com)" button with a way to switch accounts. See
+   [Approval](#approval). Skip the click only right after the user signed
+   in, signed up, or finished Google or GitHub in this tab for this request.
+6. **Send the code to the app.** With the query the page was opened with
    (`response_type`, `client_id`, `redirect_uri`, `code_challenge`,
    `code_challenge_method`, `state`), call `POST /v1/cloud/auth/app/authorize`
    with header `X-Kordi-CSRF-Token: <csrfToken>` and a JSON body of those six
-   fields. Navigate to `redirectUrl` from the response, then show
-   `/login/done`.
-6. **Display code, only if the redirect failed.** After the user confirms
+   fields plus `"approved": true`. Without it the server returns
+   `400 approval_required`. Navigate to `redirectUrl` from the response,
+   then show `/login/done`.
+7. **Display code, only if the redirect failed.** After the user confirms
    they started this sign-in from their own app on this device, call
    `POST /v1/cloud/auth/app/authorize/display-code` with the same header and
    body plus `"confirmed": true`. Show `code`, `appName`, `requestedAt`,
    `expiresAt` and `warning` as described above.
-7. **Sign out.** `POST /v1/cloud/auth/web/logout` with the CSRF header
+8. **Sign out.** `POST /v1/cloud/auth/web/logout` with the CSRF header
    clears the cookies.
 
-A `401 login_required` from step 5 or 6 means the session ended: show the log-in
+A `401 login_required` from step 6 or 7 means the session ended: show the log-in
 form again and keep the query.
 
 ## Endpoints

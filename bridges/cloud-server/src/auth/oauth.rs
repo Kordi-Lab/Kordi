@@ -156,9 +156,30 @@ fn is_allowed_sign_in_redirect_with_config(
         || (is_public_base_url(&url, public_base) && url.path() == WEB_OAUTH_COMPLETE_PATH)
 }
 
-/// Whether `url` reaches the server at `public_base`.
+/// Whether `url` reaches the server at `public_base`. A loopback public
+/// origin answers under every loopback name on its port, so with
+/// `http://localhost:<port>` the target `http://127.0.0.1:<port>/...` is
+/// this server too, and the same rules apply.
 fn reaches_public_server(url: &url::Url, public_base: &str) -> bool {
-    is_public_base_url(url, public_base)
+    if is_public_base_url(url, public_base) {
+        return true;
+    }
+    let Ok(base) = url::Url::parse(public_base) else {
+        return false;
+    };
+    is_loopback_name(&base)
+        && is_loopback_name(url)
+        && url.scheme() == base.scheme()
+        && url.port_or_known_default() == base.port_or_known_default()
+}
+
+fn is_loopback_name(url: &url::Url) -> bool {
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
+        None => false,
+    }
 }
 
 fn is_allowed_oauth_redirect_with_config(
