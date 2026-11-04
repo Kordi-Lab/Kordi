@@ -18,24 +18,18 @@ import { ContactSidebarRow } from '@/pages/workspaceSidebar.contactRows';
 import type { WorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel';
 import { VirtualChatList } from '@/pages/sidebar/VirtualChatList';
 
-function SidebarEmptyState({ children }: { children: string }) {
-  return (
-    <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
-      {children}
-    </div>
-  );
-}
-
 export function WorkspaceChatLists({
   model,
   activeConvId,
   contactActions,
   onOpenAgentCreate,
+  onClearSearch,
 }: {
   model: WorkspaceChatSidebarModel;
   activeConvId: string;
   contactActions: ContactSidebarRowActions;
   onOpenAgentCreate: () => void;
+  onClearSearch: () => void;
 }) {
   const projects = useChatProjects();
   const scrollOffsets = useRef(new Map<string, number>());
@@ -114,7 +108,28 @@ export function WorkspaceChatLists({
       });
     }
   };
-  if (model.chatChannel === 'contact') {
+  const isContact = model.chatChannel === 'contact';
+  const searching = model.chatSearch.trim();
+  const emptyState = (
+    <>
+      {!searching && !model.showArchived ? <HelpEmptyExample kind="chat" /> : null}
+      <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
+        {searching ? (
+          <>
+            <p role="status">No matching conversations.</p>
+            <button type="button" className="mt-2 underline underline-offset-2" onClick={onClearSearch}>
+              Clear search
+            </button>
+          </>
+        ) : model.showArchived
+          ? `No archived ${isContact ? 'contact' : 'agent'} chats.`
+          : isContact
+            ? 'No conversations yet. Start a chat to see it here.'
+            : 'No agent conversations yet. Start one to see it here.'}
+      </div>
+    </>
+  );
+  if (isContact) {
     return (
       <VirtualChatList
         groupChannels
@@ -132,16 +147,7 @@ export function WorkspaceChatLists({
             activeConvId={activeConvId}
           />
         )}
-        emptyState={
-          <>
-          {!model.showArchived ? <HelpEmptyExample kind="chat" /> : null}
-          <SidebarEmptyState>
-            {model.showArchived
-              ? 'No archived contact chats.'
-              : 'No conversations yet. Start a chat to see it here.'}
-          </SidebarEmptyState>
-          </>
-        }
+        emptyState={emptyState}
       />
     );
   }
@@ -238,16 +244,7 @@ export function WorkspaceChatLists({
             onOpenSessionContextMenu={contactActions.onOpenSessionContextMenu}
           />
         )}
-        emptyState={
-          <>
-          {!model.showArchived ? <HelpEmptyExample kind="chat" /> : null}
-          <SidebarEmptyState>
-            {model.showArchived
-              ? 'No archived agent chats.'
-              : 'No agent conversations yet. Start one to see it here.'}
-          </SidebarEmptyState>
-          </>
-        }
+        emptyState={emptyState}
       />
     </>
   );

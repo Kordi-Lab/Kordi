@@ -71,6 +71,7 @@ export function useCloudCalls({
   const activeAccountIdRef = useRef(account?.accountId ?? null);
   const {
     roomRef,
+    disconnectedOperation,
     clearRoom,
     connectMedia,
     refreshMediaDevices,
@@ -78,7 +79,7 @@ export function useCloudCalls({
     toggleCamera,
     resumeAudio,
     switchMediaDevice,
-    clearMediaDevices,
+    setMediaDevices,
     isMicrophoneEnabled,
     isCameraEnabled,
     isAudioPlaybackBlocked,
@@ -141,10 +142,10 @@ export function useCloudCalls({
     callSnapshotGenerationRef.current += 1;
     activeCallsRequestRef.current += 1;
     setCallsBySessionId({});
-    clearMediaDevices();
+    setMediaDevices([]);
     setError(null);
     void resetCurrent().catch(() => undefined);
-  }, [account?.accountId, clearMediaDevices, resetCurrent]);
+  }, [account?.accountId, setMediaDevices, resetCurrent]);
 
   const beginMediaSession = useCallback(async (
     kind: CloudCallKind,
@@ -265,13 +266,9 @@ export function useCloudCalls({
   }, [callClient, updateCall]);
 
   const refreshActiveCalls = useCallback(async () => {
-    if (!account) {
-      activeCallsRequestRef.current += 1;
-      setCallsBySessionId({});
-      return;
-    }
-    const request = activeCallsRequestRef.current + 1;
-    activeCallsRequestRef.current = request;
+    // Account changes already invalidate requests and clear state above.
+    if (!account) return;
+    const request = ++activeCallsRequestRef.current;
     try {
       const snapshotGeneration = callSnapshotGenerationRef.current;
       const stored = await loadSession();
@@ -299,6 +296,20 @@ export function useCloudCalls({
       // Realtime and the next repair poll can recover without interrupting an active call.
     }
   }, [account, callClient, knownSessionIds, resetCurrent]);
+
+  useEffect(() => {
+    if (disconnectedOperation === null) return;
+    let disposed = false;
+    // The repair path clears both the call and its error when it has ended.
+    // If it is still active, or the lookup fails, keep recovery available.
+    void refreshActiveCalls().then(() => {
+      if (disposed || operationRef.current !== disconnectedOperation
+        || !currentRef.current) return;
+      setPhase('failed');
+      setError('The call disconnected. Check your connection and try again.');
+    });
+    return () => { disposed = true; };
+  }, [disconnectedOperation, refreshActiveCalls]);
 
   useEffect(() => {
     if (!account || typeof window === 'undefined') return undefined;
