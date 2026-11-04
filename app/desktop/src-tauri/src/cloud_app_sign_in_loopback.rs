@@ -134,9 +134,16 @@ async fn handle_connection(mut stream: TcpStream, expected_state: &str) -> Optio
     }
 }
 
-/// The browser tab after the redirect: one line and a hint in system colors,
-/// with no external assets. A signed-in tab tries to close itself, which
-/// browsers allow only for tabs a script opened.
+/// The Kordi bird, inline so the page loads nothing.
+const KORDI_BIRD_SVG: &str = "<svg viewBox='64 58 384 384' width='24' height='24' aria-hidden='true'><mask id='cut' maskUnits='userSpaceOnUse' x='-100' y='-100' width='712' height='712'><ellipse cx='262' cy='292' rx='150' ry='136' fill='#fff'/><path d='M400,342 C436,322 462,272 470,204 C448,236 420,244 386,218Z' fill='#fff' stroke='#fff' stroke-width='4' stroke-linejoin='round'/><circle cx='194' cy='266' r='17'/><path d='M269.6,333.2 C292,299.6 348,282 397.6,285.2 C381.6,325.2 336.8,357.2 288.8,355.6 C272.8,354 264.8,344.4 269.6,333.2Z'/></mask><g transform='translate(256,250) scale(0.94) translate(-270,-292)'><path d='M120,276 L82,294 L120,312Z' fill='#f7b32b' stroke='#f7b32b' stroke-width='12' stroke-linejoin='round'/><rect x='-100' y='-100' width='712' height='712' fill='#1f1a17' mask='url(#cut)'/></g></svg>";
+
+/// The Kordi home page, the page's only link.
+pub(crate) const KORDI_HOME_LINK: &str = "https://kordi.ai";
+
+/// The browser tab after the redirect, styled like the web sign-in pages: the
+/// Kordi mark linking home and one centered card. It loads no assets. A
+/// signed-in tab tries to close itself, which browsers allow only for tabs a
+/// script opened.
 pub(crate) fn completion_page(signed_in: bool) -> String {
     let (status, title, hint, script) = if signed_in {
         (
@@ -159,23 +166,26 @@ pub(crate) fn completion_page(signed_in: bool) -> String {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
 <title>{title}</title>
 <style>
-:root {{ --bg: #f7f7f8; --ink: #17181c; --muted: #6b6f78; }}
-@media (prefers-color-scheme: dark) {{ :root {{ --bg: #151619; --ink: #f2f3f5; --muted: #9a9ea8; }} }}
-html, body {{ height: 100%; margin: 0; }}
-body {{ display: grid; place-items: center; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }}
-main {{ padding: 24px; text-align: center; }}
-h1 {{ margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }}
-p {{ margin: 6px 0 0; color: var(--muted); font-size: 13px; }}
+html, body {{ min-height: 100%; margin: 0; }}
+body {{ display: flex; flex-direction: column; background: #fafafa; color: #111; font: 15px/1.5 Geist, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }}
+header {{ padding: 20px 32px; }}
+header a {{ display: inline-flex; align-items: center; gap: 8px; color: #111; text-decoration: none; font-size: 18px; font-weight: 600; letter-spacing: -0.03em; }}
+main {{ flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: clamp(24px, 14vh, 140px) 16px 32px; }}
+section {{ width: min(100%, 400px); box-sizing: border-box; padding: 40px 32px; background: #fff; border: 1px solid #f0f0f0; border-radius: 16px; box-shadow: 0 2px 6px #0000000a, 0 12px 40px #0000000d; text-align: center; }}
+h1 {{ margin: 0; font-size: 26px; font-weight: 600; line-height: 1.25; letter-spacing: -0.035em; }}
+p {{ margin: 10px 0 0; color: #666; font-size: 15px; }}
 </style>
 </head>
 <body>
-<main role="status"><h1>{title}</h1><p>{hint}</p></main>
+<header><a href="{home}">{logo}<span>kordi</span></a></header>
+<main><section role="status"><h1>{title}</h1><p>{hint}</p></section></main>
 {script}
 </body>
-</html>"#
+</html>"#,
+        home = KORDI_HOME_LINK,
+        logo = KORDI_BIRD_SVG,
     )
 }
 
@@ -326,7 +336,7 @@ mod tests {
         assert!(signed_in.contains("data-status=\"success\""));
         assert!(signed_in.contains("<h1>Signed in to Kordi</h1><p>You can close this tab.</p>"));
         assert!(signed_in.contains("window.close()"));
-        assert!(signed_in.contains("prefers-color-scheme: dark"));
+        assert!(signed_in.contains(&format!("<a href=\"{KORDI_HOME_LINK}\">")));
 
         let failed = completion_page(false);
         assert!(failed.contains("data-status=\"error\""));
@@ -335,6 +345,10 @@ mod tests {
         assert!(!failed.contains("<script"), "an error page stays open");
 
         for page in [signed_in, failed] {
+            // The home link and the logo's own mask are the only references.
+            let page = page
+                .replace(&format!("href=\"{KORDI_HOME_LINK}\""), "")
+                .replace("url(#cut)", "");
             for external in ["http:", "https:", "src=", "href=", "@import", "url("] {
                 assert!(!page.contains(external), "{external}");
             }
