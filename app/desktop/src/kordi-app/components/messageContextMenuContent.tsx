@@ -96,6 +96,7 @@ function isActionEligible(msg: Message) {
 function messageCanEdit(msg: Message) {
   const status = new Set((msg.statusChips ?? []).map((value) => value.trim().toLowerCase()));
   return isActionEligible(msg)
+    && !(msg.messageAction?.kind === 'forward' && msg.messageAction.forwardedContent)
     && transcriptMessageIsOwnHuman(msg)
     && msg.senderType === 'human'
     && Boolean(msg.text.trim())

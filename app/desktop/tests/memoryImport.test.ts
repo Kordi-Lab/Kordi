@@ -69,9 +69,9 @@ test('an import reply drops bad entries, unknown files, and anything past 12 per
     text: 'Odd category falls back by scope.', category: 'general_preferences', scope: 'global', file: homeFile.path,
   });
   assert.equal(parsed.find((memory) => memory.file === projectFile.path)?.category, 'hcp-custom:task_lessons');
-  assert.deepEqual(parseMemoryImportReply('No JSON here.', [projectFile]), []);
-  assert.deepEqual(parseMemoryImportReply('{"memories": "none"}', [projectFile]), []);
-  assert.deepEqual(parseMemoryImportReply('{"memories": [ broken', [projectFile]), []);
+  assert.throws(() => parseMemoryImportReply('No JSON here.', [projectFile]), /unreadable import/);
+  assert.throws(() => parseMemoryImportReply('{"memories": "none"}', [projectFile]), /unreadable import/);
+  assert.throws(() => parseMemoryImportReply('{"memories": [ broken', [projectFile]), /unreadable import/);
 });
 
 test('imported memories map to project or account scope, skip repeats, and carry no confidence', () => {
@@ -138,9 +138,11 @@ test('the import tree skips the project level for a one-project app and rolls re
   const [claude, project] = memoryImportTree(files);
   assert.deepEqual([claude.name, appSummary(claude), claude.projects.map((group) => group.name)], ['Claude Code', '3 projects · 3 files', ['a', 'b', 'Home']]);
   assert.deepEqual([project.name, appSummary(project), project.projects.length], ['Project files', '1 file', 0]);
+  const saved = { imported: 2, duplicates: 0, failedFiles: 0, failedMemories: 0 };
+  const failed = { imported: 0, duplicates: 0, failedFiles: 1, failedMemories: 0, error: 'x' };
   assert.equal(rollUpLabel(claude.files, {}, 'app'), '');
-  assert.equal(rollUpLabel(claude.files, { '/a/one.md': 2, '/b/two.md': 'importing' }, 'project'), 'Importing 1/2…');
-  assert.equal(rollUpLabel(claude.files, { '/a/one.md': 2, '/b/two.md': 'importing' }, 'app'), '');
-  assert.equal(rollUpLabel(claude.files, { '/a/one.md': 2, '/b/two.md': { failed: 'x' } }, 'app'), 'Imported 2 memories');
-  assert.equal(rollUpLabel(claude.files, { '/a/one.md': { failed: 'x' } }, 'app'), 'Could not import');
+  assert.equal(rollUpLabel(claude.files, { '/a/one.md': saved, '/b/two.md': 'importing' }, 'project'), 'Importing 1/2…');
+  assert.equal(rollUpLabel(claude.files, { '/a/one.md': saved, '/b/two.md': 'importing' }, 'app'), '');
+  assert.equal(rollUpLabel(claude.files, { '/a/one.md': saved, '/b/two.md': failed }, 'app'), 'Imported 2 memories · Some failed');
+  assert.equal(rollUpLabel(claude.files, { '/a/one.md': failed }, 'app'), 'Could not import');
 });

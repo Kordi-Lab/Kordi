@@ -210,7 +210,7 @@ export function createPreviewConnectorsClient(options: PreviewConnectorsClientOp
       await wait();
       const definition = connectorDefinition(providerId);
       if (definition.availability !== 'available') throw new Error(`${definition.name} is not yet available.`);
-      // A service connect grants read and act together and turns acting on.
+      // Match the catalog: Calendar starts read only; other services include act.
       const allowed = new Set(connectScopes(definition).map((scope) => scope.id));
       const scopeIds = input.scopeIds.filter((id) => allowed.has(id));
       const previous = current(providerId);

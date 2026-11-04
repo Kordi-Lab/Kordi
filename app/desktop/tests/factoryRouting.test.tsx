@@ -63,6 +63,7 @@ const creationBuilderStatus: DesktopAgentBuilderStatus = {
     boundaries: [],
     access: 'only-me',
     provider: 'openai-codex',
+    authChoice: 'cloud-login:synthetic-owner',
     model: 'openai/gpt-5.6-sol',
     thinking: 'high',
     tools: ['web_search', 'web_fetch'],
@@ -83,6 +84,7 @@ test('new agent builds inherit the active configured route and expose Cloud tool
   });
 
   assert.equal(seed.provider, 'openai-codex');
+  assert.equal(seed.authChoice, 'oauth-profile');
   assert.equal(seed.model, 'openai/gpt-5.6-sol');
   assert.equal(seed.thinking, 'high');
   assert.deepEqual(
@@ -102,6 +104,7 @@ test('new agent creation sends its avatar through the canonical Cloud mutation',
     avatarMutation: { action: 'upload', uploadedAsset: 'data:image/png;base64,avatar' },
   });
   assert.deepEqual(input.avatarMutation, { action: 'upload', uploadedAsset: 'data:image/png;base64,avatar' });
+  assert.equal(input.modelRouting?.defaultAuthChoice, 'cloud-login:synthetic-owner');
 
   const random = randomFactoryCreationAvatar();
   assert.equal(random?.mutation.action, 'regenerate');

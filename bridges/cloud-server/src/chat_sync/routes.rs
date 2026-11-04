@@ -29,6 +29,7 @@ const MAX_ATTACHMENTS_PER_MESSAGE: usize = 32;
 const MAX_IMAGE_PIXEL_DIMENSION: u64 = 100_000;
 
 mod attachment_actions;
+mod channels;
 mod group_envelope;
 mod http;
 mod message_mutations;
@@ -58,6 +59,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
 fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Router {
     Router::new()
         .route("/v2/chat/conversations", post(create_conversation))
+        .route(
+            "/v2/chat/group-spaces/:group_space_id/channels",
+            post(channels::create),
+        )
         .route(
             "/v2/chat/conversations/:conversation_id",
             patch(update_shared_title),

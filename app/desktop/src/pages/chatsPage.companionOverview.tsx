@@ -60,6 +60,7 @@ export function CompanionOverviewContent({ accountId, view, state, onRetry, acti
 function CompanionDigest({ accountId, state, onRetry, actions }: { accountId: string; state: DigestState; onRetry: () => void; actions?: DigestPanelActions }) {
   const { digest, digestError } = state;
   const snapshot = digest?.snapshot;
+  const invalidOutput = digest?.errorCode === 'invalid_output';
   const dismissed = new Set(digest?.feedback.filter(item => item.status === 'dismissed').map(item => item.id));
   const sections: [string, DigestItem[]][] = [
     ['Brief', snapshot?.claims ?? []],
@@ -68,16 +69,17 @@ function CompanionDigest({ accountId, state, onRetry, actions }: { accountId: st
   ];
   const unavailable = digest?.errorCode === 'missing_provider_auth' ? 'Connect a model provider in Settings to prepare your digest.'
     : digest?.errorCode === 'provider_auth_rejected' ? 'Your model provider sign-in needs attention in Settings.'
+    : invalidOutput ? 'The generated digest could not be verified.'
     : digest?.status === 'error' ? 'Your digest is unavailable right now.'
     : digest?.status === 'loading' || digest?.status === 'updating' ? 'Preparing your digest…'
     : !digest ? 'Loading digest…' : 'No conversations to summarize yet.';
   return <div className="app-companion-overview-scroll" tabIndex={0} aria-label="Digest content">
-    {actions ? <button type="button" className="app-companion-refresh" disabled={actions.busy || digest?.status === 'updating'} onClick={actions.onRefresh}>Refresh digest</button> : null}
+    {actions ? <button type="button" className="app-companion-refresh" disabled={actions.busy || digest?.status === 'updating'} onClick={actions.onRefresh}>{invalidOutput ? 'Rebuild digest' : 'Refresh digest'}</button> : null}
     {digestError ? <ReadError label="Digest" onRetry={onRetry} /> : null}
     {!snapshot ? <p className="app-companion-status" role="status">{digestError ? 'The digest could not be loaded.' : unavailable}</p>
       : <>
         <p className="app-companion-freshness" role="status">{digest?.status === 'updating' ? 'Updating…' : digest?.updatedAt ? digestUpdatedLabel(digest.updatedAt) : 'Latest digest'}</p>
-        {digest?.status === 'error' ? <p className="app-companion-status">The latest update failed. Showing the last available digest.</p> : null}
+        {digest?.status === 'error' ? <p className="app-companion-status">{invalidOutput ? 'The generated digest could not be verified.' : 'The latest update failed.'} Showing the last available digest.</p> : null}
         {sections.map(([label, items]) => <section className="app-companion-digest-section" key={label}>
           <h3>{label}</h3>
           {items.filter(item => !dismissed.has(item.id)).map(item => <article key={item.id}>

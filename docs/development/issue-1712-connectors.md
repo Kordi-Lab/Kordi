@@ -32,13 +32,17 @@ product shape can be reviewed before any token is stored.
   through the desktop process for Mac-local sources. No route, lease, event, or
   tool result carries a token field. This mirrors the device-proof rule from
   #1680 for provider keys.
-- **Connect grants read and act together; acting can be switched off;
-  background runs stay read-only.** The first connect asks the provider for the
-  read and act scopes in one consent, turns "Let my agent act here" on, and
+- **Calendar starts read-only; background runs stay read-only.** Calendar
+  connect requests read scope only and leaves acting off, even if Google
+  returns a previously granted write scope. An explicit act grant enables
+  acting. A Calendar read reconnect turns acting off and replaces stored scope
+  metadata with the latest credential's scopes; it does not prove provider
+  permission revocation. Other services ask for the read and act scopes in one
+  consent, turn "Let my agent act here" on when write scope is returned, and
   grants the connector to the account's default agent, so a connected service
   is usable at once. The person can turn acting off, and on again, from
   settings without another OAuth round trip while act scopes are granted. A
-  later sign-in to the same connector keeps the person's acting choice. A
+  later sign-in to those other connectors keeps the person's acting choice. A
   provider that returns read-only scopes leaves acting off; the act toggle then
   starts an `act` re-grant. Background runs never receive `act` tools, and
   only the owner changes these settings.
@@ -142,11 +146,15 @@ Schema (one migration, Postgres path in `pg/`):
 
 Routes under `/v1/cloud/connectors`:
 
-- `GET /` list for the signed-in account, never including secrets.
-- `POST /:provider/oauth/start` with `{ "grant": "read" | "act",
-  "redirectAfter"? }`, returning the provider URL. Both grant kinds request
-  the read and act scopes together: `read` is the first connect, and `act` is
-  the re-grant for a connector whose provider returned read-only scopes. Separate OAuth client
+- `GET /` list for the signed-in account, never including secrets. `providers`
+  reports each provider's `oauthReady` boolean so clients can explain missing
+  setup before starting consent. Provider scopes and Kordi acting are separate.
+- `POST /:provider/oauth/start` with `{ "grant": "read" | "act" | "read_only",
+  "redirectAfter"? }`, returning the provider URL. Calendar clients use
+  `read_only`, which older servers reject before opening combined consent;
+  it maps to a read grant and is rejected for other providers. Calendar `read`
+  also requests only read scope. Other providers retain combined read and act
+  consent; `act` requests both sets. Separate OAuth client
   registrations from the sign-in clients in `auth/oauth.rs`. Returns 503
   `connectors_unavailable` when the encryption key is not configured.
 - `GET /oauth/callback` (unauthenticated, called by the provider) exchanges

@@ -423,6 +423,7 @@ fn build_draft(
             .collect(),
         access: agent.access.trim().to_string(),
         provider: agent.model.provider,
+        auth_choice: agent.model.auth_choice,
         model: agent.model.model,
         thinking: agent.model.thinking,
         tools: agent

@@ -1,5 +1,5 @@
 //! Runs a Mac starts for its own account without a chat message, such as a
-//! memory import ([`super::import_runs`]). The Mac renews and releases the run
+//! memory import or Factory smoke test. The Mac renews and releases the run
 //! through the ordinary desktop routes and ends it with [`complete`].
 
 use std::sync::Arc;
@@ -12,12 +12,13 @@ use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
-use super::import_runs;
 use super::runs::{error_response, AgentRuntimeRoute};
+use super::{factory_runs, import_runs};
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
 
 const MEMORY_IMPORT: &str = "memory_import";
+const FACTORY_TEST: &str = "factory_test";
 
 fn executor(session: &CloudSession, claim_id: Uuid) -> String {
     format!("desktop:{}:{claim_id}", session.device_id)
@@ -54,7 +55,7 @@ pub(super) async fn tasks(
     Extension(session): Extension<CloudSession>,
     Json(input): Json<TaskInput>,
 ) -> Response {
-    if input.kind != MEMORY_IMPORT {
+    if !matches!(input.kind.as_str(), MEMORY_IMPORT | FACTORY_TEST) {
         return error_response(
             "unsupported_task",
             "This task is not supported.",
@@ -68,17 +69,33 @@ pub(super) async fn tasks(
         Err(_) => return failed(),
     }
     let owner = executor(&session, input.claim_id);
-    let started = import_runs::start(
-        pool,
-        &session.account_id,
-        &owner,
-        input.runtime_route.as_ref(),
-    )
-    .await;
+    let (started, event) = if input.kind == FACTORY_TEST {
+        (
+            factory_runs::start(
+                pool,
+                &session.account_id,
+                &owner,
+                input.runtime_route.as_ref(),
+            )
+            .await,
+            "factory_test_started",
+        )
+    } else {
+        (
+            import_runs::start(
+                pool,
+                &session.account_id,
+                &owner,
+                input.runtime_route.as_ref(),
+            )
+            .await,
+            "memory_import_started",
+        )
+    };
     match started {
         Ok(value) => {
             if let Some(run_id) = value["runId"].as_str() {
-                audit(&state, &session, "memory_import_started", run_id).await;
+                audit(&state, &session, event, run_id).await;
             }
             Json(value).into_response()
         }
@@ -99,13 +116,23 @@ pub(super) async fn complete(
     Path(run_id): Path<String>,
     Json(input): Json<CompleteInput>,
 ) -> Response {
-    if !import_runs::is_import_run(&run_id) {
-        return denied();
-    }
     let owner = executor(&session, input.claim_id);
-    match import_runs::finish(state.db_pool(), &run_id, &session.account_id, &owner, true).await {
+    let (ended, event) = if factory_runs::is_factory_run(&run_id) {
+        (
+            factory_runs::finish(state.db_pool(), &run_id, &session.account_id, &owner, true).await,
+            "factory_test_completed",
+        )
+    } else if import_runs::is_import_run(&run_id) {
+        (
+            import_runs::finish(state.db_pool(), &run_id, &session.account_id, &owner, true).await,
+            "memory_import_completed",
+        )
+    } else {
+        return denied();
+    };
+    match ended {
         Ok(true) => {
-            audit(&state, &session, "memory_import_completed", &run_id).await;
+            audit(&state, &session, event, &run_id).await;
             Json(json!({"ok": true})).into_response()
         }
         Ok(false) => error_response(
@@ -117,7 +144,7 @@ pub(super) async fn complete(
     }
 }
 
-/// The audit row names the run only, never what was imported.
+/// The audit row names the run only, never file or draft contents.
 async fn audit(state: &ServerState, session: &CloudSession, event: &str, run_id: &str) {
     crate::memory_store::write_memory_audit(
         state.db_pool(),

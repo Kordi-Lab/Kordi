@@ -144,7 +144,7 @@ test.afterEach(async () => {
 
 async function renderMeasuredDisclosure(
   controlTop: number,
-  options: { expandedHeight?: number; bodyHeight?: number; direction?: 'up' | 'down' } = {},
+  options: { expandedHeight?: number; bodyHeight?: number; direction?: 'up' | 'down'; conversationScroll?: boolean } = {},
 ) {
   const expandedHeight = options.expandedHeight ?? 250;
   const bodyHeight = options.bodyHeight ?? 0;
@@ -179,6 +179,7 @@ async function renderMeasuredDisclosure(
                   <div
                     data-expanded-detail="true"
                     data-transcript-stable-disclosure-body="true"
+                    data-transcript-disclosure-scroll={options.conversationScroll ? 'conversation' : undefined}
                     style={bodyHeight > 0 ? { height: bodyHeight } : undefined}
                   >
                     Details
@@ -364,4 +365,34 @@ test('a live-tail disclosure uses the same upward expansion policy without a vir
 
   assert.equal(disclosureRoot.dataset.transcriptDisclosureDirection, 'up');
   assert.equal(viewport.scrollTop, initialScrollTop + 200);
+});
+
+test('inline activity near the viewport bottom grows in the conversation without a nested scroll cap', async () => {
+  const { viewport, button, measuredRow, disclosureRoot } = await renderMeasuredDisclosure(560, {
+    direction: 'down', expandedHeight: 900, bodyHeight: 850, conversationScroll: true,
+  });
+  const initialScrollTop = viewport.scrollTop;
+  await act(async () => button.click());
+  await notifyDisclosureResize(disclosureRoot, measuredRow);
+  const body = disclosureRoot.querySelector<HTMLElement>('[data-transcript-stable-disclosure-body]')!;
+  assert.equal(body.hasAttribute('data-transcript-disclosure-constrained'), false);
+  assert.equal(body.style.getPropertyValue('--app-transcript-disclosure-max-height'), '');
+  assert.equal(viewport.scrollTop, initialScrollTop);
+  await act(async () => button.click());
+  await notifyDisclosureResize(disclosureRoot, measuredRow);
+  assert.equal(viewport.scrollTop, initialScrollTop);
+});
+
+test('scrolling during inline expansion replaces the old disclosure anchor', async () => {
+  const { viewport, button, measuredRow, disclosureRoot } = await renderMeasuredDisclosure(560, {
+    direction: 'down', expandedHeight: 900, bodyHeight: 850, conversationScroll: true,
+  });
+  await act(async () => button.click());
+  const readingPoint = viewport.scrollTop - 120;
+  await act(async () => {
+    viewport.scrollTop = readingPoint;
+    viewport.dispatchEvent(new window.Event('scroll', { bubbles: true }));
+  });
+  await notifyDisclosureResize(disclosureRoot, measuredRow);
+  assert.equal(viewport.scrollTop, readingPoint);
 });

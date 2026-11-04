@@ -5,6 +5,7 @@
 //! them against its own database. Every test uses uuid-suffixed data.
 
 mod batches_db;
+mod calendar_time_db;
 mod delivery_db;
 mod desktop_db;
 mod fixture;

@@ -169,6 +169,7 @@ export function createCloudConnectorsClient(options: CloudConnectorsClientOption
   // True when `agents` is the server's full list, so stale grant ids can be dropped.
   let agentsComplete = false;
   let summaries = new Map<ConnectorProviderId, CloudConnectorSummary>();
+  let readiness = new Map<string, boolean>();
 
   const loadToken = options.loadToken ?? (async () => {
     const session = await loadSession();
@@ -198,6 +199,7 @@ export function createCloudConnectorsClient(options: CloudConnectorsClientOption
 
   const refresh = async (token: string) => {
     const response = await http.list(token);
+    readiness = new Map((response.providers ?? []).map((provider) => [provider.provider, provider.oauthReady]));
     const next = new Map<ConnectorProviderId, CloudConnectorSummary>();
     for (const summary of response.connectors ?? []) {
       if (!isConnectorProviderId(summary.provider) || summary.status === 'revoked') continue;
@@ -215,7 +217,10 @@ export function createCloudConnectorsClient(options: CloudConnectorsClientOption
     return next;
   };
 
-  const stateFor = (providerId: ConnectorProviderId) => connectorStateFromSummary(providerId, summaries.get(providerId));
+  const stateFor = (providerId: ConnectorProviderId): ConnectorState => ({
+    ...connectorStateFromSummary(providerId, summaries.get(providerId)),
+    oauthReady: readiness.get(providerId),
+  });
 
   const remember = (summary: CloudConnectorSummary): ConnectorState | null => {
     if (!isConnectorProviderId(summary.provider)) return null;
@@ -304,7 +309,7 @@ export function createCloudConnectorsClient(options: CloudConnectorsClientOption
     const timeoutMessage = connectorOAuthTimeoutMessage(providerId);
     try {
       const { authUrl } = await abortable(http.startOAuth(token, providerId, {
-        grant,
+        grant: providerId === 'google_calendar' && grant === 'read' ? 'read_only' : grant,
         ...(callback ? { redirectAfter: callback.redirectUrl } : {}),
       }), signal, definition.name);
       if (await oauth.open(authUrl) === false) {

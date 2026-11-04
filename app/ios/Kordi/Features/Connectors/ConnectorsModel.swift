@@ -302,11 +302,11 @@ enum ConnectorsModel {
         return [.read, .act]
     }
 
-    /// Scopes the connect step asks for. A service connect grants read and act
-    /// together so the service is usable at once; acting can be turned off
-    /// later. Device-local sources are read only.
+    /// Calendar and device-local sources start read only. Other services
+    /// request read and act together; acting can be turned off later.
     static func connectScopes(_ definition: ConnectorDefinition) -> [ConnectorScope] {
-        definition.kind == .service ? definition.readScopes + definition.actScopes : definition.readScopes
+        definition.kind == .service && definition.providerId != .googleCalendar
+            ? definition.readScopes + definition.actScopes : definition.readScopes
     }
 
     static func hasGrantedActScopes(definition: ConnectorDefinition, state: ConnectorState) -> Bool {

@@ -60,7 +60,7 @@ pub(super) struct Evidence {
     pub id: String,
     pub source: String,
     pub title: String,
-    /// `YYYY-MM-DD`, when the source has a date.
+    /// RFC 3339 for an instant, or `YYYY-MM-DD` for a date-only source.
     pub date: Option<String>,
     pub url: Option<String>,
     pub snippet: String,

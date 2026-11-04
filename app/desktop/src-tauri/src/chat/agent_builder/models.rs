@@ -34,6 +34,8 @@ pub struct DesktopAgentBuilderSeed {
     #[serde(default)]
     pub provider: Option<String>,
     #[serde(default)]
+    pub auth_choice: Option<String>,
+    #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
     pub thinking: Option<String>,
@@ -86,6 +88,8 @@ impl Default for DesktopAgentBuilderAssociationIndex {
 pub(super) struct DesktopAgentBuilderModelFile {
     #[serde(default)]
     pub(super) provider: Option<String>,
+    #[serde(default)]
+    pub(super) auth_choice: Option<String>,
     #[serde(default)]
     pub(super) model: Option<String>,
     #[serde(default)]
@@ -146,6 +150,8 @@ pub struct DesktopAgentBuilderDraft {
     pub boundaries: Vec<String>,
     pub access: String,
     pub provider: Option<String>,
+    #[serde(default)]
+    pub auth_choice: Option<String>,
     pub model: Option<String>,
     pub thinking: Option<String>,
     pub tools: Vec<String>,

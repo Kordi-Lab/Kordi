@@ -137,8 +137,9 @@ const ELIGIBLE: &str = concat!(
     // Proactive runs need no project folder (`proactive::needs_no_project_folder`).
     "AND (starts_with(candidate.run_id, 'proactive_eval_') OR starts_with(candidate.run_id, 'proactive_run_') OR starts_with(candidate.run_id, 'personal_agent_eval_') OR NOT EXISTS(SELECT 1 FROM cloud_project_devices p JOIN cloud_devices d USING(device_id), jsonb_array_elements(p.projects) project WHERE p.account_id=candidate.owner_account_id AND (project->'sessions') ? candidate.session_id AND d.revoked_at IS NULL AND (candidate.execution_backend='desktop' OR p.updated_at>now()-make_interval(secs=>$3)))) ",
     "AND NOT candidate.legacy_duplicate AND candidate.cancel_requested_at IS NULL ",
-    // A memory import runs only on the Mac that started it (`import_runs`).
+    // Memory imports and Factory tests stay on the Mac that started them.
     "AND NOT starts_with(candidate.run_id, 'import_') ",
+    "AND NOT starts_with(candidate.run_id, 'factory_') ",
     "AND (candidate.desktop_preferred_until IS NULL OR candidate.desktop_preferred_until <= now()) ",
     "AND ($2::text IS NULL OR candidate.run_id=$2) ",
     "AND (NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat q WHERE q.run_id=candidate.run_id) OR ( ",

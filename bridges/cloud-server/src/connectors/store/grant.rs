@@ -101,8 +101,7 @@ pub struct GrantUpdate<'a> {
     pub account_id: &'a str,
     pub provider: &'a str,
     pub read_scopes: &'a [String],
-    /// Act scopes granted now. A new connector starts with acting on when any
-    /// are present; see `apply_grant` for an existing connector.
+    /// Act scopes granted now. Calendar also needs explicit acting consent.
     pub act_scopes: &'a [String],
     /// The provider account behind the credential, when known.
     pub provider_account_id: Option<&'a str>,
@@ -122,6 +121,8 @@ pub struct GrantUpdate<'a> {
 /// lock on (account, provider) serializes racing completions, so the second
 /// one updates the connector the first created instead of hitting the
 /// one-live-connector index.
+/// Calendar is read-only on a read grant, including reconnect: only an Act
+/// grant enables acting, and the latest token's scopes replace old metadata.
 pub async fn apply_grant(
     pool: &PgPool,
     grant: GrantUpdate<'_>,
@@ -145,12 +146,18 @@ pub async fn apply_grant(
     let created = existing.is_none();
     let row: ConnectorRow = match existing {
         Some(current) => {
-            let read = merge_scopes(&current.read_scopes, grant.read_scopes);
-            let act = merge_scopes(&current.act_scopes, grant.act_scopes);
+            // Calendar's latest credential is authoritative, including a downgrade.
+            let calendar = grant.provider == "google_calendar";
+            let read = if calendar { grant.read_scopes.to_vec() } else { merge_scopes(&current.read_scopes, grant.read_scopes) };
+            let act = if calendar { grant.act_scopes.to_vec() } else { merge_scopes(&current.act_scopes, grant.act_scopes) };
             let first_act_grant = current.act_scopes.is_empty() && !grant.act_scopes.is_empty();
             let explicit_act_grant =
                 grant.audit_tool_group == ConnectorToolGroup::Act && !act.is_empty();
-            let act_enabled = current.act_enabled || explicit_act_grant || first_act_grant;
+            let act_enabled = if calendar {
+                explicit_act_grant
+            } else {
+                current.act_enabled || explicit_act_grant || first_act_grant
+            };
             query_as(&format!(
                 "UPDATE cloud_connectors SET status = 'connected', read_scopes = $2, \
                  act_scopes = $3, act_enabled = $4, updated_at = now(), \
@@ -177,7 +184,7 @@ pub async fn apply_grant(
             .bind(grant.provider)
             .bind(grant.read_scopes)
             .bind(grant.act_scopes)
-            .bind(!grant.act_scopes.is_empty())
+            .bind(!grant.act_scopes.is_empty() && (grant.provider != "google_calendar" || grant.audit_tool_group == ConnectorToolGroup::Act))
             .bind(grant.provider_account_id)
             .fetch_one(&mut *tx)
             .await?

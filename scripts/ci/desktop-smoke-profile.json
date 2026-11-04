@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "routing": {
+    "schemaVersion": 1,
+    "edition": "app",
+    "environment": "staging",
+    "backend": {
+      "origin": "https://desktop-smoke.example.test"
+    }
+  },
+  "clients": {
+    "displayName": "Kordi CI Smoke",
+    "callbackScheme": "kordi-ci-staging",
+    "desktopIdentifier": "test.kordi.ci.staging.desktop",
+    "iosIdentifier": "test.kordi.ci.staging.ios",
+    "iosShareIdentifier": "test.kordi.ci.staging.ios.share",
+    "appGroup": "group.test.kordi.ci.staging.share",
+    "credentialService": "test.kordi.ci.staging.session",
+    "desktopIcon": "icon.png",
+    "desktopIcns": "icon.icns",
+    "iosIcon": "icon.png",
+    "updates": {
+      "enabled": false,
+      "publicKey": "",
+      "artifactName": "KordiCISmoke"
+    }
+  },
+  "services": {
+    "model": {
+      "provider": "openai-compatible",
+      "baseURL": "https://model.example.test/v1",
+      "model": "synthetic-model"
+    },
+    "systemAgent": {
+      "enabled": false,
+      "name": "System",
+      "subtitle": "Keeps plans in this chat honest",
+      "ownerEmail": "system@example.test",
+      "persona": "Synthetic system agent persona."
+    },
+    "supportAgent": {
+      "enabled": false,
+      "name": "Kordi Support",
+      "subtitle": "Ask questions or suggest improvements",
+      "ownerEmail": "support@example.test",
+      "persona": "Synthetic support agent persona."
+    },
+    "runner": {
+      "concurrency": 4,
+      "pollMilliseconds": 2000,
+      "sandboxBackend": "k8s"
+    },
+    "connectorCallsPerHour": 600
+  },
+  "resources": {
+    "provider": "external",
+    "cpuLimit": 4,
+    "memoryMiB": 8192,
+    "sandboxCpuMillis": 1000,
+    "sandboxMemoryMiB": 1024,
+    "bindings": {
+      "project": "TEST_PROJECT",
+      "region": "TEST_REGION",
+      "instance": "TEST_INSTANCE",
+      "database": "TEST_DATABASE",
+      "objectStorage": "TEST_OBJECTSTORAGE",
+      "serviceIdentity": "TEST_SERVICEIDENTITY",
+      "zone": "TEST_ZONE"
+    }
+  },
+  "apple": {
+    "teamBinding": "CI_SMOKE_APPLE_TEAM",
+    "identityBinding": "CI_SMOKE_APPLE_IDENTITY",
+    "notaryProfileBinding": "CI_SMOKE_APPLE_NOTARY",
+    "exportMethod": "debugging"
+  },
+  "authentication": {
+    "admission": "approved-testers",
+    "verifiedDomains": [],
+    "approvedEmailsBinding": "CI_SMOKE_APPROVED_EMAILS",
+    "oauthBindings": {
+      "googleClientId": "CI_SMOKE_GOOGLE_ID",
+      "googleClientSecret": "CI_SMOKE_GOOGLE_SECRET",
+      "githubClientId": "CI_SMOKE_GITHUB_ID",
+      "githubClientSecret": "CI_SMOKE_GITHUB_SECRET"
+    },
+    "loginPage": {
+      "title": "Synthetic CI build",
+      "subtitle": "Packaging validation only",
+      "signupTitle": "Synthetic CI build",
+      "signupSubtitle": "No live backend is configured"
+    }
+  }
+}

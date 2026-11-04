@@ -434,6 +434,10 @@ export function mapCanonicalMessage(
     isForkSnapshot: sourceTransport === 'canonical-fork-snapshot' || undefined,
     role,
     sender,
+    // Persist the source account name, never the viewer-relative bubble label.
+    sourceSenderLabel: isAgentTurn ? sender
+      : contentSender && !isSelfReferenceName(contentSender) ? contentSender
+        : identity?.displayName || sender,
     senderOwnerName: agentPresentation.senderOwnerName,
     senderIdentityId: message.senderIdentityId,
     senderType: isAgentTurn || identity?.kind === 'agent' ? 'agent' : 'human',

@@ -1,3 +1,4 @@
+import { factoryDraftModelRouting, factoryDraftWithRouting } from './factoryAgentUtils';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowLeft } from 'lucide-react';
 import {
@@ -271,6 +272,7 @@ export function AgentsPage({
     sessionId: buildRoute?.sessionId,
     seed: builderSeed,
     seedKey: builderSeedKey,
+    providerOptions: composerProviderOptions,
     onSessionResolved: handleBuilderSessionResolved,
     enabled: factorySection === 'build' && Boolean(buildRoute),
   });
@@ -337,9 +339,7 @@ export function AgentsPage({
   const publishedRouting = modelRoutingForAgent(selectedAgent);
   const builderRouting = builder.status?.draft ? {
     ...publishedRouting,
-    defaultModel: builder.status.draft.model,
-    defaultAuthProvider: builder.status.draft.provider,
-    thinking: builder.status.draft.thinking,
+    ...factoryDraftModelRouting(builder.status.draft),
   } : publishedRouting;
   const selectedRouting = selectedAgent ? routingDraftByAgentId[selectedAgent.id] ?? builderRouting : publishedRouting;
   const routingChanged = Boolean(selectedAgent && !sameModelRouting(selectedRouting, publishedRouting));
@@ -448,6 +448,7 @@ export function AgentsPage({
     setPublishFeedback({ tone: 'info', text: skipModelTest || builder.status?.publishReady ? publishingText : 'Testing the draft before publishing…' });
     try {
       const status = await factoryPublishStatus(skipModelTest, builder.status, builder.testDraft);
+      const testedRouting = status.draft ? { ...selectedRouting, ...factoryDraftModelRouting(status.draft) } : selectedRouting;
       setPublishFeedback({ tone: 'info', text: publishingText });
       if (creating) {
         if (creatingSkill) {
@@ -513,7 +514,7 @@ export function AgentsPage({
             content: builderSkills.get(name)?.content ?? null,
           })),
           modelRouting: {
-            ...selectedRouting,
+            ...testedRouting,
             tools: status.draft?.tools ?? activeAgentConfig.loadedTools,
             plugins: status.draft?.plugins ?? activeAgentConfig.loadedPlugins,
           },
@@ -543,9 +544,9 @@ export function AgentsPage({
           for (const skill of removedSkills) await onSetAgentSkillEnabled?.(selectedAgent, skill, false);
           for (const skill of addedSkills) await onSetAgentSkillEnabled?.(selectedAgent, skill, true);
         }
-        if (routingChanged) {
+        if (!sameModelRouting(testedRouting, publishedRouting)) {
           if (!onUpdateAgentModelRouting) throw new Error('Model routing updates are unavailable for this runtime.');
-          await onUpdateAgentModelRouting(selectedAgent, selectedRouting);
+          await onUpdateAgentModelRouting(selectedAgent, testedRouting);
         }
         await publishDefaultAgentIdentity({ agent: selectedAgent, draft: builderDraft, mutation: factoryAvatar.mutation, avatarKey: selectedAvatarKey, onRenameLocalAgent, onUpdateLocalAgentAvatar });
         await publishDefaultAgentSettings(defaultProactive, activeDraftChanges, activeAgentConfig);
@@ -612,22 +613,12 @@ export function AgentsPage({
   const stageModelRouting = (_agent: Agent, values: AgentModelRoutingDraft) => {
     if (!selectedAgent) return;
     setRoutingDraftByAgentId((current) => ({ ...current, [selectedAgent.id]: values }));
-    void persistBuilderDraft((draft) => ({
-      ...draft,
-      provider: values.defaultAuthProvider ?? null,
-      model: values.defaultModel ?? null,
-      thinking: values.thinking ?? null,
-    }));
+    void persistBuilderDraft((draft) => factoryDraftWithRouting(draft, values));
     setPublishFeedback({ tone: 'info', text: 'Model routing change added to the reviewable draft.' });
   };
 
   const stageCreationModelRouting = async (values: AgentModelRoutingDraft) => {
-    await persistBuilderDraft((draft) => ({
-      ...draft,
-      provider: values.defaultAuthProvider ?? null,
-      model: values.defaultModel ?? null,
-      thinking: values.thinking ?? null,
-    }));
+    await persistBuilderDraft((draft) => factoryDraftWithRouting(draft, values));
   };
 
   const openFactorySection = (section: FactorySection) => {

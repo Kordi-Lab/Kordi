@@ -55,7 +55,7 @@ export function CompanionDocumentTabs({ documents, activeId, titles, renames = {
   useEffect(() => {
     const handle = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || !event.altKey || event.metaKey || event.ctrlKey || !/^Digit[1-9]$/.test(event.code)) return;
-      if ((event.target as HTMLElement | null)?.closest('input, textarea, [contenteditable="true"], [role="dialog"]')) return;
+      if ((event.target as HTMLElement | null)?.closest('input, textarea, [contenteditable="true"], dialog, [role="dialog"], [role="alertdialog"]')) return;
       if (!listRef.current || listRef.current.closest('[inert], [aria-hidden="true"]')) return;
       const item = items[Number(event.code.slice(-1)) - 1];
       if (item) { event.preventDefault(); activate(item.id); }

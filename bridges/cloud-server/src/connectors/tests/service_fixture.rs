@@ -4,7 +4,8 @@
 use super::http_stub::HttpStub;
 use super::*;
 use crate::connectors::providers::{
-    github, gmail, slack, ConnectorOAuthClient, ConnectorProvider, ServiceAdapter, ServiceProvider,
+    github, gmail, google_calendar, slack, ConnectorOAuthClient, ConnectorProvider, ServiceAdapter,
+    ServiceProvider,
 };
 use crate::connectors::ConnectorHooks;
 
@@ -37,6 +38,10 @@ pub(super) fn service_runtime(stub: &HttpStub, hooks: ConnectorHooks) -> Connect
     registry.insert(wire(
         stub,
         gmail::provider(http.clone(), Some(stub.base.clone())),
+    ));
+    registry.insert(wire(
+        stub,
+        google_calendar::provider(http.clone(), Some(stub.base.clone())),
     ));
     registry.insert(wire(stub, slack::provider(http, Some(stub.base.clone()))));
     ConnectorRuntime::new(Some(Arc::new(TestCipher)), registry).with_hooks(hooks)

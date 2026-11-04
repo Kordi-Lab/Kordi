@@ -125,6 +125,13 @@ pub(super) async fn provider_auth(
     Path(run_id): Path<String>,
     Json(input): Json<RenewalInput>,
 ) -> Response {
+    if super::factory_runs::is_factory_run(&run_id)
+        && super::factory_runs::expire_stale(state.db_pool(), Some(&session.account_id))
+            .await
+            .is_err()
+    {
+        return expired();
+    }
     let owner = executor(&session, input.claim_id);
     let route = match desktop_provider_route(state.db_pool(), &session, &run_id, &owner).await {
         Ok(Some(route)) => route,
@@ -256,6 +263,13 @@ pub(super) async fn renew(
     Path(run_id): Path<String>,
     Json(input): Json<RenewalInput>,
 ) -> Response {
+    if super::factory_runs::is_factory_run(&run_id)
+        && super::factory_runs::expire_stale(state.db_pool(), Some(&session.account_id))
+            .await
+            .is_err()
+    {
+        return expired();
+    }
     if !matches!(
         super::subsession_execution::revalidate(state.db_pool(), &run_id).await,
         Ok(true)

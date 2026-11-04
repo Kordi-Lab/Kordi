@@ -7,6 +7,7 @@ use super::types::{RegisteredCommand, RegisteredTool, SharedUiHandler};
 /// A running plugin host process that loads and executes TS plugins.
 pub struct PluginHost {
     pub(super) child: Child,
+    pub(super) runtime_dir: Option<tempfile::TempDir>,
     pub(super) stdin: tokio::process::ChildStdin,
     pub(super) stdout_reader: BufReader<tokio::process::ChildStdout>,
     pub(super) next_id: AtomicU64,

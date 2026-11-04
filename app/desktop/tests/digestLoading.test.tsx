@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
+import { installDialogDom } from './helpers/dialogDom';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { digestClient } from '../src/features/digest/client';
@@ -164,7 +165,7 @@ test('authorization failure removes cached source content', async () => {
 
 test('returning to Digest renders cached content and source clicks issue zero reads', async () => {
   const dom = new JSDOM('<div id="root"></div>', { pretendToBeVisual: true });
-  dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  installDialogDom(dom.window);
   const previous = { window: globalThis.window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT };
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
   const original = { ...digestClient };

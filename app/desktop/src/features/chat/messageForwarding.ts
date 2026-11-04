@@ -116,12 +116,14 @@ export function createForwardedMessageDraft({
   caption?: string;
   destinationSessionId: string;
 }) {
-  const text = caption?.trim()
-    || (source.attachmentOnly ? '' : source.textPreview)
-    || (source.attachments.length === 0
-      ? `${source.attachmentCount} attachment${source.attachmentCount === 1 ? '' : 's'}`
-      : '');
-  const messageAction = forwardMessageAction(source);
+  const contentText = source.forwardedContent?.text
+    ?? (source.attachmentOnly ? '' : source.textPreview);
+  const comment = caption?.trim() || '';
+  // Keep the complete visible text in the body for older clients and search.
+  const text = [comment, contentText].filter(Boolean).join('\n\n')
+    || (source.attachments.length === 0 && source.attachmentCount > 0
+      ? `${source.attachmentCount} attachment${source.attachmentCount === 1 ? '' : 's'}` : '');
+  const messageAction = forwardMessageAction(source, { text: contentText, ...(comment ? { comment } : {}) });
   return {
     text,
     attachments: source.attachments.map((attachment) => ({ ...attachment })),

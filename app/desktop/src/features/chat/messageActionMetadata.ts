@@ -1,6 +1,7 @@
+import { forwardedContentFromRecord, visibleForwardedText } from './forwardedContent';
 import { messageMentionsForText } from './messageMentions';
 import { attachmentOnlyMessagePreview } from './participantConversationState';
-import type { Message, MessageAttachment, MessageMention, MessageVoice } from '../../kordi-app/types/message';
+import type { Message, MessageAttachment, MessageMention, MessageVoice, ForwardedContent } from '../../kordi-app/types/message';
 
 export type MessageActionKind = 'quote' | 'forward' | 'thread';
 
@@ -25,12 +26,14 @@ export type ForwardMessageSource = MessageActionSource & {
   attachments: MessageAttachment[];
   voiceMessage?: MessageVoice | null;
   attachmentOnly: boolean;
+  forwardedContent?: ForwardedContent;
 };
 
 export type MessageActionMetadata = {
   schemaVersion: 1;
   kind: MessageActionKind;
   source: MessageActionSource;
+  forwardedContent?: ForwardedContent;
 };
 
 function clean(value?: string | null): string {
@@ -81,15 +84,18 @@ export function forwardMessageSourceFromMessage(
   message: Message,
   sourceSessionId: string,
 ): ForwardMessageSource | null {
-  const source = messageActionSourceFromMessage(message, sourceSessionId);
-  if (!source) return null;
+  if (message.turn && !message.turn.completed) return null;
+  const messageText = message.turn ? message.turn.assistantText : visibleForwardedText(message);
   const attachments = (message.attachments ?? []).map((attachment) => ({ ...attachment }));
-  const messageText = clean(message.turn?.assistantText) || clean(message.text) || clean(message.detail);
+  if (!messageText.trim() && attachments.length === 0 && !message.voiceMessage) return null;
+  const source = messageActionSourceFromMessage({ ...message, text: messageText, detail: undefined }, sourceSessionId);
+  if (!source) return null;
   return {
     ...source,
     attachments,
     voiceMessage: message.voiceMessage ?? null,
-    attachmentOnly: attachments.length > 0 && !messageText,
+    attachmentOnly: attachments.length > 0 && !messageText.trim(),
+    forwardedContent: { text: messageText },
   };
 }
 
@@ -112,8 +118,9 @@ export function quoteMessageAction(source: MessageActionSource): MessageActionMe
   return { schemaVersion: 1, kind: 'quote', source: persistedMessageActionSource(source) };
 }
 
-export function forwardMessageAction(source: MessageActionSource): MessageActionMetadata {
-  return { schemaVersion: 1, kind: 'forward', source: persistedMessageActionSource(source) };
+export function forwardMessageAction(source: MessageActionSource, forwardedContent?: ForwardedContent): MessageActionMetadata {
+  const content = forwardedContentFromRecord(forwardedContent);
+  return { schemaVersion: 1, kind: 'forward', source: persistedMessageActionSource(source), ...(content ? { forwardedContent: content } : {}) };
 }
 
 export function threadMessageAction(source: MessageActionSource): MessageActionMetadata {

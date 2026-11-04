@@ -401,21 +401,24 @@ final class CloudConnectorsClientTests: XCTestCase {
             Self.fragmentURL(#"{"completionCode":"cc_123","provider":"google_calendar","grant":"read","status":"pending"}"#)
         }
         ConnectorsURLProtocol.stub("POST", "/v1/cloud/connectors/google_calendar/oauth/start", #"{"authUrl":"https://accounts.example.com/o/oauth2"}"#)
-        // Connect grants read and act together, with acting on and the default agent granted.
-        let full = Self.summaryJSON(grantedScopeIds: Self.calendarIds, agentIds: ["cloud-agent:acct_1"], actEnabled: true)
+        // Calendar connects read only, with the default agent granted.
+        let full = Self.summaryJSON(grantedScopeIds: Self.calendarIds, agentIds: ["cloud-agent:acct_1"], actEnabled: false)
         ConnectorsURLProtocol.stub("POST", "/v1/cloud/connectors/oauth/complete", #"{"connector":\#(full)}"#)
         ConnectorsURLProtocol.stub("GET", "/v1/cloud/connectors", Self.listBody([full]))
 
         let state = try await client.connect(.googleCalendar, scopeIds: [])
         XCTAssertEqual(state.status, .connected)
         XCTAssertEqual(state.grantedScopeIds, Self.calendarIds)
-        XCTAssertTrue(state.actEnabled && state.agentIds == ["cloud-agent:acct_1"])
+        XCTAssertTrue(!state.actEnabled && state.agentIds == ["cloud-agent:acct_1"])
         XCTAssertEqual(ConnectorsURLProtocol.paths, [
             "POST /v1/cloud/connectors/google_calendar/oauth/start",
             "POST /v1/cloud/connectors/oauth/complete",
             "GET /v1/cloud/connectors",
         ])
         let complete = try XCTUnwrap(ConnectorsURLProtocol.requests.first { $0.request.url?.path == "/v1/cloud/connectors/oauth/complete" })
+        let start = try XCTUnwrap(ConnectorsURLProtocol.requests.first { $0.request.url?.path == "/v1/cloud/connectors/google_calendar/oauth/start" })
+        let startBody = try XCTUnwrap(JSONSerialization.jsonObject(with: start.body ?? Data()) as? [String: String])
+        XCTAssertEqual(startBody["grant"], "read_only")
         XCTAssertEqual(complete.request.value(forHTTPHeaderField: "Authorization"), "Bearer session-value")
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: complete.body ?? Data()) as? [String: String])
         XCTAssertEqual(body, ["completionCode": "cc_123"])

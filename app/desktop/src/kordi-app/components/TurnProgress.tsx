@@ -12,9 +12,10 @@ function ActivityGroup({ tools, unavailable = 0, label, renderTool, thinkingText
   tools: DesktopChatToolSnapshot[]; unavailable?: number; label: string;
   renderTool: (tool: DesktopChatToolSnapshot) => ReactNode; thinkingText?: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(tools.length === 1);
   const Icon = tools[0] ? toolActivityMetadata(tools[0]).Icon : thinkingText ? Brain : Wrench;
   const expandable = tools.length > 0 || unavailable > 0 || Boolean(thinkingText);
+  if (tools.length === 1 && !unavailable && !thinkingText) return renderTool(tools[0]);
   return <section className={`app-turn-progress${thinkingText ? ' app-turn-reasoning' : ''}`} data-transcript-stable-disclosure-root="true" data-transcript-stable-disclosure-direction="down">
     <div className="app-turn-progress-line">
       <button type="button" className="app-turn-progress-summary" aria-label={label} aria-expanded={expandable ? expanded : undefined}

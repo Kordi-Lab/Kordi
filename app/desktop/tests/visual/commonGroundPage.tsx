@@ -29,6 +29,8 @@ if (params.has('emptyCard')) {
   fx.profiles = fx.profiles.map((profile) => ({ ...profile, hasCard: false }));
 }
 
+const joinedRoom = { ...fx.room, roomId: 'room_5160', code: '5160', name: 'Poster session 2026' };
+
 const ROUTES: Record<string, (query: string, body: Record<string, unknown>) => unknown> = {
   'GET profiles': () => ({ profiles: fx.profiles }),
   'GET card': (query) => params.has('emptyCard') ? { ...fx.owner, card: null } : (screen === 'build' || query.includes('cgp_health') ? fx.healthOwner : fx.owner),
@@ -38,7 +40,13 @@ const ROUTES: Record<string, (query: string, body: Record<string, unknown>) => u
   'GET rooms': () => fx.rooms,
   'GET rooms/4821': () => fx.room,
   'GET rooms/5160/preview': () => fx.preview,
-  'POST rooms/5160/join': () => ({ ...fx.room, roomId: 'room_5160', code: '5160', name: 'Poster session 2026' }),
+  'GET rooms/5160': () => joinedRoom,
+  'POST rooms/5160/join': () => {
+    if (!fx.rooms.rooms.some((room) => room.code === joinedRoom.code)) {
+      fx.rooms.rooms.unshift({ ...fx.rooms.rooms[0], code: joinedRoom.code, name: joinedRoom.name });
+    }
+    return joinedRoom;
+  },
   'POST rooms': () => ({ ...fx.room, roomId: 'room_7319', code: '7319', name: 'Agents meetup', members: [] }),
   // ?status=matching|matching-empty shows results still being matched.
   'POST rooms/4821/results': () => {

@@ -11,11 +11,17 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Parallel text attachment previews and explicit external opening add less than 1 kB.
 // Actual-size gestures, panning, and original-image clipboard copying add 3.9 kB.
 // Ops-owned login copy and admission guidance add a separate bounded 1 kB.
+// Inline tool previews and disclosure scroll anchoring receive a bounded 2 kB allowance,
+// including the community API configuration used by production browser tests.
+// Allow another 1 kB for memory import result counts and interrupted-save reconciliation.
+// Calendar read-only consent, provider permissions, and setup readiness add less than 1 kB.
+// Factory account selection and owner-leased smoke tests add up to 3 kB.
+// Full forwarded snapshots, bounded rich rendering, voice cleanup, and document format feedback add 4 kB.
 // Compact shell materials, corner geometry, and sidebar cover motion add less than 5 kB.
 // Searchable document tabs, native snap scrolling, and source wrapping add 14 kB.
 // Shared Chat, Digest, and Calendar tabs add 3 kB.
 // The aligned chat navigation and session menu add less than 2 kB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_638_000;
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_649_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;

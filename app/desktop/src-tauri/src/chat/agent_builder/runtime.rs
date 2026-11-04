@@ -3,6 +3,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use super::super::hosted_provider_auth::{resolve_for_lease, route_uses_hosted_auth};
+use super::super::message_route::apply_desktop_chat_message_route;
+use super::super::DesktopChatMessageRoute;
 use kordi_cli::desktop_runtime::{DesktopRuntimeProfile, DesktopRuntimeSession};
 use kordi_tools::ExecutionPolicy;
 
@@ -129,7 +132,33 @@ pub(super) async fn load_or_create_runtime(
 pub(super) async fn run_draft_smoke_test(
     workspace: &Path,
     draft: &DesktopAgentBuilderDraft,
+    run_id: Option<&str>,
+    claim_id: Option<&str>,
 ) -> Result<String, String> {
+    let route = draft_route(draft);
+    let hosted = route_uses_hosted_auth(Some(&route));
+    let hosted_auth = if hosted {
+        let run_id = run_id
+            .filter(|id| id.starts_with("factory_"))
+            .ok_or("This hosted Factory test needs a new execution lease. Try the test again.")?;
+        let claim_id = claim_id
+            .filter(|id| !id.trim().is_empty())
+            .ok_or("This hosted Factory test needs a new execution lease. Try the test again.")?;
+        let session = crate::cloud_session::cloud_session_load()?
+            .filter(|session| !session.token.is_empty())
+            .ok_or("Sign in to Kordi to test this hosted provider account.")?;
+        let lease = serde_json::from_value(serde_json::json!({
+            "sessionId": format!("factory:{}", session.account_id),
+            "runId": run_id, "claimId": claim_id, "ownerAccountId": session.account_id,
+        }))
+        .map_err(|error| error.to_string())?;
+        let auth = resolve_for_lease(&route, &lease).await.map_err(|_| {
+            "This provider account is unavailable for the Factory test. Open Settings > Providers, reconnect the selected account, then retry.".to_string()
+        })?;
+        Some((auth, lease))
+    } else {
+        None
+    };
     let skill_names = draft
         .skills
         .iter()
@@ -142,8 +171,8 @@ pub(super) async fn run_draft_smoke_test(
         .cloned()
         .collect();
     let profile = DesktopRuntimeProfile {
-        provider: draft.provider.clone(),
-        model: draft.model.clone(),
+        provider: if hosted { None } else { draft.provider.clone() },
+        model: if hosted { None } else { draft.model.clone() },
         thinking: draft.thinking.clone(),
         system_prompt: Some(draft.system_prompt.clone()),
         tool_names: Some(safe_tools),
@@ -161,22 +190,49 @@ pub(super) async fn run_draft_smoke_test(
         )
         .await
         .map_err(|error| error.to_string())?;
-        let detail = runtime
+        apply_desktop_chat_message_route(&mut runtime, Some(&route))?;
+        let mut completion = None;
+        if let Some((auth, lease)) = hosted_auth {
+            completion = Some(lease);
+            runtime.set_ephemeral_provider_auth_with_options(
+                &auth.provider, auth.auth, auth.base_url, auth.api.as_deref(),
+            ).map_err(|error| error.to_string())?;
+        }
+        let detail = tokio::time::timeout(std::time::Duration::from_secs(120), runtime
             .send_message(
                 "Runtime smoke test: introduce yourself in one sentence and state your primary responsibility. Do not use tools.".to_string(),
                 Vec::new(),
-            )
+            ))
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "The Factory test timed out. Check the provider connection and retry.".to_string())?
+            .map_err(|error| {
+                let message = error.to_string();
+                if message.contains("Selected provider has no resolved credential") {
+                    "This provider has no connected account on this Mac. Open Settings > Providers, connect an account, then save the draft's model routing and test again.".to_string()
+                } else { message }
+            })?;
         let reply = detail
             .messages
             .iter()
             .rev()
             .find(|message| message.role == "assistant" && !message.text.trim().is_empty())
             .ok_or_else(|| "The candidate runtime returned no assistant response".to_string())?;
-        Ok(reply.text.trim().chars().take(180).collect())
+        let summary = reply.text.trim().chars().take(180).collect();
+        if let Some(lease) = completion {
+            super::hosted_test::complete(&lease).await?;
+        }
+        Ok(summary)
     }
     .await;
     let _ = kordi_cli::desktop_runtime::delete_session_forever(&test_session_id);
     result
+}
+
+fn draft_route(draft: &DesktopAgentBuilderDraft) -> DesktopChatMessageRoute {
+    DesktopChatMessageRoute {
+        model: draft.model.clone(),
+        thinking: draft.thinking.clone(),
+        auth_provider: draft.provider.clone(),
+        auth_choice: draft.auth_choice.clone(),
+    }
 }

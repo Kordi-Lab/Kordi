@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
+import { installDialogDom } from './helpers/dialogDom';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { digestClient } from '../src/features/digest/client';
@@ -152,7 +153,7 @@ test('series writes preserve reviewed revisions, reject overlaps, and cannot res
 
 test('calendar review remains required, then closes before the server responds and survives route reentry', async () => {
   const dom = new JSDOM('<div id="root"></div>', { pretendToBeVisual: true });
-  dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  installDialogDom(dom.window);
   const previous = { window: globalThis.window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT };
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
   const original = { ...digestClient }, write = deferred<void>(), dismissal = deferred<void>();

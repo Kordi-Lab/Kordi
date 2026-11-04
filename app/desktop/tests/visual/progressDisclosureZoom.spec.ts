@@ -20,7 +20,7 @@ for (const zoom of [1, 1.5, 2]) {
     await header.click();
     await expect.poll(heightDifference).toBeLessThan(1);
     // Tool details change the content after opening; ResizeObserver must follow it.
-    const tool = page.locator('.app-tool-activity-toggle').first();
+    const tool = page.locator('.app-tool-input-details > button').first();
     await tool.focus();
     await page.keyboard.press('Enter');
     await expect.poll(heightDifference).toBeLessThan(1);

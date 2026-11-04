@@ -60,6 +60,7 @@ export function factoryAgentCreateInput({
     modelRouting: {
       defaultModel: runtime?.model ?? null,
       defaultAuthProvider: runtime?.provider ?? null,
+      defaultAuthChoice: runtime?.authChoice ?? null,
       thinking: runtime?.thinking ?? null,
       tools: runtime?.tools ?? [],
       plugins: runtime?.plugins ?? [],
@@ -152,6 +153,7 @@ export function agentBuilderSeedForAgent(agent?: Agent): DesktopAgentBuilderSeed
     systemPrompt: agent?.systemPrompt ?? '',
     access: agent?.cloudAgentAccessScope === 'participant_conversations' ? 'participant-conversations' : 'only-me',
     provider: agent?.defaultAuthProvider ?? null,
+    authChoice: agent?.defaultAuthChoice ?? null,
     model: agent?.defaultModel ?? null,
     thinking: agent?.defaultThinking ?? null,
     tools: agent?.loadedTools ?? [],
@@ -213,6 +215,7 @@ export function newArtifactSeed(
     systemPrompt: '',
     access: 'only-me',
     provider: defaultRoute?.authProvider ?? null,
+    authChoice: defaultRoute?.authChoice ?? null,
     model: defaultRoute?.model ?? null,
     thinking: defaultRoute?.thinking ?? null,
     tools: [],
@@ -275,4 +278,19 @@ export function modelRoutingForAgent(agent?: Agent): AgentModelRoutingDraft {
 export function sameModelRouting(left: AgentModelRoutingDraft, right: AgentModelRoutingDraft) {
   return (Object.keys(modelRoutingForAgent()) as Array<keyof AgentModelRoutingDraft>)
     .every((key) => (left[key] ?? null) === (right[key] ?? null));
+}
+
+/** The model and account saved with the reviewable draft. */
+export function factoryDraftModelRouting(draft?: DesktopAgentBuilderDraft | null): AgentModelRoutingDraft {
+  return {
+    defaultModel: draft?.model ?? null,
+    defaultAuthProvider: draft?.provider ?? null,
+    defaultAuthChoice: draft?.authChoice ?? null,
+    thinking: draft?.thinking ?? null,
+  };
+}
+
+export function factoryDraftWithRouting(draft: DesktopAgentBuilderDraft, route: AgentModelRoutingDraft): DesktopAgentBuilderDraft {
+  return { ...draft, provider: route.defaultAuthProvider ?? null, authChoice: route.defaultAuthChoice ?? null,
+    model: route.defaultModel ?? null, thinking: route.thinking ?? null };
 }

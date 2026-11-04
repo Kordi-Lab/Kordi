@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { installDialogDom } from './helpers/dialogDom';
 import test from 'node:test';
 import {JSDOM} from 'jsdom';
 import {act,createElement} from 'react';
@@ -8,7 +9,7 @@ import DigestPage from '../src/features/digest/DigestPage';
 import type {CalendarEvent,DigestResponse} from '../src/features/digest/types';
 
 test('a red series cancellation reviews all dates and deletes only after explicit confirmation',async()=>{
- const dom=new JSDOM('<div id="root"></div>',{pretendToBeVisual:true});dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+ const dom=new JSDOM('<div id="root"></div>',{pretendToBeVisual:true});installDialogDom(dom.window);
  const previous={window:globalThis.window,document:globalThis.document,IS_REACT_ACT_ENVIRONMENT:(globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT};
  Object.assign(globalThis,{window:dom.window,document:dom.window.document,IS_REACT_ACT_ENVIRONMENT:true});
  const original={...digestClient};
@@ -31,7 +32,7 @@ test('a red series cancellation reviews all dates and deletes only after explici
 });
 
 test('withdrawing an unconfirmed arrangement closes its draft without deleting a saved event',async()=>{
- const dom=new JSDOM('<div id="root"></div>',{pretendToBeVisual:true});dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+ const dom=new JSDOM('<div id="root"></div>',{pretendToBeVisual:true});installDialogDom(dom.window);
  const previous={window:globalThis.window,document:globalThis.document,IS_REACT_ACT_ENVIRONMENT:(globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT};
  Object.assign(globalThis,{window:dom.window,document:dom.window.document,IS_REACT_ACT_ENVIRONMENT:true});
  const original={...digestClient};
