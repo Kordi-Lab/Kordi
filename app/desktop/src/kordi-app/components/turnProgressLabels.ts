@@ -6,6 +6,7 @@ export function progressAction(tool: DesktopChatToolSnapshot) {
   const actions: Record<string, string> = {
     'Check disk usage': 'Checking disk usage', 'Check working directory': 'Checking the working directory',
     'Search web': 'Searching the web', 'Update repository': 'Updating the repository',
+    'Search conversations': 'Searching conversations', 'Read conversation': 'Reading a conversation',
     'Read file': 'Reading files', 'Read context': 'Reading context', 'Inspect file': 'Reading files',
     'Search code': 'Searching the codebase', 'Find files': 'Finding files', 'List files': 'Finding files',
     'Run tests': 'Running tests', 'Run lint': 'Running lint', 'Run typecheck': 'Checking types',
@@ -53,6 +54,7 @@ export function settledProgressLabel(tools: DesktopChatToolSnapshot[], unavailab
   const labels: Record<string, string> = {
     'Check disk usage': 'Checked disk usage', 'Check working directory': 'Checked the working directory',
     'Search web': 'Searched the web', 'Update repository': 'Updated the repository',
+    'Search conversations': 'Searched conversations', 'Read conversation': 'Read a conversation',
     'Read file': 'Read files', 'Read context': 'Read context', 'Inspect file': 'Read files',
     'Search code': 'Searched the codebase', 'Find files': 'Found files', 'List files': 'Listed files',
     'Run tests': 'Ran tests', 'Run lint': 'Ran lint', 'Run typecheck': 'Checked types',

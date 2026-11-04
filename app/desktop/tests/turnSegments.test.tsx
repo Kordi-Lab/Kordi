@@ -115,3 +115,17 @@ test('ordered commentary joins the collapsed progress before aggregate text arri
   assert.match(markup, /Stop agent request/);
   assert.doesNotMatch(markup, /app-agent-waiting-wave|app-transcript-live-status/);
 });
+
+test('session tools describe conversations without relabeling code or web searches', async () => {
+  const { toolActivityMetadata } = await import('../src/kordi-app/components/toolActivityMetadata');
+  const { progressAction, settledProgressLabel } = await import('../src/kordi-app/components/turnProgressLabels');
+  const search = { ...turn.tools[0], name: 'search_sessions', arguments: '{"query":"Project notes"}' };
+  assert.equal(toolActivityMetadata(search).label, 'Searched conversations');
+  assert.equal(toolActivityMetadata(search).query, 'Project notes');
+  assert.equal(toolActivityMetadata({ ...search, status: 'running' }).label, 'Searching conversations');
+  assert.equal(progressAction(search), 'Searching conversations');
+  assert.equal(settledProgressLabel([search]), 'Searched conversations');
+  assert.equal(settledProgressLabel([{ ...search, name: 'grep' }]), 'Searched the codebase');
+  assert.equal(settledProgressLabel([{ ...search, name: 'web_search' }]), 'Searched the web');
+  assert.equal(settledProgressLabel([{ ...search, name: 'read_session' }]), 'Read a conversation');
+});

@@ -57,6 +57,21 @@ function Fixture() {
     prompt: '', status: phase === 4 ? 'starting' : phase === 5 || phase === 7 ? 'streaming' : phase === 6 ? 'tooling' : phase === 8 ? 'writing' : 'complete',
     message: '', thinkingText: reasoning ? '**Checking the request.**' : '', segments, completedAtMs: phase >= 9 ? now + 12000 : null, assistantText: phase >= 8 ? 'Synthetic final answer that fits on one line.' : '', tools, completed: phase >= 9, succeeded: phase >= 9, startedAtMs: now };
   if (new URLSearchParams(location.search).has('missingTiming')) { turn.startedAtMs = null; turn.completedAtMs = null; }
+  const activityScenario = new URLSearchParams(location.search).get('toolActivity');
+  if (activityScenario) {
+    const long = activityScenario === 'long';
+    turn.tools = [{ id: 'tool-one', name: 'search_sessions', status: activityScenario === 'failed' ? 'error' : phase < 9 ? 'running' : 'done',
+      arguments: JSON.stringify({ query: long ? 'Synthetic project notes '.repeat(40) : 'Project notes', includeMessages: false, limit: 8 }),
+      liveOutput: long ? Array.from({ length: 60 }, (_, index) => `Synthetic result ${index + 1}: ${'readable-long-text-'.repeat(6)}`).join('\n')
+        : activityScenario === 'failed' ? 'Session observation is unavailable in this runtime.' : 'No matching sessions found.',
+      isError: activityScenario === 'failed' }];
+    turn.assistantText = 'Synthetic response after the conversation search.';
+    turn.segments = [{ id: 'tool:one', kind: 'tool', toolId: 'tool-one' }, { id: 'text:1', kind: 'text', text: turn.assistantText }];
+    if (activityScenario === 'multiple' && phase >= 7) {
+      turn.tools.push({ ...turn.tools[0], id: 'tool-two', name: 'read_session', liveOutput: 'Synthetic conversation context.' });
+      turn.segments.splice(1, 0, { id: 'tool:two', kind: 'tool', toolId: 'tool-two' });
+    }
+  }
   const canonical = { profile: { id: 'profile', humanIdentityId: 'human:owner' },
     identities: [{ id: 'agent:owner', kind: 'agent', ownerIdentityId: 'human:owner', displayName: 'Synthetic Agent' }],
     sessions: [{ id: 'group', kind: 'group', title: 'Synthetic group', status: 'active', createdAtMs: now - 100000, updatedAtMs: now, metadata: {} }],

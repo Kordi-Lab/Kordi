@@ -33,7 +33,7 @@ import {
 import { TranscriptNavigationControls } from './TranscriptLatestButton';
 import { useTranscriptSelectionViewportProps } from './transcriptSelection';
 import {
-  clearTranscriptDisclosureConstraint,
+  clearTranscriptDisclosureConstraint, rebaseTranscriptDisclosureAnchor,
   constrainTranscriptDisclosureBody,
   forcedTranscriptDisclosureDirection,
   transcriptDisclosureBody,
@@ -244,8 +244,8 @@ export function VirtualTranscript<Item>({
     if (alignedSessionRef.current?.sessionKey !== sessionKey) return;
     scrollOrigin.scroll(virtualizer);
     const element = event.currentTarget;
-    const distanceFromTail = transcriptLayoutMaxScrollTop(element) - element.scrollTop;
-    const isAtTail = distanceFromTail <= Math.max(4, gap);
+    rebaseTranscriptDisclosureAnchor(stableDisclosureAnchorRef.current, element.scrollTop);
+    const isAtTail = transcriptLayoutMaxScrollTop(element) - element.scrollTop <= Math.max(4, gap);
     const matchesAlignmentTarget = tailAlignmentActiveRef.current
       && tailAlignmentTargetRef.current !== null
       && Math.abs(element.scrollTop - tailAlignmentTargetRef.current) <= 1;
@@ -324,7 +324,7 @@ export function VirtualTranscript<Item>({
 
         if (anchor.opening && body) {
           const available = direction === 'up' ? anchor.availableAbove : anchor.availableBelow;
-          if (fullGrowth > available) {
+          if (fullGrowth > available && body.dataset.transcriptDisclosureScroll !== 'conversation') {
             const nonBodyGrowth = Math.max(0, heightDelta - bodyHeight);
             const maxBodyHeight = Math.max(
               TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT,

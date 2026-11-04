@@ -1,4 +1,13 @@
+import type { StableDisclosureAnchor } from './virtualTranscriptTypes';
+
 export type TranscriptDisclosureDirection = 'up' | 'down';
+
+/** Scrolling or keyboard focus during expansion replaces the old click position. */
+export function rebaseTranscriptDisclosureAnchor(anchor: StableDisclosureAnchor | null, scrollTop: number) {
+  if (!anchor || Math.abs(scrollTop - anchor.targetScrollTop) <= 1) return;
+  anchor.initialScrollTop += scrollTop - anchor.targetScrollTop;
+  anchor.targetScrollTop = scrollTop;
+}
 
 export function transcriptDisclosureDirection(
   growth: number,
