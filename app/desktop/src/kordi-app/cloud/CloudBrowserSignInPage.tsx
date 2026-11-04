@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 
-import { CLOUD_LOGIN_WINDOW_DRAG_STYLE } from '@/app/windowDrag';
+import { APP_WINDOW_RESIZE_EDGE } from '@/app/windowDrag';
 import type { BrowserSignInState } from '@/features/cloud/appSignIn/useBrowserSignIn';
 import { KordiFlyingBird } from '@/features/cloud/KordiFlyingBird';
 
@@ -9,21 +9,24 @@ import { loginHeading, loginSubtitle } from './cloudLoginMessages';
 // Signed-out screens for browser sign-in: the welcome screen, then a wait
 // screen while the user logs in or signs up in the system browser.
 
+// The frame fills the visible window, so no crop offset applies inside it.
+const GATE_DRAG_STYLE = {
+  left: `${APP_WINDOW_RESIZE_EDGE}px`,
+  right: `${APP_WINDOW_RESIZE_EDGE}px`,
+  top: `${APP_WINDOW_RESIZE_EDGE}px`,
+  height: `${48 - APP_WINDOW_RESIZE_EDGE}px`,
+  WebkitAppRegion: 'drag',
+} as const;
+
 function GateFrame({ children }: { children: ReactNode }) {
   return (
     <div
-      className="app-cloud-login-page app-cloud-browser-signin fixed inset-0 z-[100] grid place-items-center overflow-hidden px-5 py-14 text-foreground"
+      className="app-cloud-login-page app-cloud-browser-signin text-foreground"
       style={{ WebkitAppRegion: 'no-drag' as const }}
     >
       <div className="app-cloud-login-accents pointer-events-none absolute inset-0" />
       <div className="app-cloud-login-grain pointer-events-none absolute inset-0" />
-      <div className="absolute" style={CLOUD_LOGIN_WINDOW_DRAG_STYLE} data-tauri-drag-region="true" aria-hidden="true" />
-      <div
-        className="pointer-events-none absolute left-0 right-0 text-center text-[12px] font-semibold tracking-[0.02em] text-[var(--utility-meta-text)]"
-        style={{ top: 'calc(var(--app-gate-crop-y, 0px) + 12px)' }}
-      >
-        Kordi
-      </div>
+      <div className="absolute" style={GATE_DRAG_STYLE} data-tauri-drag-region="true" aria-hidden="true" />
       {children}
     </div>
   );
@@ -31,40 +34,34 @@ function GateFrame({ children }: { children: ReactNode }) {
 
 function WelcomeScreen({ signIn }: { signIn: BrowserSignInState }) {
   return (
-    <main className="app-cloud-login-panel relative w-full max-w-[440px] px-6" data-browser-sign-in="welcome">
-      <div className="grid justify-items-center text-center">
-        <KordiFlyingBird className="app-cloud-welcome-bird" />
-        <h1 className="mt-3.5 text-[34px] font-bold leading-[1.1] tracking-[-0.025em] text-foreground">
-          {loginHeading(false)}
-        </h1>
-        <p className="mt-2 text-[12px] font-medium text-muted-foreground">{loginSubtitle(false)}</p>
-      </div>
+    <main className="app-cloud-login-panel app-cloud-welcome" data-browser-sign-in="welcome">
+      <KordiFlyingBird className="app-cloud-welcome-bird" cutout />
+      <h1 className="app-cloud-welcome-title">{loginHeading(false)}</h1>
+      <p className="app-cloud-welcome-subtitle">{loginSubtitle(false)}</p>
       {signIn.error ? (
-        <div role="alert" className="app-cloud-login-error mt-6 rounded-[14px] border px-4 py-2.5 text-[12px] font-medium">
+        <div role="alert" className="app-cloud-login-error app-cloud-welcome-error rounded-[14px] border px-4 py-2.5 text-[12px] font-medium">
           {signIn.error}
         </div>
       ) : null}
-      <div className={`${signIn.error ? 'mt-4' : 'mt-8'} grid gap-2.5`}>
+      <div className="app-cloud-welcome-actions">
         <button
           type="button"
-          className="app-cloud-login-submit h-12 rounded-full border text-[13px] font-semibold tracking-[-0.005em] transition"
+          className="app-cloud-login-submit h-11 rounded-full border text-[13px] font-semibold tracking-[-0.005em] transition"
           onClick={() => void signIn.start('login')}
         >
           Log in
         </button>
         <button
           type="button"
-          className="app-cloud-welcome-secondary h-12 rounded-full border text-[13px] font-semibold tracking-[-0.005em] transition"
+          className="app-cloud-welcome-secondary h-11 rounded-full border text-[13px] font-semibold tracking-[-0.005em] transition"
           onClick={() => void signIn.start('signup')}
         >
           Sign up
         </button>
       </div>
-      <div className="mt-[18px] flex justify-center">
-        <button type="button" className="app-cloud-welcome-link" onClick={() => void signIn.start('login', { copyLink: true })}>
-          Trouble logging in? Copy link
-        </button>
-      </div>
+      <button type="button" className="app-cloud-welcome-link app-cloud-welcome-trouble" onClick={() => void signIn.start('login', { copyLink: true })}>
+        Trouble logging in? Copy link
+      </button>
     </main>
   );
 }
@@ -108,7 +105,7 @@ function WaitingScreen({ signIn, host }: { signIn: BrowserSignInState; host: str
       <div className="app-cloud-signin-badge" aria-hidden="true">
         <span className="app-cloud-signin-ring-track" />
         <span className="app-cloud-signin-ring" />
-        <span className="app-cloud-signin-mark"><KordiFlyingBird className="app-cloud-browser-signin-bird" /></span>
+        <span className="app-cloud-signin-mark"><KordiFlyingBird className="app-cloud-browser-signin-bird" cutout /></span>
       </div>
       <p className="app-cloud-browser-signin-title">{finishing ? 'Signing in…' : 'Continue in your browser'}</p>
       {finishing ? null : (

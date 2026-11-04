@@ -167,23 +167,116 @@
   --app-kordi-bird-cut: #0d0f13;
 }
 
+/* The frame covers exactly the visible window: while the gate is up the web
+ * view extends past every window edge. The top inset clears the title bar;
+ * the larger bottom inset lifts the group just above center. */
+.app-cloud-browser-signin,
+.app-cloud-login-surface > .app-cloud-login-page.app-cloud-browser-signin {
+  position: fixed;
+  top: var(--app-gate-crop-y, 0px);
+  left: var(--app-gate-crop-x, 0px);
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  width: var(--app-gate-window-width, calc(100vw - 2 * var(--app-gate-crop-x, 0px)));
+  height: var(--app-gate-window-height, calc(100vh - 2 * var(--app-gate-crop-y, 0px)));
+  padding: 52px 24px 76px;
+  overflow: hidden auto;
+}
+
+.app-cloud-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 320px;
+  text-align: center;
+}
+
+.app-cloud-welcome-title {
+  margin: 18px 0 0;
+  color: var(--utility-foreground);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.app-cloud-welcome-subtitle {
+  margin: 8px 0 0;
+  color: var(--app-cloud-signin-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.app-cloud-welcome-error {
+  width: 100%;
+  margin-top: 20px;
+}
+
+.app-cloud-welcome-actions {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  max-width: 304px;
+  margin-top: 28px;
+}
+
+.app-cloud-welcome-trouble {
+  margin-top: 16px;
+}
+
+/* The bird's wing gap is cut out of the body, so it shows the window behind. */
+.app-kordi-flying-bird-cutout .app-kordi-flying-bird-wing {
+  stroke: none;
+}
+
+.app-kordi-flying-bird-cutout .app-kordi-flying-bird-wing-cut {
+  fill: #000;
+  stroke: #000;
+}
+
 .kordi-app.theme-light .app-cloud-browser-signin {
   --app-kordi-bird: #1f1a17;
   --app-kordi-bird-cut: rgb(241 245 249);
 }
 
-/* The wing cut approximates the veiled material in the frosted window. */
-.kordi-app.app-cloud-login-shell[data-frosted="true"] .app-cloud-browser-signin {
-  --app-kordi-bird-cut: rgb(38 40 45);
+/* Frosted window: no veil, so text carries its own contrast. */
+.app-cloud-login-shell[data-frosted="true"] .app-cloud-browser-signin {
+  --app-cloud-signin-muted: rgb(214 220 230);
+  --app-cloud-signin-action-text: rgb(236 240 246);
+  --app-cloud-frosted-text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
 }
 
 .kordi-app.theme-light.app-cloud-login-shell[data-frosted="true"] .app-cloud-browser-signin {
-  --app-kordi-bird-cut: rgb(236 237 241);
+  --app-cloud-signin-muted: rgb(51 65 85);
+  --app-cloud-signin-action-text: rgb(30 41 59);
+  --app-cloud-frosted-text-shadow: 0 1px 1px rgb(255 255 255 / 0.45);
+}
+
+.app-cloud-login-shell[data-frosted="true"] :is(
+  .app-cloud-welcome-title,
+  .app-cloud-welcome-subtitle,
+  .app-cloud-welcome-link,
+  .app-cloud-browser-signin-title,
+  .app-cloud-browser-signin-sub,
+  .app-cloud-signin-action
+) {
+  text-shadow: var(--app-cloud-frosted-text-shadow);
+}
+
+.app-cloud-login-shell[data-frosted="true"] .app-cloud-welcome-link {
+  color: var(--app-cloud-signin-muted);
+}
+
+.app-cloud-login-shell[data-frosted="true"] .app-cloud-welcome-link:hover {
+  color: var(--utility-foreground);
 }
 
 .app-cloud-welcome-bird {
-  width: 84px;
-  height: 84px;
+  width: 64px;
+  height: 64px;
 }
 
 .app-cloud-signin-mark .app-cloud-browser-signin-bird {
@@ -266,7 +359,7 @@
 .app-cloud-browser-signin-paste {
   display: grid;
   gap: 8px;
-  width: min(340px, calc(100vw - 48px));
+  width: min(320px, 100%);
   margin-top: 28px;
 }
 
@@ -325,8 +418,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  /* The detached web view extends past the window's bottom edge too. */
-  bottom: calc(var(--app-gate-crop-y, 0px) + 22px);
+  bottom: 22px;
   display: flex;
   justify-content: center;
 }

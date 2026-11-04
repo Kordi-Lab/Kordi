@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { CloudStartingScreen, KordiAppRoot } from '../src/KordiApp';
 import { KORDI_THEME_MODE_STORAGE_KEY } from '../src/app/themePreference';
 import { CloudLoginPage } from '../src/kordi-app/cloud/CloudLoginPage';
+import { KordiFlyingBird } from '../src/features/cloud/KordiFlyingBird';
 import { shouldShowCloudLoginGate } from '../src/features/cloud/sessionGate';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 const repoRoot = resolve(import.meta.dirname, '..');
@@ -292,9 +293,27 @@ test('browser sign-in uses a compact frosted window on macOS only', () => {
 
   assert.match(readSource('src/styles/base.css'), /html\.kordi-native-shell body\.app-cloud-gate-active\.app-cloud-gate-frosted \{\s*background: transparent;/);
   const css = readDesktopShellCss();
-  assert.match(css, /\[data-frosted="true"\] \.app-cloud-login-page \{\s*--app-cloud-login-page-bg: rgb\(248 250 252 \/ 0\.46\);/);
+  // A faint veil at most, so the blurred wallpaper stays visible.
+  assert.match(css, /theme-light\.app-cloud-login-shell\[data-frosted="true"\] \.app-cloud-login-page \{\s*--app-cloud-login-page-bg: rgb\(255 255 255 \/ 0\.10\);/);
+  assert.match(css, /\.kordi-app\.app-cloud-login-shell\[data-frosted="true"\] \.app-cloud-login-page \{\s*--app-cloud-login-page-bg: rgb\(10 12 16 \/ 0\.14\);/);
   assert.match(css, /\[data-frosted="true"\] \.app-cloud-starting-screen\[data-visible="false"\]::before \{\s*opacity: 0;/);
-  assert.match(css, /\.app-cloud-browser-signin-foot \{[^}]*bottom: calc\(var\(--app-gate-crop-y, 0px\) \+ 22px\);/);
+  assert.match(nativeWindow, /let material: isize = if welcome \{ 13 \} else \{ 7 \};/, 'the welcome window uses the HUD material');
+  // The frame is the visible window, clear of the title bar, with the group just above center.
+  assert.match(css, /\.app-cloud-login-surface > \.app-cloud-login-page\.app-cloud-browser-signin \{[^}]*position: fixed;[^}]*width: var\(--app-gate-window-width,[^}]*padding: 52px 24px 76px;/);
+  assert.match(css, /\.app-cloud-welcome-actions \{[^}]*max-width: 304px;/);
+});
+
+test('the welcome screen has no in-page window title and cuts the wing gap out of the bird', () => {
+  const page = readSource('src/kordi-app/cloud/CloudBrowserSignInPage.tsx');
+  assert.doesNotMatch(page, />\s*Kordi\s*</);
+  assert.match(page, /<KordiFlyingBird className="app-cloud-welcome-bird" cutout \/>/);
+
+  const cutout = renderToStaticMarkup(createElement(KordiFlyingBird, { cutout: true }));
+  assert.match(cutout, /<mask id="kordi-bird-cut-[A-Za-z0-9_-]+"/);
+  assert.match(cutout, /mask="url\(#kordi-bird-cut-[A-Za-z0-9_-]+\)"/);
+  assert.match(cutout, /app-kordi-flying-bird-wing app-kordi-flying-bird-wing-cut/);
+  const plain = renderToStaticMarkup(createElement(KordiFlyingBird));
+  assert.doesNotMatch(plain, /<mask/);
 });
 
 test('cloud starting screen renders only the flying Kordi bird', () => {

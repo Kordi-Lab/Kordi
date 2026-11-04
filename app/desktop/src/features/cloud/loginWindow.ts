@@ -37,8 +37,11 @@ export function isTauriRuntime(runtime: (typeof globalThis & { __TAURI_INTERNALS
   return Boolean(runtime.__TAURI_INTERNALS__);
 }
 
-/** How far the web view extends past the window's left and top edges, in points. */
-export type AuthWindowCrop = { x: number; y: number };
+/**
+ * How far the web view extends past the window's left and top edges, in points,
+ * and the window's content size when the native side reports it.
+ */
+export type AuthWindowCrop = { x: number; y: number; width?: number; height?: number };
 
 const AUTH_WINDOW_CROP_EVENT = 'kordi://auth-window-crop';
 let authWindowCrop: AuthWindowCrop = { x: 0, y: 0 };
@@ -66,20 +69,38 @@ function paintAuthWindowCrop() {
   const style = document.documentElement.style;
   style.setProperty('--app-gate-crop-x', `${x}px`);
   style.setProperty('--app-gate-crop-y', `${y}px`);
+  // The visible window rectangle, so gate screens need not trust the shell size.
+  const zoom = readAppliedInterfaceZoom();
+  for (const [name, value] of [['width', authWindowCrop.width], ['height', authWindowCrop.height]] as const) {
+    if (value) style.setProperty(`--app-gate-window-${name}`, `${value / zoom}px`);
+    else style.removeProperty(`--app-gate-window-${name}`);
+  }
+}
+
+function positiveSize(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 function normalizeAuthWindowCrop(value: unknown): AuthWindowCrop | undefined {
   if (!value || typeof value !== 'object') return undefined;
-  const { x, y } = value as Partial<AuthWindowCrop>;
+  const { x, y, width, height } = value as Partial<Record<keyof AuthWindowCrop, unknown>>;
   if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return undefined;
-  return { x: Math.max(0, x), y: Math.max(0, y) };
+  const crop: AuthWindowCrop = { x: Math.max(0, x), y: Math.max(0, y) };
+  const visibleWidth = positiveSize(width);
+  const visibleHeight = positiveSize(height);
+  if (visibleWidth && visibleHeight) {
+    crop.width = visibleWidth;
+    crop.height = visibleHeight;
+  }
+  return crop;
 }
 
 /** Records a crop reported by the native side; ignores missing values. */
 export function applyAuthWindowCrop(value: unknown) {
   const next = normalizeAuthWindowCrop(value);
   if (!next) return;
-  const changed = next.x !== authWindowCrop.x || next.y !== authWindowCrop.y;
+  const changed = next.x !== authWindowCrop.x || next.y !== authWindowCrop.y
+    || next.width !== authWindowCrop.width || next.height !== authWindowCrop.height;
   authWindowCrop = next;
   paintAuthWindowCrop();
   if (changed) authWindowCropListeners.forEach(listener => listener(next));

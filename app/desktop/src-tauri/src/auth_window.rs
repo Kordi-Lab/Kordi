@@ -21,12 +21,16 @@ impl AuthWindowSurface {
     }
 }
 
-/// How far the web view extends past the window's left and top edges, in
-/// logical points. The gate offsets its top-anchored chrome by this amount.
+/// How far the web view extends past the window's left and top edges, and
+/// the window's content size, in logical points. The gate lays its screens
+/// out in that visible rectangle. A zero size means the web view fills the
+/// window.
 #[derive(Clone, Copy, Default, PartialEq, Serialize)]
 pub(crate) struct AuthWindowCrop {
     x: f64,
     y: f64,
+    width: f64,
+    height: f64,
 }
 
 #[tauri::command]
@@ -118,8 +122,12 @@ mod macos {
     };
     use tauri::Emitter;
 
-    pub(super) static LAST_CROP: Mutex<AuthWindowCrop> =
-        Mutex::new(AuthWindowCrop { x: 0.0, y: 0.0 });
+    pub(super) static LAST_CROP: Mutex<AuthWindowCrop> = Mutex::new(AuthWindowCrop {
+        x: 0.0,
+        y: 0.0,
+        width: 0.0,
+        height: 0.0,
+    });
     const CROP_EVENT: &str = "kordi://auth-window-crop";
     const WIDTH_AND_HEIGHT_SIZABLE: usize = (1 << 1) | (1 << 4);
 
@@ -239,6 +247,8 @@ mod macos {
         AuthWindowCrop {
             x: (-offset_x).max(0.0),
             y: (-offset_y).max(0.0),
+            width: bounds.size.width,
+            height: bounds.size.height,
         }
     }
 
@@ -382,11 +392,15 @@ mod macos {
     }
 
     /// Gates hide the workspace pane backings, which only fit the main shell.
-    /// The welcome window keeps its material active so the blur stays while
-    /// the browser has focus; other surfaces follow the window's active state.
+    /// The welcome window uses the lighter HUD material and keeps it active so
+    /// the blur stays while the browser has focus; other surfaces use the
+    /// configured sidebar material and follow the window's active state.
     unsafe fn prepare_backdrop(parent: &AnyObject, surface: AuthWindowSurface) {
+        let welcome = surface == AuthWindowSurface::Welcome;
+        // NSVisualEffectMaterialHUDWindow = 13, Sidebar = 7.
+        let material: isize = if welcome { 13 } else { 7 };
         // NSVisualEffectStateFollowsWindowActiveState = 0, Active = 1.
-        let material_state = isize::from(surface == AuthWindowSurface::Welcome);
+        let material_state = isize::from(welcome);
         let gate = surface != AuthWindowSurface::Main;
         let backings = [
             NSString::from_str("kordi-session-backing"),
@@ -404,6 +418,7 @@ mod macos {
             };
             let is_material: bool = msg_send![child, isKindOfClass: class!(NSVisualEffectView)];
             if is_material {
+                let _: () = msg_send![child, setMaterial: material];
                 let _: () = msg_send![child, setState: material_state];
                 continue;
             }
