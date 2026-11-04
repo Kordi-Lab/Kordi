@@ -235,7 +235,7 @@ test('Factory plus menu dismisses outside and restores trigger focus on Escape',
   }
 });
 
-test('Factory agent selection spans the full rail while content stays aligned', () => {
+test('Factory agent selection uses rounded sidebar rows with matching content insets', () => {
   const html = renderToStaticMarkup(
     <AgentStudioRail {...railProps({ agents: [agent()], activeAgentId: 'agent:kordi', section: 'agents' })} />,
   );
@@ -249,7 +249,7 @@ test('Factory agent selection spans the full rail while content stays aligned', 
   );
   assert.match(
     css,
-    /\.app-agent-studio-agent-list\.is-agent-list \.app-agent-studio-agent-row\s*\{[^}]*padding-inline:\s*16px;[^}]*border-radius:\s*0;/s,
+    /\.app-agent-studio-agent-list\.is-agent-list \.app-agent-studio-agent-row\s*\{[^}]*padding-inline:\s*10px;[^}]*border:\s*0;[^}]*border-radius:\s*10px;/s,
   );
 });
 

@@ -88,39 +88,6 @@
   transform: translateX(-50%);
 }
 
-.app-scroll-area {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  scrollbar-gutter: stable both-edges;
-}
-
-.app-scroll-area::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.app-scroll-area::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.app-scroll-area::-webkit-scrollbar-thumb {
-  border-radius: 9999px;
-  border: 2px solid transparent;
-  background: transparent;
-  background-clip: padding-box;
-}
-
-.app-scroll-area:hover {
-  scrollbar-color: rgba(196, 196, 196, 0.72) transparent;
-}
-
-.app-scroll-area:hover::-webkit-scrollbar-thumb,
-.app-scroll-area:focus-within::-webkit-scrollbar-thumb,
-.app-scroll-area:active::-webkit-scrollbar-thumb {
-  background: rgba(196, 196, 196, 0.72);
-  background-clip: padding-box;
-}
-
 .app-side-shell {
   background: var(--app-side-bg);
 }
