@@ -241,6 +241,7 @@
 		8B995B5963F4ED40C41E5E67 /* MemorySettingsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2DC6199D18F50DD5C5DBC4 /* MemorySettingsModel.swift */; };
 		8C8A23245680BF38E4E1B061 /* NotoEmoji.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFFD604ABA6CBEE2041D4D75 /* NotoEmoji.swift */; };
 		8CF43B6243E2D98104E0E4A5 /* ConversationSendQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F8CE113A5D004E972C7441D /* ConversationSendQueueTests.swift */; };
+		8ECEE6CD79273D1DD5D076CB /* KordiLoginCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34581CF153058AE85064BAB0 /* KordiLoginCopy.swift */; };
 		90B7BDBE9198723B6B02CCF2 /* AgentTurnSegmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30B257D092463629070725F /* AgentTurnSegmentTests.swift */; };
 		90BFB288E10210F86A30810C /* SessionDetailHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD13862210BEA3CE6AF34CFF /* SessionDetailHero.swift */; };
 		91099E8FCC57251BAB67570E /* CloudConversationCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DCEE1B4AB8ED2647728BD25 /* CloudConversationCatalog.swift */; };
@@ -561,6 +562,7 @@
 		3368F51FCBD1DFA89B80CE93 /* ConversationScrollNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationScrollNavigationTests.swift; sourceTree = "<group>"; };
 		33D2AF3B66E209A9728305F4 /* ContactPresencePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactPresencePresentation.swift; sourceTree = "<group>"; };
 		34269C735F1FCF72602AD0D6 /* KordiMessageNotificationCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiMessageNotificationCleanup.swift; sourceTree = "<group>"; };
+		34581CF153058AE85064BAB0 /* KordiLoginCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiLoginCopy.swift; sourceTree = "<group>"; };
 		355449706C1ED56DF89133F2 /* ContactProfileSections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactProfileSections.swift; sourceTree = "<group>"; };
 		35E4741FA31FACB0202B6A98 /* DocumentSelectionMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentSelectionMenu.swift; sourceTree = "<group>"; };
 		366FB25C511905DAAB4EEEC8 /* KordiMarkdownListParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiMarkdownListParser.swift; sourceTree = "<group>"; };
@@ -1047,6 +1049,7 @@
 			isa = PBXGroup;
 			children = (
 				FC40CA44539DE969C3129E9B /* KordiAppEnvironment.swift */,
+				34581CF153058AE85064BAB0 /* KordiLoginCopy.swift */,
 				0676A85B5C6E75428E339FDB /* KordiReleaseConfiguration.swift */,
 			);
 			path = Environment;
@@ -1824,7 +1827,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if { [ \"$CONFIGURATION\" = \"Release\" ] || [ \"$CONFIGURATION\" = \"Research\" ]; } && [ \"$PLATFORM_NAME\" = \"iphoneos\" ]; then\n  export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\n  python3 \"$SRCROOT/../../scripts/licenses/verify-ios.py\" --app \"$TARGET_BUILD_DIR/$WRAPPER_NAME\" --platform ios-arm64\nfi\n";
+			shellScript = "if { [ \"$CONFIGURATION\" = \"Release\" ] || [ \"$CONFIGURATION\" = \"Research\" ] || [ \"$CONFIGURATION\" = \"Staging\" ] || [ \"$CONFIGURATION\" = \"ResearchStaging\" ]; } && [ \"$PLATFORM_NAME\" = \"iphoneos\" ]; then\n  export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\n  python3 \"$SRCROOT/../../scripts/licenses/verify-ios.py\" --app \"$TARGET_BUILD_DIR/$WRAPPER_NAME\" --platform ios-arm64\nfi\n";
 		};
 		6EB16C212CBAD8DEA348AA16 /* Generate synthetic Live Photo test assets */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1886,7 +1889,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"$CONFIGURATION\" != \"Beta\" ]; then\n  test -n \"$KORDI_OPS_EXPECTED\" || { echo \"A prepared ops distribution is required.\"; exit 1; }\n  if [ \"$CONFIGURATION\" = \"Research\" ]; then\n    test \"$KORDI_DISTRIBUTION_CHANNEL\" = \"research\" || exit 1\n  else\n    test \"$KORDI_DISTRIBUTION_CHANNEL\" = \"production\" || exit 1\n  fi\nfi\n";
+			shellScript = "if [ \"$CONFIGURATION\" != \"Beta\" ]; then\n  test -n \"$KORDI_OPS_EXPECTED\" || { echo \"A prepared ops distribution is required.\"; exit 1; }\n  case \"$CONFIGURATION\" in\n    Research) expected=research ;;\n    Staging) expected=staging ;;\n    ResearchStaging) expected=research-staging ;;\n    *) expected=production ;;\n  esac\n  test \"$KORDI_DISTRIBUTION_CHANNEL\" = \"$expected\" || exit 1\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -2239,6 +2242,7 @@
 				DF513D18A9730F82DD79FECC /* KordiCallCoordinator.swift in Sources */,
 				33A95833DE67008E0C7D3ED8 /* KordiID.swift in Sources */,
 				FBE280EC3A6D9ACF063D7C39 /* KordiLinkHandling.swift in Sources */,
+				8ECEE6CD79273D1DD5D076CB /* KordiLoginCopy.swift in Sources */,
 				DBF208CACDCDD3766655FEF7 /* KordiMark.swift in Sources */,
 				9C6613A5B66EE25328C93EC8 /* KordiMarkdownListParser.swift in Sources */,
 				5A526074F09A34B5DEF383AE /* KordiMessageNotificationCleanup.swift in Sources */,
@@ -2437,6 +2441,40 @@
 				TEST_TARGET_NAME = Kordi;
 			};
 			name = Research;
+		};
+		1940230627794477400B4F47 /* ResearchStaging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.kordi.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kordi.app/Kordi";
+			};
+			name = ResearchStaging;
+		};
+		1BAD5AB93F0DBDBCA78CE6FC /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.kordi.ios.beta.deletion-tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kordi;
+			};
+			name = Staging;
 		};
 		24DC4317EAF1C5E0206A88C1 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2671,6 +2709,35 @@
 			};
 			name = Debug;
 		};
+		52E47A5453B8C5CF7536A02D /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APNS_ENVIRONMENT = production;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-frosted AppIcon-rice AppIcon-coral AppIcon-sakura AppIcon-butter AppIcon-mint AppIcon-sky AppIcon-lavender AppIcon-night AppIcon-midnight AppIcon-forest AppIcon-plum AppIcon-cocoa AppIcon-slate AppIcon-night-sakura AppIcon-midnight-sky";
+				ASSETCATALOG_COMPILER_APPICON_NAME = "$(KORDI_OPS_ICON)";
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Kordi/Supporting/Kordi.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Kordi/Supporting/Info.plist;
+				KORDI_APP_DISPLAY_NAME = "$(KORDI_OPS_DISPLAY_NAME)";
+				KORDI_CLOUD_BASE_URL = "$(KORDI_OPS_ORIGIN)";
+				KORDI_DISTRIBUTION_CHANNEL = "$(KORDI_OPS_CHANNEL)";
+				KORDI_OAUTH_CALLBACK_SCHEME = "$(KORDI_OPS_CALLBACK)";
+				KORDI_SHARE_APP_GROUP = "$(KORDI_OPS_APP_GROUP)";
+				KORDI_SHARE_CREDENTIAL_SERVICE = "$(KORDI_OPS_CREDENTIAL_SERVICE)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KORDI_OPS_APP_ID)";
+				PRODUCT_NAME = Kordi;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Staging;
+		};
 		63E45C4E1953883E8E6E47F4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2687,6 +2754,23 @@
 				TEST_TARGET_NAME = Kordi;
 			};
 			name = Debug;
+		};
+		667761CF7D6FB0E466413210 /* ResearchStaging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.kordi.ios.beta.deletion-tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kordi;
+			};
+			name = ResearchStaging;
 		};
 		6AB0357B3291CA57FEDBFAB8 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -2717,6 +2801,40 @@
 			};
 			name = Debug;
 		};
+		6F6AC3BDDEE48A5DDFF8CAB3 /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.kordi.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kordi.app/Kordi";
+			};
+			name = Staging;
+		};
+		72A1B8CAC11238358777A798 /* ResearchStaging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.kordi.ios.beta.keyboard-uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kordi;
+			};
+			name = ResearchStaging;
+		};
 		75C75DEED609D3F38CDA577D /* Beta */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2733,6 +2851,58 @@
 				TEST_TARGET_NAME = Kordi;
 			};
 			name = Beta;
+		};
+		86032E80039D4BDB7F50D9FA /* ResearchStaging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = KordiShareExtension/Supporting/KordiShareExtension.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KordiShareExtension/Supporting/Info.plist;
+				KORDI_CLOUD_BASE_URL = "$(KORDI_OPS_ORIGIN)";
+				KORDI_DISTRIBUTION_CHANNEL = "$(KORDI_OPS_CHANNEL)";
+				KORDI_OAUTH_CALLBACK_SCHEME = "$(KORDI_OPS_CALLBACK)";
+				KORDI_SHARE_APP_GROUP = "$(KORDI_OPS_APP_GROUP)";
+				KORDI_SHARE_CREDENTIAL_SERVICE = "$(KORDI_OPS_CREDENTIAL_SERVICE)";
+				KORDI_SHARE_EXTENSION_DISPLAY_NAME = "$(KORDI_OPS_DISPLAY_NAME)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KORDI_OPS_SHARE_ID)";
+				PRODUCT_NAME = KordiShareExtension;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = ResearchStaging;
+		};
+		95CEACE73DAA8CA54F18E410 /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = KordiShareExtension/Supporting/KordiShareExtension.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KordiShareExtension/Supporting/Info.plist;
+				KORDI_CLOUD_BASE_URL = "$(KORDI_OPS_ORIGIN)";
+				KORDI_DISTRIBUTION_CHANNEL = "$(KORDI_OPS_CHANNEL)";
+				KORDI_OAUTH_CALLBACK_SCHEME = "$(KORDI_OPS_CALLBACK)";
+				KORDI_SHARE_APP_GROUP = "$(KORDI_OPS_APP_GROUP)";
+				KORDI_SHARE_CREDENTIAL_SERVICE = "$(KORDI_OPS_CREDENTIAL_SERVICE)";
+				KORDI_SHARE_EXTENSION_DISPLAY_NAME = "$(KORDI_OPS_DISPLAY_NAME)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KORDI_OPS_SHARE_ID)";
+				PRODUCT_NAME = KordiShareExtension;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Staging;
 		};
 		98D4BDDAA54BCB463967C416 /* Research */ = {
 			isa = XCBuildConfiguration;
@@ -2797,6 +2967,35 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kordi.app/Kordi";
 			};
 			name = Release;
+		};
+		BD3E500306437180BDC08C31 /* ResearchStaging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APNS_ENVIRONMENT = production;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-frosted AppIcon-rice AppIcon-coral AppIcon-sakura AppIcon-butter AppIcon-mint AppIcon-sky AppIcon-lavender AppIcon-night AppIcon-midnight AppIcon-forest AppIcon-plum AppIcon-cocoa AppIcon-slate AppIcon-night-sakura AppIcon-midnight-sky";
+				ASSETCATALOG_COMPILER_APPICON_NAME = "$(KORDI_OPS_ICON)";
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Kordi/Supporting/Kordi.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Kordi/Supporting/Info.plist;
+				KORDI_APP_DISPLAY_NAME = "$(KORDI_OPS_DISPLAY_NAME)";
+				KORDI_CLOUD_BASE_URL = "$(KORDI_OPS_ORIGIN)";
+				KORDI_DISTRIBUTION_CHANNEL = "$(KORDI_OPS_CHANNEL)";
+				KORDI_OAUTH_CALLBACK_SCHEME = "$(KORDI_OPS_CALLBACK)";
+				KORDI_SHARE_APP_GROUP = "$(KORDI_OPS_APP_GROUP)";
+				KORDI_SHARE_CREDENTIAL_SERVICE = "$(KORDI_OPS_CREDENTIAL_SERVICE)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KORDI_OPS_APP_ID)";
+				PRODUCT_NAME = Kordi;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = ResearchStaging;
 		};
 		C010BFAD09A0550DDFF67195 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -2936,6 +3135,67 @@
 			};
 			name = Beta;
 		};
+		EE48CA3109921E727E01617D /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 8;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.0.2;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Staging;
+		};
 		F121D33C1E4EE739CAA27AA6 /* Research */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2988,6 +3248,84 @@
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Beta;
+		};
+		F8F39B1AE4EC00D7CFF01470 /* ResearchStaging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 8;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.0.2;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = ResearchStaging;
+		};
+		FD23995BC83F1EF343AD66C5 /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.kordi.ios.beta.keyboard-uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kordi;
+			};
+			name = Staging;
 		};
 		FD419E060FE20A1B2BF4DC32 /* Research */ = {
 			isa = XCBuildConfiguration;
@@ -3060,6 +3398,8 @@
 				63E45C4E1953883E8E6E47F4 /* Debug */,
 				CC0A27FEA1BC4BF3BBC2D2C8 /* Release */,
 				98D4BDDAA54BCB463967C416 /* Research */,
+				72A1B8CAC11238358777A798 /* ResearchStaging */,
+				FD23995BC83F1EF343AD66C5 /* Staging */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -3071,6 +3411,8 @@
 				5062E4AFC68F72FF962C4E16 /* Debug */,
 				24DC4317EAF1C5E0206A88C1 /* Release */,
 				183551F4F757BA4F8A8FAF34 /* Research */,
+				667761CF7D6FB0E466413210 /* ResearchStaging */,
+				1BAD5AB93F0DBDBCA78CE6FC /* Staging */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -3082,6 +3424,8 @@
 				6AB0357B3291CA57FEDBFAB8 /* Debug */,
 				0B49E13ADB8C5ACCDCF4EDC1 /* Release */,
 				25E135AE2F21BF8B990F2912 /* Research */,
+				BD3E500306437180BDC08C31 /* ResearchStaging */,
+				52E47A5453B8C5CF7536A02D /* Staging */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -3093,6 +3437,8 @@
 				4C4D6333B1E9AF2DC9FB2F8D /* Debug */,
 				C50B548653CA84B7ADB4979F /* Release */,
 				FD419E060FE20A1B2BF4DC32 /* Research */,
+				F8F39B1AE4EC00D7CFF01470 /* ResearchStaging */,
+				EE48CA3109921E727E01617D /* Staging */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -3104,6 +3450,8 @@
 				C010BFAD09A0550DDFF67195 /* Debug */,
 				12C6E4C1BB8E7C5FD794C101 /* Release */,
 				F121D33C1E4EE739CAA27AA6 /* Research */,
+				86032E80039D4BDB7F50D9FA /* ResearchStaging */,
+				95CEACE73DAA8CA54F18E410 /* Staging */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -3115,6 +3463,8 @@
 				C73469ACBD346C0827D9B9B0 /* Debug */,
 				AD7C6CC6AEB6C6210C0E62E4 /* Release */,
 				4246BB61770B99BB61AEDDC3 /* Research */,
+				1940230627794477400B4F47 /* ResearchStaging */,
+				6F6AC3BDDEE48A5DDFF8CAB3 /* Staging */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
