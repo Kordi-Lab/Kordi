@@ -1,15 +1,12 @@
 import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { CLOUD_AGENT_NO_PROVIDER_NOTICE } from '@/features/cloud/cloudAgentMessages';
 import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLayout';
 
-import type { MemoryClient } from './memoryClient';
+import { importMemoryBatch, memoryImportSummary, type MemoryImportClient } from './memoryImportBatch';
 import {
-  importedCountLabel,
-  memoryImportSaves,
-  parseMemoryImportReply,
   withChosenFiles,
   type AgentInstructionFile,
   type MemoryImporter,
@@ -33,7 +30,7 @@ export function MemoryImportSection({
   providerReady,
   onImported,
 }: {
-  client: Pick<MemoryClient, 'importLesson'>;
+  client: MemoryImportClient;
   importer: MemoryImporter;
   lessons: ReadonlyArray<Pick<MemoryLesson, 'text'>>;
   providerReady: boolean;
@@ -44,6 +41,7 @@ export function MemoryImportSection({
   const [statuses, setStatuses] = useState<Record<string, RowStatus>>({});
   const [running, setRunning] = useState(false);
   const [notice, setNotice] = useState('');
+  const runningRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -76,48 +74,25 @@ export function MemoryImportSection({
 
   const run = async () => {
     const chosen = files.filter((file) => selected.has(file.path));
-    if (!chosen.length || !client.importLesson) return;
+    if (runningRef.current || !chosen.length || !client.importLesson) return;
+    runningRef.current = true;
     setRunning(true);
     setNotice('');
     setStatuses(Object.fromEntries(chosen.map((file) => [file.path, 'importing' as const])));
-    const existing = lessons.map((lesson) => lesson.text);
-    let batch: Awaited<ReturnType<NonNullable<MemoryImporter['start']>>>;
     try {
-      batch = importer.start ? await importer.start() : { extract: (file, memories) => importer.extract(file, memories), finish: () => Promise.resolve() };
+      const result = await importMemoryBatch(chosen, lessons, client, importer, (file, status) => {
+        setStatuses((current) => ({ ...current, [file.path]: status }));
+      });
+      setNotice(`${memoryImportSummary(result)}.`);
+      if (result.imported > 0) onImported();
     } catch (error) {
-      const failed: RowStatus = { failed: errorLine(error) };
+      const failed: RowStatus = { imported: 0, duplicates: 0, failedMemories: 0, failedFiles: 1, error: errorLine(error) };
       setStatuses(Object.fromEntries(chosen.map((file) => [file.path, failed])));
+      setNotice(errorLine(error));
+    } finally {
+      runningRef.current = false;
       setRunning(false);
-      return;
     }
-    let total = 0;
-    let read = 0;
-    for (const file of chosen) {
-      let saved = 0;
-      let status: RowStatus;
-      try {
-        const reply = await batch.extract(file, existing);
-        read += 1;
-        for (const { save } of memoryImportSaves(parseMemoryImportReply(reply, [file]), [file], existing)) {
-          try {
-            await client.importLesson(save);
-            existing.push(save.text);
-            saved += 1;
-          } catch {
-            // One memory the server refuses does not stop the rest of the file.
-          }
-        }
-        status = saved;
-      } catch (error) {
-        status = { failed: errorLine(error) };
-      }
-      total += saved;
-      setStatuses((current) => ({ ...current, [file.path]: status }));
-    }
-    await batch.finish(read > 0);
-    setNotice(total === 0 ? 'Nothing new.' : `${importedCountLabel(total)}.`);
-    setRunning(false);
-    if (total > 0) onImported();
   };
 
   const noticeLine = providerReady ? notice : CLOUD_AGENT_NO_PROVIDER_NOTICE;
