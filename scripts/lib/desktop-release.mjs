@@ -39,7 +39,7 @@ import {
   verifyUnpublishedChannelWithConvergence as verifyUnpublishedChannel,
 } from './desktop-release-public.mjs';
 import { releaseNotesForPublication } from './desktop-release-notes.mjs';
-import { releaseTreeScanArguments, vendoredRuntimeScanArguments } from './desktop-release-privacy-scan.mjs';
+import { assertReleaseAddressesClean, releaseTreeScanArguments, vendoredRuntimeScanArguments } from './desktop-release-privacy-scan.mjs';
 import { VERSION_PATTERN, MANIFEST_KEY_PATTERN } from './desktop-release-version.mjs';
 
 export { releaseTreeScanArguments, vendoredRuntimeScanArguments };
@@ -950,12 +950,9 @@ function scanReleaseTree(run, root) {
     if (privacy.status === 0) throw new Error('Release privacy scan found a forbidden value');
     if (privacy.status !== 1) throw new Error('Release privacy scan could not inspect the application bundle');
   }
-  requireRun(
-    run,
-    'rg',
-    productOriginScanArguments(root),
-    'Application bundle does not contain the kordi.ai product origin',
-  );
+  assertReleaseAddressesClean(run, root);
+  const missingOrigin = 'Application bundle does not contain the kordi.ai product origin';
+  requireRun(run, 'rg', productOriginScanArguments(root), missingOrigin);
 }
 
 async function findAppBundle(root, depth = 0) {

@@ -551,9 +551,8 @@ accountId["']?\s*[:=]\s*["'][^"']+
 displayName["']?\s*[:=]\s*["']111
 primaryEmail
 sessionToken
-korde-product
-35\.188\.85\.31
 sslip\.io
+bc\.googleusercontent\.com
 EOF
 
 MOUNT=$(mktemp -d /tmp/kordi-release-scan.XXXXXX)
@@ -562,6 +561,10 @@ rg -n --text --hidden --no-ignore --no-messages -f "$PAT" "$MOUNT" || true
 find "$MOUNT" -type f -maxdepth 8 -print0 \
   | xargs -0 strings 2>/dev/null \
   | rg -f "$PAT" || true
+# Former hosts and addresses are listed only as hashes; this prints a count, never a value.
+find "$MOUNT" -type f -maxdepth 8 -print0 \
+  | xargs -0 strings 2>/dev/null \
+  | node scripts/privacy-identifiers.mjs scan || true
 hdiutil detach "$MOUNT"
 ```
 

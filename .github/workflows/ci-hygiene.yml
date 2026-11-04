@@ -7,6 +7,10 @@ on:
         description: Expected-work manifest produced by the blocking CI changes job.
         required: true
         type: string
+    secrets:
+      KORDI_PRIVACY_DENYLIST:
+        description: Optional private identity and infrastructure terms, one per line. Absent on forks.
+        required: false
     outputs:
       results:
         description: Machine-readable completion results for the hygiene group.
@@ -104,6 +108,7 @@ jobs:
           KORDI_CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           KORDI_CI_HEAD: ${{ github.sha }}
           KORDI_HYGIENE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          KORDI_PRIVACY_DENYLIST: ${{ secrets.KORDI_PRIVACY_DENYLIST }}
         run: pnpm check:hygiene
 
   completion:
