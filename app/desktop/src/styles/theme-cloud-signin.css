@@ -180,8 +180,10 @@
   place-items: center;
   width: var(--app-gate-window-width, calc(100vw - 2 * var(--app-gate-crop-x, 0px)));
   height: var(--app-gate-window-height, calc(100vh - 2 * var(--app-gate-crop-y, 0px)));
+  box-sizing: border-box;
   padding: 52px 24px 76px;
-  overflow: hidden auto;
+  /* The window has a fixed size and the content fits, so it never scrolls. */
+  overflow: hidden;
 }
 
 .app-cloud-welcome {
@@ -221,10 +223,6 @@
   width: 100%;
   max-width: 304px;
   margin-top: 28px;
-}
-
-.app-cloud-welcome-trouble {
-  margin-top: 16px;
 }
 
 /* The bird's wing gap is cut out of the body, so it shows the window behind. */

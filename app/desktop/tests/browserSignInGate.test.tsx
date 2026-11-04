@@ -109,7 +109,7 @@ test('the welcome screen opens the browser and finishes from the loopback redire
     assert.equal(document.querySelector('input[type="email"]'), null, 'no in-app email form');
     assert.match(text(), /Welcome to Kordi/);
     button('Sign up');
-    button('Trouble logging in? Copy link');
+    assert.doesNotMatch(text(), /Trouble logging in/);
 
     await act(async () => { button('Log in').click(); });
     await settle();
@@ -133,10 +133,9 @@ test('a pasted code signs in and cancel returns to the welcome screen', async ()
     const fake = fakeSession();
     await render(root, fake.session);
     await settle();
-    await act(async () => { button('Trouble logging in? Copy link').click(); });
+    await act(async () => { button('Log in').click(); });
     await settle();
-    assert.deepEqual(fake.events, ['copy']);
-    assert.match(text(), /Link copied/);
+    assert.deepEqual(fake.events, ['open /v1/cloud/auth/app/authorize']);
 
     await act(async () => { button('Cancel').click(); });
     await settle();

@@ -59,9 +59,6 @@ function WelcomeScreen({ signIn }: { signIn: BrowserSignInState }) {
           Sign up
         </button>
       </div>
-      <button type="button" className="app-cloud-welcome-link app-cloud-welcome-trouble" onClick={() => void signIn.start('login', { copyLink: true })}>
-        Trouble logging in? Copy link
-      </button>
     </main>
   );
 }

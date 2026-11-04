@@ -7,7 +7,7 @@ for (const theme of ['light', 'dark'] as const) {
     const logIn = page.getByRole('button', { name: 'Log in', exact: true });
     await expect(logIn).toBeInViewport({ ratio: 1 });
     await expect(page.getByRole('button', { name: 'Sign up', exact: true })).toBeInViewport({ ratio: 1 });
-    await expect(page.getByRole('button', { name: 'Trouble logging in? Copy link' })).toBeInViewport({ ratio: 1 });
+    await expect(page.getByText('Trouble logging in?')).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: 'Email' })).toHaveCount(0);
     await page.screenshot({ path: `test-results/browser-sign-in-welcome-${theme}.png` });
 
