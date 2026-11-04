@@ -11,7 +11,6 @@ use crate::avatars::{
 };
 
 use super::config::{PendingSystemAgentConfig, SystemAgentConfig, SystemAgentConfigError};
-use super::prompt::SYSTEM_AGENT_PROMPT;
 
 /// Creates or refreshes the System agent's account, default agent profile and
 /// agent definition, then makes sure the System agent sits in every existing
@@ -92,6 +91,7 @@ pub async fn bootstrap_system_agent(
         name: pending.name,
         subtitle: pending.subtitle,
         provider_auth: pending.provider_auth,
+        system_prompt: pending.system_prompt,
     };
 
     let result = query(
@@ -126,7 +126,7 @@ pub async fn bootstrap_system_agent(
     .bind(&config.account_id)
     .bind(&config.name)
     .bind(&config.subtitle)
-    .bind(SYSTEM_AGENT_PROMPT)
+    .bind(&config.system_prompt)
     .bind(config.model_routing())
     .bind(&now)
     .bind(&agent_avatar_url)

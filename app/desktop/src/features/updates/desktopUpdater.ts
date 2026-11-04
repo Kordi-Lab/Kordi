@@ -1,10 +1,12 @@
-const KORDI_RELEASE_ORIGIN = 'https://kordi.ai';
+import { clientDistribution } from '../cloud/distribution';
 const BETA_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)$/;
 
 export function manualUpdateUrlForVersion(version: string | undefined) {
   if (!version || !BETA_VERSION.test(version)) return undefined;
+  const distribution = clientDistribution();
+  if (!distribution?.updates.enabled) return undefined;
   const encoded = encodeURIComponent(version);
-  return `${KORDI_RELEASE_ORIGIN}/updates/releases/${encoded}/Kordi_${encoded}_aarch64.dmg`;
+  return `${distribution.backendOrigin}/updates/releases/${encoded}/${distribution.updates.artifactName}_${encoded}_aarch64.dmg`;
 }
 
 export type DesktopUpdaterDownloadEvent =

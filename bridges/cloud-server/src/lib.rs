@@ -17,6 +17,7 @@ pub mod cloud_agents;
 pub mod common_ground;
 pub mod connectors;
 pub mod digest;
+pub mod distribution;
 pub mod document_shares;
 pub mod events;
 pub mod human_simulator;

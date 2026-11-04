@@ -18,7 +18,8 @@ pub fn sandbox_backend_mode_from_env() -> SandboxBackendMode {
         Ok(value) if !value.trim().is_empty() && !value.trim().eq_ignore_ascii_case("local") => {
             SandboxBackendMode::Invalid
         }
-        _ => SandboxBackendMode::Local,
+        _ if cfg!(debug_assertions) => SandboxBackendMode::Local,
+        _ => SandboxBackendMode::Invalid,
     }
 }
 
