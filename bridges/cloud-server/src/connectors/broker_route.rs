@@ -79,6 +79,11 @@ async fn lease_holder(
         Ok(None) => return Err(unauthorized()),
         Err(err) => return Err(Box::new(server_error("broker session", err))),
     };
+    state
+        .admission()
+        .authorize_account(state.db_pool(), &session.account_id)
+        .await
+        .map_err(|e| Box::new(e.response()))?;
     let claim_id = nonblank(&input.claim_id)
         .and_then(|claim| uuid::Uuid::parse_str(&claim).ok())
         .ok_or_else(|| missing("claimId"))?;

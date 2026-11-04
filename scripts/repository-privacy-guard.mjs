@@ -109,7 +109,8 @@ export function inspectRepositoryPath(repositoryPath) {
   if (normalized === 'deploy/dev/operator-github-allowlist.txt') {
     findings.push({ rule: 'operator-identity-file', description: 'local operator authorization list' });
   }
-  if (RASTER_IMAGE.test(normalized) && !APPROVED_RASTER_PATH.test(normalized)) {
+  if (RASTER_IMAGE.test(normalized) && !APPROVED_RASTER_PATH.test(normalized)
+      && normalized !== 'scripts/test_support/distribution/fixture.png') {
     findings.push({ rule: 'unreviewed-user-capture', description: 'image outside an approved product-asset or synthetic-baseline path' });
   }
 

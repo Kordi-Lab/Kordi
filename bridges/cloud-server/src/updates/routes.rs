@@ -7,7 +7,6 @@ use axum::routing::get;
 use axum::{Json, Router};
 use semver::Version;
 use serde::Serialize;
-use url::Url;
 
 use crate::server::ServerState;
 
@@ -19,7 +18,6 @@ mod sources;
 
 use asset::asset_response;
 
-const DEFAULT_PUBLIC_BASE_URL: &str = "https://kordi.ai";
 const OS_VERSION_HEADER: &str = "x-kordi-os-version";
 const IMMUTABLE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
 
@@ -156,22 +154,7 @@ fn update_event_response(mut response: Response, event: UpdateEvent<'_>) -> Resp
 }
 
 fn public_base_url() -> String {
-    let configured = std::env::var("KORDI_CLOUD_PUBLIC_BASE_URL")
-        .ok()
-        .map(|value| value.trim().trim_end_matches('/').to_string())
-        .filter(|value| !value.is_empty());
-    let candidate = configured.as_deref().unwrap_or(DEFAULT_PUBLIC_BASE_URL);
-    let Ok(url) = Url::parse(candidate) else {
-        return DEFAULT_PUBLIC_BASE_URL.to_string();
-    };
-    if url.scheme() != "https"
-        || url.host_str().is_none()
-        || !url.username().is_empty()
-        || url.password().is_some()
-    {
-        return DEFAULT_PUBLIC_BASE_URL.to_string();
-    }
-    candidate.to_string()
+    crate::distribution::public_origin()
 }
 
 fn release_store(state: &ServerState) -> Result<ReleaseCatalogStore, Box<Response>> {
@@ -462,7 +445,7 @@ fn legacy_environment_fallback() -> LegacyReleaseVersionResponse {
         version: optional_env("KORDI_RELEASE_VERSION")
             .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
         changelog_url: optional_env("KORDI_RELEASE_CHANGELOG_URL")
-            .unwrap_or_else(|| "https://kordi.ai/updates/releases/version".to_string()),
+            .unwrap_or_else(|| format!("{}/updates/releases/version", public_base_url())),
         // The shipped beta.5 client treats any downloadUrl as authorization to
         // invoke its legacy unverified native installer. Keep these fields absent
         // so beta.5 can only open changelogUrl for the one-time manual bootstrap.

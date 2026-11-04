@@ -60,6 +60,13 @@ pub async fn ws_handler(
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
+    if let Err(error) = state
+        .admission()
+        .authorize_account(pool, &session.account_id)
+        .await
+    {
+        return error.response();
+    }
     let connection = WsConnection {
         account_id: session.account_id,
         device_id: session.device_id,
@@ -78,6 +85,14 @@ struct WsConnection {
 
 impl WsConnection {
     async fn is_active(&self, state: &ServerState) -> bool {
+        if state
+            .admission()
+            .authorize_account(state.db_pool(), &self.account_id)
+            .await
+            .is_err()
+        {
+            return false;
+        }
         match session_is_active(
             state.db_pool(),
             &self.account_id,

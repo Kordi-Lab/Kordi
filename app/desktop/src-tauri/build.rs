@@ -1,6 +1,15 @@
 use std::{env, path::PathBuf, process::Command};
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=KORDI_RELEASE_BACKEND_ORIGIN");
+    if env::var("PROFILE").as_deref() == Ok("release") {
+        let origin = env::var("KORDI_RELEASE_BACKEND_ORIGIN")
+            .expect("Release packaging requires a validated ops distribution profile");
+        assert!(
+            origin.starts_with("https://") && !origin.contains('\n'),
+            "Invalid release origin"
+        );
+    }
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         println!("cargo:rerun-if-changed=native/LivePhotos.swift");
         println!("cargo:rerun-if-changed=native/LinkPreview.swift");

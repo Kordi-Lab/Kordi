@@ -84,12 +84,27 @@ final class KordiAppEnvironmentTests: XCTestCase {
         )
     }
 
+    func testResearchRejectsAppRoutingAndStorage() throws {
+        let settings = info(channel: "research", baseURL: "https://research.example.test", callbackScheme: "kordi-research")
+        let environment = try KordiAppEnvironment.configured(infoDictionary: settings, bundleIdentifier: "ai.kordi.ios.research")
+        XCTAssertEqual(environment.channel, .research)
+        XCTAssertEqual(environment.keychainService, "ai.kordi.ios.research")
+        XCTAssertThrowsError(try KordiAppEnvironment.configured(infoDictionary: settings, bundleIdentifier: "ai.kordi.ios"))
+        var wrong = settings
+        wrong["KordiCloudBaseURL"] = "https://kordi.ai"
+        XCTAssertThrowsError(try KordiAppEnvironment.configured(infoDictionary: wrong, bundleIdentifier: "ai.kordi.ios.research"))
+        wrong = settings
+        wrong.removeValue(forKey: "KordiExpectedDistribution")
+        XCTAssertThrowsError(try KordiAppEnvironment.configured(infoDictionary: wrong, bundleIdentifier: "ai.kordi.ios.research"))
+    }
+
     private func info(
         channel: String,
         baseURL: String,
         callbackScheme: String
     ) -> [String: Any] {
         [
+            "KordiExpectedDistribution": DistributionTestFixture.encoded(research: channel == "research"),
             "KordiDistributionChannel": channel,
             "KordiCloudBaseURL": baseURL,
             "KordiOAuthCallbackScheme": callbackScheme
