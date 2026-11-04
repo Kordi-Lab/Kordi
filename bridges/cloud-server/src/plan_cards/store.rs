@@ -200,6 +200,27 @@ pub async fn propose(
     acting_account_id: &str,
     args: PlanCardProposeArgs,
 ) -> Result<PlanCardRow, PlanCardStoreError> {
+    propose_inner(pool, acting_account_id, args, None).await
+}
+
+/// A scoped System agent proposal replaces a confirmed plan atomically. A
+/// rejected replacement leaves its revision and calendar projection untouched.
+pub(super) async fn propose_for_system_agent(
+    pool: &PgPool,
+    acting_account_id: &str,
+    args: PlanCardProposeArgs,
+    source_message_ids: &[String],
+) -> Result<PlanCardRow, PlanCardStoreError> {
+    propose_inner(pool, acting_account_id, args, Some(source_message_ids)).await
+}
+
+async fn propose_inner(
+    pool: &PgPool,
+    acting_account_id: &str,
+    args: PlanCardProposeArgs,
+    source_message_ids: Option<&[String]>,
+) -> Result<PlanCardRow, PlanCardStoreError> {
+    let allow_confirmed = source_message_ids.is_some();
     if !matches!(
         args.state,
         PlanCardState::Polling | PlanCardState::AwaitingConfirmation
@@ -248,6 +269,19 @@ pub async fn propose(
         let previous = fetch_row(&mut tx, &existing_event_id)
             .await?
             .filter(|row| row.conversation_id == args.conversation_id.to_string());
+        if previous.as_ref().is_some_and(|row| {
+            row.state == PlanCardState::Confirmed && row.revision == existing_revision
+        }) {
+            if let Some(sources) = source_message_ids {
+                super::transitions::require_newer_instruction(
+                    &mut tx,
+                    &existing_event_id,
+                    acting_account_id,
+                    sources,
+                )
+                .await?;
+            }
+        }
         let options = match &previous {
             Some(row) => carry_votes(&row.options, args.options.clone(), &participant_ids),
             None => args.options.clone(),
@@ -258,7 +292,7 @@ pub async fn propose(
                 location = $6, state = $7, unresolved_fields = $8, \
                 source_message_ids = $9, options = $11, revision = revision + 1, updated_at = now() \
              WHERE event_id = $1 AND revision = $2 AND conversation_id = $10 \
-               AND state NOT IN ('confirmed', 'canceled') \
+               AND state <> 'canceled' AND (state <> 'confirmed' OR $12) \
              RETURNING event_id",
         )
         .bind(&existing_event_id)
@@ -284,6 +318,7 @@ pub async fn propose(
         ))
         .bind(args.conversation_id)
         .bind(options_to_json(&options))
+        .bind(allow_confirmed)
         .fetch_optional(&mut *tx)
         .await?;
 
@@ -301,7 +336,9 @@ pub async fn propose(
             .await?;
             return Err(match current {
                 None => PlanCardStoreError::NotFound,
-                Some((state, _)) if state == "confirmed" || state == "canceled" => {
+                Some((state, _))
+                    if state == "canceled" || (state == "confirmed" && !allow_confirmed) =>
+                {
                     PlanCardStoreError::InvalidTransition(format!(
                         "cannot update a plan card that is already {state}"
                     ))

@@ -235,6 +235,25 @@ test('email row requests a code, reports a wrong code, cancels, and marks the em
   }
 });
 
+test('email row permits immediate resend when the clock advances between reads', async (t) => {
+  const view = await renderRow({
+    email: 'ada@example.com',
+    verified: false,
+    onRequestCode: async () => ({ ...challenge, retryAfterSeconds: 0 }),
+    onVerify: async () => {},
+  });
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now++);
+  try {
+    await act(async () => view.button('Verify email')!.click());
+    const resend = view.button('Resend code');
+    assert.ok(resend, 'a zero-second cooldown must not become a one-second cooldown');
+    assert.equal(resend.disabled, false);
+  } finally {
+    await view.cleanup();
+  }
+});
+
 test('email row keeps the verify action disabled after cancel until the resend cooldown ends', async () => {
   let requests = 0;
   const view = await renderRow({

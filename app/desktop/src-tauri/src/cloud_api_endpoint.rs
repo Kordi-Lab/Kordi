@@ -1,5 +1,5 @@
-pub(crate) const DEFAULT_CLOUD_API_BASE_URL: &str = "https://kordi.ai";
-const PRODUCTION_CLOUD_API_HOSTNAMES: [&str; 1] = ["kordi.ai"];
+const OPERATOR_CLOUD_API_BASE_URL: &str = "https://kordi.ai";
+const PRODUCTION_CLOUD_API_HOSTNAMES: [&str; 2] = ["kordi.ai", "research.kordi.ai"];
 
 fn is_production_cloud_api_url(url: &reqwest::Url) -> bool {
     url.host_str()
@@ -67,7 +67,7 @@ fn resolve_cloud_api_base_url(
                     .to_string(),
             );
         }
-        return Ok(DEFAULT_CLOUD_API_BASE_URL.to_string());
+        return Err("A release distribution origin is required".to_string());
     };
 
     let origin = normalize_cloud_api_base_url(configured)?;
@@ -84,7 +84,7 @@ fn resolve_cloud_api_base_url(
                         .to_string(),
                 );
             }
-            if origin != DEFAULT_CLOUD_API_BASE_URL {
+            if origin != OPERATOR_CLOUD_API_BASE_URL {
                 return Err(
                     "Operator development may use only the approved https://kordi.ai product origin."
                         .to_string(),
@@ -124,6 +124,15 @@ fn bundled_community_api_base(
 }
 
 pub(crate) fn cloud_api_base_url_from_env() -> Result<String, String> {
+    if !cfg!(debug_assertions) {
+        let origin = option_env!("KORDI_RELEASE_BACKEND_ORIGIN")
+            .ok_or("A release distribution origin is required")?;
+        let origin = normalize_cloud_api_base_url(origin)?;
+        if !origin.starts_with("https://") {
+            return Err("Release distribution origin must use HTTPS".to_string());
+        }
+        return Ok(origin);
+    }
     let vite_base = std::env::var("VITE_KORDI_CLOUD_API_BASE").ok();
     let native_base = std::env::var("KORDI_CLOUD_API_BASE").ok();
     let dev_profile = std::env::var("VITE_KORDI_DEV_PROFILE").ok();
@@ -148,7 +157,7 @@ pub(crate) fn cloud_api_base_url_from_env() -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bundled_community_api_base, resolve_cloud_api_base_url, DEFAULT_CLOUD_API_BASE_URL,
+        bundled_community_api_base, resolve_cloud_api_base_url, OPERATOR_CLOUD_API_BASE_URL,
     };
 
     #[test]
@@ -171,7 +180,7 @@ mod tests {
             "http://127.0.0.1:17081"
         );
         assert!(resolve_cloud_api_base_url(
-            Some(DEFAULT_CLOUD_API_BASE_URL),
+            Some(OPERATOR_CLOUD_API_BASE_URL),
             bundled.as_deref(),
             true,
             None,
@@ -191,7 +200,7 @@ mod tests {
     #[test]
     fn bundled_fallback_never_grants_remote_or_release_access() {
         for base in [
-            DEFAULT_CLOUD_API_BASE_URL,
+            OPERATOR_CLOUD_API_BASE_URL,
             "https://staging.example.test",
             "http://192.0.2.1:18181",
             "http://user:secret@127.0.0.1:18181",
@@ -235,7 +244,7 @@ mod tests {
     #[test]
     fn operator_debug_requires_profile_and_explicit_production_acknowledgement() {
         assert!(resolve_cloud_api_base_url(
-            Some(DEFAULT_CLOUD_API_BASE_URL),
+            Some(OPERATOR_CLOUD_API_BASE_URL),
             None,
             true,
             Some("operator"),
@@ -243,7 +252,7 @@ mod tests {
         )
         .is_err());
         assert!(resolve_cloud_api_base_url(
-            Some(DEFAULT_CLOUD_API_BASE_URL),
+            Some(OPERATOR_CLOUD_API_BASE_URL),
             None,
             true,
             Some("community"),
@@ -252,14 +261,14 @@ mod tests {
         .is_err());
         assert_eq!(
             resolve_cloud_api_base_url(
-                Some(DEFAULT_CLOUD_API_BASE_URL),
+                Some(OPERATOR_CLOUD_API_BASE_URL),
                 None,
                 true,
                 Some("operator"),
                 Some("1"),
             )
             .unwrap(),
-            DEFAULT_CLOUD_API_BASE_URL,
+            OPERATOR_CLOUD_API_BASE_URL,
         );
         assert!(resolve_cloud_api_base_url(
             Some("https://staging.example.test"),
@@ -273,10 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn release_build_keeps_the_product_default() {
-        assert_eq!(
-            resolve_cloud_api_base_url(None, None, false, None, None).unwrap(),
-            DEFAULT_CLOUD_API_BASE_URL
-        );
+    fn release_build_has_no_product_fallback() {
+        assert!(resolve_cloud_api_base_url(None, None, false, None, None).is_err());
     }
 }

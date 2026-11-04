@@ -101,10 +101,16 @@ async fn stale_chat_cannot_reopen_newer_confirmation_or_remove_calendars() {
         represented_accounts: [owner.clone()].into_iter().collect(),
         source_message_ids: ids,
     };
-    let reopen = |revision| {
+    let replace = |revision| {
         serde_json::from_value(json!({
-            "action": "reopen", "eventId": confirmed.event_id, "revision": revision,
-            "reason": "A chat message requested a different time"
+            "action": "propose", "conversationId": conversation,
+            "existingEventId": confirmed.event_id, "existingRevision": revision,
+            "title": "Dinner", "state": "awaitingConfirmation",
+            "startAt": (chrono::Utc::now() + chrono::Duration::days(4)).to_rfc3339(),
+            "participants": [
+                {"participantId": owner, "displayName": "Owner", "organizer": true},
+                {"participantId": guest, "displayName": "Guest"}
+            ]
         }))
         .unwrap()
     };
@@ -112,7 +118,7 @@ async fn stale_chat_cannot_reopen_newer_confirmation_or_remove_calendars() {
     let stale = dispatch_row(
         &pool,
         &actor(vec![old_message.clone()]),
-        reopen(initial.revision),
+        replace(initial.revision),
     )
     .await
     .unwrap_err();
@@ -120,7 +126,7 @@ async fn stale_chat_cannot_reopen_newer_confirmation_or_remove_calendars() {
     // Even learning the latest revision cannot revive the superseded request.
     // No new message (a card_changed/reminder sweep) is not authorization either.
     for ids in [vec![old_message], vec![], vec![Uuid::new_v4().to_string()]] {
-        let rejected = dispatch_row(&pool, &actor(ids), reopen(confirmed.revision)).await;
+        let rejected = dispatch_row(&pool, &actor(ids), replace(confirmed.revision)).await;
         assert!(
             rejected.is_err(),
             "old context must not reopen a newer confirmed plan"
@@ -150,24 +156,18 @@ async fn stale_chat_cannot_reopen_newer_confirmation_or_remove_calendars() {
     seed_conversation(&pool, other_conversation, &owner, &[&owner]).await;
     let other_message = message(&pool, other_conversation, &owner).await;
     for id in [system_message, deleted, other_message] {
-        let rejected = dispatch_row(&pool, &actor(vec![id]), reopen(confirmed.revision))
+        let rejected = dispatch_row(&pool, &actor(vec![id]), replace(confirmed.revision))
             .await
             .unwrap_err();
         assert_eq!(rejected.status(), 409);
         assert_eq!(calendars(&pool, &confirmed.event_id).await, saved);
     }
-    // A genuinely later request still supports the normal reopen/revise flow.
+    // A genuinely later request atomically replaces the confirmed plan.
     let fresh = message(&pool, conversation, &owner).await;
-    let opened = dispatch_row(&pool, &actor(vec![fresh]), reopen(confirmed.revision))
+    let changed = dispatch_row(&pool, &actor(vec![fresh]), replace(confirmed.revision))
         .await
         .unwrap();
-    let changed = super::store::propose(
-        &pool,
-        &system,
-        args(Some(opened.event_id.clone()), Some(opened.revision), 4),
-    )
-    .await
-    .unwrap();
+    assert_eq!(changed.revision, confirmed.revision + 1);
     assert_eq!(changed.state, PlanCardState::AwaitingConfirmation);
     assert_eq!(
         changed

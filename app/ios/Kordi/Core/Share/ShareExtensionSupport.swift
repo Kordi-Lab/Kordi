@@ -177,7 +177,9 @@ struct KordiShareConfiguration: Equatable, Sendable {
                 appGroup: appGroup,
                 service: service,
                 accessGroup: accessGroup,
-                scheme: scheme
+                scheme: scheme,
+                expected: KordiReleaseConfiguration.read(info),
+                bundleIdentifier: info["CFBundleIdentifier"] as? String
               ) else {
             throw ShareExtensionCredentialError.invalidConfiguration
         }
@@ -198,7 +200,9 @@ struct KordiShareConfiguration: Equatable, Sendable {
         appGroup: String,
         service: String,
         accessGroup: String,
-        scheme: String
+        scheme: String,
+        expected: KordiReleaseConfiguration?,
+        bundleIdentifier: String?
     ) -> Bool {
         let hasNoExtraURLComponents = (baseURL.path.isEmpty || baseURL.path == "/")
             && baseURL.user == nil
@@ -206,15 +210,15 @@ struct KordiShareConfiguration: Equatable, Sendable {
             && baseURL.query == nil
             && baseURL.fragment == nil
         switch channel {
-        case "production":
-            return baseURL.scheme?.lowercased() == "https"
-                && baseURL.host?.lowercased() == "kordi.ai"
-                && baseURL.port == nil
+        case "production", "research", "staging", "research-staging":
+            guard let expected, channel == expected.channel,
+                  bundleIdentifier == expected.iosIdentifier || bundleIdentifier == expected.iosShareIdentifier else { return false }
+            return baseURL.absoluteString == expected.backendOrigin
                 && hasNoExtraURLComponents
-                && appGroup == "group.ai.kordi.share"
-                && service == "ai.kordi.share-session"
+                && appGroup == expected.appGroup
+                && service == expected.credentialService
                 && accessGroup.hasSuffix(".\(service)")
-                && scheme == "kordi"
+                && scheme == expected.callbackScheme
         case "beta":
             #if BETA
             return baseURL.scheme?.lowercased() == "http"

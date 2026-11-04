@@ -21,7 +21,6 @@ use super::cards::{mark_card_seen, sync_card_messages};
 use super::config::SystemAgentConfig;
 use super::input::{build_input, Candidate};
 use super::mentions::{encode_system_agent_message_with_mentions, resolve_mentions};
-use super::prompt::SYSTEM_AGENT_PROMPT;
 
 pub use super::retry::{fail, release_stale_runs};
 
@@ -230,7 +229,7 @@ async fn enqueue(
     .bind(&candidate.legacy_session_id)
     .bind(&config.account_id)
     .bind(input.to_string())
-    .bind(SYSTEM_AGENT_PROMPT)
+    .bind(&config.system_prompt)
     .bind(config.model_routing())
     .bind(&now)
     .execute(&mut *tx)
