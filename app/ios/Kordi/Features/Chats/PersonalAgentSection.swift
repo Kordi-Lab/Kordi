@@ -161,16 +161,10 @@ struct PersonalAgentRow: View {
     }
 }
 
-/// An agent's rounded-square avatar with the green online dot of a
-/// personal session.
+/// An agent's rounded-square avatar for a personal session.
 struct PersonalAgentAvatar: View {
     let conversation: ConversationSummary
     var size: CGFloat = PersonalAgentRow.avatarSize
-    /// The surface behind the avatar, so the dot reads as cut out of it.
-    var ringColor = Color(uiColor: .systemBackground)
-
-    private var dotSize: CGFloat { max(9, (size * 0.26).rounded()) }
-    private var ringWidth: CGFloat { size >= 40 ? 2.5 : 2 }
 
     var body: some View {
         IdentityAvatar(
@@ -180,14 +174,6 @@ struct PersonalAgentAvatar: View {
             size: size,
             seed: conversation.agentId?.nonEmpty ?? conversation.sessionId
         )
-        .overlay(alignment: .bottomTrailing) {
-            Circle()
-                .fill(Color(uiColor: .systemGreen))
-                .frame(width: dotSize, height: dotSize)
-                .padding(ringWidth)
-                .background(Circle().fill(ringColor))
-                .offset(x: ringWidth + 1, y: ringWidth + 1)
-        }
         .accessibilityHidden(true)
     }
 }
