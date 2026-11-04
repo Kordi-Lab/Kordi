@@ -65,11 +65,14 @@ Endpoints:
   to `returnTo` with the error in the fragment. Only one web provider
   sign-in per browser can be in progress; a second start replaces the
   binding of the first.
-- The legacy `GET /v1/cloud/auth/oauth/:provider/start` accepts a target on
-  the public origin only when it is `/v1/cloud/auth/web/oauth/complete`, and
-  a state started there has no browser binding, so its callback never sets
-  the cookie. Loopback and allowlisted app targets keep their fragment
-  hand-off.
+- A provider sign-in that returns to the public origin always uses this
+  cookie hand-off, never a session in a URL fragment: the only accepted
+  target there is `/v1/cloud/auth/web/oauth/complete`, only the web start
+  may use it, and the callback refuses a public-origin target without a
+  valid `returnTo` and the matching binding cookie. The legacy
+  `GET /v1/cloud/auth/oauth/:provider/start` rejects every public-origin
+  target with `400 invalid_redirect`. Loopback and allowlisted app targets
+  keep their fragment hand-off.
 - `GET /v1/cloud/auth/web/session`: `{account, csrfToken}` for the cookie
   session, or `401 login_required`.
 - `POST /v1/cloud/auth/web/logout`: revokes the session and clears both

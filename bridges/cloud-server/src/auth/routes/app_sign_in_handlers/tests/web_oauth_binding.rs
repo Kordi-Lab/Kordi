@@ -167,25 +167,54 @@ async fn the_legacy_start_cannot_reach_the_web_cookie_hand_off() {
             url::form_urlencoded::byte_serialize(target.as_bytes()).collect::<String>()
         )
     };
-    // A public-origin page other than the completion endpoint could read
-    // the session from the URL fragment.
-    for target in [format!("{origin}/"), format!("{origin}/sign-in/app")] {
+    // A page on this server could read a session from the URL fragment, so
+    // only the web start, which binds the browser, may return here.
+    for target in [
+        format!("{origin}/"),
+        format!("{origin}/sign-in/app"),
+        complete.clone(),
+    ] {
         let (status, body, _) = harness.send("GET", &start(&target), None, None).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{target} {body}");
         assert_eq!(body["errorCode"], "invalid_redirect", "{body}");
     }
-    // The completion endpoint is accepted, but a state without a browser
-    // binding never sets the cookie.
-    let (status, body, _) = harness.send("GET", &start(&complete), None, None).await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    let state = provider_state(body["authUrl"].as_str().unwrap());
-    let (status, headers) = callback(
-        &harness,
-        &state,
-        Some(&format!("{WEB_OAUTH_BIND_COOKIE}=anything")),
-    )
-    .await;
-    assert_browser_mismatch(status, &headers);
+    // A stored state for this server without a usable web return, or
+    // without a binding, never hands over a session.
+    for (target, expect_mismatch) in [
+        (
+            format!("{origin}{WEB_OAUTH_COMPLETE_PATH}?returnTo=%2F%2Fevil.example.test"),
+            false,
+        ),
+        (complete.clone(), true),
+    ] {
+        let state = format!("oauth_state_{}", uuid::Uuid::new_v4().simple());
+        let now = Utc::now();
+        query(
+            "INSERT INTO cloud_oauth_states \
+             (state_id, provider, redirect_after, code_verifier, created_at, expires_at) \
+             VALUES ($1, 'github', $2, 'verifier', $3, $4)",
+        )
+        .bind(&state)
+        .bind(&target)
+        .bind(now.to_rfc3339())
+        .bind((now + ChronoDuration::minutes(10)).to_rfc3339())
+        .execute(&harness.pool)
+        .await
+        .unwrap();
+        let (status, headers) = callback(
+            &harness,
+            &state,
+            Some(&format!("{WEB_OAUTH_BIND_COOKIE}=anything")),
+        )
+        .await;
+        if expect_mismatch {
+            assert_browser_mismatch(status, &headers);
+        } else {
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{target}");
+            assert!(headers.get("location").is_none());
+            assert!(set_cookie(&headers, WEB_SESSION_COOKIE).is_none());
+        }
+    }
 }
 
 #[tokio::test]

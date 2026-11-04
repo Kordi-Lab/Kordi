@@ -146,6 +146,11 @@ fn sign_in_returns_on_the_public_origin_only_reach_the_web_completion() {
     ] {
         assert!(!allowed(target), "{target}");
     }
+    // The completion endpoint on another origin, or with another path, is
+    // not this server's web hand-off.
+    assert!(!allowed(
+        "http://cloud.example.test/v1/cloud/auth/web/oauth/complete"
+    ));
     // App targets are unchanged.
     assert!(allowed("http://127.0.0.1:53682/oauth/callback"));
     assert!(is_allowed_sign_in_redirect_with_config(
