@@ -181,6 +181,7 @@ pub(super) fn materialize_seed(
             .collect(),
         model: DesktopAgentBuilderModelFile {
             provider: seed.provider.filter(|value| !value.trim().is_empty()),
+            auth_choice: seed.auth_choice.filter(|value| !value.trim().is_empty()),
             model: seed.model.filter(|value| !value.trim().is_empty()),
             thinking: seed.thinking.filter(|value| !value.trim().is_empty()),
         },
@@ -422,6 +423,7 @@ pub(super) fn write_draft(workspace: &Path, draft: DesktopAgentBuilderDraft) -> 
             .collect(),
         model: DesktopAgentBuilderModelFile {
             provider: draft.provider.filter(|value| !value.trim().is_empty()),
+            auth_choice: draft.auth_choice.filter(|value| !value.trim().is_empty()),
             model: draft.model.filter(|value| !value.trim().is_empty()),
             thinking: draft.thinking.filter(|value| !value.trim().is_empty()),
         },

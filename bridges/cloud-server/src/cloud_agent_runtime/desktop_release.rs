@@ -16,22 +16,38 @@ pub(in crate::cloud_agent_runtime) async fn release(
     Json(input): Json<RenewalInput>,
 ) -> Response {
     let executor = executor(&session, input.claim_id);
-    // An import runs only on its Mac: a release ends it instead.
-    if super::super::import_runs::is_import_run(&run_id) {
-        let finish = super::super::import_runs::finish;
-        return match finish(
-            state.db_pool(),
-            &run_id,
-            &session.account_id,
-            &executor,
-            false,
+    // These tasks run only on the admitting Mac: a release ends them.
+    let ended = if super::super::factory_runs::is_factory_run(&run_id) {
+        Some(
+            super::super::factory_runs::finish(
+                state.db_pool(),
+                &run_id,
+                &session.account_id,
+                &executor,
+                false,
+            )
+            .await,
         )
-        .await
-        {
+    } else if super::super::import_runs::is_import_run(&run_id) {
+        Some(
+            super::super::import_runs::finish(
+                state.db_pool(),
+                &run_id,
+                &session.account_id,
+                &executor,
+                false,
+            )
+            .await,
+        )
+    } else {
+        None
+    };
+    if let Some(ended) = ended {
+        return match ended {
             Ok(released) => Json(json!({ "released": released })).into_response(),
             Err(error) => run_error_response(
                 "release desktop run",
-                "Could not end the import.",
+                "Could not end the task.",
                 error.into(),
             ),
         };

@@ -33,11 +33,14 @@ export function AgentStudioRoutingEditor({
   onClose: () => void;
 }) {
   const [defaultModel, setDefaultModel] = useState(routing.defaultModel || modelOptions[0]?.value || '');
+  const [accountChoice, setAccountChoice] = useState(routing.defaultAuthChoice || '');
   const [fallbackModel, setFallbackModel] = useState(routing.fallbackModel || '');
   const [thinking, setThinking] = useState(routing.thinking || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const defaultOption = modelOptions.find((option) => option.value === defaultModel);
+  const primaryProvider = normalizedProvider(defaultOption?.provider ?? defaultModel.split('/')[0]);
+  const primaryAccounts = providerOptions.filter((option) => normalizedProvider(option.providerId) === primaryProvider);
   const thinkingLevels = useMemo(
     () => defaultOption?.thinkingLevels?.length ? defaultOption.thinkingLevels : ['off', 'medium', 'high'],
     [defaultOption?.thinkingLevels],
@@ -47,11 +50,11 @@ export function AgentStudioRoutingEditor({
     if (!modelValue) return { provider: null, choice: null };
     const model = modelOptions.find((option) => option.value === modelValue);
     const provider = normalizedProvider(model?.provider ?? modelValue.split('/')[0]);
-    if (provider && normalizedProvider(currentProvider) === provider) {
+    if (provider && currentChoice?.trim() && normalizedProvider(currentProvider) === provider) {
       return { provider: currentProvider ?? provider, choice: currentChoice ?? null };
     }
-    const auth = providerOptions.find((option) => option.active && normalizedProvider(option.providerId) === provider)
-      ?? providerOptions.find((option) => normalizedProvider(option.providerId) === provider);
+    const accounts = providerOptions.filter((option) => !option.disabled && !option.unavailable && normalizedProvider(option.providerId) === provider);
+    const auth = accounts.find((option) => option.active) ?? (accounts.length === 1 ? accounts[0] : undefined);
     return { provider: auth?.providerId ?? model?.provider ?? (provider || null), choice: authChoice(auth) };
   };
 
@@ -59,7 +62,10 @@ export function AgentStudioRoutingEditor({
     if (!defaultModel || saving) return;
     setSaving(true);
     setError('');
-    const defaultAuth = resolveAuth(defaultModel, routing.defaultAuthProvider, routing.defaultAuthChoice);
+    const selectedAccount = primaryAccounts.find((option) => authChoice(option) === accountChoice);
+    const defaultAuth = selectedAccount
+      ? { provider: selectedAccount.providerId, choice: accountChoice }
+      : resolveAuth(defaultModel, routing.defaultAuthProvider, accountChoice);
     const fallbackAuth = resolveAuth(fallbackModel, routing.fallbackAuthProvider, routing.fallbackAuthChoice);
     try {
       await onSave({
@@ -87,8 +93,21 @@ export function AgentStudioRoutingEditor({
       </div>
       <label className="app-agent-studio-field">
         <span>Default model</span>
-        <select value={defaultModel} onChange={(event) => setDefaultModel(event.currentTarget.value)}>
+        <select value={defaultModel} onChange={(event) => {
+          const model = modelOptions.find((option) => option.value === event.currentTarget.value);
+          if (normalizedProvider(model?.provider) !== primaryProvider) setAccountChoice('');
+          setDefaultModel(event.currentTarget.value);
+        }}>
           {modelOptions.map((option) => <option key={option.value} value={option.value}>{modelLabel(option)}</option>)}
+        </select>
+      </label>
+      <label className="app-agent-studio-field">
+        <span>Provider account</span>
+        <select value={accountChoice} onChange={(event) => setAccountChoice(event.currentTarget.value)}>
+          <option value="">Active account</option>
+          {accountChoice && !primaryAccounts.some((option) => authChoice(option) === accountChoice)
+            ? <option value={accountChoice}>Account unavailable</option> : null}
+          {primaryAccounts.map((option) => <option key={option.value} value={authChoice(option) ?? ''} disabled={option.disabled || option.unavailable}>{option.label}</option>)}
         </select>
       </label>
       <label className="app-agent-studio-field">

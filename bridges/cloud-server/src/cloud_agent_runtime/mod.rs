@@ -2,6 +2,7 @@ pub mod artifacts;
 mod claim_route;
 mod desktop;
 mod desktop_tasks;
+pub(crate) mod factory_runs;
 pub(crate) mod import_runs;
 pub mod policy;
 pub mod provider_auth;
