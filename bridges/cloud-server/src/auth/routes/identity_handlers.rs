@@ -53,28 +53,41 @@ pub(super) async fn oauth_start(
     axum::extract::Path(provider): axum::extract::Path<String>,
     Query(start_query): Query<OAuthStartQuery>,
 ) -> Response {
-    let Some(provider) = OAuthProvider::parse(&provider) else {
-        return err(
+    match oauth_authorization_url(&state, &provider, &start_query).await {
+        Ok(auth_url) => Json(OAuthStartResponse { auth_url }).into_response(),
+        Err(response) => response,
+    }
+}
+
+/// Records a provider sign-in attempt and returns the provider page to open.
+/// The error is a ready response for the caller to return.
+pub(super) async fn oauth_authorization_url(
+    state: &ServerState,
+    provider: &str,
+    start_query: &OAuthStartQuery,
+) -> Result<String, Response> {
+    let Some(provider) = OAuthProvider::parse(provider) else {
+        return Err(err(
             "unknown_provider",
             "Unknown OAuth provider.",
             StatusCode::BAD_REQUEST,
-        );
+        ));
     };
     if !is_allowed_oauth_redirect(&start_query.redirect_after) {
-        return err(
+        return Err(err(
             "invalid_redirect",
             "OAuth redirect target is not allowed.",
             StatusCode::BAD_REQUEST,
-        );
+        ));
     }
     let config = match oauth_config(provider) {
         Ok(config) => config,
         Err(message) => {
-            return err(
+            return Err(err(
                 "oauth_not_configured",
                 message,
                 StatusCode::SERVICE_UNAVAILABLE,
-            );
+            ));
         }
     };
     let registration = if let Some(public_key) = start_query.device_public_key.as_deref() {
@@ -91,7 +104,7 @@ pub(super) async fn oauth_start(
                 .unwrap_or_else(|| "p256".to_string()),
         }) {
             Ok(value) => Some(value),
-            Err(error) => return err(error.code(), error.message(), StatusCode::BAD_REQUEST),
+            Err(error) => return Err(err(error.code(), error.message(), StatusCode::BAD_REQUEST)),
         }
     } else {
         None
@@ -149,11 +162,11 @@ pub(super) async fn oauth_start(
     .await
     .is_err()
     {
-        return err(
+        return Err(err(
             "server_error",
             "Could not create OAuth state.",
             StatusCode::INTERNAL_SERVER_ERROR,
-        );
+        ));
     }
 
     let mut auth_url = url::Url::parse(provider.auth_url()).expect("valid OAuth provider auth url");
@@ -172,10 +185,7 @@ pub(super) async fn oauth_start(
             .append_pair("access_type", "online");
     }
 
-    Json(OAuthStartResponse {
-        auth_url: auth_url.to_string(),
-    })
-    .into_response()
+    Ok(auth_url.to_string())
 }
 
 pub(super) async fn oauth_callback(

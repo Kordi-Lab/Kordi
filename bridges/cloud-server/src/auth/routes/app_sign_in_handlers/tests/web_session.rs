@@ -235,6 +235,43 @@ async fn failed_web_provider_sign_in_returns_to_the_page() {
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
 }
 
+#[tokio::test]
+#[ignore = "Requires a task-owned disposable PostgreSQL database"]
+async fn web_provider_start_sends_the_browser_to_the_provider() {
+    std::env::set_var("KORDI_OAUTH_GITHUB_CLIENT_ID", "synthetic-web-start-client");
+    std::env::set_var(
+        "KORDI_OAUTH_GITHUB_CLIENT_SECRET",
+        "synthetic-web-start-secret",
+    );
+    let harness = harness().await;
+    let (status, body, headers) = harness
+        .send(
+            "GET",
+            "/v1/cloud/auth/web/oauth/github/start?returnTo=%2Faccount",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "{body}");
+    let location = headers.get("location").unwrap().to_str().unwrap();
+    assert!(
+        location.starts_with("https://github.com/login/oauth/authorize?"),
+        "{location}"
+    );
+    assert!(
+        location.contains("client_id=synthetic-web-start-client"),
+        "{location}"
+    );
+    assert!(
+        location.contains("code_challenge_method=S256"),
+        "{location}"
+    );
+    assert_eq!(
+        headers.get("cache-control").unwrap().to_str().unwrap(),
+        "no-store"
+    );
+}
+
 #[test]
 fn return_paths_stay_on_the_public_origin() {
     let origin = crate::distribution::public_origin();

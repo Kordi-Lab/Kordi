@@ -350,7 +350,7 @@ fn web_oauth_complete_url(return_to: &str) -> String {
 /// returns to `returnTo` without putting the session in the URL.
 pub(super) async fn web_oauth_start(
     State(state): State<Arc<ServerState>>,
-    provider: axum::extract::Path<String>,
+    axum::extract::Path(provider): axum::extract::Path<String>,
     Query(query): Query<WebReturnQuery>,
 ) -> Response {
     let Some(return_to) = sanitize_return_to(query.return_to.as_deref()) else {
@@ -361,21 +361,23 @@ pub(super) async fn web_oauth_start(
         );
     };
     let path = &return_to[crate::distribution::public_origin().len()..];
-    oauth_start(
-        State(state),
-        provider,
-        Query(OAuthStartQuery {
-            redirect_after: web_oauth_complete_url(path),
-            device_name: None,
-            device_platform: None,
-            device_os_version: None,
-            device_app_version: None,
-            device_approximate_location: None,
-            device_public_key: None,
-            device_key_algorithm: None,
-        }),
-    )
-    .await
+    let start_query = OAuthStartQuery {
+        redirect_after: web_oauth_complete_url(path),
+        device_name: None,
+        device_platform: None,
+        device_os_version: None,
+        device_app_version: None,
+        device_approximate_location: None,
+        device_public_key: None,
+        device_key_algorithm: None,
+    };
+    // The page opens this link directly, so send the browser to the provider.
+    match oauth_authorization_url(&state, &provider, &start_query).await {
+        Ok(auth_url) => {
+            super::app_sign_in_handlers::no_store(Redirect::to(&auth_url).into_response())
+        }
+        Err(response) => response,
+    }
 }
 
 /// For a provider callback: when the sign-in was started by
