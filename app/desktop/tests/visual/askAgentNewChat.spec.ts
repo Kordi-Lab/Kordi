@@ -1,4 +1,14 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
+
+/** Session identity lives in the options menu once the shared tab strip owns the title row. */
+async function expectSessionIdentity(page: Page, panel: Locator, title: string, detail: string | RegExp) {
+  await panel.getByRole('button', { name: 'Side chat options', exact: true }).click();
+  const identity = panel.locator('.app-companion-menu-session');
+  await expect(identity.getByRole('heading')).toHaveText(title);
+  await expect(identity.locator('p')).toHaveText(detail);
+  await page.keyboard.press('Escape');
+  await expect(identity).toHaveCount(0);
+}
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -32,7 +42,7 @@ test('New chat creates a distinct private session and survives delayed catalog h
   await panel.getByRole('button', {name:'Side chat options',exact:true}).click();
   await panel.getByRole('button', {name:'New chat',exact:true}).click();
   await expect(panel).toHaveAttribute('data-companion-session-id','new-private-1');
-  await expect(panel.getByText('Ask Agent · New chat',{exact:true})).toBeVisible();
+  await expectSessionIdentity(page, panel, 'New chat', /^Ask Agent · /);
   await expect(panel.getByText('PRIVATE_HISTORY_CANARY',{exact:true})).toHaveCount(0);
   const field = panel.getByRole('textbox');
   await expect(field).toHaveText('');
@@ -86,7 +96,7 @@ test('a delayed main draft update cannot move typing out of the private composer
   await expect(main).toHaveText('MAIN_DRAFT');
 });
 
-for (const closeControl of ['Close side chat', 'Chat']) test(`closing through ${closeControl} during creation does not reopen the pane when the result arrives`, async ({page}) => {
+for (const closeControl of ['Close side chat', 'Fold pane']) test(`closing through ${closeControl} during creation does not reopen the pane when the result arrives`, async ({page}) => {
   const panel=page.locator('[data-chat-side-agent-panel="true"]');
   await page.evaluate(()=>{(window as unknown as {holdNativeCreate:boolean}).holdNativeCreate=true;});
   await panel.getByRole('button',{name:'Side chat options',exact:true}).click();
