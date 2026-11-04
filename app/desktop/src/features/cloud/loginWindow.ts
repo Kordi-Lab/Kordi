@@ -3,6 +3,12 @@ import { createWindowSizeCoordinator } from './windowSizeCoordinator';
 
 export type CloudLoginMode = 'login' | 'signup';
 
+/** Signed-out window surfaces: the compact browser sign-in window or the in-app form. */
+export type CloudGateSurface = CloudLoginMode | 'welcome';
+
+/** The compact browser sign-in window, with the native material behind it on macOS. */
+export const CLOUD_WELCOME_WINDOW_SIZE = { width: 440, height: 560 } as const;
+
 export const CLOUD_LOGIN_WINDOW_SIZE = {
   width: 760,
   loginHeight: 760,
@@ -95,7 +101,7 @@ function listenForAuthWindowCrop() {
   })).catch(() => { authWindowCropListening = false; });
 }
 
-const resizeNativeWindow = createWindowSizeCoordinator(async (surface: CloudLoginMode | 'main') => {
+const resizeNativeWindow = createWindowSizeCoordinator(async (surface: CloudGateSurface | 'main') => {
   listenForAuthWindowCrop();
   const { invoke } = await import('@tauri-apps/api/core');
   const crop = await invoke<AuthWindowCrop | undefined>('desktop_set_auth_window_surface', {
@@ -105,8 +111,14 @@ const resizeNativeWindow = createWindowSizeCoordinator(async (surface: CloudLogi
   applyAuthWindowCrop(crop);
 });
 
-export async function applyCloudLoginWindowSize(mode: CloudLoginMode) {
-  if (isTauriRuntime()) await resizeNativeWindow(mode);
+export async function applyCloudLoginWindowSize(surface: CloudGateSurface) {
+  if (isTauriRuntime()) await resizeNativeWindow(surface);
+}
+
+/** The welcome window shows the macOS material through a transparent page. */
+export function supportsFrostedGate(runtime: typeof globalThis = globalThis) {
+  const platform = runtime.navigator?.platform ?? '';
+  return isTauriRuntime(runtime) && /Mac/.test(platform);
 }
 
 export async function applyKordiMainWindowSize() {

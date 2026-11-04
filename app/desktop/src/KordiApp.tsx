@@ -1,5 +1,5 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEventHandler } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEventHandler } from 'react';
 
 import { CloudStartingScreen } from '@/features/cloud/CloudStartingScreen';
 import { reopenCloudOAuthBrowser } from '@/features/cloud/cloudOAuthSignIn';
@@ -36,7 +36,7 @@ import {
   usePendingGroupInvitation,
 } from '@/features/cloud/groupInvitationDeepLink';
 import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/sessionGate';
-import { isTauriRuntime, readAuthWindowCropOffset, type CloudLoginMode } from '@/features/cloud/loginWindow';
+import { isTauriRuntime, readAuthWindowCropOffset, supportsFrostedGate, type CloudLoginMode } from '@/features/cloud/loginWindow';
 import { readLoginModePreference } from '@/features/cloud/loginModePreference';
 import { useCloudWindowSurface } from '@/features/cloud/useCloudWindowSurface';
 import { useCloudSyncPresentation } from '@/features/cloud/useCloudSyncPresentation';
@@ -77,13 +77,16 @@ const APP_WINDOW_BACKGROUND: Record<ResolvedThemeMode, string> = {
   dark: '#22231d',
 };
 
+// The frosted welcome window shows the native material through the page.
+const FROSTED_GATE_WINDOW_BACKGROUND = '#00000000';
+
 // The shell's useKordiUiEffects also writes `theme-*` to <body>, but it only
 // runs after KordiAppShell mounts. Before that — on the cloud login gate and
 // the restoring-session splash — nothing else applies a theme class, so the
 // dark/light tokens never reach those screens. This hook syncs the body class
 // to the persisted theme preference; `auto` follows system while the
 // gate/splash is up. Once the shell mounts, its effect takes over.
-function useGateThemeClass(active: boolean) {
+function useGateThemeClass(active: boolean, frosted = false) {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredThemeMode());
   const [theme, setTheme] = useState<ResolvedThemeMode>(() => {
     return resolveThemeMode(themeMode, readSystemTheme());
@@ -152,15 +155,18 @@ function useGateThemeClass(active: boolean) {
 
   useLayoutEffect(() => {
     document.body.classList.toggle('app-cloud-gate-active', active);
+    document.body.classList.toggle('app-cloud-gate-frosted', active && frosted);
     if (isTauriRuntime()) {
-      const background = active ? GATE_WINDOW_BACKGROUND[theme] : APP_WINDOW_BACKGROUND[theme];
+      const background = !active
+        ? APP_WINDOW_BACKGROUND[theme]
+        : frosted ? FROSTED_GATE_WINDOW_BACKGROUND : GATE_WINDOW_BACKGROUND[theme];
       void getCurrentWindow().setBackgroundColor(background).catch(() => undefined);
     }
 
     return () => {
-      document.body.classList.remove('app-cloud-gate-active');
+      document.body.classList.remove('app-cloud-gate-active', 'app-cloud-gate-frosted');
     };
-  }, [active, theme]);
+  }, [active, frosted, theme]);
 
   return theme;
 }
@@ -211,8 +217,12 @@ export function KordiAppRoot({
 // splash) inside the same `kordi-app` root the main shell uses, so the
 // theme-tokens.css palette resolves. The wrapping hook installs the system
 // theme class on <body> until the shell takes over.
-function CloudGateShell({ children, active = true }: { children: React.ReactNode; active?: boolean }) {
-  const theme = useGateThemeClass(active);
+function CloudGateShell({
+  children,
+  active = true,
+  frosted = false,
+}: { children: React.ReactNode; active?: boolean; frosted?: boolean }) {
+  const theme = useGateThemeClass(active, frosted);
   const handleGateWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
     if (!shouldStartNativeWindowDrag({
       isNativeShell: isTauriRuntime(),
@@ -233,6 +243,7 @@ function CloudGateShell({ children, active = true }: { children: React.ReactNode
     <div
       className={`kordi-app app-cloud-login-shell theme-${theme}`}
       data-active={active}
+      data-frosted={frosted}
       inert={!active}
       aria-hidden={!active}
       onMouseDownCapture={handleGateWindowDragMouseDown}
@@ -270,7 +281,13 @@ function CloudEditionRoot({
     setLoginPresented(false);
   }
   const signedOut = shouldShowCloudLoginGate({ cloudSessionStatus: status });
-  const windowReady = useCloudWindowSurface(signedOut ? loginMode : status === 'authenticated' ? 'main' : null);
+  // Browser sign-in uses the compact welcome window until the server turns
+  // out not to offer it; then the in-app form takes its own window size.
+  const [inAppForm, setInAppForm] = useState(false);
+  const handleBrowserSignInChange = useCallback((active: boolean) => setInAppForm(!active), []);
+  const welcome = signedOut && Boolean(session.browserSignIn) && !inAppForm;
+  const frosted = welcome && supportsFrostedGate();
+  const windowReady = useCloudWindowSurface(signedOut ? (welcome ? 'welcome' : loginMode) : status === 'authenticated' ? 'main' : null);
   if (signedOut && windowReady && !loginPresented) setLoginPresented(true);
   const loginReady = (windowReady || loginPresented) && !activity;
   const gateActive = Boolean(activity) || status !== 'authenticated' || sync.status !== 'ready' || !windowReady;
@@ -284,7 +301,7 @@ function CloudEditionRoot({
           windowReady={windowReady && !activity}
         />
       ) : null}
-      <CloudGateShell active={gateActive}>
+      <CloudGateShell active={gateActive} frosted={frosted}>
         <CloudStartingScreen
           visible={!(signedOut && loginReady)}
           status={status === 'authenticated' && sync.status === 'error' ? 'error' : 'syncing'}
@@ -295,6 +312,7 @@ function CloudEditionRoot({
         {signedOut ? (
           <div className="app-cloud-login-surface" data-ready={loginReady} inert={!loginReady}>
             <CloudSignInGate browserSignIn={session.browserSignIn}
+              onBrowserSignInChange={handleBrowserSignInChange}
               initialMode={loginMode}
               onModeChange={setLoginMode}
               onSignIn={signIn}

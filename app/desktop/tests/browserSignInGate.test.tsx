@@ -93,8 +93,12 @@ function typeInto(input: HTMLInputElement, value: string) {
   input.dispatchEvent(new window.Event('input', { bubbles: true }));
 }
 
-const render = (root: Root, browserSignIn?: CloudBrowserSignInSession) => act(async () => {
-  root.render(createElement(CloudSignInGate, { browserSignIn, onModeChange: () => {} }));
+const render = (
+  root: Root,
+  browserSignIn?: CloudBrowserSignInSession,
+  onBrowserSignInChange?: (active: boolean) => void,
+) => act(async () => {
+  root.render(createElement(CloudSignInGate, { browserSignIn, onModeChange: () => {}, onBrowserSignInChange }));
 });
 
 test('the welcome screen opens the browser and finishes from the loopback redirect', async () => {
@@ -179,5 +183,20 @@ test('older servers and runtimes without browser sign-in keep the in-app form', 
     await render(root, undefined);
     await settle();
     assert.ok(document.querySelector('input[type="email"]'), 'no native shell shows the form');
+  });
+});
+
+test('the gate reports whether browser sign-in or the in-app form is showing', async () => {
+  await withDom(async (root) => {
+    const reports: boolean[] = [];
+    const report = (active: boolean) => { reports.push(active); };
+    await render(root, fakeSession().session, report);
+    await settle();
+    assert.equal(reports.at(-1), true, 'browser sign-in keeps the compact window');
+
+    await render(root, fakeSession({ probeStatus: 404, probeError: 'not_found' }).session, report);
+    await settle();
+    assert.ok(document.querySelector('input[type="email"]'));
+    assert.equal(reports.at(-1), false, 'the in-app form takes its own window size');
   });
 });

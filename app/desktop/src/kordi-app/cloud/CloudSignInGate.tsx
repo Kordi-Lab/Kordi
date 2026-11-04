@@ -43,20 +43,24 @@ function useBrowserSignInAvailability(session: CloudBrowserSignInSession) {
   return { availability, probe };
 }
 
+type BrowserSignInChange = (active: boolean) => void;
+
 function BrowserSignIn({
   session,
   probe,
-  onModeChange,
+  onBrowserSignInChange,
 }: {
   session: CloudBrowserSignInSession;
   probe: () => Promise<BrowserSignInAvailability>;
-  onModeChange?: CloudLoginPageProps['onModeChange'];
+  onBrowserSignInChange?: BrowserSignInChange;
 }) {
   const signIn = useBrowserSignIn({ config: session.config, onSignedIn: session.complete });
+  // A host that sizes the window learns which surface is showing; standalone
+  // renders size the window themselves.
   useEffect(() => {
-    if (onModeChange) onModeChange('login');
-    else void applyCloudLoginWindowSize('login').catch(() => undefined);
-  }, [onModeChange]);
+    if (onBrowserSignInChange) onBrowserSignInChange(true);
+    else void applyCloudLoginWindowSize('welcome').catch(() => undefined);
+  }, [onBrowserSignInChange]);
   const { start } = signIn;
   // Settle availability first so an older server falls back to the form.
   const startWhenAvailable = useCallback<BrowserSignInState['start']>(async (intent: BrowserSignInIntent, options) => {
@@ -72,20 +76,31 @@ function BrowserSignIn({
 
 export function CloudSignInGate({
   browserSignIn,
+  onBrowserSignInChange,
   ...loginProps
-}: CloudLoginPageProps & { browserSignIn?: CloudBrowserSignInSession }) {
+}: CloudLoginPageProps & {
+  browserSignIn?: CloudBrowserSignInSession;
+  /** Reports whether the browser sign-in screens (true) or the in-app form (false) show. */
+  onBrowserSignInChange?: BrowserSignInChange;
+}) {
   if (!browserSignIn) return <CloudLoginPage {...loginProps} />;
-  return <BrowserSignInOrForm session={browserSignIn} loginProps={loginProps} />;
+  return <BrowserSignInOrForm session={browserSignIn} loginProps={loginProps} onBrowserSignInChange={onBrowserSignInChange} />;
 }
 
 function BrowserSignInOrForm({
   session,
   loginProps,
+  onBrowserSignInChange,
 }: {
   session: CloudBrowserSignInSession;
   loginProps: CloudLoginPageProps;
+  onBrowserSignInChange?: BrowserSignInChange;
 }) {
   const { availability, probe } = useBrowserSignInAvailability(session);
-  if (availability === 'unavailable') return <CloudLoginPage {...loginProps} />;
-  return <BrowserSignIn session={session} probe={probe} onModeChange={loginProps.onModeChange} />;
+  const unavailable = availability === 'unavailable';
+  useEffect(() => {
+    if (unavailable) onBrowserSignInChange?.(false);
+  }, [unavailable, onBrowserSignInChange]);
+  if (unavailable) return <CloudLoginPage {...loginProps} />;
+  return <BrowserSignIn session={session} probe={probe} onBrowserSignInChange={onBrowserSignInChange} />;
 }

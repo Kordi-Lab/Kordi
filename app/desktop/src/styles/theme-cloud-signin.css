@@ -172,6 +172,15 @@
   --app-kordi-bird-cut: rgb(241 245 249);
 }
 
+/* The wing cut approximates the veiled material in the frosted window. */
+.kordi-app.app-cloud-login-shell[data-frosted="true"] .app-cloud-browser-signin {
+  --app-kordi-bird-cut: rgb(38 40 45);
+}
+
+.kordi-app.theme-light.app-cloud-login-shell[data-frosted="true"] .app-cloud-browser-signin {
+  --app-kordi-bird-cut: rgb(236 237 241);
+}
+
 .app-cloud-welcome-bird {
   width: 84px;
   height: 84px;
@@ -316,7 +325,8 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 22px;
+  /* The detached web view extends past the window's bottom edge too. */
+  bottom: calc(var(--app-gate-crop-y, 0px) + 22px);
   display: flex;
   justify-content: center;
 }

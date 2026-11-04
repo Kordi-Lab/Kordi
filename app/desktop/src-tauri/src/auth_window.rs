@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum AuthWindowSurface {
+    /// The compact browser sign-in window.
+    Welcome,
     Login,
     Signup,
     Main,
@@ -11,6 +13,7 @@ pub(crate) enum AuthWindowSurface {
 impl AuthWindowSurface {
     fn dimensions(self) -> (f64, f64, f64, f64) {
         match self {
+            Self::Welcome => (440.0, 560.0, 440.0, 560.0),
             Self::Login => (760.0, 760.0, 620.0, 640.0),
             Self::Signup => (760.0, 860.0, 620.0, 640.0),
             Self::Main => (1480.0, 980.0, 1192.0, 760.0),
@@ -130,6 +133,10 @@ mod macos {
 
     thread_local! {
         static STATE: RefCell<Option<AuthWebviewState>> = const { RefCell::new(None) };
+        // Whether the window currently shows the main shell at its own frame.
+        static SHOWING_MAIN: Cell<bool> = const { Cell::new(false) };
+        // The main shell's frame when a gate replaced it, restored on return.
+        static MAIN_FRAME: Cell<Option<NSRect>> = const { Cell::new(None) };
         // Mirrors the detached web view so the hold override never needs a
         // STATE borrow, which may already be held when AppKit calls it.
         static DETACHED_WEBVIEW: Cell<*const AnyObject> = const { Cell::new(std::ptr::null()) };
@@ -324,6 +331,21 @@ mod macos {
         Ok(())
     }
 
+    /// Fits `frame` inside a screen's visible area.
+    fn clamp_to(mut frame: NSRect, visible: NSRect) -> NSRect {
+        frame.size.width = frame.size.width.min(visible.size.width);
+        frame.size.height = frame.size.height.min(visible.size.height);
+        frame.origin.x = frame.origin.x.clamp(
+            visible.origin.x,
+            visible.origin.x + visible.size.width - frame.size.width,
+        );
+        frame.origin.y = frame.origin.y.clamp(
+            visible.origin.y,
+            visible.origin.y + visible.size.height - frame.size.height,
+        );
+        frame
+    }
+
     /// Centers `current`'s replacement for a content size, clamped to the screen.
     unsafe fn clamped_frame(
         native: &AnyObject,
@@ -336,20 +358,68 @@ mod macos {
         frame.origin.x = current.origin.x + (current.size.width - frame.size.width) / 2.0;
         frame.origin.y = current.origin.y + (current.size.height - frame.size.height) / 2.0;
         let screen: *const AnyObject = msg_send![native, screen];
-        if let Some(screen) = screen.as_ref() {
-            let visible: NSRect = msg_send![screen, visibleFrame];
-            frame.size.width = frame.size.width.min(visible.size.width);
-            frame.size.height = frame.size.height.min(visible.size.height);
-            frame.origin.x = frame.origin.x.clamp(
-                visible.origin.x,
-                visible.origin.x + visible.size.width - frame.size.width,
-            );
-            frame.origin.y = frame.origin.y.clamp(
-                visible.origin.y,
-                visible.origin.y + visible.size.height - frame.size.height,
-            );
+        match screen.as_ref() {
+            Some(screen) => clamp_to(frame, msg_send![screen, visibleFrame]),
+            None => frame,
         }
-        frame
+    }
+
+    /// The remembered main frame on a screen that still shows part of it.
+    unsafe fn remembered_frame(saved: NSRect) -> Option<NSRect> {
+        let screens: *const AnyObject = msg_send![class!(NSScreen), screens];
+        let screens = screens.as_ref()?;
+        let count: usize = msg_send![screens, count];
+        (0..count).find_map(|index| {
+            let screen: *const AnyObject = msg_send![screens, objectAtIndex: index];
+            let screen = screen.as_ref()?;
+            let visible: NSRect = msg_send![screen, visibleFrame];
+            let overlaps = saved.origin.x < visible.origin.x + visible.size.width
+                && visible.origin.x < saved.origin.x + saved.size.width
+                && saved.origin.y < visible.origin.y + visible.size.height
+                && visible.origin.y < saved.origin.y + saved.size.height;
+            overlaps.then(|| clamp_to(saved, visible))
+        })
+    }
+
+    /// Gates hide the workspace pane backings, which only fit the main shell.
+    /// The welcome window keeps its material active so the blur stays while
+    /// the browser has focus; other surfaces follow the window's active state.
+    unsafe fn prepare_backdrop(parent: &AnyObject, surface: AuthWindowSurface) {
+        // NSVisualEffectStateFollowsWindowActiveState = 0, Active = 1.
+        let material_state = isize::from(surface == AuthWindowSurface::Welcome);
+        let gate = surface != AuthWindowSurface::Main;
+        let backings = [
+            NSString::from_str("kordi-session-backing"),
+            NSString::from_str("kordi-workspace-backing"),
+        ];
+        let views: *const AnyObject = msg_send![parent, subviews];
+        let Some(views) = views.as_ref() else {
+            return;
+        };
+        let count: usize = msg_send![views, count];
+        for index in 0..count {
+            let child: *const AnyObject = msg_send![views, objectAtIndex: index];
+            let Some(child) = child.as_ref() else {
+                continue;
+            };
+            let is_material: bool = msg_send![child, isKindOfClass: class!(NSVisualEffectView)];
+            if is_material {
+                let _: () = msg_send![child, setState: material_state];
+                continue;
+            }
+            let identifier: *const AnyObject = msg_send![child, identifier];
+            let Some(identifier) = identifier.as_ref() else {
+                continue;
+            };
+            let is_backing = backings
+                .iter()
+                .any(|name| -> bool { msg_send![identifier, isEqualToString: &**name] });
+            if is_backing {
+                let frame: NSRect = msg_send![child, frame];
+                let hidden = gate || frame.size.width <= 0.0;
+                let _: () = msg_send![child, setHidden: hidden];
+            }
+        }
     }
 
     pub(super) fn resize(
@@ -383,7 +453,21 @@ mod macos {
             )?;
 
             let current: NSRect = msg_send![native, frame];
-            let frame = clamped_frame(native, current, width, height);
+            // Leaving the main shell remembers its frame; returning restores
+            // it, and a main shell that is already showing keeps its frame.
+            let frame = if gate {
+                if SHOWING_MAIN.replace(false) {
+                    MAIN_FRAME.set(Some(current));
+                }
+                clamped_frame(native, current, width, height)
+            } else if SHOWING_MAIN.get() {
+                current
+            } else {
+                MAIN_FRAME
+                    .take()
+                    .and_then(|saved| remembered_frame(saved))
+                    .unwrap_or_else(|| clamped_frame(native, current, width, height))
+            };
             let detached =
                 STATE.with(|cell| cell.borrow().as_ref().is_some_and(|state| state.detached));
             if gate {
@@ -408,6 +492,7 @@ mod macos {
                     DETACHED_WEBVIEW.set(Retained::as_ptr(&webview));
                 }
                 center(&webview, &parent);
+                prepare_backdrop(&parent, surface);
             } else if !detached {
                 reattach(&webview, &parent);
             }
@@ -425,6 +510,8 @@ mod macos {
                     center(&webview, &parent)
                 } else {
                     reattach(&webview, &parent);
+                    prepare_backdrop(&parent, surface);
+                    SHOWING_MAIN.set(true);
                     AuthWindowCrop::default()
                 };
                 publish(&target, crop);
