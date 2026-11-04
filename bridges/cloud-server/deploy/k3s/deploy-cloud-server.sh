@@ -9,7 +9,9 @@
 #      bare-name resolution finds it without trying Docker Hub.
 #   3. Exports it to an OCI archive and imports into k3s's containerd.
 #   4. Builds the MinIO server and client images from source on the VM and
-#      imports them into containerd before applying minio.yaml.
+#      imports them into containerd before applying minio.yaml, unless they
+#      are already imported. Importing archives built elsewhere is preferred;
+#      see deploy/minio/README.md.
 #   5. Applies the Deployment + Service manifests with the new tag.
 #   6. Waits for rollout, hits /health from inside the cluster.
 #

@@ -15,8 +15,15 @@ third party can publish an image under these names. Nothing pulls them: each
 environment builds them locally.
 
 The builds use a pinned Go toolchain and Alpine base (by version and digest).
-The Go checksum database verifies the downloaded MinIO source. Building needs
+Each Dockerfile installs MinIO's source by the Go pseudo-version of the commit
+its release tag points to (`*_MODULE`), so a moved tag cannot change the
+source, and the Go checksum database verifies the download. Building needs
 access to the Go module proxy and the Alpine package mirror.
+
+MinIO and mc are licensed under the GNU AGPL v3 or later. Each image carries
+the upstream `LICENSE`, `NOTICE`, and `CREDITS` (dependency notices) plus the Go
+license under `/usr/share/licenses/minio` or `/usr/share/licenses/mc`, and
+`legal/catalog.json` records the exact source commit of each build.
 
 ## Where the images are built
 
@@ -27,6 +34,17 @@ access to the Go module proxy and the Alpine package mirror.
   copies this directory to the host, then runs `build-k3s-images.sh` there to
   build with buildah and import into k3s containerd before applying
   `minio.yaml`. The manifests use `imagePullPolicy: Never`.
+
+  Building off the host is preferred: compiling MinIO competes with the
+  running services for memory and disk. Build the archives elsewhere with
+  `scripts/build-vps-images.sh`, copy `minio.oci.tar` and `minio-mc.oci.tar`
+  to the host, and import them with
+  `sudo k3s ctr --namespace k8s.io images import <archive>`.
+  `build-k3s-images.sh` skips an image that containerd already has under its
+  pinned tag. When it does build, it first requires 8 GiB of free disk and
+  2 GiB of available memory (`KORDI_MINIO_BUILD_MIN_DISK_MIB`,
+  `KORDI_MINIO_BUILD_MIN_MEMORY_MIB`), and it prunes its build layers and
+  caches from buildah storage when it exits.
 - **Self-hosted VPS.** `scripts/build-vps-images.sh` writes `minio.oci.tar` and
   `minio-mc.oci.tar` next to the application archives. `scripts/vps-deploy.py
   apply` stops before changing anything if they are not imported.
@@ -54,7 +72,15 @@ access to the Go module proxy and the Alpine package mirror.
 
 ## Changing a release
 
-Update the `*_RELEASE` and `*_VERSION` arguments in the Dockerfile, then every
-image reference listed by `scripts/minio-images.test.mjs`. A new server
-release replaces the running MinIO on the next deploy; check MinIO's upgrade
-notes first.
+Update the `*_RELEASE`, `*_VERSION`, and `*_MODULE` arguments in the
+Dockerfile, then every image reference listed by
+`scripts/minio-images.test.mjs`. The module is the release commit's Go
+pseudo-version, which `go list -m github.com/minio/minio@<release tag>` (or
+`github.com/minio/mc@<release tag>`) prints.
+Then run `pnpm licenses:refresh` and review the updated MinIO entries in
+`legal/catalog.json`. A new server release replaces the running MinIO on the
+next deploy; check MinIO's upgrade notes first.
+
+The k3s builder skips images that are already imported under the same tag. If
+a Dockerfile changes without a new release, set `KORDI_MINIO_IMAGES_REBUILD=1`
+for the next deploy.

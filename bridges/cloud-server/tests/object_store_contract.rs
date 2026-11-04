@@ -11,8 +11,9 @@
 //! Every request is signed with the server's own presign helpers and sent the
 //! way the attachment routes send it: single PUT, HEAD, GET, multipart create,
 //! part upload, complete, and abort. Objects are written under
-//! `object-store-contract/` and deleted afterwards.
+//! `object-store-contract/` and deleted afterwards, also when a check fails.
 
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use kordi_cloud_server::attachments::{
@@ -44,7 +45,7 @@ async fn download(http: &Client, cfg: &S3Config, key: &str) -> Vec<u8> {
     response.bytes().await.unwrap().to_vec()
 }
 
-async fn create_multipart(http: &Client, cfg: &S3Config, key: &str) -> String {
+async fn create_multipart(http: &Client, cfg: &S3Config, key: &str, created: &Tracker) -> String {
     let response = http
         .post(presign_create_multipart_url(cfg, key).unwrap())
         .send()
@@ -56,28 +57,70 @@ async fn create_multipart(http: &Client, cfg: &S3Config, key: &str) -> String {
         response.status()
     );
     let body = response.bytes().await.unwrap();
-    CreateMultipartUpload::parse_response(&body)
+    let upload_id = CreateMultipartUpload::parse_response(&body)
         .unwrap()
         .upload_id()
-        .to_string()
+        .to_string();
+    created
+        .lock()
+        .unwrap()
+        .uploads
+        .push((key.to_string(), upload_id.clone()));
+    upload_id
 }
 
-async fn delete(http: &Client, cfg: &S3Config, key: &str) {
+/// Removes an object. S3 also answers success for a key that does not exist.
+async fn delete(http: &Client, cfg: &S3Config, key: &str) -> Result<(), String> {
     let bucket = Bucket::new(
         cfg.endpoint.clone(),
         UrlStyle::Path,
         cfg.bucket.clone(),
         cfg.region.clone(),
     )
-    .unwrap();
+    .map_err(|error| error.to_string())?;
     let credentials = Credentials::new(cfg.access_key.clone(), cfg.secret_key.clone());
     let url = DeleteObject::new(&bucket, Some(&credentials), key).sign(PRESIGNED_URL_TTL);
-    let response = http.delete(url).send().await.unwrap();
-    assert!(
-        response.status().is_success(),
-        "cleanup DELETE: {}",
-        response.status()
-    );
+    let response = http
+        .delete(url)
+        .send()
+        .await
+        .map_err(|error| format!("DELETE {key}: {error}"))?;
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("DELETE {key}: {}", response.status()))
+    }
+}
+
+/// Objects and multipart uploads the run created, removed afterwards even
+/// when an assertion fails.
+#[derive(Default)]
+struct Created {
+    keys: Vec<String>,
+    uploads: Vec<(String, String)>,
+}
+
+type Tracker = Arc<Mutex<Created>>;
+
+fn track_key(created: &Tracker, key: &str) {
+    created.lock().unwrap().keys.push(key.to_string());
+}
+
+async fn cleanup(http: &Client, cfg: &S3Config, created: Created) -> Vec<String> {
+    let mut failures = Vec::new();
+    // Aborting an upload that already completed or was aborted fails with
+    // NoSuchUpload, which is expected here.
+    for (key, upload_id) in &created.uploads {
+        if let Ok(url) = presign_abort_multipart_url(cfg, key, upload_id) {
+            let _ = http.delete(url).send().await;
+        }
+    }
+    for key in &created.keys {
+        if let Err(error) = delete(http, cfg, key).await {
+            failures.push(error);
+        }
+    }
+    failures
 }
 
 #[tokio::test]
@@ -89,6 +132,27 @@ async fn attachment_presigned_requests_work_against_the_object_store() {
         .timeout(Duration::from_secs(120))
         .build()
         .unwrap();
+    let created = Tracker::default();
+
+    // Run the checks in their own task so a failed assertion still reaches
+    // the cleanup below, then report the original failure.
+    let outcome = tokio::spawn(exercise(http.clone(), cfg.clone(), created.clone())).await;
+    // A panic never happens while the lock is held, but stay usable if it did.
+    let created = std::mem::take(&mut *created.lock().unwrap_or_else(|error| error.into_inner()));
+    let failures = cleanup(&http, &cfg, created).await;
+    match outcome {
+        Err(error) if error.is_panic() => {
+            for failure in &failures {
+                eprintln!("cleanup failed: {failure}");
+            }
+            std::panic::resume_unwind(error.into_panic());
+        }
+        Err(error) => panic!("contract task did not finish: {error}"),
+        Ok(()) => assert!(failures.is_empty(), "cleanup failed: {failures:?}"),
+    }
+}
+
+async fn exercise(http: Client, cfg: S3Config, created: Tracker) {
     let run = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -96,6 +160,9 @@ async fn attachment_presigned_requests_work_against_the_object_store() {
     let single_key = format!("object-store-contract/{run}/single");
     let multipart_key = format!("object-store-contract/{run}/multipart");
     let aborted_key = format!("object-store-contract/{run}/aborted");
+    for key in [&single_key, &multipart_key, &aborted_key] {
+        track_key(&created, key);
+    }
 
     // Single presigned PUT, then HEAD and GET.
     let single = payload(64 * 1024, 7);
@@ -127,7 +194,7 @@ async fn attachment_presigned_requests_work_against_the_object_store() {
     assert_eq!(download(&http, &cfg, &single_key).await, single);
 
     // Multipart upload in the server's chunk size, with a short final part.
-    let upload_id = create_multipart(&http, &cfg, &multipart_key).await;
+    let upload_id = create_multipart(&http, &cfg, &multipart_key, &created).await;
     let parts = [payload(MULTIPART_CHUNK_SIZE, 1), payload(4096, 2)];
     let mut etags = Vec::new();
     for (index, part) in parts.iter().enumerate() {
@@ -161,7 +228,7 @@ async fn attachment_presigned_requests_work_against_the_object_store() {
     assert_eq!(download(&http, &cfg, &multipart_key).await, parts.concat());
 
     // An aborted upload leaves no object behind.
-    let upload_id = create_multipart(&http, &cfg, &aborted_key).await;
+    let upload_id = create_multipart(&http, &cfg, &aborted_key, &created).await;
     let response = http
         .delete(presign_abort_multipart_url(&cfg, &aborted_key, &upload_id).unwrap())
         .send()
@@ -186,7 +253,4 @@ async fn attachment_presigned_requests_work_against_the_object_store() {
         .unwrap();
     let response = http.get(unsigned).send().await.unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
-
-    delete(&http, &cfg, &single_key).await;
-    delete(&http, &cfg, &multipart_key).await;
 }

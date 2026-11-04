@@ -13,18 +13,31 @@ import { read, repoRoot } from './local-debug-stack-helpers.mjs';
 
 const YAML = createRequire(new URL('../app/desktop/package.json', import.meta.url))('yaml');
 
-function pinnedRelease(dockerfile, name) {
-  const release = read(dockerfile).match(new RegExp(`^ARG ${name}_RELEASE=(RELEASE\\.[0-9TZ-]+)$`, 'm'))?.[1];
-  const version = read(dockerfile).match(new RegExp(`^ARG ${name}_VERSION=(\\S+)$`, 'm'))?.[1];
+function pinnedRelease(dockerfile, name, modulePath) {
+  const text = read(dockerfile);
+  const release = text.match(new RegExp(`^ARG ${name}_RELEASE=(RELEASE\\.[0-9TZ-]+)$`, 'm'))?.[1];
+  const version = text.match(new RegExp(`^ARG ${name}_VERSION=(\\S+)$`, 'm'))?.[1];
+  const module = text.match(new RegExp(`^ARG ${name}_MODULE=(v0\\.0\\.0-(\\d{14})-([0-9a-f]{12}))$`, 'm'));
   assert.ok(release, `${dockerfile} pins a ${name} release`);
   // RELEASE.2024-12-18T13-15-44Z is version 2024-12-18T13:15:44Z.
   const [date, time] = release.slice('RELEASE.'.length).split('T');
   assert.equal(version, `${date}T${time.replace(/-/g, ':')}`, `${dockerfile} version matches its release`);
-  return release;
+  // The module is the release commit's pseudo-version, never a movable tag;
+  // its timestamp is the release time.
+  assert.ok(module, `${dockerfile} installs ${name} by Go pseudo-version`);
+  assert.equal(module[2], `${date}${time}`.replace(/[-Z]/g, ''), `${dockerfile} module matches its release`);
+  assert.match(text, new RegExp(`go install \\\\\\n[^\\n]*\\n\\s+"${modulePath.replace(/\./g, '\\.')}@\\$\\{${name}_MODULE\\}"`));
+  assert.doesNotMatch(text, /apk add[^\n]*\bgit\b/, `${dockerfile} needs no git`);
+  // The image carries the upstream AGPL license, notices, and dependency credits.
+  assert.match(text, /for file in LICENSE NOTICE CREDITS;/);
+  assert.match(text, /^COPY --from=build \/licenses \/usr\/share\/licenses\/\w+$/m);
+  return { release, module: module[1], revision: module[3] };
 }
 
-const serverRelease = pinnedRelease('deploy/minio/Dockerfile.server', 'MINIO');
-const clientRelease = pinnedRelease('deploy/minio/Dockerfile.client', 'MC');
+const server = pinnedRelease('deploy/minio/Dockerfile.server', 'MINIO', 'github.com/minio/minio');
+const client = pinnedRelease('deploy/minio/Dockerfile.client', 'MC', 'github.com/minio/mc');
+const serverRelease = server.release;
+const clientRelease = client.release;
 const serverImage = `docker.io/library/kordi-minio:${serverRelease}`;
 const clientImage = `docker.io/library/kordi-minio-mc:${clientRelease}`;
 
@@ -85,6 +98,7 @@ test('the development stack builds both MinIO images and keeps loopback ports', 
     const definition = compose.services[service];
     assert.equal(`docker.io/library/${definition.image}`, image, service);
     assert.deepEqual(definition.build, { context: '../minio', dockerfile }, service);
+    assert.equal(definition.pull_policy, 'build', `${service} never pulls its image`);
   }
   for (const port of compose.services.minio.ports) {
     assert.match(port, /^127\.0\.0\.1:/);
@@ -118,6 +132,12 @@ test('k3s workloads run only imported MinIO images', () => {
   assert.match(builder, new RegExp(`^MINIO_IMAGE=${serverImage.replace(/\./g, '\\.')}$`, 'm'));
   assert.match(builder, new RegExp(`^MC_IMAGE=${clientImage.replace(/\./g, '\\.')}$`, 'm'));
   assert.match(builder, /k3s ctr --namespace k8s\.io/);
+  // The product host builds only with enough disk and memory, and prunes after.
+  assert.match(builder, /KORDI_MINIO_BUILD_MIN_DISK_MIB/);
+  assert.match(builder, /MemAvailable/);
+  assert.match(builder, /trap cleanup EXIT/);
+  assert.match(builder, /buildah rmi --prune/);
+  assert.ok(builder.indexOf('MemAvailable') < builder.indexOf('buildah bud'), 'checks run before building');
 
   const deploy = read('bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh');
   for (const file of ['Dockerfile.server', 'Dockerfile.client', 'build-k3s-images.sh']) {
@@ -137,4 +157,25 @@ test('k3s workloads run only imported MinIO images', () => {
   assert.match(vps, /minio\.oci\.tar.*deploy\/minio\/Dockerfile\.server deploy\/minio/);
   assert.match(vps, /minio-mc\.oci\.tar.*deploy\/minio\/Dockerfile\.client deploy\/minio/);
   assert.match(read('docs/vps-deployment.md'), /omp-route-worker minio minio-mc; do/);
+});
+
+test('the license catalog records the exact source of both images', () => {
+  const catalog = JSON.parse(read('legal/catalog.json'));
+  const entries = catalog.packages.filter(({ ecosystem }) => ecosystem === 'container');
+  const expected = [
+    ['github.com/minio/mc', client, 'deploy/minio/Dockerfile.client'],
+    ['github.com/minio/minio', server, 'deploy/minio/Dockerfile.server'],
+  ];
+  assert.deepEqual(
+    entries.map(({ name }) => name),
+    expected.map(([name]) => name),
+  );
+  for (const [name, pinned, dockerfile] of expected) {
+    const entry = entries.find((candidate) => candidate.name === name);
+    assert.equal(entry.version, pinned.release, name);
+    assert.equal(entry.license, 'AGPL-3.0-or-later', name);
+    assert.ok(entry.revision.startsWith(pinned.revision), `${name} records the pinned commit`);
+    assert.equal(entry.source, `https://codeload.github.com/${name.slice('github.com/'.length)}/tar.gz/${entry.revision}`);
+    assert.ok(catalog.inputs[dockerfile], `${dockerfile} changes make the license review stale`);
+  }
 });

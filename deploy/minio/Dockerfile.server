@@ -2,19 +2,29 @@
 # MinIO no longer publishes its release images to a public registry, so Kordi
 # builds this image locally. See deploy/minio/README.md.
 FROM docker.io/library/golang:1.23.12-alpine3.22@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS build
+# MINIO_RELEASE and MINIO_VERSION are the strings MinIO embeds in its binary.
+# MINIO_MODULE is the Go pseudo-version of the commit that release tag points
+# to. A pseudo-version names the commit itself, so a moved tag cannot change
+# the source, and the Go checksum database verifies the downloaded module.
 ARG MINIO_RELEASE=RELEASE.2024-12-18T13-15-44Z
 ARG MINIO_VERSION=2024-12-18T13:15:44Z
-# GOTOOLCHAIN=local keeps the pinned toolchain; the Go checksum database
-# verifies the downloaded module source.
+ARG MINIO_MODULE=v0.0.0-20241218131544-16f8cf1c52f0
+# GOTOOLCHAIN=local keeps the pinned toolchain.
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-trimpath
-RUN apk add --no-cache git \
-  && go install \
+RUN go install \
     -ldflags "-s -w -X github.com/minio/minio/cmd.ReleaseTag=${MINIO_RELEASE} -X github.com/minio/minio/cmd.Version=${MINIO_VERSION} -X github.com/minio/minio/cmd.CopyrightYear=2024" \
-    "github.com/minio/minio@${MINIO_RELEASE}"
+    "github.com/minio/minio@${MINIO_MODULE}" \
+  && mkdir /licenses \
+  && for file in LICENSE NOTICE CREDITS; do \
+    cp "$(go env GOMODCACHE)/github.com/minio/minio@${MINIO_MODULE}/${file}" /licenses/; \
+  done \
+  && cp "$(go env GOROOT)/LICENSE" /licenses/go-LICENSE
 
 FROM docker.io/library/alpine:3.22.6@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
 # curl serves the Compose health check.
 RUN apk add --no-cache ca-certificates curl
 COPY --from=build /go/bin/minio /usr/bin/minio
+# MinIO's AGPL license, notices, and dependency credits, plus the Go license.
+COPY --from=build /licenses /usr/share/licenses/minio
 EXPOSE 9000 9001
 ENTRYPOINT ["minio"]

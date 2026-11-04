@@ -2,16 +2,25 @@
 # Bucket setup, release identities, and the object-store smoke check run it
 # through /bin/sh. See deploy/minio/README.md.
 FROM docker.io/library/golang:1.23.12-alpine3.22@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS build
+# MC_RELEASE and MC_VERSION are the strings mc embeds in its binary. MC_MODULE
+# is the Go pseudo-version of the commit that release tag points to.
 ARG MC_RELEASE=RELEASE.2024-11-21T17-21-54Z
 ARG MC_VERSION=2024-11-21T17:21:54Z
+ARG MC_MODULE=v0.0.0-20241121172154-1681e4497c09
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-trimpath
-RUN apk add --no-cache git \
-  && go install \
+RUN go install \
     -ldflags "-s -w -X github.com/minio/mc/cmd.ReleaseTag=${MC_RELEASE} -X github.com/minio/mc/cmd.Version=${MC_VERSION} -X github.com/minio/mc/cmd.CopyrightYear=2024" \
-    "github.com/minio/mc@${MC_RELEASE}"
+    "github.com/minio/mc@${MC_MODULE}" \
+  && mkdir /licenses \
+  && for file in LICENSE NOTICE CREDITS; do \
+    cp "$(go env GOMODCACHE)/github.com/minio/mc@${MC_MODULE}/${file}" /licenses/; \
+  done \
+  && cp "$(go env GOROOT)/LICENSE" /licenses/go-LICENSE
 
 FROM docker.io/library/alpine:3.22.6@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
 # curl fetches presigned URLs in the object-store smoke check.
 RUN apk add --no-cache ca-certificates curl
 COPY --from=build /go/bin/mc /usr/bin/mc
+# mc's AGPL license, notices, and dependency credits, plus the Go license.
+COPY --from=build /licenses /usr/share/licenses/mc
 ENTRYPOINT ["mc"]

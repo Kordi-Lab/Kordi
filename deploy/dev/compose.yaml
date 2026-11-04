@@ -71,6 +71,8 @@ services:
     build:
       context: ../minio
       dockerfile: Dockerfile.server
+    # Never pull: no registry publishes this image.
+    pull_policy: build
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in deploy/dev/.env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in deploy/dev/.env}
@@ -92,6 +94,8 @@ services:
     build:
       context: ../minio
       dockerfile: Dockerfile.client
+    # Never pull: no registry publishes this image.
+    pull_policy: build
     depends_on:
       minio:
         condition: service_healthy
