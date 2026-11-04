@@ -406,4 +406,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "verified instance access waitlist",
         "0161_access_waitlist.sql"
     ),
+    migration!(165, "browser sign-in for apps", "0165_browser_sign_in.sql"),
 ];
