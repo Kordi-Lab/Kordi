@@ -9,6 +9,7 @@
 .app-companion-panel-surface > .app-document-tabs-header { height: 40px; min-height: 40px; }
 .app-companion-panel-surface { display: flex; flex-direction: column; }
 .app-companion-tab-content { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.app-companion-tab-content[hidden] { display: none; }
 .app-document-tabs-header > button {
   display: grid; place-items: center; align-self: center;
   width: 28px; height: 28px; flex: none;
