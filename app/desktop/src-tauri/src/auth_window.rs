@@ -13,7 +13,7 @@ pub(crate) enum AuthWindowSurface {
 impl AuthWindowSurface {
     fn dimensions(self) -> (f64, f64, f64, f64) {
         match self {
-            Self::Welcome => (440.0, 560.0, 440.0, 560.0),
+            Self::Welcome => (440.0, 480.0, 440.0, 480.0),
             Self::Login => (760.0, 760.0, 620.0, 640.0),
             Self::Signup => (760.0, 860.0, 620.0, 640.0),
             Self::Main => (1480.0, 980.0, 1192.0, 760.0),

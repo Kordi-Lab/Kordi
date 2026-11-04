@@ -186,6 +186,12 @@
   overflow: hidden;
 }
 
+/* The old in-app form gives every panel a tall minimum height; the welcome
+ * group is only as tall as its content so the frame can center it. */
+.app-cloud-login-panel.app-cloud-welcome {
+  min-height: 0;
+}
+
 .app-cloud-welcome {
   display: flex;
   flex-direction: column;

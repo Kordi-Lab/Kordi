@@ -278,7 +278,7 @@ test('cloud window surfaces keep their compact and workspace dimensions', async 
 });
 
 test('browser sign-in uses a compact frosted window on macOS only', () => {
-  assert.deepEqual(CLOUD_WELCOME_WINDOW_SIZE, { width: 440, height: 560 });
+  assert.deepEqual(CLOUD_WELCOME_WINDOW_SIZE, { width: 440, height: 480 });
   const runtime = (platform: string, native = true) => ({
     ...(native ? { __TAURI_INTERNALS__: {} } : {}),
     navigator: { platform },
@@ -288,7 +288,7 @@ test('browser sign-in uses a compact frosted window on macOS only', () => {
   assert.equal(supportsFrostedGate(runtime('MacIntel', false)), false, 'browser renders have no material');
 
   const nativeWindow = readSource('src-tauri/src/auth_window.rs');
-  assert.match(nativeWindow, /Self::Welcome => \(440\.0, 560\.0,/);
+  assert.match(nativeWindow, /Self::Welcome => \(440\.0, 480\.0,/);
   assert.match(nativeWindow, /MAIN_FRAME/, 'the main frame is remembered across a sign-out');
 
   assert.match(readSource('src/styles/base.css'), /html\.kordi-native-shell body\.app-cloud-gate-active\.app-cloud-gate-frosted \{\s*background: transparent;/);

@@ -7,7 +7,7 @@ export type CloudLoginMode = 'login' | 'signup';
 export type CloudGateSurface = CloudLoginMode | 'welcome';
 
 /** The compact browser sign-in window, with the native material behind it on macOS. */
-export const CLOUD_WELCOME_WINDOW_SIZE = { width: 440, height: 560 } as const;
+export const CLOUD_WELCOME_WINDOW_SIZE = { width: 440, height: 480 } as const;
 
 export const CLOUD_LOGIN_WINDOW_SIZE = {
   width: 760,
