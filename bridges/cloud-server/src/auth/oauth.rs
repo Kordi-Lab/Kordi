@@ -134,6 +134,13 @@ pub(crate) fn is_allowed_sign_in_redirect(target: &str) -> bool {
     is_allowed_sign_in_redirect_with_config(target, allowlist.as_deref(), &public_base_url())
 }
 
+/// Whether `target` is served by this server's public origin. Such a target
+/// may receive a session only through the web cookie hand-off, never in a
+/// URL fragment.
+pub(crate) fn targets_public_server(target: &str) -> bool {
+    url::Url::parse(target.trim()).is_ok_and(|url| reaches_public_server(&url, &public_base_url()))
+}
+
 fn is_allowed_sign_in_redirect_with_config(
     target: &str,
     allowlist: Option<&str>,
@@ -145,7 +152,13 @@ fn is_allowed_sign_in_redirect_with_config(
     let Ok(url) = url::Url::parse(target.trim()) else {
         return false;
     };
-    !is_public_base_url(&url, public_base) || url.path() == WEB_OAUTH_COMPLETE_PATH
+    !reaches_public_server(&url, public_base)
+        || (is_public_base_url(&url, public_base) && url.path() == WEB_OAUTH_COMPLETE_PATH)
+}
+
+/// Whether `url` reaches the server at `public_base`.
+fn reaches_public_server(url: &url::Url, public_base: &str) -> bool {
+    is_public_base_url(url, public_base)
 }
 
 fn is_allowed_oauth_redirect_with_config(

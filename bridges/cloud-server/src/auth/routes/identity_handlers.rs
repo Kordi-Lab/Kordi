@@ -77,7 +77,11 @@ pub(super) async fn oauth_authorization_url(
             StatusCode::BAD_REQUEST,
         )));
     };
-    if !is_allowed_sign_in_redirect(&start_query.redirect_after) {
+    // Only the web start, which binds the browser, may return to this
+    // server's own pages.
+    if !is_allowed_sign_in_redirect(&start_query.redirect_after)
+        || (web.is_none() && targets_public_server(&start_query.redirect_after))
+    {
         return Err(Box::new(err(
             "invalid_redirect",
             "OAuth redirect target is not allowed.",
@@ -277,13 +281,21 @@ pub(super) async fn oauth_callback(
             StatusCode::BAD_REQUEST,
         );
     }
-    // A web sign-in sets the session cookie, so it must finish in the
-    // browser that started it. The state is already consumed.
+    // A return to this server's pages is a web sign-in: it sets the session
+    // cookie, never a URL fragment, and must finish in the browser that
+    // started it. The state is already consumed.
     let web_return_to = web_oauth_return_to(&redirect_after);
-    if web_return_to.is_some()
-        && !browser_binding_matches(&headers, browser_binding_hash.as_deref())
-    {
-        return web_oauth_binding_rejected(&redirect_after);
+    if targets_public_server(&redirect_after) {
+        if web_return_to.is_none() {
+            return err(
+                "invalid_oauth_state",
+                "OAuth state is invalid.",
+                StatusCode::BAD_REQUEST,
+            );
+        }
+        if !browser_binding_matches(&headers, browser_binding_hash.as_deref()) {
+            return web_oauth_binding_rejected(&redirect_after);
+        }
     }
     if chrono::DateTime::parse_from_rfc3339(&expires_at)
         .map(|value| value < Utc::now())
