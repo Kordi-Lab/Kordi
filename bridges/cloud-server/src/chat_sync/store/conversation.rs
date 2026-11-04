@@ -105,7 +105,11 @@ pub(crate) async fn create_room_group_in_transaction(
         request,
         None,
         1,
-        Some(&group_title),
+        Some(super::channels::GroupCreation {
+            title: Some(group_title),
+            space_id: None,
+            roles: None,
+        }),
         None,
     )
     .await
@@ -154,15 +158,17 @@ async fn create_conversation_in_transaction_with_trusted_peer(
     .await
 }
 
-async fn create_conversation_with_options(
+pub(super) async fn create_conversation_with_options(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
     request: CreateConversationRequest,
     trusted_peer_account_id: Option<&str>,
     min_group_members: usize,
-    group_title: Option<&str>,
+    group: Option<super::channels::GroupCreation>,
     personal_agent_id: Option<&str>,
 ) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
+    let group_title = group.as_ref().and_then(|group| group.title.as_deref());
+    let source_space = group.as_ref().and_then(|group| group.space_id.as_deref());
     let shared_title = normalize_title(request.shared_title.as_deref())?;
     let members = normalized_members(account_id, &request.member_account_ids);
     let client_session_id = normalize_client_session_id(Some(&request.client_session_id))?
@@ -197,7 +203,12 @@ async fn create_conversation_with_options(
         kind: request.kind,
         shared_title: &shared_title,
         client_session_id: &client_session_id,
-        member_account_ids: &members,
+        member_account_ids: if source_space.is_some() {
+            &[]
+        } else {
+            &members
+        },
+        source_group_space_id: source_space,
     })?;
 
     advisory_operation_lock(transaction, account_id, request.client_operation_id).await?;
@@ -236,14 +247,17 @@ async fn create_conversation_with_options(
     // group chat. Resolve that identity before inserting so two devices (or
     // two members racing to open the same chat) converge on one server row.
     {
-        let existing: Option<(Uuid, String)> = query_as(
-            "SELECT conversation_id, kind FROM cloud_chat_conversations \
+        let existing: Option<(Uuid, String, Option<String>)> = query_as(
+            "SELECT conversation_id, kind, group_space_id FROM cloud_chat_conversations \
              WHERE legacy_session_id = $1 FOR UPDATE",
         )
         .bind(&client_session_id)
         .fetch_optional(&mut **transaction)
         .await?;
-        if let Some((conversation_id, stored_kind)) = existing {
+        if let Some((conversation_id, stored_kind, stored_space)) = existing {
+            if source_space.is_some() && source_space != stored_space.as_deref() {
+                return Err(StoreError::IdempotencyKeyReused);
+            }
             if stored_kind != request.kind.as_str() {
                 return Err(StoreError::IdempotencyKeyReused);
             }
@@ -284,7 +298,7 @@ async fn create_conversation_with_options(
         .filter(|member| member.as_str() != account_id)
         .cloned()
         .collect::<Vec<_>>();
-    if !peers.is_empty() {
+    if !peers.is_empty() && group.as_ref().is_none_or(|group| group.roles.is_none()) {
         let authorized_count: (i64,) = query_as(
             "SELECT COUNT(*) FROM unnest($2::TEXT[]) AS peer(account_id) \
              WHERE peer.account_id = $3 OR EXISTS ( \
@@ -316,7 +330,7 @@ async fn create_conversation_with_options(
     .bind(request.client_operation_id)
     .bind(&request_fingerprint)
     .bind(&client_session_id)
-    .bind(group_title.map(|_| client_session_id.as_str()))
+    .bind(source_space.or_else(|| group_title.map(|_| client_session_id.as_str())))
     .bind(group_title)
     .execute(&mut **transaction)
     .await?;
@@ -327,11 +341,18 @@ async fn create_conversation_with_options(
         )
         .bind(conversation_id)
         .bind(member)
-        .bind(if member == account_id {
-            "owner"
-        } else {
-            "member"
-        })
+        .bind(
+            group
+                .as_ref()
+                .and_then(|group| group.roles.as_ref())
+                .and_then(|roles| roles.get(member))
+                .map(String::as_str)
+                .unwrap_or(if member == account_id {
+                    "owner"
+                } else {
+                    "member"
+                }),
+        )
         .execute(&mut **transaction)
         .await?;
     }

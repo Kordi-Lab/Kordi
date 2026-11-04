@@ -96,6 +96,8 @@ pub struct BootstrapSnapshot {
 
 #[derive(Serialize)]
 struct CreationIntent<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_group_space_id: Option<&'a str>,
     kind: ConversationKind,
     shared_title: &'a Option<String>,
     client_session_id: &'a str,
@@ -223,7 +225,9 @@ type SyncEventRow = (
 
 mod attachment_actions;
 pub use attachment_actions::{delete_attachment, message_for_viewer, set_attachment_reaction};
+mod channels;
 mod conversation;
+pub use channels::create_group_channel;
 mod cursors;
 mod grounding_origin;
 mod legacy_client_events;

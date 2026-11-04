@@ -124,7 +124,7 @@ export type CloudProfileUpdateInput = import('./cloudIdentityTypes').CloudProfil
 import type { CloudContactRequest, CloudContactAcceptResult } from './cloudContactRequestTypes';
 export type { CloudContactRequestDirection, CloudContactRequestStatus, CloudContactRequest, CloudContactAcceptResult } from './cloudContactRequestTypes';
 
-export type SendCloudMessageOptions = {
+export type SendCloudMessageOptions = Pick<ChatSyncConversationInput, 'sourceGroupSpaceId'> & {
   sessionId?: string | null;
   attachments?: SendCloudMessageAttachmentInput[];
   clientCreatedAt?: string | null;

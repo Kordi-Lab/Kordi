@@ -89,11 +89,19 @@ pub(in crate::common_ground) struct DeviceItem {
     date: Option<String>,
 }
 
-fn day(value: Option<&str>) -> Option<String> {
-    let value = value?.get(..10)?;
+/// Preserve instants so clients can display the source's local day. Date-only input
+/// remains a calendar date; it must never be assigned an invented timezone.
+fn evidence_date(value: Option<&str>) -> Option<String> {
+    let value = value?;
+    if let Ok(at) = chrono::DateTime::parse_from_rfc3339(value) {
+        return Some(at.with_timezone(&Utc).to_rfc3339());
+    }
+    if value.len() != 10 {
+        return None;
+    }
     chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
         .ok()
-        .map(|d| d.to_string())
+        .map(|day| day.to_string())
 }
 
 fn item(
@@ -180,7 +188,7 @@ pub(in crate::common_ground) async fn gather(
             evidence.push(item(
                 "Memory",
                 &title,
-                day(Some(&memory.updated_at)),
+                evidence_date(Some(&memory.updated_at)),
                 None,
                 &memory.text,
             ));
@@ -204,7 +212,7 @@ pub(in crate::common_ground) async fn gather(
             evidence.push(item(
                 &source,
                 &title,
-                day(Some(&event.occurred_at)),
+                evidence_date(Some(&event.occurred_at)),
                 None,
                 &strings.join(" · "),
             ));
@@ -228,7 +236,7 @@ pub(in crate::common_ground) async fn gather(
                 evidence.push(item(
                     &source,
                     &title,
-                    day(entry.date.as_deref()),
+                    evidence_date(entry.date.as_deref()),
                     None,
                     &title,
                 ));
@@ -257,7 +265,7 @@ pub(in crate::common_ground) async fn gather(
     if agent_files > 0 {
         used.push("Agents".to_string());
     }
-    let today = Utc::now().date_naive().to_string();
+    let today = Utc::now().to_rfc3339();
     let entries: Vec<&str> = request
         .links
         .split([';', '\n'])
@@ -305,4 +313,26 @@ pub(in crate::common_ground) fn request_for_tests(notes: &str, links: &str) -> B
 #[cfg(test)]
 pub(in crate::common_ground) fn link_url_for_tests(entry: &str) -> Option<String> {
     link_url(entry)
+}
+
+#[cfg(test)]
+mod date_tests {
+    use super::evidence_date;
+
+    #[test]
+    fn evidence_dates_preserve_instants_and_date_only_sources() {
+        assert_eq!(
+            evidence_date(Some("2026-11-02T01:30:00Z")).as_deref(),
+            Some("2026-11-02T01:30:00+00:00")
+        );
+        assert_eq!(
+            evidence_date(Some("2026-11-01T17:30:00-08:00")).as_deref(),
+            Some("2026-11-02T01:30:00+00:00")
+        );
+        assert_eq!(
+            evidence_date(Some("2026-11-01")).as_deref(),
+            Some("2026-11-01")
+        );
+        assert_eq!(evidence_date(Some("2026-11-01invalid")), None);
+    }
 }

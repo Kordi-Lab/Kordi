@@ -1,5 +1,7 @@
 #[path = "chat_sync_e2e/attachment_actions.rs"]
 mod attachment_actions;
+#[path = "chat_sync_e2e/channels.rs"]
+mod channels;
 #[path = "chat_sync_e2e/group_avatars.rs"]
 mod group_avatars;
 #[path = "chat_sync_e2e/live_photos.rs"]

@@ -61,7 +61,7 @@ pub(super) async fn gather_documents(
         gathered.push(Gathered {
             source: DOCUMENTS_SOURCE.into(),
             title: squeeze(&redact(&document.title), MAX_TITLE_CHARS),
-            date: Some(document.updated_at.date_naive().to_string()),
+            date: Some(document.updated_at.to_rfc3339()),
             url: None,
             text,
         });

@@ -33,7 +33,6 @@ export async function createGroupChannel({ space, name, sessionId, canonicalStat
   const cloudParticipants = cloudGroupParticipantsForCollaborationSession(account,
     buildChatGroupCollaborationUpdateParticipants({ participants, adminIdentityIds: activeGroupAdminIds(canonicalState, sourceId) }));
   const targetAccountIds = cloudParticipants.map((person) => person.accountId).filter((id) => id !== account.accountId);
-  if (!targetAccountIds.length) throw new Error('Group members are not available yet. Try again.');
   const now = Date.now();
   await sendCloudGroupControl({
     kind: 'group-invite', groupId: sessionId, groupSpaceId,
