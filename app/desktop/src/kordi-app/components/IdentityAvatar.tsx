@@ -35,6 +35,7 @@ export type IdentityAvatarProps = {
   className?: string;
   cornerRadius?: string;
   generatedClassName?: string;
+  /** Accessible status description; visible status belongs in the surrounding text. */
   presenceStatus?: 'online' | 'offline' | string | null;
   presenceLabel?: string | null;
 };
@@ -200,6 +201,7 @@ export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, ava
         className="h-full w-full rounded-[17%] bg-transparent"
         style={{ borderRadius: cornerRadius }}
         aria-label={label}
+        aria-description={resolvedPresenceLabel ?? undefined}
         data-avatar-kind={kind}
         data-avatar-state={avatarState}
       >
@@ -230,14 +232,6 @@ export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, ava
           />
         ) : null}
       </Avatar>
-      {normalizedPresenceStatus ? (
-        <span
-          className="app-presence-light"
-          data-presence-status={normalizedPresenceStatus}
-          aria-label={resolvedPresenceLabel ?? undefined}
-          title={resolvedPresenceLabel ?? undefined}
-        />
-      ) : null}
     </span>
   );
 }

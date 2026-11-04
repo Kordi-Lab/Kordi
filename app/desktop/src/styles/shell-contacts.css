@@ -178,21 +178,6 @@
   background: var(--app-sidebar-selected-bg);
 }
 
-.app-contacts-avatar .app-presence-light[data-presence-status] {
-  right: 4%;
-  bottom: 4%;
-  width: 10px;
-  height: 10px;
-}
-
-.app-contacts-detail-avatar .app-presence-light[data-presence-status] {
-  right: 5%;
-  bottom: 5%;
-  width: 16px;
-  height: 16px;
-  border-width: 2.5px;
-}
-
 /* Action tiles: equal width (grid columns), icon over label, on a subtle surface. */
 .app-contacts-tile {
   color: var(--app-accent);

@@ -4,6 +4,7 @@
 @import './styles/theme-tokens.css';
 @import './styles/chat-theme-tokens.css';
 @import './styles/shell.css';
+@import './styles/shell-scrollbars.css';
 @import './styles/shell-contacts.css';
 @import './styles/shell-contact-profile.css';
 @import './styles/shell-navigation.css';

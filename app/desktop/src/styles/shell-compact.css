@@ -64,7 +64,8 @@ html.kordi-native-shell .kordi-app .app-session-panel {
   border-radius: var(--app-surface-radius) 0 0 var(--app-surface-radius);
   box-shadow: none;
 }
-html.kordi-native-shell .kordi-app .app-session-panel > div > .flex.h-full.flex-col {
+/* Apply the inset once to the list, including lists portaled into the session slot. */
+html.kordi-native-shell .kordi-app .app-session-panel .app-sidebar-list-content {
   padding: 12px 14px 10px;
 }
 html.kordi-native-shell body[data-kordi-chat-theme='classic'] .kordi-app.theme-light .app-workspace-sidebar {

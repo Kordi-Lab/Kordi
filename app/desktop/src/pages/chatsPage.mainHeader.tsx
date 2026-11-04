@@ -195,7 +195,7 @@ export function MainChatHeader({
       <CompanionToolbar {...companion} />
     </div>
   );
-  // A personal session's header shows its own status line.
+  // A personal session's header includes its own inline status.
   const hasMetadata = !personalAgent && Boolean(metadata.subtitle || metadata.forkSourceSessionId);
   const metadataRow = hasMetadata ? (
     <div
