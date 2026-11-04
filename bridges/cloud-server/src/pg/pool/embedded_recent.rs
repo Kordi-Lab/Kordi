@@ -401,4 +401,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0159_nearby_card_activities.sql"
     ),
     migration!(160, "durable agent exchanges", "0160_agent_exchanges.sql"),
+    migration!(
+        161,
+        "verified instance access waitlist",
+        "0161_access_waitlist.sql"
+    ),
 ];

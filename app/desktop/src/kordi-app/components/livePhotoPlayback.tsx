@@ -18,10 +18,11 @@ async function playbackSource(livePhoto: LivePhoto) {
   return cloudAttachmentPlaybackUrl(defaultCloudAuthClient(), session.token, resource.attachmentId);
 }
 
-export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSource, controlsTarget, imageRef, imageUrl }: {
+export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, imageTransform, loadSource, controlsTarget, imageRef, imageUrl }: {
   livePhoto?: LivePhoto | null;
   localVideoPath?: string;
   zoom?: number;
+  imageTransform?: string;
   loadSource?: () => Promise<string>;
   controlsTarget?: HTMLElement | null;
   imageRef?: RefObject<HTMLImageElement | null>;
@@ -113,7 +114,7 @@ export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSou
     {source ? (
       <video ref={videoRef} src={source} playsInline preload="auto"
         className="app-attachment-image-lightbox-image absolute object-contain"
-        style={{ ...frame, transform: `scale(${zoom})`, background: "black", opacity: loading ? 0 : 1, visibility: playing ? "visible" : "hidden" }}
+        style={{ ...frame, transform: imageTransform ?? `scale(${zoom})`, pointerEvents: 'none', background: "black", opacity: loading ? 0 : 1, visibility: playing ? "visible" : "hidden" }}
         data-attachment-image-lightbox-control="true"
         aria-label="Live Photo motion"
         onCanPlay={(event) => {

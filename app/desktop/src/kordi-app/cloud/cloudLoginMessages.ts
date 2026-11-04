@@ -1,3 +1,4 @@
+import { clientDistribution } from '@/features/cloud/distribution';
 import type { CloudAuthError } from '@/features/cloud/authClient';
 
 export const PASSWORD_MIN_LENGTH = 8;
@@ -44,4 +45,14 @@ export function cloudLoginErrorMessage(
     default:
       return error.message || 'Something went wrong.';
   }
+}
+
+export function loginHeading(signup: boolean): string {
+  const page = clientDistribution()?.loginPage;
+  return (signup ? page?.signupTitle : page?.title) ?? (signup ? 'Create your account' : 'Welcome to Kordi');
+}
+export function loginSubtitle(signup: boolean): string {
+  const page = clientDistribution()?.loginPage;
+  return (signup ? page?.signupSubtitle : page?.subtitle) ?? (signup
+    ? 'Sign up for Next-generation Supercollaboration' : 'Building Next-generation Supercollaboration');
 }

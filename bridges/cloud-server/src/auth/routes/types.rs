@@ -72,6 +72,8 @@ pub struct OAuthStartResponse {
 
 #[derive(Debug, Serialize)]
 pub struct AuthCapabilitiesResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admission: Option<serde_json::Value>,
     pub password: bool,
     #[serde(rename = "oauthProviders")]
     pub oauth_providers: Vec<&'static str>,
