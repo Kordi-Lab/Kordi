@@ -2,7 +2,8 @@
 //! RFC 8252). The browser returns to `http://127.0.0.1:<port>/auth/callback`
 //! with `code` and `state` (or `error` and `state`) in the query. The
 //! listener hands that query to the app only when `state` matches the
-//! value the app generated, then serves a page that sends the user back.
+//! value the app generated, serves a short page in the browser, and brings
+//! the Kordi window back to the front.
 //!
 //! The pending and cancellation maps are shared with the older OAuth
 //! loopback, so `cloud_oauth_loopback_wait` and `cloud_oauth_loopback_cancel`
@@ -15,8 +16,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
 
 use crate::cloud_oauth_loopback::{
-    read_loopback_request, static_completion_page_html, write_response, CloudOAuthLoopbackStart,
-    CloudOAuthLoopbackState,
+    read_loopback_request, write_response, CloudOAuthLoopbackStart, CloudOAuthLoopbackState,
 };
 
 pub(crate) const CALLBACK_PATH: &str = "/auth/callback";
@@ -27,6 +27,7 @@ const LISTENER_LIFETIME: Duration = Duration::from_secs(15 * 60);
 
 #[tauri::command]
 pub async fn cloud_app_sign_in_loopback_prepare(
+    app: tauri::AppHandle,
     state: State<'_, CloudOAuthLoopbackState>,
     expected_state: String,
 ) -> Result<CloudOAuthLoopbackStart, String> {
@@ -54,7 +55,15 @@ pub async fn cloud_app_sign_in_loopback_prepare(
         .lock()
         .map_err(|_| "Sign-in callback state is unavailable.".to_string())?
         .insert(request_id.clone(), cancel_tx);
-    tokio::spawn(run_listener(listener, expected_state, tx, cancel_rx));
+    // The browser now has focus; land the user back in Kordi once it returns.
+    let bring_back = move || crate::window_lifecycle::bring_main_window_to_front(&app);
+    tokio::spawn(run_listener(
+        listener,
+        expected_state,
+        tx,
+        cancel_rx,
+        bring_back,
+    ));
     Ok(CloudOAuthLoopbackStart {
         request_id,
         redirect_url: format!("http://127.0.0.1:{port}{CALLBACK_PATH}"),
@@ -66,6 +75,7 @@ async fn run_listener(
     expected_state: String,
     tx: oneshot::Sender<Result<String, String>>,
     cancel_rx: oneshot::Receiver<()>,
+    on_completed: impl FnOnce(),
 ) {
     let mut sender = Some(tx);
     let deadline = tokio::time::sleep(LISTENER_LIFETIME);
@@ -91,6 +101,7 @@ async fn run_listener(
                     if let Some(tx) = sender.take() {
                         let _ = tx.send(Ok(query));
                     }
+                    on_completed();
                     return;
                 }
             }
@@ -108,16 +119,8 @@ async fn handle_connection(mut stream: TcpStream, expected_state: &str) -> Optio
     let outcome = classify_request(&request, expected_state);
     const HTML: &str = "text/html; charset=utf-8";
     let (status, content_type, body) = match &outcome {
-        CallbackOutcome::Completed { is_error, .. } => (
-            "200 OK",
-            HTML,
-            static_completion_page_html(if *is_error { "error" } else { "success" }),
-        ),
-        CallbackOutcome::Rejected => (
-            "400 Bad Request",
-            HTML,
-            static_completion_page_html("error"),
-        ),
+        CallbackOutcome::Completed { is_error, .. } => ("200 OK", HTML, completion_page(!is_error)),
+        CallbackOutcome::Rejected => ("400 Bad Request", HTML, completion_page(false)),
         CallbackOutcome::NotFound => (
             "404 Not Found",
             "text/plain; charset=utf-8",
@@ -129,6 +132,51 @@ async fn handle_connection(mut stream: TcpStream, expected_state: &str) -> Optio
         CallbackOutcome::Completed { query, .. } => Some(query),
         _ => None,
     }
+}
+
+/// The browser tab after the redirect: one line and a hint in system colors,
+/// with no external assets. A signed-in tab tries to close itself, which
+/// browsers allow only for tabs a script opened.
+pub(crate) fn completion_page(signed_in: bool) -> String {
+    let (status, title, hint, script) = if signed_in {
+        (
+            "success",
+            "Signed in to Kordi",
+            "You can close this tab.",
+            "<script>setTimeout(function () { window.close(); }, 800);</script>",
+        )
+    } else {
+        (
+            "error",
+            "Could not sign in to Kordi",
+            "Return to Kordi and try again.",
+            "",
+        )
+    };
+    format!(
+        r#"<!doctype html>
+<html lang="en" data-status="{status}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{title}</title>
+<style>
+:root {{ --bg: #f7f7f8; --ink: #17181c; --muted: #6b6f78; }}
+@media (prefers-color-scheme: dark) {{ :root {{ --bg: #151619; --ink: #f2f3f5; --muted: #9a9ea8; }} }}
+html, body {{ height: 100%; margin: 0; }}
+body {{ display: grid; place-items: center; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }}
+main {{ padding: 24px; text-align: center; }}
+h1 {{ margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }}
+p {{ margin: 6px 0 0; color: var(--muted); font-size: 13px; }}
+</style>
+</head>
+<body>
+<main role="status"><h1>{title}</h1><p>{hint}</p></main>
+{script}
+</body>
+</html>"#
+    )
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -273,9 +321,69 @@ mod tests {
     }
 
     #[test]
-    fn completion_pages_need_no_script() {
-        let page = static_completion_page_html("success");
-        assert!(page.contains("data-status=\"success\""));
-        assert!(page.contains("<script></script>"));
+    fn completion_pages_are_minimal_and_self_contained() {
+        let signed_in = completion_page(true);
+        assert!(signed_in.contains("data-status=\"success\""));
+        assert!(signed_in.contains("<h1>Signed in to Kordi</h1><p>You can close this tab.</p>"));
+        assert!(signed_in.contains("window.close()"));
+        assert!(signed_in.contains("prefers-color-scheme: dark"));
+
+        let failed = completion_page(false);
+        assert!(failed.contains("data-status=\"error\""));
+        assert!(failed
+            .contains("<h1>Could not sign in to Kordi</h1><p>Return to Kordi and try again.</p>"));
+        assert!(!failed.contains("<script"), "an error page stays open");
+
+        for page in [signed_in, failed] {
+            for external in ["http:", "https:", "src=", "href=", "@import", "url("] {
+                assert!(!page.contains(external), "{external}");
+            }
+        }
+    }
+
+    async fn request(port: u16, target: &str) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        stream.write_all(get(target).as_bytes()).await.unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).await.unwrap();
+        response
+    }
+
+    #[tokio::test]
+    async fn a_valid_callback_completes_and_brings_kordi_back() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel();
+        let (_cancel_tx, cancel_rx) = oneshot::channel();
+        let brought_back = Arc::new(AtomicUsize::new(0));
+        let counter = brought_back.clone();
+        let task = tokio::spawn(run_listener(
+            listener,
+            "s1".to_string(),
+            tx,
+            cancel_rx,
+            move || {
+                counter.fetch_add(1, Ordering::SeqCst);
+            },
+        ));
+
+        let foreign = request(port, "/auth/callback?code=kac_1&state=other").await;
+        assert!(foreign.starts_with("HTTP/1.1 400"));
+        assert!(foreign.contains("Could not sign in to Kordi"));
+        assert!(request(port, "/favicon.ico")
+            .await
+            .starts_with("HTTP/1.1 404"));
+        assert_eq!(brought_back.load(Ordering::SeqCst), 0);
+
+        let signed_in = request(port, "/auth/callback?code=kac_1&state=s1").await;
+        assert!(signed_in.starts_with("HTTP/1.1 200"));
+        assert!(signed_in.contains("Signed in to Kordi"));
+        task.await.unwrap();
+        assert_eq!(rx.await.unwrap(), Ok("code=kac_1&state=s1".to_string()));
+        assert_eq!(brought_back.load(Ordering::SeqCst), 1);
     }
 }

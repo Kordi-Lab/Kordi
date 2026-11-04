@@ -259,12 +259,6 @@ fn completion_page_html(request_id: &str) -> String {
     completion_page_document("loading", &completion_page_script(request_id))
 }
 
-/// The same page with a fixed status and no script, for callbacks whose
-/// result is already known when the browser arrives.
-pub(crate) fn static_completion_page_html(status: &str) -> String {
-    completion_page_document(status, "")
-}
-
 fn completion_page_document(status: &str, script: &str) -> String {
     format!(
         r#"<!doctype html>

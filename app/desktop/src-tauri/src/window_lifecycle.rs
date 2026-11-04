@@ -43,6 +43,36 @@ pub(crate) fn show_and_focus_main_window<R: tauri::Runtime>(app: &tauri::AppHand
     }
 }
 
+/// Lands the user back in Kordi after a hand-off to the browser or another
+/// app: unhides the app, restores and focuses the main window, and activates
+/// Kordi on macOS so it comes in front of the browser.
+pub(crate) fn bring_main_window_to_front<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    #[cfg(target_os = "macos")]
+    if let Err(err) = app.show() {
+        eprintln!("[kordi] Unable to unhide Kordi: {err}");
+    }
+    show_and_focus_main_window(app);
+    #[cfg(target_os = "macos")]
+    {
+        // A window that was minimized is skipped by set_focus until it has
+        // restored, so activate the app explicitly as well.
+        let activated = app.run_on_main_thread(|| {
+            use objc2::{class, msg_send, runtime::AnyObject};
+            // SAFETY: runs on the main thread; NSApplication's shared
+            // instance lives for the whole process.
+            unsafe {
+                let ns_app: *const AnyObject = msg_send![class!(NSApplication), sharedApplication];
+                if let Some(ns_app) = ns_app.as_ref() {
+                    let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
+                }
+            }
+        });
+        if let Err(err) = activated {
+            eprintln!("[kordi] Unable to activate Kordi: {err}");
+        }
+    }
+}
+
 #[tauri::command]
 pub(crate) fn desktop_relaunch_after_update(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
