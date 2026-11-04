@@ -29,10 +29,12 @@ export function useNativeBackdrop(isNativeShell: boolean, theme: string, sidebar
       const sessions = styles.getPropertyValue(transparency.matches || contrast.matches ? '--app-native-session-fallback' : '--app-native-session-bg').trim();
       const titlebarHeight = element.querySelector('.app-native-titlebar')?.getBoundingClientRect().height
         ?? (Number.parseFloat(styles.getPropertyValue('--app-native-titlebar-height')) || 0);
+      const workspaceInset = Number.parseFloat(styles.getPropertyValue('--app-surface-inset')) || 0;
+      const cornerRadius = Number.parseFloat(styles.getPropertyValue('--app-surface-radius')) || 0;
       const colors = [color, sessions];
       const sidebar = element.querySelector('.app-workspace-sidebar');
       const renderedSidebarWidth = sidebar?.getBoundingClientRect().width ?? sidebarWidth;
-      const signature = `${colors.join('|')}|${titlebarHeight}|${renderedSidebarWidth}|${zoom}`;
+      const signature = `${colors.join('|')}|${titlebarHeight}|${renderedSidebarWidth}|${workspaceInset}|${cornerRadius}|${zoom}`;
       if (colors.some(value => !value) || signature === previousColor) return;
       previousColor = signature;
       context.clearRect(0, 0, 2, 1);
@@ -45,7 +47,7 @@ export function useNativeBackdrop(isNativeShell: boolean, theme: string, sidebar
       const sessionBackground = Array.from(pixel.slice(4, 8));
       void import('@tauri-apps/api/core').then(async ({ invoke }) => {
         if (disposed) return;
-        await invoke('desktop_set_window_backdrop', { sidebarWidth: renderedSidebarWidth * zoom, background, navigationWidth: LEFT_RAIL_WIDTH * zoom, sessionBackground, titlebarHeight: titlebarHeight * zoom });
+        await invoke('desktop_set_window_backdrop', { sidebarWidth: renderedSidebarWidth * zoom, background, navigationWidth: LEFT_RAIL_WIDTH * zoom, sessionBackground, titlebarHeight: titlebarHeight * zoom, workspaceSurface: { inset: workspaceInset * zoom, cornerRadius: cornerRadius * zoom } });
         if (!disposed) element.dataset.nativeBackdrop = 'ready';
       }).catch(() => undefined);
     };

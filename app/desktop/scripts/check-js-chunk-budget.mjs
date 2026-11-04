@@ -17,7 +17,8 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Calendar read-only consent, provider permissions, and setup readiness add less than 1 kB.
 // Factory account selection and owner-leased smoke tests add up to 3 kB.
 // Full forwarded snapshots, bounded rich rendering, voice cleanup, and document format feedback add 4 kB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_625_000;
+// Compact shell materials, corner geometry, and sidebar cover motion add less than 5 kB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_630_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;

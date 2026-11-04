@@ -1,0 +1,8 @@
+/* Browsers cannot reveal desktop wallpaper. Only this synthetic fixture
+ * supplies a selectable stand-in; production uses the native material. */
+html.kordi-native-shell[data-synthetic-browser-backdrop] body {
+  background: var(--synthetic-preview-backdrop, #dadada);
+}
+html.kordi-native-shell[data-synthetic-browser-backdrop] .kordi-app .app-shell {
+  background: var(--app-shell-material);
+}

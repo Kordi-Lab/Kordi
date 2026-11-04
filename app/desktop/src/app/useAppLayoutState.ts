@@ -85,7 +85,9 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
   const collapseChatSessions = showSessionRail && isSessionPanelCollapsed;
   const isSingleWorkspacePage = !showSessionRail;
   const sessionRailWidth =
-    showSessionRail && !collapseChatSessions
+    // Native collapse changes the exposed workspace track, not the list's
+    // intrinsic width. Keep its contents stable while the main surface moves.
+    showSessionRail && (isNativeShell || !collapseChatSessions)
       ? clampSessionPanelWidth(sessionRailUserWidth, windowSize.width, showResizableRightDetailRail && !isDetailPanelCollapsed)
       : 0;
   const leftWorkspaceWidth =
