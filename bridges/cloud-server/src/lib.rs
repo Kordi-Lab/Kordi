@@ -23,6 +23,7 @@ pub mod events;
 pub mod human_simulator;
 pub(crate) mod memory_store;
 pub mod notifications;
+pub mod organizations;
 pub mod personal_agent;
 pub mod pg;
 pub mod plan_cards;

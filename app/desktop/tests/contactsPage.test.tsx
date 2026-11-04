@@ -272,8 +272,8 @@ test('contact detail modal mirrors real presence instead of deriving it from sta
     }),
   });
 
-  assert.match(presenceMarkup, /data-presence-status="online"/);
-  assert.match(presenceMarkup, /aria-label="Maya Chen is online"/);
+  assert.doesNotMatch(presenceMarkup, /data-presence-status=/);
+  assert.match(presenceMarkup, /aria-description="Maya Chen is online"/);
   assert.doesNotMatch(presenceMarkup, />online<\/span>/);
 });
 

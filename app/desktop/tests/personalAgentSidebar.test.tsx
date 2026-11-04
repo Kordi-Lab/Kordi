@@ -72,7 +72,7 @@ test('Agent Chats lists the Personal agent section first with one row per agent'
     assert.ok(markup.indexOf('data-personal-agent-row="cloud-agent:acct_alex"') < markup.indexOf('data-personal-agent-row="cloud_agent_research"'));
     assert.match(markup, /No messages yet/);
     assert.match(markup, /Lab sync moved to 10 am Thursday\./);
-    assert.match(markup, /data-presence-status="online"/);
+    assert.doesNotMatch(markup, /data-presence-status=/);
     assert.match(markup, /data-unread-count="2"/);
     // Personal sessions stay out of the other sections; ordinary chats remain.
     assert.doesNotMatch(markup, new RegExp(`data-agent-session-row="${KORDI_SESSION}"`));
@@ -129,7 +129,7 @@ function headerConversation() {
   return agentChat(RESEARCH_SESSION, 'Two new papers', 'Two new papers cite your workshop draft.', { metadata: { personalAgent: { agentId: 'cloud_agent_research' } } });
 }
 
-test('a personal session header shows the agent avatar, name and Online, and cannot be renamed', () => {
+test('a personal session header shows Online after the name without an avatar, and cannot be renamed', () => {
   setPersonalAgentEntries(entries);
   try {
     const props = {
@@ -142,8 +142,9 @@ test('a personal session header shows the agent avatar, name and Online, and can
     const markup = renderToStaticMarkup(createElement(MainChatHeader, props as never));
     assert.match(markup, /data-personal-agent-header="cloud_agent_research"/);
     assert.match(markup, /<h2 title="Research agent">Research agent<\/h2>/);
-    assert.match(markup, />Online</);
-    assert.match(markup, /data-presence-status="online"/);
+    assert.match(markup, /<\/h2><span class="app-personal-agent-header-status"[^>]*>.*Online<\/span>/);
+    assert.doesNotMatch(markup, /app-presence-light/);
+    assert.doesNotMatch(markup, /app-identity-avatar|<img/);
     assert.doesNotMatch(markup, /Two new papers/);
     assert.doesNotMatch(markup, /data-chat-session-title-rename/);
 

@@ -280,7 +280,7 @@ export function WorkspaceSidebar({
             >
               <div className="h-full overflow-hidden">
                 {isChatNavigation(activeNav) ? (
-                  <div className="flex h-full flex-col p-2.5">
+                  <div className="app-sidebar-list-content flex h-full flex-col p-2.5">
                     {chatSidebarChrome}
 
                     {chatModel.showArchived || chatModel.archivedSessionCount > 0 ? (
