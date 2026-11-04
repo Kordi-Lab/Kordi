@@ -359,8 +359,7 @@ html.kordi-native-shell .kordi-app[data-native-backdrop="ready"] .app-session-pa
   border-color: color-mix(in oklab, var(--app-quiet-control-focus-ring) 62%, var(--app-control-border));
   background: transparent;
   box-shadow: none;
-  outline: 2px solid color-mix(in oklab, var(--app-quiet-control-focus-ring) 72%, transparent);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .app-input-shell.app-flat-input.app-flat-input-error {
@@ -370,7 +369,7 @@ html.kordi-native-shell .kordi-app[data-native-backdrop="ready"] .app-session-pa
 .app-input-shell.app-flat-input.app-flat-input-error:focus,
 .app-input-shell.app-flat-input.app-flat-input-error:focus-visible,
 .app-input-shell.app-flat-input.app-flat-input-error:focus-within {
-  outline-color: color-mix(in oklab, var(--app-transient-danger-border) 76%, transparent);
+  border-color: var(--app-transient-danger-border);
 }
 
 .app-button-quiet,

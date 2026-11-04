@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 
 pub const NAME: &str = "plan_card";
 
-const DESCRIPTION: &str = "Turns a concrete group-chat plan (an event, meetup, or scheduling proposal) into a shared, stateful card instead of a one-off chat message. Use propose when the group has converged on a concrete title/time/place worth tracking: state='polling' if agreement still looks incomplete or details are unresolved, state='awaitingConfirmation' if a single option looks settled but has not been explicitly confirmed. Use rsvp to record one participant's yes/no without changing the card's overall state — a single non-organizer decline never cancels the plan; the card simply reflects that participant as declined while staying confirmed for everyone else. Use confirm only after explicit agreement (usually the organizer) to lock the card in; confirming an already-confirmed card at its current revision is a harmless no-op, never a duplicate. Use reopen to move a confirmed card back to awaitingConfirmation when new information — several declines, a scheduling conflict raised in chat — makes continuing genuinely unclear; always ask the group before calling confirm again. Use cancel only for a real end to the plan: the organizer canceling, or the group clearly agreeing to call it off. Never use cancel for a single attendee's decline — that is rsvp. Use options on a polling propose to open a vote between 2 to 4 concrete choices; members vote on the card, and vote records one participant's choice from what they said. confirm with optionId resolves the poll into that option's time and place. confirm, reopen, and cancel require the exact revision last seen for that card; a stale call is rejected rather than forking the card. rsvp and vote apply at any revision. Confirming a plan adds it to every attending member's Kordi calendar automatically; this tool never reads calendars.";
+const DESCRIPTION: &str = "Turns a concrete group-chat plan (an event, meetup, or scheduling proposal) into a shared, stateful card instead of a one-off chat message. Use propose when the group has converged on a concrete title/time/place worth tracking: state='polling' if agreement still looks incomplete or details are unresolved, state='awaitingConfirmation' if a single option looks settled but has not been explicitly confirmed. Use rsvp to record one participant's yes/no without changing the card's overall state — a single non-organizer decline never cancels the plan; the card simply reflects that participant as declined while staying confirmed for everyone else. Use confirm only after explicit agreement (usually the organizer) to lock the card in; confirming an already-confirmed card at its current revision is a harmless no-op, never a duplicate. Use propose(existingEventId, existingRevision) to atomically replace a confirmed plan with concrete new details; never reopen first. If continuing is genuinely unclear, ask the group and preserve the current card until replacement details or an explicit cancellation are known. Use cancel only for a real end to the plan: the organizer canceling, or the group clearly agreeing to call it off. Never use cancel for a single attendee's decline — that is rsvp. Use options on a polling propose to open a vote between 2 to 4 concrete choices; members vote on the card, and vote records one participant's choice from what they said. confirm with optionId resolves the poll into that option's time and place. confirm and cancel require the exact revision last seen for that card; a stale call is rejected rather than forking the card. rsvp and vote apply at any revision. Confirming a plan adds it to every attending member's Kordi calendar automatically; this tool never reads calendars.";
 
 /// The tool as the model sees it.
 pub fn definition() -> Value {
@@ -25,7 +25,7 @@ fn parameters() -> Value {
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["propose", "rsvp", "vote", "confirm", "reopen", "cancel"],
+                "enum": ["propose", "rsvp", "vote", "confirm", "cancel"],
                 "description": "Which plan-card operation to perform."
             },
             "options": {
@@ -54,7 +54,7 @@ fn parameters() -> Value {
             },
             "existingEventId": {
                 "type": "string",
-                "description": "If updating an already-open (not yet confirmed/canceled) card for this conversation instead of starting a new one, its event ID."
+                "description": "When revising an existing plan, its event ID. A confirmed plan is reopened and replaced atomically by propose; do not call reopen first for concrete replacement details. Canceled plans cannot be revised."
             },
             "existingRevision": {
                 "type": "number",
@@ -62,11 +62,11 @@ fn parameters() -> Value {
             },
             "eventId": {
                 "type": "string",
-                "description": "Target plan card's event ID. Required for rsvp, confirm, reopen, and cancel."
+                "description": "Target plan card's event ID. Required for rsvp, confirm and cancel."
             },
             "revision": {
                 "type": "number",
-                "description": "Revision this call was read at. Required for confirm, reopen, and cancel; a mismatch means the card changed and this call is rejected. Optional for rsvp and vote."
+                "description": "Revision this call was read at. Required for confirm and cancel; a mismatch means the card changed and this call is rejected. Optional for rsvp and vote."
             },
             "title": {
                 "type": "string",
@@ -136,7 +136,7 @@ fn parameters() -> Value {
             },
             "reason": {
                 "type": "string",
-                "description": "Required for reopen (why it's ambiguous again); optional context for cancel."
+                "description": "Optional context for cancel."
             }
         },
         "required": ["action"],
