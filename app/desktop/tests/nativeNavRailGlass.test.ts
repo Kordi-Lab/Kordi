@@ -99,7 +99,7 @@ test('system Kordi theme clears the native macOS material override', async () =>
 
   assert.deepEqual(appliedThemes, [null, 'dark', null]);
 
-  const gateSource = readSource('src/KordiApp.tsx');
+  const gateSource = readSource('src/features/cloud/CloudGateShell.tsx');
   const shellEffectsSource = readSource('src/app/useKordiUiEffects.ts');
   const workspaceSource = readSource('src/app/useKordiWorkspaceState.ts');
   assert.match(gateSource, /syncNativeWindowTheme\(themeMode\)/);

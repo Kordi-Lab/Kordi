@@ -297,7 +297,8 @@ test('browser sign-in uses a compact frosted window on macOS only', () => {
   assert.match(css, /theme-light\.app-cloud-login-shell\[data-frosted="true"\] \.app-cloud-login-page \{\s*--app-cloud-login-page-bg: rgb\(255 255 255 \/ 0\.10\);/);
   assert.match(css, /\.kordi-app\.app-cloud-login-shell\[data-frosted="true"\] \.app-cloud-login-page \{\s*--app-cloud-login-page-bg: rgb\(10 12 16 \/ 0\.14\);/);
   assert.match(css, /\[data-frosted="true"\] \.app-cloud-starting-screen\[data-visible="false"\]::before \{\s*opacity: 0;/);
-  assert.match(nativeWindow, /let material: isize = if welcome \{ 13 \} else \{ 7 \};/, 'the welcome window uses the HUD material');
+  const windowLayout = readSource('src-tauri/src/auth_window/layout.rs');
+  assert.match(windowLayout, /let material: isize = if welcome \{ 13 \} else \{ 7 \};/, 'the welcome window uses the HUD material');
   // The frame is the visible window, clear of the title bar, with the group just above center.
   assert.match(css, /\.app-cloud-login-surface > \.app-cloud-login-page\.app-cloud-browser-signin \{[^}]*position: fixed;[^}]*width: var\(--app-gate-window-width,[^}]*padding: 52px 24px 76px;/);
   assert.match(css, /\.app-cloud-welcome-actions \{[^}]*max-width: 304px;/);
@@ -421,7 +422,7 @@ test('cloud gate auto theme follows system light before shell mount', () => {
 });
 
 test('cloud login gate reads persisted theme preference and native system theme before shell mount', () => {
-  const source = readSource('src/KordiApp.tsx');
+  const source = readSource('src/features/cloud/CloudGateShell.tsx');
   const baseCss = readSource('src/styles/base.css');
   const capabilities = readSource('src-tauri/capabilities/default.json');
 
@@ -439,7 +440,7 @@ test('cloud login gate reads persisted theme preference and native system theme 
 });
 
 test('cloud login gate has a native drag fallback before the app shell mounts', () => {
-  const shellSource = readSource('src/KordiApp.tsx');
+  const shellSource = readSource('src/features/cloud/CloudGateShell.tsx');
   const loginMarkup = renderToStaticMarkup(createElement(CloudLoginPage));
 
   assert.match(shellSource, /shouldStartNativeWindowDrag/);

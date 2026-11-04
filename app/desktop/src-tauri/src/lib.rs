@@ -195,15 +195,7 @@ pub fn run() {
         .manage(DesktopAuthManager::default())
         .manage(DesktopChatManager::default())
         .setup(|app| {
-            {
-                // A kordi:// link (an invitation, a pairing code, a shared
-                // document) lands the user back in Kordi from the browser.
-                use tauri_plugin_deep_link::DeepLinkExt;
-                let handle = app.handle().clone();
-                app.deep_link().on_open_url(move |_| {
-                    window_lifecycle::bring_main_window_to_front(&handle);
-                });
-            }
+            window_lifecycle::focus_main_window_on_deep_link(app.handle());
             let is_cloud_edition = is_cloud_edition_app(app);
             configure_cloud_app_data_dir(app, is_cloud_edition);
             activate_stored_cloud_account_data_dir(is_cloud_edition);
