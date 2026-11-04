@@ -65,8 +65,12 @@ services:
     restart: "no"
 
   minio:
-    # MinIO publishes to quay.io; its Docker Hub repositories no longer resolve.
-    image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
+    # Built from MinIO's public source; MinIO no longer publishes these
+    # release images. See deploy/minio/README.md.
+    image: kordi-minio:RELEASE.2024-12-18T13-15-44Z
+    build:
+      context: ../minio
+      dockerfile: Dockerfile.server
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in deploy/dev/.env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in deploy/dev/.env}
@@ -84,7 +88,10 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z
+    image: kordi-minio-mc:RELEASE.2024-11-21T17-21-54Z
+    build:
+      context: ../minio
+      dockerfile: Dockerfile.client
     depends_on:
       minio:
         condition: service_healthy

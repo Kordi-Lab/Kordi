@@ -13,6 +13,7 @@ GCP_PROJECT="${KORDI_CLOUD_GCP_PROJECT:?Set KORDI_CLOUD_GCP_PROJECT}"
 NAMESPACE="kordi-cloud"
 BOOTSTRAP_JOB="kordi-release-identity-bootstrap"
 BOOTSTRAP_SECRET="kordi-release-publisher-bootstrap"
+MC_IMAGE="docker.io/library/kordi-minio-mc:RELEASE.2024-11-21T17-21-54Z"
 TMP_DIR="$(mktemp -d /tmp/kordi-release-credentials.XXXXXX)"
 BOOTSTRAP_STARTED=0
 
@@ -36,6 +37,13 @@ cleanup() {
   rm -rf "${TMP_DIR}"
 }
 trap cleanup EXIT INT TERM
+
+# The bootstrap Job runs the from-source mc image with imagePullPolicy: Never.
+# Stop before creating any identity when the host has not imported it yet.
+if ! remote "sudo k3s ctr --namespace k8s.io images list --quiet | grep -qxF '${MC_IMAGE}'"; then
+  echo "[release-credentials] ${MC_IMAGE} is missing on the host; run deploy/minio/build-k3s-images.sh there first" >&2
+  exit 1
+fi
 
 reader_access_file="${TMP_DIR}/reader-access"
 reader_secret_file="${TMP_DIR}/reader-secret"
@@ -170,7 +178,8 @@ spec:
       restartPolicy: Never
       containers:
         - name: mc
-          image: quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z
+          image: docker.io/library/kordi-minio-mc:RELEASE.2024-11-21T17-21-54Z
+          imagePullPolicy: Never
           env:
             - name: ROOT_ACCESS_KEY
               valueFrom:
