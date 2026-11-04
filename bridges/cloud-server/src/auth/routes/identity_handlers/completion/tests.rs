@@ -206,3 +206,40 @@ async fn restricted_password_routes_reject_legacy_signup_and_recheck_approval() 
         .unwrap();
     assert_eq!(count.0, 0);
 }
+#[tokio::test]
+#[ignore = "Requires a task-owned disposable PostgreSQL database"]
+async fn sign_up_creates_one_personal_organization_that_sign_in_keeps() {
+    let pool = pool().await;
+    let email = format!("org-{}@example.test", uuid::Uuid::new_v4().simple());
+    let profile = profile(&email, true);
+    let mut account_ids = Vec::new();
+    for _ in 0..2 {
+        let (body, _) = complete_oauth_login(
+            &pool,
+            OAuthProvider::Github,
+            profile.clone(),
+            &legacy_device_registration("synthetic"),
+        )
+        .await
+        .unwrap();
+        account_ids.push(body.account.account_id);
+    }
+    assert_eq!(account_ids[0], account_ids[1], "the second call signs in");
+    let rows: Vec<(String, String, String)> = query_as(
+        "SELECT o.kind, m.account_id, m.role FROM cloud_organizations o \
+         JOIN cloud_organization_members m ON m.organization_id = o.organization_id \
+         WHERE o.personal_account_id = $1",
+    )
+    .bind(&account_ids[0])
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        rows,
+        vec![(
+            "personal".to_string(),
+            account_ids[0].clone(),
+            "owner".to_string()
+        )]
+    );
+}
