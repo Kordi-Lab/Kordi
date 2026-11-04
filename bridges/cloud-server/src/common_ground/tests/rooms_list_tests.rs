@@ -34,12 +34,16 @@ async fn close(pool: &PgPool, code: &str) {
         .unwrap();
 }
 
-/// Match and theme runs ever queued for this viewer or room.
+/// Match and theme runs queued for this viewer or rooms they joined under the code.
 async fn runs(pool: &PgPool, viewer: &str, code: &str) -> i64 {
     let (count,): (i64,) = query_as(
         "SELECT COUNT(*) FROM cloud_common_ground_match_runs
          WHERE viewer_account_id = $1
-            OR room_id IN (SELECT room_id FROM cloud_common_ground_rooms WHERE code = $2)",
+            OR room_id IN (
+                SELECT room.room_id FROM cloud_common_ground_rooms room
+                JOIN cloud_common_ground_room_members member ON member.room_id = room.room_id
+                WHERE room.code = $2 AND member.account_id = $1
+            )",
     )
     .bind(viewer)
     .bind(code)
@@ -161,7 +165,28 @@ async fn a_closed_room_without_results_is_ready_and_empty() {
     let Some(pool) = pool().await else {
         return;
     };
-    let (app, code, people) = people_in_a_room(&pool, &["Alex", "Priya"]).await;
+    // Four-digit codes can be reused by unrelated fixtures. An earlier room's
+    // finished run must not count against this viewer's empty room.
+    let (_, code, _) = people_in_a_room(&pool, &["Earlier Alex", "Earlier Priya"]).await;
+    query(
+        "INSERT INTO cloud_common_ground_match_runs
+         (run_id, kind, room_id, cards_json, finished_at)
+         SELECT $1, 'room', room_id, '[]'::jsonb, now()
+         FROM cloud_common_ground_rooms WHERE code = $2 AND closed_at IS NULL",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&code)
+    .execute(&pool)
+    .await
+    .unwrap();
+    close(&pool, &code).await;
+    let (app, fresh_code, people) = people_in_a_room(&pool, &["Alex", "Priya"]).await;
+    query("UPDATE cloud_common_ground_rooms SET code = $1 WHERE code = $2 AND closed_at IS NULL")
+        .bind(&code)
+        .bind(&fresh_code)
+        .execute(&pool)
+        .await
+        .unwrap();
     close(&pool, &code).await;
     let (status, body) = call(&app, "POST", &format!("rooms/{code}/results"), &people[0].1).await;
     assert_eq!(status, 200, "{body}");

@@ -35,6 +35,7 @@ use crate::server::ServerState;
 mod audience_paths_tests;
 mod audience_tests;
 mod broker_tests;
+mod calendar_consent_tests;
 mod completion_tests;
 mod declined_tests;
 mod defaults_tests;

@@ -313,6 +313,9 @@ export function ConnectorsSettingsPanel({
     const busy = busyProviderId === definition.providerId;
     const status = state?.status ?? 'not_connected';
     if (definition.availability === 'coming_later' || status === 'connected') return null;
+    if (state?.oauthReady === false) {
+      return <span role="status" className={settingsType.value}>Ask your Kordi administrator to enable {definition.name} connections, then reload Settings.</span>;
+    }
     if (status === 'needs_reauth') {
       return (
         <Button

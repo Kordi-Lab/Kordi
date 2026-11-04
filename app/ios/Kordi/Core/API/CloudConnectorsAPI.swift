@@ -201,7 +201,7 @@ enum CloudConnectorGrant: String, Encodable {
 }
 
 private struct CloudConnectorOAuthStartRequest: Encodable {
-    let grant: CloudConnectorGrant
+    let grant: String
     let redirectAfter: String?
 }
 
@@ -257,7 +257,10 @@ extension CloudAPIClient {
             path: connectorPath(provider, "/oauth/start"),
             method: "POST",
             token: token,
-            body: CloudConnectorOAuthStartRequest(grant: grant, redirectAfter: redirectAfter?.absoluteString),
+            body: CloudConnectorOAuthStartRequest(
+                grant: provider == "google_calendar" && grant == .read ? "read_only" : grant.rawValue,
+                redirectAfter: redirectAfter?.absoluteString
+            ),
             fallback: "Could not start connecting."
         )
         guard let authURL = URL(string: response.authUrl), authURL.scheme?.lowercased() == "https" else {

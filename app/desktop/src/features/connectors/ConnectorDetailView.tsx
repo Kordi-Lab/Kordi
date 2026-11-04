@@ -101,11 +101,11 @@ export function ConnectorDetailView({
         <>
           <SettingsSection title="Access">
             <SettingsRow
-              title="Allowed"
+              title={macLocal ? 'Allowed' : 'Provider permissions'}
               description={(
                 <span className="mt-1.5 flex flex-wrap gap-1.5" aria-label={`${definition.name} access`}>
-                  {(grantedRead.length > 0 ? grantedRead : definition.readScopes).map((scope) => <ScopeChip key={scope.id} scope={scope} />)}
-                  {state.actEnabled ? grantedAct.map((scope) => <ScopeChip key={scope.id} scope={scope} />) : null}
+                  {(macLocal && grantedRead.length === 0 ? definition.readScopes : grantedRead).map((scope) => <ScopeChip key={scope.id} scope={scope} />)}
+                  {grantedAct.map((scope) => <ScopeChip key={scope.id} scope={scope} />)}
                 </span>
               )}
             />
@@ -114,7 +114,7 @@ export function ConnectorDetailView({
                 title="Let my agent act here"
                 description={state.actEnabled
                   ? `${definition.actDescription} Anything on your Ask me before list still waits for your approval.`
-                  : `Your agent can only read from ${definition.name}.`}
+                  : `Your agent can only read from ${definition.name}.${grantedAct.length > 0 ? ` ${definition.providerName} still grants write access; turning acting off does not revoke it.` : ''}`}
                 control={(
                   <SettingsSwitch
                     enabled={state.actEnabled}

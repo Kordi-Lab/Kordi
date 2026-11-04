@@ -28,6 +28,10 @@ fn no_connector_response_type_has_a_secret_shaped_key() {
         (
             "ConnectorListResponse",
             serde_json::to_value(ConnectorListResponse {
+                providers: vec![ConnectorProviderReadiness {
+                    provider: "google_calendar",
+                    oauth_ready: false,
+                }],
                 connectors: vec![summary.clone()],
                 agents: vec![ConnectorAgent {
                     agent_id: "cloud-agent:acct_sample".into(),

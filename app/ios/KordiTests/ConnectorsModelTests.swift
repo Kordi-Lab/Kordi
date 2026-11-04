@@ -187,6 +187,11 @@ final class ConnectorsModelTests: XCTestCase {
             "Kordi asks GitHub for the access your agent needs to read and act here. You can turn acting off at any time from this page."
         )
         XCTAssertEqual(consent.scopes.map(\.id), (github.readScopes + github.actScopes).map(\.id))
+        let calendar = ConnectorsModel.definition(.googleCalendar)
+        let calendarConsent = ConnectorConsent.connect(calendar, reauth: false)
+        XCTAssertEqual(calendarConsent.scopes, calendar.readScopes)
+        XCTAssertTrue(calendarConsent.message.contains("read-only Calendar access"))
+        XCTAssertTrue(calendarConsent.message.contains("Acting stays off"))
         let local = ConnectorConsent.connect(ConnectorsModel.definition(.macCalendar), reauth: false)
         XCTAssertEqual(local.scopes.map(\.id), ConnectorsModel.definition(.macCalendar).readScopes.map(\.id))
     }

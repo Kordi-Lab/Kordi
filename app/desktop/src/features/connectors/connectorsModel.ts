@@ -44,6 +44,8 @@ export type ConnectorState = {
   actEnabled: boolean;
   agentIds: string[];
   lastEventAt: string | null;
+  /** False when this server cannot start this provider's OAuth flow. */
+  oauthReady?: boolean;
   /**
    * Mac-local sources only: turned on in Settings, even while macOS
    * permission is missing. Omitted (false) for service connectors.
@@ -216,12 +218,13 @@ export function connectorToolGroupsForRun(
 }
 
 /**
- * Scopes the connect step asks for. A service connect grants read and act
- * together so the service is usable at once; acting can be turned off later.
- * Mac-local sources are read only.
+ * Scopes the connect step asks for. Other services grant read and act
+ * together; acting can be turned off later.
+ * Calendar and Mac-local sources start read only; Calendar acting is a separate grant.
  */
 export function connectScopes(definition: ConnectorDefinition): ConnectorScope[] {
-  return definition.kind === 'service' ? [...definition.readScopes, ...definition.actScopes] : definition.readScopes;
+  return definition.kind === 'service' && definition.providerId !== 'google_calendar'
+    ? [...definition.readScopes, ...definition.actScopes] : definition.readScopes;
 }
 
 export function hasGrantedActScopes(definition: ConnectorDefinition, state: ConnectorState): boolean {
@@ -281,6 +284,7 @@ export function connectorListValue(
 ): string {
   if (definition.availability === 'coming_later') return 'Coming later';
   const status = state?.status ?? 'not_connected';
+  if (status !== 'connected' && state?.oauthReady === false) return 'Setup required';
   if (status === 'needs_reauth') return 'Sign in again';
   if (status === 'permission_missing') return permissionMissingLabel(definition, state);
   if (status !== 'connected' || !state) return 'Not connected';

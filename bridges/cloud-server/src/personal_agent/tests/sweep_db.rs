@@ -139,6 +139,11 @@ async fn cooldown_retries_and_caps_hold() {
 #[tokio::test]
 async fn an_evaluation_is_a_background_run_with_the_snapshot() {
     let Some(f) = fixture().await else { return };
+    query("INSERT INTO cloud_account_digests (account_id, timezone) VALUES ($1, 'America/Los_Angeles')")
+        .bind(&f.owner)
+        .execute(&f.pool)
+        .await
+        .unwrap();
     let (conversation_id, _) = f.personal_session(&f.agent_id).await;
     let (run_id, event_id) = f.queue_evaluation().await;
     assert!(
@@ -176,6 +181,7 @@ async fn an_evaluation_is_a_background_run_with_the_snapshot() {
     assert!(row.6.contains("Be precise and kind."));
     let snapshot: Value = serde_json::from_str(&row.7).unwrap();
     assert_eq!(snapshot["owner"]["name"], "Mina");
+    assert_eq!(snapshot["owner"]["timeZone"], "America/Los_Angeles");
     assert_eq!(snapshot["agent"]["name"], "Scout");
     assert_eq!(snapshot["events"][0]["eventId"], event_id.as_str());
     assert_eq!(snapshot["events"][0]["title"], "Sam · Dinner tonight?");

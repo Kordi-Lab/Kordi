@@ -12,6 +12,7 @@
 //! session and pushes it; a `skip` only moves the cursor.
 
 mod activation;
+mod calendar_time;
 mod complete;
 mod config;
 pub(crate) mod desktop;

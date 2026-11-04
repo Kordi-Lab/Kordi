@@ -128,7 +128,10 @@ pub async fn finish_grant(
     } else {
         "read and act"
     };
-    let summary = format!("Granted {access} access to {}.", spec.display_name);
+    let summary = format!(
+        "{} granted provider {access} permission. Kordi acting is controlled separately.",
+        spec.display_name
+    );
     store::apply_grant(
         pool,
         GrantUpdate {

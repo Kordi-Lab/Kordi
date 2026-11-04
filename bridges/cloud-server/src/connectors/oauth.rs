@@ -167,7 +167,8 @@ impl CallbackError {
 
 /// Splits granted scopes into the read and act sets the provider defines.
 /// When the provider does not report scopes, the requested ones are used.
-/// Act scopes count whatever the grant kind, since every grant asks for them.
+/// Report returned act scopes even on read consent: providers may retain an
+/// earlier grant. This does not itself authorize acting in Kordi.
 pub fn classify_granted_scopes(
     spec: &ProviderSpec,
     grant: ConnectorToolGroup,

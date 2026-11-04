@@ -29,6 +29,7 @@ export type CloudConnectorSummary = {
 export type CloudConnectorAgent = { agentId: string; name: string; isDefault?: boolean };
 
 export type CloudConnectorListResponse = {
+  providers?: { provider: string; oauthReady: boolean }[];
   connectors: CloudConnectorSummary[];
   /** The built-in agent first, then active agents. Absent on older servers. */
   agents?: CloudConnectorAgent[];
@@ -37,7 +38,7 @@ export type CloudConnectorListResponse = {
 export type CloudConnectorResponse = { connector: CloudConnectorSummary };
 
 export type CloudConnectorOAuthStartInput = {
-  grant: CloudConnectorToolGroup;
+  grant: CloudConnectorToolGroup | 'read_only';
   redirectAfter?: string;
 };
 
