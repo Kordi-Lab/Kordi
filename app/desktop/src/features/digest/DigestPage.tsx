@@ -30,9 +30,9 @@ function Sheet({title,onClose,children}:{title:string;onClose:()=>void;children:
   const ref=useRef<HTMLDialogElement>(null);
   const {error,setError}=useContext(ActionErrorContext);
   useEffect(()=>{setError(null);ref.current?.showModal();return()=>setError(null);},[setError]);
-  // Unmounting an open <dialog> (instead of calling close()) still runs the browser's focus-restoration
-  // step, which scrolls the trigger element back into view. Blur first so there is nothing to restore to.
-  useLayoutEffect(()=>{const dialog=ref.current;return()=>{const view=dialog?.ownerDocument.defaultView,active=dialog?.ownerDocument.activeElement;if(view&&active instanceof view.HTMLElement&&dialog?.contains(active))active.blur();};},[]);
+  // Activity hides retain the dialog DOM. Release the modal on hide or unmount, blurring first
+  // so the browser's focus restoration does not scroll the trigger back into view.
+  useLayoutEffect(()=>{const dialog=ref.current;return()=>{const view=dialog?.ownerDocument.defaultView,active=dialog?.ownerDocument.activeElement;if(view&&active instanceof view.HTMLElement&&dialog?.contains(active))active.blur();if(dialog?.open)dialog.close();};},[]);
   return <dialog className="digest-sheet" ref={ref} aria-label={title} onCancel={onClose}><header><h2>{title}</h2><button onClick={onClose}>Close</button></header>{error&&<p role="alert" className="digest-warning">{error}</p>}{children}</dialog>;
 }
 /** A small modal stacked above a sheet. Escape or "Keep" closes only this dialog. */
