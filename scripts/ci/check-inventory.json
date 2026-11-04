@@ -88,6 +88,7 @@
         "agent/**",
         "simulations/**",
         "deploy/simulator/**",
+        "deploy/render/Dockerfile*",
         "app/server/**",
         "bridges/cli/**",
         "bridges/cloud-agent-runner/**",
@@ -111,6 +112,7 @@
       "outputs": [
         "rustfmt",
         "clippy",
+        "pinned Docker Rust toolchain guard",
         "human simulator dual-channel tests",
         "session tests",
         "provider tests",
