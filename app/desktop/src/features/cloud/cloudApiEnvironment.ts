@@ -1,8 +1,10 @@
+import { requiredClientDistribution } from './distribution';
 import type { CloudOAuthProvider } from './authClient';
 
-export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.ai';
-const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai']);
-const APPROVED_OPERATOR_CLOUD_API_ORIGINS = new Set([DEFAULT_CLOUD_API_BASE_URL]);
+// This allowlist is a development safeguard, never a release routing fallback.
+const OPERATOR_CLOUD_API_BASE_URL = 'https://kordi.ai';
+const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai', 'research.kordi.ai']);
+const APPROVED_OPERATOR_CLOUD_API_ORIGINS = new Set([OPERATOR_CLOUD_API_BASE_URL]);
 
 export type CloudApiEnvironment = {
   DEV?: boolean;
@@ -21,7 +23,7 @@ export function isProductionCloudOrigin(value: string): boolean {
     const hostname = new URL(value).hostname.toLowerCase().replace(/\.+$/, '');
     return PRODUCTION_CLOUD_API_HOSTNAMES.has(hostname);
   } catch {
-    return value === DEFAULT_CLOUD_API_BASE_URL;
+    return value === OPERATOR_CLOUD_API_BASE_URL;
   }
 }
 
@@ -63,25 +65,33 @@ export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {
     if (operatorProfile) {
       if (!operatorProductionDebugIsEnabled(activeEnv)) {
         throw new Error(
-          'Production Cloud API is blocked in development until the operator acknowledgement is set.',
+          'Production Cloud API is blocked in development without operator acknowledgement.',
         );
       }
       if (!APPROVED_OPERATOR_CLOUD_API_ORIGINS.has(cleaned)) {
-        throw new Error('Operator development may use only the approved https://kordi.ai product origin.');
+        throw new Error('Operator origin must match the approved product origin.');
       }
       return cleaned;
     }
     if (isProductionCloudOrigin(cleaned)) {
       throw new Error(
-        'Production Cloud API is blocked in development for community profiles. '
-        + 'Use the allowlisted operator launcher for approved production debugging.',
+        'Production Cloud API is blocked in development for community profiles. Use the approved operator launcher.',
       );
     }
     return cleaned;
   }
 
-  if (configured) return cleanBaseUrl(configured);
-  return DEFAULT_CLOUD_API_BASE_URL;
+  // Compiled browser fixtures and portable community previews retain loopback-only routing.
+  if (activeEnv?.VITE_KORDI_DEV_PROFILE === 'community' && configured) {
+    const url = new URL(cleanBaseUrl(configured));
+    if (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return url.origin;
+    throw new Error('Community builds require loopback.');
+  }
+  const distribution = requiredClientDistribution();
+  if (configured && cleanBaseUrl(configured) !== distribution.backendOrigin) {
+    throw new Error('API override does not match this distribution.');
+  }
+  return distribution.backendOrigin;
 }
 
 export function cloudRealtimeWebSocketEnabled(

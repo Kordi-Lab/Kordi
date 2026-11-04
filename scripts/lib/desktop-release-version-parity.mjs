@@ -24,10 +24,8 @@ export async function assertVersionParity(repoRoot, version, updaterPublicKey) {
     [pkg.version === version, 'desktop package'],
     [packageLock.version === version && packageLock.packages?.['']?.version === version, 'desktop package lock'],
     [tauri.version === version, 'Tauri configuration'],
-    [tauri.plugins?.updater?.pubkey === updaterPublicKey, 'Tauri updater public key'],
-    [JSON.stringify(tauri.plugins?.updater?.endpoints) === JSON.stringify([
-      'https://kordi.ai/updates/desktop/{{target}}/{{arch}}/{{current_version}}',
-    ]), 'Tauri updater endpoint'],
+    [tauri.plugins?.updater?.pubkey === '' && tauri.plugins?.updater?.endpoints?.length === 0, 'unassigned public Tauri configuration'],
+    [typeof updaterPublicKey === 'string' && updaterPublicKey.length > 0, 'selected updater public key'],
     [cloudTauri.version === undefined || cloudTauri.version === version, 'Cloud Tauri configuration'],
     [cargoPattern.test(cargoToml), 'desktop Cargo manifest'],
     [cargoPattern.test(cargoLock), 'desktop Cargo lock'],

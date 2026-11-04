@@ -20,6 +20,13 @@ pub async fn cloud_session_middleware(
     let pool = state.db_pool();
     match lookup_session(pool, &token).await {
         Ok(Some(row)) => {
+            if let Err(error) = state
+                .admission()
+                .authorize_account(pool, &row.account_id)
+                .await
+            {
+                return error.response();
+            }
             let _ = bump_expiry(pool, &row.token_id, DEFAULT_SESSION_LIFETIME_DAYS).await;
             let _ = touch_device_activity(pool, &row.account_id, &row.device_id).await;
             req.extensions_mut().insert(CloudSession {

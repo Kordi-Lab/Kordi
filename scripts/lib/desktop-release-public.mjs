@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
-export const PRODUCT_ORIGIN = 'https://kordi.ai';
+import { releaseOrigin, releaseDistribution } from './release-distribution.mjs';
+export const PRODUCT_ORIGIN = releaseOrigin;
 
 export function releaseUrlsForOrigin({
   origin,
@@ -13,7 +14,7 @@ export function releaseUrlsForOrigin({
     manual: `${origin}/updates/releases/${version}/${manualName}`,
     updaterArchive: `${origin}/updates/releases/${version}/${updaterName}`,
     updaterEndpoint: `${origin}${updaterEndpointPath}`,
-    stableManual: `${origin}/updates/releases/latest/Kordi.dmg`,
+    stableManual: `${origin}/updates/releases/latest/${releaseDistribution().clients.updates.artifactName}.dmg`,
   };
 }
 
@@ -265,7 +266,7 @@ export async function verifyUnpublishedChannel(
     );
   }
   if (channel === 'beta') {
-    const stableUrl = `${PRODUCT_ORIGIN}/updates/releases/latest/Kordi.dmg`;
+    const stableUrl = `${PRODUCT_ORIGIN}/updates/releases/latest/${releaseDistribution().clients.updates.artifactName}.dmg`;
     const [head, get] = await Promise.all([
       publicHttp.head(stableUrl),
       publicHttp.get(stableUrl),
