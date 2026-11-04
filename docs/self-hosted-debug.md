@@ -18,7 +18,7 @@ The local stack is intentionally separated from the hosted product:
 
 - The desktop must receive an explicit non-production API origin in development.
 - A missing, invalid, or production API origin causes the development launch to fail closed.
-- The API and MinIO ports bind only to `127.0.0.1`.
+- The API, MinIO, and Mailpit inbox ports bind only to `127.0.0.1`.
 - Postgres, Redis, and NATS have no host-published ports.
 - Local credentials are generated into an ignored file and are not shared with any hosted environment.
 - Reset commands are scoped to the `kordi-debug` Compose project.
@@ -36,6 +36,7 @@ These launch safeguards prevent accidental production traffic. They are not a se
 | NATS JetStream | Local event delivery | Docker network only |
 | MinIO | Attachments and object-storage testing | `127.0.0.1:19000` |
 | MinIO console | Local object-store inspection | `127.0.0.1:19001` |
+| Mailpit | Captures sign-up verification emails; SMTP is on the Docker network only | `127.0.0.1:18025` (inbox UI) |
 | Cloud agent runner | Scheduled and hosted-agent work | Docker network only |
 
 The runner uses a local sandbox volume and talks only to the isolated Cloud API. It does not use the hosted runner, production data, or a Kubernetes cluster.
@@ -202,6 +203,16 @@ http://127.0.0.1:19001
 ```
 
 The local MinIO credentials are in the ignored `deploy/dev/.env` file. Never paste that file into an issue, PR, screenshot, commit, or chat.
+
+### Sign-up email change
+
+The stack sends sign-up verification codes to a local Mailpit inbox instead of a real mail server. After choosing **Sign up with email** in the app, open the inbox and copy the six-digit code:
+
+```text
+http://127.0.0.1:18025
+```
+
+On a remote development host the inbox binds to that host's loopback; forward port `18025` through the same approved tunnel as the API. `pnpm debug:cloud:up` adds `KORDI_AUTH_EMAIL_CODE_SECRET` to existing `deploy/dev/.env` files. Plaintext SMTP (`KORDI_AUTH_SMTP_SECURITY=none`) is accepted only by the development server image and only toward loopback, private-network, or Compose service hosts; hosted release images refuse to start with it. To test a real mail server, set `KORDI_AUTH_SMTP_HOST`, `KORDI_AUTH_SMTP_PORT`, `KORDI_AUTH_SMTP_USERNAME`, `KORDI_AUTH_SMTP_PASSWORD`, `KORDI_AUTH_SMTP_FROM`, and `KORDI_AUTH_SMTP_SECURITY=starttls` (or `tls`) in `deploy/dev/.env`, using developer-owned credentials only.
 
 ## Inspect the environment
 

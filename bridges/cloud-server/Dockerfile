@@ -29,7 +29,11 @@ COPY bridges ./bridges
 COPY shared ./shared
 COPY simulations ./simulations
 
-RUN cargo build --release -p kordi-cloud-server \
+# The development Compose stack passes KORDI_DEVELOPMENT_BUILD=1 to compile in
+# development-only options such as plaintext SMTP to a local mail catcher.
+# Hosted release images leave it empty, so those options stay refused.
+ARG KORDI_DEVELOPMENT_BUILD=
+RUN KORDI_DEVELOPMENT_BUILD="$KORDI_DEVELOPMENT_BUILD" cargo build --release -p kordi-cloud-server \
     && strip target/release/kordi-cloud-server
 
 # ---------- runtime ----------

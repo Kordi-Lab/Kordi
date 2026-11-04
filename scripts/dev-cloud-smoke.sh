@@ -15,7 +15,7 @@ fi
 api_port="${KORDI_DEBUG_API_PORT:-$(sed -n 's/^KORDI_DEBUG_API_PORT=//p' "$env_file" | tail -1)}"
 api_port="${api_port:-17081}"
 
-for service in postgres redis nats minio cloud-server cloud-agent-runner omp-route-worker; do
+for service in postgres redis nats minio mailpit cloud-server cloud-agent-runner omp-route-worker; do
   container_id="$("${compose[@]}" ps -q "$service")"
   if [[ -z "$container_id" ]] || [[ "$(docker inspect -f '{{.State.Running}}' "$container_id")" != "true" ]]; then
     echo "[kordi-debug] Service is not running: $service" >&2
@@ -57,6 +57,13 @@ if [[ "$healthy" != "true" ]]; then
   echo "[kordi-debug] Cloud API did not become healthy: $health_url" >&2
   "${compose[@]}" logs --tail=120 cloud-server >&2
   exit 1
+fi
+
+mailpit_port="${KORDI_DEBUG_MAILPIT_UI_PORT:-$(sed -n 's/^KORDI_DEBUG_MAILPIT_UI_PORT=//p' "$env_file" | tail -1)}"
+mailpit_port="${mailpit_port:-18025}"
+echo "[kordi-debug] Mailpit inbox (sign-up codes): http://127.0.0.1:${mailpit_port}"
+if ! grep -Eq '^KORDI_AUTH_EMAIL_CODE_SECRET=.+' "$env_file"; then
+  echo "[kordi-debug] Sign-up email: not configured (run pnpm debug:cloud:up to add KORDI_AUTH_EMAIL_CODE_SECRET)"
 fi
 
 for provider in GITHUB GOOGLE; do
