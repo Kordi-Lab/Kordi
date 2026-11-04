@@ -7,7 +7,7 @@ const theme = new URLSearchParams(window.location.search).get('theme') === 'dark
 document.body.classList.add(`theme-${theme}`);
 const now = Date.UTC(2026, 9, 16, 21, 1);
 const items: PinnedMessageItem[] = [
-  { scope: 'shared', message: { id: 'pin-1', role: 'user', sender: 'Me', text: '@babyshuShuYang do it again', time: '21:01', timestampMs: now } },
+  { scope: 'shared', message: { id: 'pin-1', role: 'user', sender: 'Me', text: '@maya do it again', time: '21:01', timestampMs: now } },
   { scope: 'shared', message: { id: 'pin-2', role: 'user', sender: 'Maya', text: 'Release checklist: review the copy, check mobile on a small phone, then share the build with the rest of the team before Friday.', time: '20:12', timestampMs: now - 49 * 60_000 } },
   { scope: 'private', message: { id: 'pin-3', role: 'user', sender: 'Alex', text: 'Preview link: design.kordi.example/chat', time: '18:40', timestampMs: now - 141 * 60_000 } },
 ];
