@@ -14,7 +14,7 @@ import {
 } from '@/features/cloud/canonicalAvatar';
 
 import { GitHubMark, GoogleMark } from './CloudLoginMarks';
-import { cloudLoginErrorMessage, PASSWORD_MIN_LENGTH } from './cloudLoginMessages';
+import { cloudLoginErrorMessage, loginHeading, loginSubtitle, PASSWORD_MIN_LENGTH } from './cloudLoginMessages';
 import { CloudSignupAvatarPicker } from './CloudSignupAvatarPicker';
 import { CloudSignupVerificationFields } from './CloudSignupVerificationFields';
 import { useCloudSignupVerification } from './useCloudSignupVerification';
@@ -314,10 +314,10 @@ export function CloudLoginPage({
           className="app-cloud-login-mode-copy grid justify-items-center text-center"
         >
           <h1 className={`${TYPE_DISPLAY} ${INK}`}>
-            {isSignup ? 'Create your account' : 'Welcome to Kordi'}
+            {loginHeading(isSignup)}
           </h1>
           <p className={`mt-2 ${TYPE_HINT} normal-case tracking-normal ${INK_MUTED}`}>
-            {isSignup ? 'Sign up for Next-generation Supercollaboration' : 'Building Next-generation Supercollaboration'}
+            {loginSubtitle(isSignup)}
           </p>
         </div>
 

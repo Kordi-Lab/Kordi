@@ -48,7 +48,7 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "targets": "all",
     "icon": [
       "icons/icon.png",
@@ -67,10 +67,8 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3N0JBRkMwRDRDNzFEOUIKUldTYkhjZlV3Szk3WjVXWWVmNzZGanNDakFlRkxTZ3UwZ1dLelpJenl3NnY3YmkvZCtEcUxxUWcK",
-      "endpoints": [
-        "https://kordi.ai/updates/desktop/{{target}}/{{arch}}/{{current_version}}"
-      ]
+      "pubkey": "",
+      "endpoints": []
     }
   }
 }

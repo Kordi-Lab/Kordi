@@ -61,13 +61,16 @@ pub(crate) fn is_well_formed_token(token: &str) -> bool {
 }
 
 pub(crate) fn share_url(token: &str) -> String {
-    let public_base =
-        std::env::var("KORDI_PUBLIC_APP_URL").unwrap_or_else(|_| "https://kordi.ai".to_string());
+    let public_base = std::env::var("KORDI_PUBLIC_APP_URL")
+        .unwrap_or_else(|_| crate::distribution::public_origin());
     format!("{}/d/{token}", public_base.trim_end_matches('/'))
 }
 
 pub(crate) fn share_deep_link(token: &str) -> String {
-    format!("kordi://document/{token}")
+    format!(
+        "{}://document/{token}",
+        crate::distribution::callback_scheme()
+    )
 }
 
 pub(crate) fn public_raw_path(token: &str) -> String {

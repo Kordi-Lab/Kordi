@@ -20,18 +20,19 @@ use sqlx_core::query::query;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-use crate::auth::session::{device_is_active, session_is_active};
 use crate::chat_sync::cursor::CursorCodec;
 use crate::chat_sync::models::SyncEventSnapshot;
 use crate::chat_sync::store::{self, StoreError};
 use crate::chat_sync::PROTOCOL_VERSION;
 use crate::server::ServerState;
 
+mod session;
 #[cfg(test)]
 mod tests;
 mod ticket;
 mod wake;
 
+use session::connection_is_active;
 use ticket::{consume_ticket, ConsumedRealtimeTicket};
 pub use ticket::{issue_ticket, IssuedRealtimeTicket, TicketError};
 pub(crate) use wake::{spawn_wake_listener, ChatSyncWakeHub};
@@ -93,6 +94,9 @@ pub async fn ws_handler(
         return StatusCode::FORBIDDEN.into_response();
     }
 
+    if !connection_is_active(state.db_pool(), &ticket, state.admission()).await {
+        return StatusCode::FORBIDDEN.into_response();
+    }
     ws.max_message_size(MAX_CLIENT_FRAME_BYTES)
         .max_frame_size(MAX_CLIENT_FRAME_BYTES)
         .on_upgrade(move |socket| run_socket(socket, state, ticket, codec))
@@ -290,31 +294,13 @@ fn legacy_ticket_deadline(
         .then(|| opened_at + LEGACY_TICKET_SOCKET_LIFETIME)
 }
 
-/// Whether the socket opened with `ticket` may keep streaming: the issuing
-/// session is still signed in and its device authorization is active.
-async fn connection_is_active(pool: &PgPool, ticket: &ConsumedRealtimeTicket) -> bool {
-    let result = match ticket.session_token_id.as_deref() {
-        Some(token_id) => {
-            session_is_active(pool, &ticket.account_id, &ticket.device_id, token_id).await
-        }
-        None => device_is_active(pool, &ticket.account_id, &ticket.device_id).await,
-    };
-    match result {
-        Ok(active) => active,
-        Err(error) => {
-            eprintln!("[chat-realtime] revalidate session: {error}");
-            false
-        }
-    }
-}
-
 async fn run_socket(
     mut socket: WebSocket,
     state: Arc<ServerState>,
     ticket: ConsumedRealtimeTicket,
     codec: CursorCodec,
 ) {
-    if !connection_is_active(state.db_pool(), &ticket).await {
+    if !connection_is_active(state.db_pool(), &ticket, state.admission()).await {
         let _ = socket.send(Message::Close(None)).await;
         return;
     }
@@ -473,7 +459,7 @@ async fn run_socket(
             _ = session_revalidation.tick() => {
                 let legacy_expired = legacy_deadline
                     .is_some_and(|deadline| tokio::time::Instant::now() >= deadline);
-                if legacy_expired || !connection_is_active(state.db_pool(), &ticket).await {
+                if legacy_expired || !connection_is_active(state.db_pool(), &ticket, state.admission()).await {
                     let _ = sender.send(Message::Close(None)).await;
                     return;
                 }

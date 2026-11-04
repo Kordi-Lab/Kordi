@@ -13,11 +13,7 @@ use crate::avatars::{
 use super::config::{PendingSupportConfig, SupportConfig, SupportConfigError};
 
 const CLOUD_DIRECT_MESSAGE_PREFIX: &str = "kordi-cloud-message:";
-const SUPPORT_SYSTEM_PROMPT: &str = r#"You are Kordi Support, the official help agent for Kordi.
-
-Help people use Kordi and explain chats, contacts, groups, agents, tasks, reminders, pins, artifacts, Cloud sync, provider setup, and account basics. Accept product suggestions and restate them clearly.
-
-When the user asks to create, submit, or report an issue, question, or feedback for the Kordi maintainer team:
+pub(super) const SUPPORT_SYSTEM_PROMPT: &str = r#"When the user asks to create, submit, or report an issue, question, or feedback for the Kordi maintainer team:
 1. Draft a concise report in the visible response.
 2. Ask whether the user wants to send that report to the Kordi maintainers.
 3. End the response with exactly one machine-readable block using this format:
@@ -30,6 +26,19 @@ Use category "issue", "question", or "feedback". The JSON must be valid and must
 You can prepare a support ticket from this chat. Never tell the user that you cannot create a ticket or that they must open a separate support form. Preparing the report is not permission to submit it: always emit the report block and let the desktop approval card request permission.
 
 Never ask the user to paste provider credentials or authentication material. Never include chat history, files, diagnostics, credentials, secrets, or unrelated conversation data in a report draft. Never reveal private infrastructure details or data outside this support conversation. Never claim that a ticket, email, or GitHub issue was created unless the product explicitly confirms it."#;
+
+pub(super) fn system_prompt(persona: Option<&str>) -> Result<String, &'static str> {
+    #[cfg(debug_assertions)]
+    let development = Some(
+        r#"You are Kordi Support, the official help agent for Kordi.
+
+Help people use Kordi and explain chats, contacts, groups, agents, tasks, reminders, pins, artifacts, Cloud sync, provider setup, and account basics. Accept product suggestions and restate them clearly."#,
+    );
+    #[cfg(not(debug_assertions))]
+    let development = None;
+    let persona = crate::distribution::agent_persona(persona, development)?;
+    Ok(format!("{persona}\n\n{SUPPORT_SYSTEM_PROMPT}"))
+}
 
 pub async fn bootstrap_support_agent(
     pool: &PgPool,
@@ -81,6 +90,7 @@ pub async fn bootstrap_support_agent(
         inbox: pending.inbox,
         contact_created_at,
         provider_auth: pending.provider_auth,
+        system_prompt: pending.system_prompt,
     };
     let agent_avatar_url = generated_avatar_marker(AGENT_AVATAR_STYLE, &config.agent_id, 1);
 
@@ -116,7 +126,7 @@ pub async fn bootstrap_support_agent(
     .bind(&config.owner_account_id)
     .bind(&config.name)
     .bind(&config.subtitle)
-    .bind(SUPPORT_SYSTEM_PROMPT)
+    .bind(&config.system_prompt)
     .bind(config.model_routing())
     .bind(&now)
     .bind(&agent_avatar_url)
@@ -198,6 +208,7 @@ mod tests {
     #[test]
     fn support_target_requires_the_exact_agent_and_owner() {
         let config = SupportConfig {
+            system_prompt: system_prompt(Some("Synthetic support persona.")).unwrap(),
             owner_account_id: "acct_support".into(),
             owner_email: "support@example.com".into(),
             agent_id: "cloud_agent_kordi_support".into(),
