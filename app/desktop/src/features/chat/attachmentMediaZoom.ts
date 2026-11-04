@@ -17,8 +17,8 @@ export function attachmentMediaZoomActionForKey(event: {
   return null;
 }
 
-export function nextAttachmentMediaZoom(current: number, action: AttachmentMediaZoomAction) {
+export function nextAttachmentMediaZoom(current: number, action: AttachmentMediaZoomAction, actualSizeZoom = 1) {
   if (action === 'reset') return 1;
   const delta = action === 'in' ? ATTACHMENT_MEDIA_ZOOM_STEP : -ATTACHMENT_MEDIA_ZOOM_STEP;
-  return Math.min(ATTACHMENT_MEDIA_ZOOM_MAX, Math.max(ATTACHMENT_MEDIA_ZOOM_MIN, current + delta));
+  return Math.min(Math.max(ATTACHMENT_MEDIA_ZOOM_MAX, actualSizeZoom), Math.max(ATTACHMENT_MEDIA_ZOOM_MIN, current + delta));
 }

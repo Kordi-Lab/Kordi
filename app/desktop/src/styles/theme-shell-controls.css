@@ -141,8 +141,13 @@
   border-color: color-mix(in oklab, var(--app-quiet-control-focus-ring) 62%, var(--app-control-border));
   background: transparent;
   box-shadow: none;
-  outline: 2px solid color-mix(in oklab, var(--app-quiet-control-focus-ring) 72%, transparent);
-  outline-offset: 2px;
+  outline: none;
+}
+
+.kordi-app.theme-light .app-input-shell.app-flat-input.app-flat-input-error,
+.kordi-app.theme-light .app-input-shell.app-flat-input.app-flat-input-error:focus,
+.kordi-app.theme-light .app-input-shell.app-flat-input.app-flat-input-error:focus-within {
+  border-color: var(--app-transient-danger-border);
 }
 
 .kordi-app.theme-light .app-input-shell::placeholder,

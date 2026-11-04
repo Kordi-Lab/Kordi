@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "routing": {
+    "schemaVersion": 1,
+    "edition": "app",
+    "environment": "production",
+    "backend": {
+      "origin": "https://kordi.ai"
+    }
+  },
+  "clients": {
+    "displayName": "Kordi",
+    "callbackScheme": "kordi",
+    "desktopIdentifier": "io.kordi.cloud",
+    "iosIdentifier": "ai.kordi.ios",
+    "iosShareIdentifier": "ai.kordi.ios.share",
+    "appGroup": "group.ai.kordi.share",
+    "credentialService": "ai.kordi.share-session",
+    "desktopIcon": "fixture.png",
+    "desktopIcns": "fixture.icns",
+    "iosIcon": "fixture.png",
+    "updates": {
+      "enabled": true,
+      "publicKey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkgRTc2MjBGMTg0MkI0RTgxRgpSV1FmNkxSQ0dBOWk1M21sWWVjTzRJelQ1MVRHUHB2V3VjTlNDaDFDQk0wUVRhTG43M1k3R0ZPMw==",
+      "artifactName": "Kordi"
+    }
+  },
+  "services": {
+    "model": {
+      "provider": "openai",
+      "baseURL": "https://api.openai.com/v1",
+      "model": "gpt-5.6-luna"
+    },
+    "systemAgent": {
+      "enabled": true,
+      "name": "System",
+      "subtitle": "Keeps plans in this chat honest",
+      "ownerEmail": "system@example.test",
+      "persona": "Synthetic system agent persona."
+    },
+    "supportAgent": {
+      "enabled": false,
+      "name": "Kordi Support",
+      "subtitle": "Ask questions or suggest improvements",
+      "ownerEmail": "support@example.test",
+      "persona": "Synthetic support agent persona."
+    },
+    "runner": {
+      "concurrency": 4,
+      "pollMilliseconds": 2000,
+      "sandboxBackend": "k8s"
+    },
+    "connectorCallsPerHour": 600
+  },
+  "resources": {
+    "provider": "external",
+    "cpuLimit": 4,
+    "memoryMiB": 8192,
+    "sandboxCpuMillis": 1000,
+    "sandboxMemoryMiB": 1024,
+    "bindings": {
+      "project": "TEST_PROJECT",
+      "region": "TEST_REGION",
+      "instance": "TEST_INSTANCE",
+      "database": "TEST_DATABASE",
+      "objectStorage": "TEST_OBJECTSTORAGE",
+      "serviceIdentity": "TEST_SERVICEIDENTITY",
+      "zone": "TEST_ZONE"
+    }
+  },
+  "apple": {
+    "teamBinding": "APPLE_TEAM_ID",
+    "identityBinding": "APPLE_SIGNING_IDENTITY",
+    "notaryProfileBinding": "APPLE_NOTARY_PROFILE",
+    "exportMethod": "app-store-connect"
+  }
+}

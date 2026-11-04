@@ -86,13 +86,16 @@ fn hash_group_invite_token(token: &str) -> String {
 }
 
 fn group_invite_url(token: &str) -> String {
-    let public_base =
-        std::env::var("KORDI_PUBLIC_APP_URL").unwrap_or_else(|_| "https://kordi.ai".to_string());
+    let public_base = std::env::var("KORDI_PUBLIC_APP_URL")
+        .unwrap_or_else(|_| crate::distribution::public_origin());
     format!("{}/g/{token}", public_base.trim_end_matches('/'))
 }
 
 fn group_invite_deep_link(token: &str) -> String {
-    format!("kordi://group-invite/{token}")
+    format!(
+        "{}://group-invite/{token}",
+        crate::distribution::callback_scheme()
+    )
 }
 
 fn clean_group_title(value: &str) -> Option<String> {

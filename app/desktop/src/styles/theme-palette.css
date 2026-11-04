@@ -295,11 +295,6 @@ body[data-kordi-chat-theme='classic'] .kordi-app .app-page-header.app-chat-pane-
   -webkit-backdrop-filter: blur(24px) saturate(1.12);
   box-shadow: var(--app-palette-shadow), inset 0 1px 0 var(--app-palette-highlight);
 }
-.kordi-app:is(.theme-light, .theme-dark) .app-composer-shell:focus-within {
-  border-color: var(--app-palette-accent);
-  outline: 2px solid var(--app-palette-accent);
-  outline-offset: 2px;
-}
 .kordi-app:is(.theme-light, .theme-dark) .app-composer-send { box-shadow: none; }
 .kordi-app:is(.theme-light, .theme-dark) .app-input-shell:not(.app-flat-input) {
   color: var(--utility-foreground) !important;
@@ -311,9 +306,8 @@ body[data-kordi-chat-theme='classic'] .kordi-app .app-page-header.app-chat-pane-
   background: var(--app-main-raised-bg);
 }
 .kordi-app:is(.theme-light, .theme-dark) .app-input-shell:not(.app-flat-input):focus-within {
-  border-color: var(--app-palette-accent);
-  outline: 2px solid var(--app-palette-accent);
-  outline-offset: 2px;
+  border-color: color-mix(in oklab, var(--app-palette-border) 62%, var(--utility-muted-text));
+  outline: none;
 }
 .kordi-app:is(.theme-light, .theme-dark) .app-input-shell input,
 .kordi-app:is(.theme-light, .theme-dark) .app-input-shell textarea,

@@ -59,20 +59,28 @@ const images: Array<MessageAttachment & { previewUrl: string }> = [
 function MediaLightboxGallery() {
   const [index, setIndex] = useState(Math.min(images.length - 1, Math.max(0, requestedIndex)));
   const [zoom, setZoom] = useState(1);
-  const image = images[index]!;
+  const [closed, setClosed] = useState(false);
+  const selectedImage = images[index]!;
+  const image = params.has('live') ? {
+    ...selectedImage,
+    livePhotoFiles: { videoPath: 'synthetic.mov', playbackPath: 'synthetic.mp4' },
+  } : selectedImage;
+
+  if (closed) return <p role="status">Preview closed</p>;
 
   return (
     <main className="media-lightbox-visual-shell">
       <AttachmentImageLightbox
         attachment={image}
         previewUrl={image.previewUrl}
-        onClose={() => undefined}
+        onClose={() => setClosed(true)}
         canGoPrevious={index > 0}
         canGoNext={index < images.length - 1}
         onPrevious={() => setIndex((current) => Math.max(0, current - 1))}
         onNext={() => setIndex((current) => Math.min(images.length - 1, current + 1))}
-        positionLabel={`${index + 1} of ${images.length}`}
+        positionLabel={params.get('position') ?? `${index + 1} of ${images.length}`}
         zoom={zoom}
+        onZoomChange={setZoom}
         onZoomIn={() => setZoom((current) => Math.min(4, current + 0.25))}
         onZoomOut={() => setZoom((current) => Math.max(0.25, current - 0.25))}
         onZoomReset={() => setZoom(1)}

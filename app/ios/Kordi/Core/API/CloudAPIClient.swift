@@ -46,7 +46,6 @@ struct CloudConversationMessagePage {
 }
 
 actor CloudAPIClient {
-    static let productionBaseURL = KordiAppEnvironment.productionBaseURL
     static var configuredBaseURL: URL { KordiAppEnvironment.current.cloudBaseURL }
     private static let sharedAgentOwnerBatchSize = 50
 

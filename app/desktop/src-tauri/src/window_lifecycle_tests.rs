@@ -1,5 +1,5 @@
 use super::is_cloud_edition_context;
-use crate::cloud_api_endpoint::DEFAULT_CLOUD_API_BASE_URL;
+const DEFAULT_CLOUD_API_BASE_URL: &str = "https://kordi.ai";
 use crate::cloud_presence::{offline_url, should_publish_offline_on_exit};
 
 #[test]

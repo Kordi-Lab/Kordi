@@ -133,7 +133,7 @@ test('detached video preview keeps playback in the resizable media window', () =
   assert.doesNotMatch(markup, /app-attachment-image-lightbox-zoom-controls/);
 });
 
-test('media window is resizable and keeps themed edge navigation around uncropped images', () => {
+test('media window is resizable and keeps themed footer navigation around uncropped images', () => {
   const css = readFileSync(new URL('../src/styles/shell-media-lightbox.css', import.meta.url), 'utf8');
 
   assert.equal(attachmentMediaWindowOptions.resizable, true);
@@ -146,7 +146,7 @@ test('media window is resizable and keeps themed edge navigation around uncroppe
   assert.match(css, /data-attachment-media-theme="light"[\s\S]*--app-media-window-surface:\s*rgb\(255 255 255 \/ 0\.04\)/);
   assert.match(css, /backdrop-filter:\s*blur\(34px\) saturate\(1\.24\)/);
   assert.match(css, /\.app-attachment-image-lightbox-image[\s\S]*max-width:\s*100%[\s\S]*max-height:\s*100%[\s\S]*object-fit:\s*contain/);
-  assert.match(css, /\.app-attachment-image-lightbox-nav[\s\S]*width:\s*48px[\s\S]*height:\s*48px[\s\S]*min-width:\s*48px[\s\S]*min-height:\s*48px[\s\S]*padding:\s*0[\s\S]*border-radius:\s*999px[\s\S]*opacity:\s*0\.56/);
+  assert.match(css, /\.app-attachment-image-lightbox-nav[\s\S]*width:\s*32px[\s\S]*height:\s*32px[\s\S]*min-width:\s*32px[\s\S]*min-height:\s*32px[\s\S]*padding:\s*0[\s\S]*border-radius:\s*999px[\s\S]*opacity:\s*0\.56/);
   assert.doesNotMatch(css, /app-media-window-image-shadow|drop-shadow/);
   assert.match(css, /\.app-attachment-image-lightbox-nav:hover,[\s\S]*:focus-visible[\s\S]*opacity:\s*1/);
   assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
@@ -363,6 +363,25 @@ test('detached media window supports visible arrows, keyboard navigation, and ri
     assert.ok(lightbox.querySelector('[aria-label="Previous image"]'));
     assert.ok(lightbox.querySelector('[aria-label="Next image"]'));
     assert.equal(lightbox.querySelector<HTMLImageElement>('img')?.style.transform, 'scale(1)');
+
+    const fittedImage = lightbox.querySelector<HTMLImageElement>('img')!;
+    Object.defineProperties(fittedImage, {
+      naturalWidth: { value: 2400 },
+      naturalHeight: { value: 1800 },
+      clientWidth: { value: 400 },
+      clientHeight: { value: 300 },
+    });
+    await act(async () => fittedImage.click());
+    assert.equal(fittedImage.style.transform, 'scale(6)', 'click reaches actual size even beyond the usual 4x zoom limit');
+    const wheel = new environment.dom.window.WheelEvent('wheel', { deltaY: 80, bubbles: true, cancelable: true });
+    await act(async () => fittedImage.dispatchEvent(wheel));
+    assert.equal(wheel.defaultPrevented, true);
+    assert.equal(fittedImage.style.transform, 'scale(5.75)', 'wheel zooms smoothly from actual size');
+    await act(async () => fittedImage.dispatchEvent(new environment.dom.window.WheelEvent('wheel', { deltaY: -80, bubbles: true, cancelable: true })));
+    assert.equal(fittedImage.style.transform, 'scale(6)');
+    await act(async () => fittedImage.click());
+    assert.equal(fittedImage.style.transform, 'scale(1)', 'second click fits the image');
+    assert.equal(lightbox.querySelector('[title="Fit to window (⌘0)"]')?.textContent, '100%');
 
     await act(async () => {
       window.dispatchEvent(new environment.dom.window.KeyboardEvent('keydown', {

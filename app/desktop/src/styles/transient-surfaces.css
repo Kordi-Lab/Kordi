@@ -150,8 +150,7 @@
   border-color: color-mix(in oklab, var(--app-transient-focus-ring) 58%, var(--app-transient-border));
   background: transparent;
   box-shadow: none;
-  outline: 2px solid color-mix(in oklab, var(--app-transient-focus-ring) 72%, transparent);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .kordi-app .app-transient-surface .app-input-shell.app-flat-input.app-flat-input-error {
@@ -161,7 +160,7 @@
 .kordi-app .app-transient-surface .app-input-shell.app-flat-input.app-flat-input-error:focus,
 .kordi-app .app-transient-surface .app-input-shell.app-flat-input.app-flat-input-error:focus-visible,
 .kordi-app .app-transient-surface .app-input-shell.app-flat-input.app-flat-input-error:focus-within {
-  outline-color: color-mix(in oklab, var(--app-transient-danger-border) 76%, transparent);
+  border-color: var(--app-transient-danger-border);
 }
 
 .app-transient-surface :where(input, textarea)::placeholder {
