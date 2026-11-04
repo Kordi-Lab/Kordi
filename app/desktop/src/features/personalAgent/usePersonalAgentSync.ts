@@ -4,7 +4,7 @@ import { loadSession } from '@/features/cloud/session';
 import type { Agent, CanonicalSessionState } from '@/kordi-app/types';
 import { openOrCreateCanonicalSessionFast, upsertCanonicalIdentityFast } from '@/lib/desktop';
 import type { ChatSyncConversation } from '@/features/cloud/chatSyncTypes';
-import { loadChatSyncConversations } from '@/lib/desktopChatSync';
+import { CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT, loadChatSyncConversations } from '@/lib/desktopChatSync';
 import { listPersonalAgentSessions, markerlessSnapshotSessionIds, personalAgentSessionsFromSnapshots, type PersonalAgentSession } from './personalAgentClient';
 import { joinPersonalAgents, personalAgentMarker } from './personalAgentEntries';
 import { planPersonalAgentMarkerRemovals, planPersonalAgentSessions, type PersonalAgentSessionPlan } from './personalAgentSessions';
@@ -62,12 +62,6 @@ export function usePersonalAgentSync({
   useEffect(() => {
     if (!accountId) return;
     let cancelled = false;
-    latest.current.loadCachedConversations(accountId).then(
-      (conversations) => {
-        if (!cancelled) setCached({ accountId, sessions: personalAgentSessionsFromSnapshots(conversations), markerless: markerlessSnapshotSessionIds(conversations) });
-      },
-      () => undefined,
-    );
     const stop = loadUntilSuccess(async () => {
       const session = await loadSession();
       if (!session?.token || session.accountId !== accountId) return false;
@@ -80,6 +74,46 @@ export function usePersonalAgentSync({
     });
     return () => { cancelled = true; stop(); };
   }, [accountId, ownedAgentKey, refreshCount]);
+
+  // Remote setting changes arrive as conversation snapshots, including for
+  // the default agent, which has no agent.definition event. Read serially so
+  // a slow cache response cannot restore an older marker after a newer one.
+  useEffect(() => {
+    if (!accountId) return;
+    let cancelled = false;
+    let reading = false;
+    let dirty = false;
+    let refreshAfterRead = false;
+    let signature: string | null = null;
+    const read = async () => {
+      if (reading) { dirty = true; return; }
+      reading = true;
+      do {
+        dirty = false;
+        try {
+          const conversations = await latest.current.loadCachedConversations(accountId);
+          if (cancelled) break;
+          if (dirty) continue;
+          const sessions = personalAgentSessionsFromSnapshots(conversations);
+          const markerless = markerlessSnapshotSessionIds(conversations);
+          const next = JSON.stringify([sessions.map((session) => [session.sessionId, session.agentId]).sort(), [...markerless].sort()]);
+          if (signature !== next) {
+            setCached({ accountId, sessions, markerless });
+            if (signature !== null || refreshAfterRead) setRefreshCount((count) => count + 1);
+            signature = next;
+          }
+          refreshAfterRead = false;
+        } catch {
+          // An unavailable cache is not evidence that the setting was disabled.
+        }
+      } while (dirty && !cancelled);
+      reading = false;
+    };
+    const changed = () => { refreshAfterRead = true; void read(); };
+    window.addEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT, changed);
+    void read();
+    return () => { cancelled = true; window.removeEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT, changed); };
+  }, [accountId]);
 
   // The last loaded list is the source; while none has loaded, the cached snapshots.
   // A failed request keeps the previous source, so it never strips anything.
