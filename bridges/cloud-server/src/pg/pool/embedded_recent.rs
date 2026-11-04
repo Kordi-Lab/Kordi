@@ -406,4 +406,15 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "verified instance access waitlist",
         "0161_access_waitlist.sql"
     ),
+    migration!(162, "organizations", "0162_organizations.sql"),
+    migration!(
+        163,
+        "organization ownership",
+        "0163_organization_ownership.sql"
+    ),
+    migration!(
+        164,
+        "organization ownership indexes",
+        "0164_organization_ownership_indexes.sql"
+    ),
 ];
