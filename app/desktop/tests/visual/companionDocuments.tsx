@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 import { __setSessionBackendForTests } from '../../src/features/cloud/session';
-import { applyChatTheme, writeStoredChatTheme } from '../../src/app/themePreference';
+import { applyChatTheme, readStoredChatTheme } from '../../src/app/themePreference';
 import { setMessageLayout } from '../../src/app/messageLayoutPreference';
 import { INTERFACE_ZOOM_EVENT } from '../../src/app/interfaceZoom';
 import { mockNativeHttpInvoke } from '../helpers/nativeHttp';
@@ -16,8 +16,8 @@ setAvatarOverride('layout-maya', sampleAvatar('MC', '#98705b'));
 setAvatarOverride('synthetic-assistant', sampleAvatar('RA', '#6f7d95'));
 const params = new URLSearchParams(location.search);
 // This fixture mounts App directly, bypassing main.jsx theme initialization.
-writeStoredChatTheme('quiet');
-applyChatTheme('quiet');
+// Use the product default (Classic), preserving any theme chosen in Settings.
+applyChatTheme(readStoredChatTheme());
 localStorage.setItem('kordi.themeMode.v1', params.get('theme') === 'dark' ? 'dark' : 'light');
 localStorage.setItem('kordi.syntheticThreadsInitialized.v1', '1');
 
