@@ -5,6 +5,7 @@
   --app-surface-inset: 5px;
 }
 .kordi-app {
+  --app-native-titlebar-height: 32px;
   --app-shell-material: var(--app-native-session-bg);
   --app-session-material: var(--app-native-session-surface);
 }
@@ -66,7 +67,7 @@ html.kordi-native-shell .kordi-app .app-session-panel {
 html.kordi-native-shell .kordi-app .app-session-panel > div > .flex.h-full.flex-col {
   padding: 12px 14px 10px;
 }
-html.kordi-native-shell .kordi-app .app-workspace-sidebar {
+html.kordi-native-shell body[data-kordi-chat-theme='classic'] .kordi-app.theme-light .app-workspace-sidebar {
   --app-sidebar-selected-bg: rgb(0 0 0 / .055);
   --app-nav-rail-active-bg: rgb(0 0 0 / .055);
   --app-sidebar-title-text: rgb(0 0 0 / .78);

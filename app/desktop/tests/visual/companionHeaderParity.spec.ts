@@ -193,6 +193,10 @@ for (const appearance of ['light', 'dark'] as const) {
 
   test(`${appearance}: native title row keeps the Ask Agent tabs aligned with the main chat`, async ({ page }, testInfo) => {
     const errors = await openPanel(page, `theme=${appearance}`);
+    await page.evaluate(() => {
+      document.documentElement.classList.add('kordi-native-shell');
+      document.body.classList.add('kordi-native-shell');
+    });
     const titlebar = page.locator('.app-native-companion-titlebar');
     await expect(titlebar.getByRole('heading')).toHaveText('Ask Agent · Fix transcript scroll jitter');
     await expect(titlebar.getByRole('button', { name: 'Close side chat' })).toBeVisible();
@@ -209,8 +213,7 @@ for (const appearance of ['light', 'dark'] as const) {
     });
     expect(rows.tabs).toBeLessThan(1);
     expect(rows.titles).toBeLessThan(1);
-    // Both title rows are painted by the window titlebar, which shares the sidebar's material across
-    // the conversation column, at the same height.
+    // Both transparent title rows share the continuous shell backing at the same height.
     const titleRows = await page.evaluate(() => {
       const describe = (selector: string) => {
         const row = document.querySelector<HTMLElement>(selector)!;
