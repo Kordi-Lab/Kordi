@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppShellFrame } from '../../src/app/AppShellFrame';
 import { ChatCompanionLayout } from '../../src/pages/chatsPage.companionLayout';
 import { CompanionToolbar } from '../../src/pages/chatsPage.companionToolbar';
 import { useChatCompanionLayout } from '../../src/pages/useChatCompanionLayout';
 import '../../src/index.css';
+import { LEFT_RAIL_WIDTH } from '../../src/kordi-app/layout';
+
+document.documentElement.classList.add('kordi-native-shell');
+document.body.classList.add('kordi-native-shell');
 
 function Preview() {
   const [collapsed, setCollapsed] = useState(false);
@@ -12,14 +16,14 @@ function Preview() {
   const layout = useChatCompanionLayout({ pageConversationId: 'synthetic', activePaneKind: 'human', companionConversation: null, hasOverview: true });
   const { containerRef } = layout;
   return <AppShellFrame rootThemeClass="theme-dark" isNativeShell isLayoutResizing={false}
-    windowSize={{ width: 996, height: 800 }} leftWorkspaceWidth={collapsed ? 48 : 296}
+    windowSize={{ width: 996, height: 800 }} leftWorkspaceWidth={collapsed ? LEFT_RAIL_WIDTH : LEFT_RAIL_WIDTH + 248}
     isSingleWorkspacePage={false} showSessionRail collapseChatSessions={collapsed}
     showRightDetailRail={false} isDetailPanelCollapsed detailRailWidth={0}
     onSessionResizeMouseDown={() => {}} onDetailResizeMouseDown={() => {}}
     onToggleSessionPanel={() => setCollapsed(value => !value)}
     sidebar={<aside className="app-workspace-sidebar app-side-shell overflow-hidden"><div className="flex h-full">
-      <nav style={{ width: 48, flexShrink: 0 }}>Chats</nav>
-      <div className="app-session-panel-clip min-w-0 flex-1 overflow-hidden"><div className="app-session-panel" style={{ width: 248 }} inert={collapsed}>Synthetic sessions</div></div>
+      <nav style={{ width: LEFT_RAIL_WIDTH, flexShrink: 0 }}>Chats</nav>
+      <div className="app-session-panel-clip min-w-0 flex-1 overflow-hidden" style={{ '--app-session-surface-width': '248px' } as CSSProperties}><div className="app-session-panel" style={{ width: 248 }} inert={collapsed}>Synthetic sessions</div></div>
     </div></aside>}
     mainContent={<ChatCompanionLayout containerRef={containerRef} layout={layout} view="chat"
       companionPane={<aside className="h-full"><textarea aria-label="Agent draft" value={draft} onChange={event => setDraft(event.target.value)} className="w-full" /></aside>}>

@@ -32,6 +32,7 @@ async function workspaceColors(page: Page) {
     return {
       canvas: rgba(getComputedStyle(document.querySelector('.app-chat-theme-surface')!).backgroundColor),
       sessionTint: rgba(root.getPropertyValue('--app-native-session-bg').trim()),
+      shellTint: rgba(getComputedStyle(document.querySelector('.app-shell')!).backgroundColor),
       webSession: rgba(getComputedStyle(document.querySelector('.app-session-panel')!).backgroundColor),
     };
   });
@@ -41,10 +42,11 @@ for (const theme of ['light', 'dark']) {
   test(`native backing follows sidebar width and the ${theme} workspace palette`, async ({ page }) => {
     await page.goto(`/tests/visual/workspaceResize.html?backdrop=1&theme=${theme}`);
     await expect.poll(() => page.evaluate(() => (window as Window & { backdropRequests?: unknown[] }).backdropRequests?.length)).toBe(1);
-    const request = await page.evaluate(() => (window as Window & { backdropRequests: { sidebarWidth: number; navigationWidth: number; background: number[]; sessionBackground: number[]; titlebarHeight: number }[] }).backdropRequests[0]);
+    const request = await page.evaluate(() => (window as Window & { backdropRequests: { sidebarWidth: number; navigationWidth: number; background: number[]; sessionBackground: number[]; titlebarHeight: number; workspaceSurface: { inset: number; cornerRadius: number } }[] }).backdropRequests[0]);
     expect(request.sidebarWidth).toBe(320);
-    expect(request.navigationWidth).toBe(48);
-    expect(request.titlebarHeight).toBe(40);
+    expect(request.navigationWidth).toBe(40);
+    expect(request.titlebarHeight).toBe(32);
+    expect(request.workspaceSurface).toEqual({ inset: 5, cornerRadius: 14 });
     await expect(page.locator('.app-native-viewport')).toHaveAttribute('data-native-backdrop', 'ready');
     // AppKit provides the glass and tint below the transparent web surface.
     await expect(page.locator('.app-session-panel')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -77,9 +79,9 @@ test('session list keeps its web tint if native backing initialization fails', a
   await expect.poll(() => page.evaluate(() => (window as Window & { backdropRequests?: unknown[] }).backdropRequests?.length)).toBe(1);
   await expect(page.locator('.app-native-viewport')).not.toHaveAttribute('data-native-backdrop', 'ready');
   const colors = await workspaceColors(page);
-  expect(colors.webSession).toEqual(colors.sessionTint);
-  expect(colors.webSession[3]).toBeGreaterThan(0);
-  expect(colors.webSession[3]).toBeLessThan(255);
+  expect(colors.shellTint).toEqual(colors.sessionTint);
+  expect(colors.shellTint[3]).toBeGreaterThan(0);
+  expect(colors.shellTint[3]).toBeLessThan(255);
 });
 
 test('native sidebar backing follows page zoom independently of the display scale', async ({ page }) => {
@@ -92,9 +94,11 @@ test('native sidebar backing follows page zoom independently of the display scal
       window.dispatchEvent(new Event('kordi:interface-zoom-changed'));
     }, zoom);
     await expect.poll(() => page.evaluate(() => (window as Window & { backdropRequests: { sidebarWidth: number }[] }).backdropRequests.at(-1)?.sidebarWidth)).toBe(320 * zoom);
-    const request = await page.evaluate(() => (window as Window & { backdropRequests: { navigationWidth: number; titlebarHeight: number }[] }).backdropRequests.at(-1)!);
-    expect(request.navigationWidth).toBe(48 * zoom);
-    expect(request.titlebarHeight).toBeCloseTo(Math.max(40, 40 * zoom), 1);
+    const request = await page.evaluate(() => (window as Window & { backdropRequests: { navigationWidth: number; titlebarHeight: number; workspaceSurface: { inset: number; cornerRadius: number } }[] }).backdropRequests.at(-1)!);
+    expect(request.navigationWidth).toBe(40 * zoom);
+    expect(request.workspaceSurface.inset).toBeCloseTo(5 * zoom);
+    expect(request.workspaceSurface.cornerRadius).toBeCloseTo(14 * zoom);
+    expect(request.titlebarHeight).toBeCloseTo(Math.max(32, 32 * zoom), 1);
     const clearance = await page.evaluate(() => {
       const button = document.querySelector('.app-native-titlebar-navigation button')!.getBoundingClientRect();
       const header = document.querySelector('.app-native-titlebar')!.getBoundingClientRect();
@@ -107,7 +111,7 @@ test('native sidebar backing follows page zoom independently of the display scal
       const sidebar = document.querySelector('.app-side-shell')!.getBoundingClientRect();
       const titlebar = document.querySelector('.app-native-titlebar-workspace')!.getBoundingClientRect();
       return { sidebarWidth: sidebar.width, titlebarLeft: titlebar.left };
-    })).toEqual({ sidebarWidth: 48, titlebarLeft: 48 });
+    })).toEqual({ sidebarWidth: 40, titlebarLeft: 40 });
     expect(await page.locator('.app-native-titlebar-workspace').evaluate(element => getComputedStyle(element, '::before').content)).toBe('none');
     await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue('Draft stays editable during resizing');
     await page.getByRole('button', { name: 'Show sidebar' }).click();
@@ -139,16 +143,16 @@ test('workspace reflows its columns and transcript without scaling text, icons, 
     });
     expect(metrics.root.height).toBe(size.height);
     expect(metrics.shell.height).toBe(size.height);
-    expect(metrics.panel.top).toBe(40);
-    // The conversation and the session list are flush with the window: no gutter on any side.
-    expect(metrics.panel.bottom).toBe(size.height);
-    expect(metrics.panel.right).toBe(size.width);
-    expect(metrics.composer.bottom).toBe(size.height);
+    expect(metrics.panel.top).toBe(32);
+    // The work surface leaves a narrow outer inset beneath the compact titlebar.
+    expect(metrics.panel.bottom).toBe(size.height - 5);
+    expect(metrics.panel.right).toBe(size.width - 5);
+    expect(metrics.composer.bottom).toBe(size.height - 5);
     expect(metrics.messages.bottom).toBe(metrics.composer.top);
     expect(metrics.icon.width).toBe(24);
-    expect(metrics.nav.width).toBe(48);
-    expect(metrics.sessions.top).toBe(40);
-    expect(metrics.sessions.bottom).toBe(size.height);
+    expect(metrics.nav.width).toBe(40);
+    expect(metrics.sessions.top).toBe(32);
+    expect(metrics.sessions.bottom).toBe(size.height - 5);
     expect(metrics.sessionCorner).toBe('14px');
     expect(metrics.font).toBe('15px');
     if (size.width === 1480) wideMessageHeight = metrics.message.height;
@@ -176,8 +180,8 @@ test('vertical native growth updates the complete height chain while browser vie
       };
     }, height);
     expect(measurements.viewport).toBe(760);
-    expect(measurements.heights).toEqual([760, 760, 760, height, height, height - 40]);
-    expect(measurements.composerBottom, JSON.stringify(measurements.ancestorScroll)).toBe(height);
+    expect(measurements.heights).toEqual([760, 760, 760, height, height, height - 32 - 5]);
+    expect(measurements.composerBottom, JSON.stringify(measurements.ancestorScroll)).toBe(height - 5);
     expect(measurements.pageScroll).toBe(0);
   }
 });

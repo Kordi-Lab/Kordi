@@ -1,3 +1,10 @@
+#[derive(Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WorkspaceSurface {
+    inset: f64,
+    corner_radius: f64,
+}
+
 /// Match native backing surfaces to the actual sidebar and workspace panes.
 /// The webview remains live; this changes only the background component bounds.
 #[tauri::command]
@@ -8,15 +15,21 @@ pub(crate) async fn desktop_set_window_backdrop(
     navigation_width: f64,
     session_background: [u8; 4],
     titlebar_height: Option<f64>,
+    workspace_surface: Option<WorkspaceSurface>,
 ) -> Result<(), String> {
     if window.label() != super::window_lifecycle::MAIN_WINDOW_LABEL {
         return Err("Workspace backdrop is only available for the main window.".into());
     }
+    let surface = workspace_surface.unwrap_or_default();
     if !sidebar_width.is_finite()
         || sidebar_width < 0.0
         || !navigation_width.is_finite()
         || navigation_width < 0.0
         || titlebar_height.is_some_and(|height| !height.is_finite() || height < 0.0)
+        || !surface.inset.is_finite()
+        || surface.inset < 0.0
+        || !surface.corner_radius.is_finite()
+        || surface.corner_radius < 0.0
     {
         return Err("Invalid sidebar width.".into());
     }
@@ -76,36 +89,32 @@ pub(crate) async fn desktop_set_window_backdrop(
                         let layer: *const AnyObject = msg_send![parent, layer];
                         let cg_color: *const std::ffi::c_void = msg_send![color, CGColor];
                         let _: () = msg_send![layer, setBackgroundColor: cg_color];
-                        let mut navigation = bounds;
-                        navigation.size.width =
-                            navigation_width.min(sidebar_width).min(bounds.size.width);
-                        // The session tint backs the sidebar column below the
-                        // titlebar. The workspace backing is the flat
-                        // conversation plane: from the sidebar's edge to the
-                        // right edge, below the titlebar, so the whole titlebar
-                        // shares the sidebar's material across the window.
-                        let mut sessions = bounds;
-                        sessions.origin.x += navigation.size.width;
-                        sessions.size.width =
-                            (sidebar_width.min(bounds.size.width) - navigation.size.width).max(0.0);
-                        sessions.size.height -= titlebar_height;
-                        if is_flipped {
-                            sessions.origin.y += titlebar_height;
-                        }
+                        // A single tint under the whole shell keeps the rail,
+                        // titlebar and rounded cutouts on the same material.
+                        // WebKit adds the stationary list's translucent surface.
                         set_tint(
                             parent,
                             webview,
                             "kordi-session-backing",
-                            sessions,
+                            bounds,
                             session_background,
-                            16,
+                            18,
+                            0.0,
                         )?;
                         let mut workspace = bounds;
                         workspace.origin.x += sidebar_width.min(bounds.size.width);
                         workspace.size.width = (bounds.size.width - sidebar_width).max(0.0);
                         workspace.size.height -= titlebar_height;
+                        let inset = surface
+                            .inset
+                            .min(workspace.size.width)
+                            .min(workspace.size.height);
+                        workspace.size.width -= inset;
+                        workspace.size.height -= inset;
                         if is_flipped {
                             workspace.origin.y += titlebar_height;
+                        } else {
+                            workspace.origin.y += inset;
                         }
                         set_tint(
                             parent,
@@ -114,6 +123,7 @@ pub(crate) async fn desktop_set_window_backdrop(
                             workspace,
                             [background[0], background[1], background[2], 255],
                             18,
+                            surface.corner_radius,
                         )?;
                     }
                     Ok::<(), String>(())
@@ -134,6 +144,7 @@ pub(crate) async fn desktop_set_window_backdrop(
             navigation_width,
             session_background,
             titlebar_height,
+            surface,
         );
         Err("Native pane backing is only available on macOS.".into())
     }
@@ -147,6 +158,7 @@ unsafe fn set_tint(
     frame: objc2_foundation::NSRect,
     rgba: [u8; 4],
     autoresizing_mask: usize,
+    corner_radius: f64,
 ) -> Result<(), String> {
     use objc2::{class, msg_send, rc::Retained, runtime::AnyObject};
     use objc2_foundation::NSString;
@@ -185,5 +197,7 @@ unsafe fn set_tint(
     let cg_color: *const std::ffi::c_void = msg_send![color, CGColor];
     let layer: *const AnyObject = msg_send![&*tint, layer];
     let _: () = msg_send![layer, setBackgroundColor: cg_color];
+    let _: () = msg_send![layer, setCornerRadius: corner_radius];
+    let _: () = msg_send![layer, setMasksToBounds: true];
     Ok(())
 }

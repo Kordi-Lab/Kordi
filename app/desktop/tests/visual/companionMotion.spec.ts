@@ -49,3 +49,33 @@ test('both panels push the workspace continuously and rapid toggles retain draft
   await page.getByRole('button', { name: 'Chat', exact: true }).dblclick();
   await expect(page.getByRole('button', { name: 'Chat', exact: true })).toHaveAttribute('aria-pressed', 'false');
 });
+
+test('the main surface covers a stationary session list and reveals it again', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/tests/visual/companionMotion.html');
+  for (const label of ['Hide sidebar', 'Show sidebar']) {
+    const frames = await page.evaluate(async label => {
+      const read = () => {
+        const list = document.querySelector('.app-session-panel')!.getBoundingClientRect();
+        const main = document.querySelector('.app-shell-content')!.getBoundingClientRect();
+        return { listX: list.x, listWidth: list.width, mainX: main.x };
+      };
+      const frames = [read()];
+      document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!.click();
+      const start = performance.now();
+      while (performance.now() - start < 420) {
+        await new Promise(requestAnimationFrame);
+        frames.push(read());
+      }
+      return frames;
+    }, label);
+    expect(frames.every(frame => Math.abs(frame.listX - frames[0].listX) < 0.1)).toBe(true);
+    expect(frames.every(frame => Math.abs(frame.listWidth - frames[0].listWidth) < 0.1)).toBe(true);
+    expect(Math.abs(frames.at(-1)!.mainX - frames[0].mainX)).toBeGreaterThan(240);
+    expect(frames.some(frame => frame.mainX > 42 && frame.mainX < 286)).toBe(true);
+    if (label === 'Hide sidebar') {
+      expect(await page.evaluate(() => Boolean(document.elementFromPoint(100, 100)?.closest('.app-shell-content')))).toBe(true);
+      await expect(page.locator('.app-session-panel')).toHaveAttribute('inert', '');
+    }
+  }
+});

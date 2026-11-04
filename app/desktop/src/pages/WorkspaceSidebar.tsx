@@ -1,6 +1,6 @@
 import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { Archive, ChevronLeft } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -265,7 +265,10 @@ export function WorkspaceSidebar({
           />
 
           {showSessionRail ? (
-            <div className="app-session-panel-clip min-w-0 flex-1 overflow-hidden">
+            <div
+              className="app-session-panel-clip min-w-0 flex-1 overflow-hidden"
+              style={{ '--app-session-surface-width': `${sessionRailWidth}px` } as CSSProperties}
+            >
             <div
               className={cn(
                 'app-session-panel min-h-0 min-w-0 shrink-0 overflow-hidden',
