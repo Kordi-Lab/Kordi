@@ -244,6 +244,41 @@ pub async fn confirm(
     Ok(row)
 }
 
+/// Require fresh human evidence while the caller holds the card lock.
+pub(super) async fn require_newer_instruction(
+    tx: &mut sqlx_core::transaction::Transaction<'_, Postgres>,
+    event_id: &str,
+    acting_account_id: &str,
+    source_message_ids: &[String],
+) -> Result<(), PlanCardStoreError> {
+    let (has_new_instruction,): (bool,) = query_as(
+        "SELECT EXISTS (
+            SELECT 1 FROM cloud_chat_messages message
+            JOIN cloud_plan_cards card ON card.conversation_id = message.conversation_id
+            JOIN cloud_chat_conversation_members member
+              ON member.conversation_id = message.conversation_id
+             AND member.account_id = message.sender_account_id
+            WHERE card.event_id = $1 AND message.message_id::text = ANY($2)
+              AND message.sender_account_id <> $3
+              AND member.membership_state = 'active'
+              AND message.deleted_at IS NULL
+              AND message.message_kind IN ('text', 'voice')
+              AND message.created_at > card.updated_at
+        )",
+    )
+    .bind(event_id)
+    .bind(source_message_ids)
+    .bind(acting_account_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    if !has_new_instruction {
+        return Err(PlanCardStoreError::InvalidTransition(
+            "Reopening requires a new human message after the current plan revision. Keep the current plan and wait for new instructions.".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub async fn reopen(
     pool: &PgPool,
     event_id: &str,
@@ -287,31 +322,7 @@ pub(super) async fn reopen_with_sources(
     }
 
     if let Some(source_message_ids) = source_message_ids {
-        let (has_new_instruction,): (bool,) = query_as(
-            "SELECT EXISTS (
-                SELECT 1 FROM cloud_chat_messages message
-                JOIN cloud_plan_cards card ON card.conversation_id = message.conversation_id
-                JOIN cloud_chat_conversation_members member
-                  ON member.conversation_id = message.conversation_id
-                 AND member.account_id = message.sender_account_id
-                WHERE card.event_id = $1 AND message.message_id::text = ANY($2)
-                  AND message.sender_account_id <> $3
-                  AND member.membership_state = 'active'
-                  AND message.deleted_at IS NULL
-                  AND message.message_kind IN ('text', 'voice')
-                  AND message.created_at > card.updated_at
-            )",
-        )
-        .bind(event_id)
-        .bind(source_message_ids)
-        .bind(acting_account_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        if !has_new_instruction {
-            return Err(PlanCardStoreError::InvalidTransition(
-                "Reopening requires a new human message after the current plan revision. Keep the current plan and wait for new instructions.".to_string(),
-            ));
-        }
+        require_newer_instruction(&mut tx, event_id, acting_account_id, source_message_ids).await?;
     }
 
     query(

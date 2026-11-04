@@ -19,6 +19,7 @@ pub(in crate::auth::routes) enum OAuthLoginError {
         password_sign_in: bool,
     },
     Database(sqlx_core::Error),
+    Admission(crate::auth::admission::AdmissionError),
 }
 
 impl From<sqlx_core::Error> for OAuthLoginError {

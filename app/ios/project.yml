@@ -10,6 +10,9 @@ configs:
   Beta: debug
   Debug: debug
   Release: release
+  Research: release
+  Staging: release
+  ResearchStaging: release
 packages:
   LiveKit:
     url: https://github.com/livekit/client-sdk-swift.git
@@ -28,6 +31,8 @@ targets:
     type: application
     platform: iOS
     sources:
+      - path: Distribution.xcassets
+        buildPhase: resources
       - path: Kordi
         excludes:
           - Supporting/Preview Content
@@ -54,6 +59,19 @@ targets:
     # The document editor page: the Mac's Tiptap editor, built from
     # app/desktop/src/ios-document-editor into DocumentEditor/ on every build.
     preBuildScripts:
+      - name: Verify distribution selection
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "$CONFIGURATION" != "Beta" ]; then
+            test -n "$KORDI_OPS_EXPECTED" || { echo "A prepared ops distribution is required."; exit 1; }
+            case "$CONFIGURATION" in
+              Research) expected=research ;;
+              Staging) expected=staging ;;
+              ResearchStaging) expected=research-staging ;;
+              *) expected=production ;;
+            esac
+            test "$KORDI_DISTRIBUTION_CHANNEL" = "$expected" || exit 1
+          fi
       - name: Build document editor page
         script: bash "$SRCROOT/../../scripts/prepare-ios-document-editor.sh" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
         basedOnDependencyAnalysis: false
@@ -61,7 +79,7 @@ targets:
       - name: Verify release licenses and native frameworks
         basedOnDependencyAnalysis: false
         script: |
-          if [ "$CONFIGURATION" = "Release" ]; then
+          if { [ "$CONFIGURATION" = "Release" ] || [ "$CONFIGURATION" = "Research" ] || [ "$CONFIGURATION" = "Staging" ] || [ "$CONFIGURATION" = "ResearchStaging" ]; } && [ "$PLATFORM_NAME" = "iphoneos" ]; then
             export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
             python3 "$SRCROOT/../../scripts/licenses/verify-ios.py" --app "$TARGET_BUILD_DIR/$WRAPPER_NAME" --platform ios-arm64
           fi
@@ -101,6 +119,7 @@ targets:
               - $(KORDI_OAUTH_CALLBACK_SCHEME)
         KordiCloudBaseURL: $(KORDI_CLOUD_BASE_URL)
         KordiDistributionChannel: $(KORDI_DISTRIBUTION_CHANNEL)
+        KordiExpectedDistribution: $(KORDI_OPS_EXPECTED)
         KordiOAuthCallbackScheme: $(KORDI_OAUTH_CALLBACK_SCHEME)
         KordiHostAppURLScheme: $(KORDI_OAUTH_CALLBACK_SCHEME)
         KordiShareAppGroup: $(KORDI_SHARE_APP_GROUP)
@@ -145,26 +164,59 @@ targets:
           APNS_ENVIRONMENT: development
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DEBUG BETA
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios
+          PRODUCT_BUNDLE_IDENTIFIER: $(KORDI_OPS_APP_ID)
           PRODUCT_NAME: Kordi
-          KORDI_APP_DISPLAY_NAME: Kordi
-          KORDI_CLOUD_BASE_URL: https://kordi.ai
-          KORDI_DISTRIBUTION_CHANNEL: production
-          KORDI_OAUTH_CALLBACK_SCHEME: kordi
-          KORDI_SHARE_APP_GROUP: group.ai.kordi.share
-          KORDI_SHARE_CREDENTIAL_SERVICE: ai.kordi.share-session
-          ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+          KORDI_APP_DISPLAY_NAME: $(KORDI_OPS_DISPLAY_NAME)
+          KORDI_CLOUD_BASE_URL: $(KORDI_OPS_ORIGIN)
+          KORDI_DISTRIBUTION_CHANNEL: $(KORDI_OPS_CHANNEL)
+          KORDI_OAUTH_CALLBACK_SCHEME: $(KORDI_OPS_CALLBACK)
+          KORDI_SHARE_APP_GROUP: $(KORDI_OPS_APP_GROUP)
+          KORDI_SHARE_CREDENTIAL_SERVICE: $(KORDI_OPS_CREDENTIAL_SERVICE)
+          ASSETCATALOG_COMPILER_APPICON_NAME: $(KORDI_OPS_ICON)
           APNS_ENVIRONMENT: development
         Release:
-          PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios
+          PRODUCT_BUNDLE_IDENTIFIER: $(KORDI_OPS_APP_ID)
           PRODUCT_NAME: Kordi
-          KORDI_APP_DISPLAY_NAME: Kordi
-          KORDI_CLOUD_BASE_URL: https://kordi.ai
-          KORDI_DISTRIBUTION_CHANNEL: production
-          KORDI_OAUTH_CALLBACK_SCHEME: kordi
-          KORDI_SHARE_APP_GROUP: group.ai.kordi.share
-          KORDI_SHARE_CREDENTIAL_SERVICE: ai.kordi.share-session
-          ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+          KORDI_APP_DISPLAY_NAME: $(KORDI_OPS_DISPLAY_NAME)
+          KORDI_CLOUD_BASE_URL: $(KORDI_OPS_ORIGIN)
+          KORDI_DISTRIBUTION_CHANNEL: $(KORDI_OPS_CHANNEL)
+          KORDI_OAUTH_CALLBACK_SCHEME: $(KORDI_OPS_CALLBACK)
+          KORDI_SHARE_APP_GROUP: $(KORDI_OPS_APP_GROUP)
+          KORDI_SHARE_CREDENTIAL_SERVICE: $(KORDI_OPS_CREDENTIAL_SERVICE)
+          ASSETCATALOG_COMPILER_APPICON_NAME: $(KORDI_OPS_ICON)
+          APNS_ENVIRONMENT: production
+        Research:
+          PRODUCT_BUNDLE_IDENTIFIER: $(KORDI_OPS_APP_ID)
+          PRODUCT_NAME: Kordi
+          KORDI_APP_DISPLAY_NAME: $(KORDI_OPS_DISPLAY_NAME)
+          KORDI_CLOUD_BASE_URL: $(KORDI_OPS_ORIGIN)
+          KORDI_DISTRIBUTION_CHANNEL: $(KORDI_OPS_CHANNEL)
+          KORDI_OAUTH_CALLBACK_SCHEME: $(KORDI_OPS_CALLBACK)
+          KORDI_SHARE_APP_GROUP: $(KORDI_OPS_APP_GROUP)
+          KORDI_SHARE_CREDENTIAL_SERVICE: $(KORDI_OPS_CREDENTIAL_SERVICE)
+          ASSETCATALOG_COMPILER_APPICON_NAME: $(KORDI_OPS_ICON)
+          APNS_ENVIRONMENT: production
+        Staging:
+          PRODUCT_BUNDLE_IDENTIFIER: $(KORDI_OPS_APP_ID)
+          PRODUCT_NAME: Kordi
+          KORDI_APP_DISPLAY_NAME: $(KORDI_OPS_DISPLAY_NAME)
+          KORDI_CLOUD_BASE_URL: $(KORDI_OPS_ORIGIN)
+          KORDI_DISTRIBUTION_CHANNEL: $(KORDI_OPS_CHANNEL)
+          KORDI_OAUTH_CALLBACK_SCHEME: $(KORDI_OPS_CALLBACK)
+          KORDI_SHARE_APP_GROUP: $(KORDI_OPS_APP_GROUP)
+          KORDI_SHARE_CREDENTIAL_SERVICE: $(KORDI_OPS_CREDENTIAL_SERVICE)
+          ASSETCATALOG_COMPILER_APPICON_NAME: $(KORDI_OPS_ICON)
+          APNS_ENVIRONMENT: production
+        ResearchStaging:
+          PRODUCT_BUNDLE_IDENTIFIER: $(KORDI_OPS_APP_ID)
+          PRODUCT_NAME: Kordi
+          KORDI_APP_DISPLAY_NAME: $(KORDI_OPS_DISPLAY_NAME)
+          KORDI_CLOUD_BASE_URL: $(KORDI_OPS_ORIGIN)
+          KORDI_DISTRIBUTION_CHANNEL: $(KORDI_OPS_CHANNEL)
+          KORDI_OAUTH_CALLBACK_SCHEME: $(KORDI_OPS_CALLBACK)
+          KORDI_SHARE_APP_GROUP: $(KORDI_OPS_APP_GROUP)
+          KORDI_SHARE_CREDENTIAL_SERVICE: $(KORDI_OPS_CREDENTIAL_SERVICE)
+          ASSETCATALOG_COMPILER_APPICON_NAME: $(KORDI_OPS_ICON)
           APNS_ENVIRONMENT: production
     dependencies:
       - package: LiveKit
@@ -176,6 +228,7 @@ targets:
     sources:
       - path: KordiShareExtension
       - path: Kordi/Core/Share/ShareExtensionSupport.swift
+      - path: Kordi/Core/Environment/KordiReleaseConfiguration.swift
     entitlements:
       path: KordiShareExtension/Supporting/KordiShareExtension.entitlements
       properties:
@@ -192,6 +245,7 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         KordiCloudBaseURL: $(KORDI_CLOUD_BASE_URL)
         KordiDistributionChannel: $(KORDI_DISTRIBUTION_CHANNEL)
+        KordiExpectedDistribution: $(KORDI_OPS_EXPECTED)
         KordiHostAppURLScheme: $(KORDI_OAUTH_CALLBACK_SCHEME)
         KordiShareAppGroup: $(KORDI_SHARE_APP_GROUP)
         KordiShareCredentialService: $(KORDI_SHARE_CREDENTIAL_SERVICE)
@@ -222,21 +276,45 @@ targets:
           KORDI_SHARE_EXTENSION_DISPLAY_NAME: Kordi Beta
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DEBUG BETA
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.share
-          KORDI_CLOUD_BASE_URL: https://kordi.ai
-          KORDI_DISTRIBUTION_CHANNEL: production
-          KORDI_OAUTH_CALLBACK_SCHEME: kordi
-          KORDI_SHARE_APP_GROUP: group.ai.kordi.share
-          KORDI_SHARE_CREDENTIAL_SERVICE: ai.kordi.share-session
-          KORDI_SHARE_EXTENSION_DISPLAY_NAME: Kordi
+          PRODUCT_BUNDLE_IDENTIFIER: $(KORDI_OPS_SHARE_ID)
+          KORDI_CLOUD_BASE_URL: $(KORDI_OPS_ORIGIN)
+          KORDI_DISTRIBUTION_CHANNEL: $(KORDI_OPS_CHANNEL)
+          KORDI_OAUTH_CALLBACK_SCHEME: $(KORDI_OPS_CALLBACK)
+          KORDI_SHARE_APP_GROUP: $(KORDI_OPS_APP_GROUP)
+          KORDI_SHARE_CREDENTIAL_SERVICE: $(KORDI_OPS_CREDENTIAL_SERVICE)
+          KORDI_SHARE_EXTENSION_DISPLAY_NAME: $(KORDI_OPS_DISPLAY_NAME)
         Release:
-          PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.share
-          KORDI_CLOUD_BASE_URL: https://kordi.ai
-          KORDI_DISTRIBUTION_CHANNEL: production
-          KORDI_OAUTH_CALLBACK_SCHEME: kordi
-          KORDI_SHARE_APP_GROUP: group.ai.kordi.share
-          KORDI_SHARE_CREDENTIAL_SERVICE: ai.kordi.share-session
-          KORDI_SHARE_EXTENSION_DISPLAY_NAME: Kordi
+          PRODUCT_BUNDLE_IDENTIFIER: $(KORDI_OPS_SHARE_ID)
+          KORDI_CLOUD_BASE_URL: $(KORDI_OPS_ORIGIN)
+          KORDI_DISTRIBUTION_CHANNEL: $(KORDI_OPS_CHANNEL)
+          KORDI_OAUTH_CALLBACK_SCHEME: $(KORDI_OPS_CALLBACK)
+          KORDI_SHARE_APP_GROUP: $(KORDI_OPS_APP_GROUP)
+          KORDI_SHARE_CREDENTIAL_SERVICE: $(KORDI_OPS_CREDENTIAL_SERVICE)
+          KORDI_SHARE_EXTENSION_DISPLAY_NAME: $(KORDI_OPS_DISPLAY_NAME)
+        Research:
+          PRODUCT_BUNDLE_IDENTIFIER: $(KORDI_OPS_SHARE_ID)
+          KORDI_CLOUD_BASE_URL: $(KORDI_OPS_ORIGIN)
+          KORDI_DISTRIBUTION_CHANNEL: $(KORDI_OPS_CHANNEL)
+          KORDI_OAUTH_CALLBACK_SCHEME: $(KORDI_OPS_CALLBACK)
+          KORDI_SHARE_APP_GROUP: $(KORDI_OPS_APP_GROUP)
+          KORDI_SHARE_CREDENTIAL_SERVICE: $(KORDI_OPS_CREDENTIAL_SERVICE)
+          KORDI_SHARE_EXTENSION_DISPLAY_NAME: $(KORDI_OPS_DISPLAY_NAME)
+        Staging:
+          PRODUCT_BUNDLE_IDENTIFIER: $(KORDI_OPS_SHARE_ID)
+          KORDI_CLOUD_BASE_URL: $(KORDI_OPS_ORIGIN)
+          KORDI_DISTRIBUTION_CHANNEL: $(KORDI_OPS_CHANNEL)
+          KORDI_OAUTH_CALLBACK_SCHEME: $(KORDI_OPS_CALLBACK)
+          KORDI_SHARE_APP_GROUP: $(KORDI_OPS_APP_GROUP)
+          KORDI_SHARE_CREDENTIAL_SERVICE: $(KORDI_OPS_CREDENTIAL_SERVICE)
+          KORDI_SHARE_EXTENSION_DISPLAY_NAME: $(KORDI_OPS_DISPLAY_NAME)
+        ResearchStaging:
+          PRODUCT_BUNDLE_IDENTIFIER: $(KORDI_OPS_SHARE_ID)
+          KORDI_CLOUD_BASE_URL: $(KORDI_OPS_ORIGIN)
+          KORDI_DISTRIBUTION_CHANNEL: $(KORDI_OPS_CHANNEL)
+          KORDI_OAUTH_CALLBACK_SCHEME: $(KORDI_OPS_CALLBACK)
+          KORDI_SHARE_APP_GROUP: $(KORDI_OPS_APP_GROUP)
+          KORDI_SHARE_CREDENTIAL_SERVICE: $(KORDI_OPS_CREDENTIAL_SERVICE)
+          KORDI_SHARE_EXTENSION_DISPLAY_NAME: $(KORDI_OPS_DISPLAY_NAME)
   KordiTests:
     type: bundle.unit-test
     platform: iOS
@@ -268,6 +346,12 @@ targets:
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.tests
         Release:
+          PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.tests
+        Research:
+          PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.tests
+        Staging:
+          PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.tests
+        ResearchStaging:
           PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.tests
   KordiDeletionUITests:
     type: bundle.ui-testing
@@ -311,6 +395,54 @@ schemes:
       config: Debug
     archive:
       config: Release
+  Kordi Research:
+    build:
+      targets:
+        Kordi: all
+    run:
+      config: Research
+    test:
+      config: Research
+      targets:
+        - KordiTests
+    profile:
+      config: Research
+    analyze:
+      config: Research
+    archive:
+      config: Research
+  Kordi Staging:
+    build:
+      targets:
+        Kordi: all
+    run:
+      config: Staging
+    test:
+      config: Staging
+      targets:
+        - KordiTests
+    profile:
+      config: Staging
+    analyze:
+      config: Staging
+    archive:
+      config: Staging
+  Kordi Research Staging:
+    build:
+      targets:
+        Kordi: all
+    run:
+      config: ResearchStaging
+    test:
+      config: ResearchStaging
+      targets:
+        - KordiTests
+    profile:
+      config: ResearchStaging
+    analyze:
+      config: ResearchStaging
+    archive:
+      config: ResearchStaging
   Kordi Beta:
     build:
       targets:

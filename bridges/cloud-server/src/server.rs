@@ -27,6 +27,7 @@ mod workers;
 use logging::redact_url_credentials;
 
 pub struct ServerState {
+    admission: crate::auth::admission::AdmissionPolicy,
     pool: PgPool,
     events: EventBus,
     chat_sync_wakes: Arc<crate::chat_sync::realtime::ChatSyncWakeHub>,
@@ -45,6 +46,7 @@ pub struct ServerState {
 impl ServerState {
     pub fn new(pool: PgPool, events: EventBus) -> Self {
         Self {
+            admission: Default::default(),
             pool,
             events,
             chat_sync_wakes: crate::chat_sync::realtime::ChatSyncWakeHub::new(),
@@ -59,6 +61,14 @@ impl ServerState {
             connectors: crate::connectors::ConnectorRuntime::from_env(),
             document_rooms: crate::document_shares::collab::RoomRegistry::new(),
         }
+    }
+
+    pub fn admission(&self) -> &crate::auth::admission::AdmissionPolicy {
+        &self.admission
+    }
+    pub fn with_admission(mut self, policy: crate::auth::admission::AdmissionPolicy) -> Self {
+        self.admission = policy;
+        self
     }
 
     pub fn with_s3(mut self, s3: S3Config) -> Self {
@@ -321,6 +331,8 @@ pub async fn run(
             "Hosted deployment requires NATS, Redis, S3, and signup email configuration",
         ));
     }
+    let admission =
+        crate::auth::admission::AdmissionPolicy::from_env().map_err(RunError::Configuration)?;
     let pool = init_pool(database_url).await.map_err(RunError::Pool)?;
     let events = match nats_url {
         Some(url) => {
@@ -347,8 +359,9 @@ pub async fn run(
             CloudRateLimiter::memory(CloudRateLimitConfig::production())
         }
     });
-    let mut state =
-        ServerState::new(pool, events).with_connector_call_limiter(rate_limiter.clone());
+    let mut state = ServerState::new(pool, events)
+        .with_connector_call_limiter(rate_limiter.clone())
+        .with_admission(admission);
     if let Some(service) = crate::auth::signup_email::SignupEmailService::from_env() {
         state = state.with_signup_email(service);
         println!("Kordi signup email verification is configured");

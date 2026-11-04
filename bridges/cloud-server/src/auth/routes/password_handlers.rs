@@ -40,7 +40,11 @@ pub(super) async fn signup(
             };
             Some((email_service, verification_id, verification_code))
         }
-        (None, None) if state.legacy_signup_is_open() => None,
+        (None, None)
+            if state.legacy_signup_is_open() && !state.admission().requires_verified_email() =>
+        {
+            None
+        }
         _ => {
             return err("email_verification_required", "Verify your email with the code sent to your inbox before creating an account. Update Kordi if the code field is unavailable.", StatusCode::BAD_REQUEST);
         }
@@ -176,6 +180,16 @@ pub(super) async fn signup(
             }
             return super::signup_email_handlers::signup_code_error(error);
         }
+    }
+    if let Err(error) = state
+        .admission()
+        .admit_identity(pool, Some(&normalized_email), email_proof.is_some())
+        .await
+    {
+        if tx.commit().await.is_err() {
+            return crate::auth::admission::AdmissionError::Unavailable.response();
+        }
+        return error.response();
     }
     // Only an emailed code proves ownership; a legacy signup stays unverified.
     let email_verified_at = email_proof.is_some().then_some(&now);

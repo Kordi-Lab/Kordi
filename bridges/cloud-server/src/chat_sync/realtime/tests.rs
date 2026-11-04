@@ -138,13 +138,13 @@ async fn realtime_tickets_are_bound_to_the_issuing_session() {
         ticket.session_token_id.as_deref(),
         Some(session.token_id.as_str())
     );
-    assert!(connection_is_active(&pool, &ticket).await);
+    assert!(connection_is_active(&pool, &ticket, &Default::default()).await);
 
     crate::auth::session::revoke_session(&pool, &session.token_id)
         .await
         .unwrap();
     assert!(
-        !connection_is_active(&pool, &ticket).await,
+        !connection_is_active(&pool, &ticket, &Default::default()).await,
         "signing out closes sockets opened with that session's tickets"
     );
     assert!(
@@ -168,14 +168,14 @@ async fn legacy_tickets_without_a_session_fall_back_to_device_checks() {
         allowed_origin: None,
         session_token_id: None,
     };
-    assert!(connection_is_active(&pool, &ticket).await);
+    assert!(connection_is_active(&pool, &ticket, &Default::default()).await);
     query("UPDATE cloud_devices SET revoked_at = $1 WHERE device_id = $2")
         .bind(Utc::now().to_rfc3339())
         .bind(&device_id)
         .execute(&pool)
         .await
         .unwrap();
-    assert!(!connection_is_active(&pool, &ticket).await);
+    assert!(!connection_is_active(&pool, &ticket, &Default::default()).await);
 }
 
 #[test]
@@ -199,4 +199,56 @@ fn only_legacy_ticket_sockets_have_a_bounded_lifetime() {
         None,
         "session-bound sockets close on sign-out instead"
     );
+}
+
+#[tokio::test]
+#[ignore = "Requires a disposable PostgreSQL database"]
+async fn realtime_revalidates_instance_admission_for_session_and_legacy_tickets() {
+    use crate::auth::admission::{AdmissionMode, AdmissionPolicy};
+    use std::collections::HashSet;
+    let pool = test_pool().await.expect("disposable database is required");
+    let (account_id, device_id) = account_with_device(&pool).await;
+    let email = format!("{account_id}@example.test");
+    let session = crate::auth::session::issue_session(&pool, &account_id, &device_id, 30)
+        .await
+        .unwrap();
+    let approved = AdmissionPolicy::synthetic(
+        AdmissionMode::ApprovedTesters,
+        vec![],
+        HashSet::from([email]),
+    );
+    let revoked =
+        AdmissionPolicy::synthetic(AdmissionMode::ApprovedTesters, vec![], HashSet::new());
+    for session_token_id in [Some(session.token_id.clone()), None] {
+        let ticket = ConsumedRealtimeTicket {
+            account_id: account_id.clone(),
+            device_id: device_id.clone(),
+            allowed_origin: None,
+            session_token_id,
+        };
+        query("UPDATE cloud_accounts SET primary_email_verified_at = NULL WHERE account_id = $1")
+            .bind(&account_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(
+            connection_is_active(&pool, &ticket, &Default::default()).await,
+            "legacy admission behavior is preserved"
+        );
+        assert!(
+            !connection_is_active(&pool, &ticket, &approved).await,
+            "approval alone cannot bypass verification"
+        );
+        query("UPDATE cloud_accounts SET primary_email_verified_at = $1 WHERE account_id = $2")
+            .bind(Utc::now().to_rfc3339())
+            .bind(&account_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(connection_is_active(&pool, &ticket, &approved).await);
+        assert!(
+            !connection_is_active(&pool, &ticket, &revoked).await,
+            "removed approval closes even an otherwise valid session or legacy ticket"
+        );
+    }
 }

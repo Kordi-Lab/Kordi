@@ -1,3 +1,4 @@
+import { distributionLinkTarget } from './distribution';
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -20,9 +21,10 @@ export function groupInvitationTokenFromUrl(value: string | null | undefined): s
   try {
     const url = new URL(raw);
     const pathParts = url.pathname.split('/').filter(Boolean);
-    const trustedWebHost = ['kordi.ai', 'www.kordi.ai']
-      .includes(url.hostname.toLowerCase());
-    const candidate = url.protocol === 'kordi:' && url.hostname === 'group-invite'
+    const target = distributionLinkTarget();
+    const trustedWebHost = url.origin === target.origin
+      || url.origin === target.origin.replace('https://', 'https://www.');
+    const candidate = url.protocol === `${target.scheme}:` && url.hostname === 'group-invite'
       ? pathParts[0]
       : url.protocol === 'https:' && trustedWebHost && pathParts[0] === 'g'
         ? pathParts[1]
