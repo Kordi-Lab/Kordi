@@ -1,3 +1,4 @@
+import { distributionLinkTarget } from '../cloud/distribution';
 /** Share token parsing for `kordi://document/<token>` and `https://kordi.ai/d/<token>`. No Tauri imports. */
 const DOCUMENT_SHARE_TOKEN_PATTERN = /^kordi_ds_[A-Za-z0-9_-]{43}$/;
 
@@ -14,8 +15,10 @@ export function documentShareTokenFromUrl(value: string | null | undefined): str
   try {
     const url = new URL(raw);
     const pathParts = url.pathname.split('/').filter(Boolean);
-    const trustedWebHost = ['kordi.ai', 'www.kordi.ai'].includes(url.hostname.toLowerCase());
-    const candidate = url.protocol === 'kordi:' && url.hostname === 'document'
+    const target = distributionLinkTarget();
+    const trustedWebHost = url.origin === target.origin
+      || url.origin === target.origin.replace('https://', 'https://www.');
+    const candidate = url.protocol === `${target.scheme}:` && url.hostname === 'document'
       ? pathParts[0]
       : url.protocol === 'https:' && trustedWebHost && pathParts[0] === 'd' && pathParts.length === 2
         ? pathParts[1]

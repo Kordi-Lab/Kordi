@@ -57,4 +57,6 @@ pub(crate) mod tests;
 mod vote_tests;
 
 #[cfg(test)]
+mod reschedule_tests;
+#[cfg(test)]
 mod stale_context_tests;
