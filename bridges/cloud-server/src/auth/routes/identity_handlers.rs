@@ -1,5 +1,7 @@
 use super::*;
 
+#[cfg(test)]
+mod account_linking_tests;
 mod completion;
 mod email_linking;
 #[cfg(test)]

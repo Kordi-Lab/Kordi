@@ -27,13 +27,19 @@ pub(super) async fn send_signup_code(
     let Some(service) = state.signup_email() else {
         return signup_code_error(SignupCodeError::Unavailable);
     };
-    let existing: Result<Option<(String,)>, _> =
-        query_as("SELECT account_id FROM cloud_accounts WHERE LOWER(primary_email) = $1")
-            .bind(&email)
-            .fetch_optional(state.db_pool())
-            .await;
+    // An account without a password whose email is verified, such as one
+    // created through Google or GitHub, may add a password with a code, so it
+    // gets one exactly like a new address. Every other existing account must
+    // sign in instead.
+    let existing: Result<Option<(bool, bool)>, _> = query_as(
+        "SELECT password_hash IS NOT NULL, primary_email_verified_at IS NOT NULL \
+         FROM cloud_accounts WHERE LOWER(primary_email) = $1",
+    )
+    .bind(&email)
+    .fetch_optional(state.db_pool())
+    .await;
     match existing {
-        Ok(Some(_)) => {
+        Ok(Some((has_password, email_verified))) if has_password || !email_verified => {
             return err(
                 "email_in_use",
                 "An account with this email already exists. Sign in instead.",
@@ -41,7 +47,7 @@ pub(super) async fn send_signup_code(
             )
         }
         Err(_) => return signup_code_error(SignupCodeError::Database),
-        Ok(None) => {}
+        Ok(_) => {}
     }
     match request_signup_code(state.db_pool(), service, &email).await {
         Ok(challenge) => (StatusCode::OK, Json(challenge)).into_response(),
