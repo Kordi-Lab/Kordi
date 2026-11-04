@@ -43,7 +43,7 @@ import { useCloudSyncPresentation } from '@/features/cloud/useCloudSyncPresentat
 import { useCloudAuthTransition } from '@/features/cloud/useCloudAuthTransition';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { WhatsNewLaunchWindow } from '@/features/updates/useWhatsNewWindow';
-import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
+import { CloudSignInGate } from '@/kordi-app/cloud/CloudSignInGate';
 import type { ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 import type { Conversation } from '@/kordi-app/types';
 import { GroupInvitationDialog } from '@/pages/GroupInvitationDialog';
@@ -55,7 +55,7 @@ const SHOW_DEBUG_AUTH_DIAGNOSTICS = cloudAuthCapabilityDiscoveryEnabled();
 
 type CloudSessionGateResult = Pick<
   UseCloudSessionResult,
-  'status' | 'account' | 'signIn' | 'signUp' | 'signInWithProvider'
+  'status' | 'account' | 'signIn' | 'signUp' | 'signInWithProvider' | 'browserSignIn'
 >;
 
 function readSystemTheme(): ResolvedThemeMode {
@@ -294,7 +294,7 @@ function CloudEditionRoot({
         />
         {signedOut ? (
           <div className="app-cloud-login-surface" data-ready={loginReady} inert={!loginReady}>
-            <CloudLoginPage
+            <CloudSignInGate browserSignIn={session.browserSignIn}
               initialMode={loginMode}
               onModeChange={setLoginMode}
               onSignIn={signIn}

@@ -8,10 +8,12 @@ mod cloud_account_paths;
 mod cloud_api_endpoint;
 use canonical_sessions::desktop_canonical_reconcile_message_mirror;
 use cloud_api_endpoint::cloud_api_base_url_from_env;
+mod cloud_app_sign_in_loopback;
 mod cloud_host_activity;
 mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_session;
+mod cloud_session_refresh;
 mod digest_calendar;
 mod digest_calendar_sync;
 mod link_preview;
@@ -428,6 +430,8 @@ pub fn run() {
             cloud_oauth_loopback::cloud_oauth_loopback_prepare,
             cloud_oauth_loopback::cloud_oauth_loopback_wait,
             cloud_oauth_loopback::cloud_oauth_loopback_cancel,
+            cloud_app_sign_in_loopback::cloud_app_sign_in_loopback_prepare,
+            cloud_session_refresh::cloud_session_refresh,
             cloud_session::cloud_session_store,
             cloud_session::cloud_session_load,
             cloud_session::cloud_session_clear,

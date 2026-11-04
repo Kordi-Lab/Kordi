@@ -13,15 +13,15 @@ const MAX_LOOPBACK_REQUEST_BYTES: usize = 64 * 1024;
 
 #[derive(Default)]
 pub struct CloudOAuthLoopbackState {
-    pending: Mutex<HashMap<String, oneshot::Receiver<Result<String, String>>>>,
-    cancellations: Mutex<HashMap<String, oneshot::Sender<()>>>,
+    pub(crate) pending: Mutex<HashMap<String, oneshot::Receiver<Result<String, String>>>>,
+    pub(crate) cancellations: Mutex<HashMap<String, oneshot::Sender<()>>>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudOAuthLoopbackStart {
-    request_id: String,
-    redirect_url: String,
+    pub(crate) request_id: String,
+    pub(crate) redirect_url: String,
 }
 
 #[tauri::command]
@@ -199,7 +199,7 @@ async fn handle_loopback_connection(
     false
 }
 
-async fn read_loopback_request(stream: &mut TcpStream) -> Option<String> {
+pub(crate) async fn read_loopback_request(stream: &mut TcpStream) -> Option<String> {
     let mut request = Vec::with_capacity(4 * 1024);
     let header_end = loop {
         let mut chunk = [0_u8; 4 * 1024];
@@ -240,7 +240,7 @@ async fn read_loopback_request(stream: &mut TcpStream) -> Option<String> {
     String::from_utf8(request).ok()
 }
 
-async fn write_response(
+pub(crate) async fn write_response(
     stream: &mut TcpStream,
     status: &str,
     content_type: &str,
@@ -256,9 +256,19 @@ async fn write_response(
 }
 
 fn completion_page_html(request_id: &str) -> String {
+    completion_page_document("loading", &completion_page_script(request_id))
+}
+
+/// The same page with a fixed status and no script, for callbacks whose
+/// result is already known when the browser arrives.
+pub(crate) fn static_completion_page_html(status: &str) -> String {
+    completion_page_document(status, "")
+}
+
+fn completion_page_document(status: &str, script: &str) -> String {
     format!(
         r#"<!doctype html>
-<html lang="en" data-status="loading">
+<html lang="en" data-status="{status}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -294,7 +304,6 @@ fn completion_page_html(request_id: &str) -> String {
 </body>
 </html>"#,
         style = completion_page_css(),
-        script = completion_page_script(request_id),
         favicon = KORDI_FAVICON_DATA_URL,
     )
 }

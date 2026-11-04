@@ -21,7 +21,10 @@ import {
   type CloudSignupCodeChallenge,
   type CloudSignupInput,
 } from './authClient';
+import { revokeAppSignIn, type AppSignInResult } from './appSignIn/appSignInClient';
+import { useCloudBrowserSignInSession, useCloudSessionKeepAlive, type CloudBrowserSignInSession } from './appSignIn/cloudBrowserSignInSession';
 import { carryCloudAccountEmailVerification, cloudAccountsEqual } from './cloudAccountState';
+import { cloudFetchImpl } from './cloudTransport';
 import {
   isCloudOAuthCancelled,
 } from './cloudOAuthCancellation';
@@ -56,6 +59,8 @@ export type UseCloudSessionResult = CloudAccountEmailVerificationActions & {
   requestSignupCode(this: void, email: string): Promise<CloudSignupCodeChallenge>;
   signUp(input: CloudSignupInput): Promise<void>;
   signInWithProvider(provider: CloudOAuthProvider, signal?: AbortSignal): Promise<void>;
+  /** Present when this runtime can sign in through the system browser. */
+  browserSignIn?: CloudBrowserSignInSession;
   updateProfile(input: CloudProfileUpdateInput): Promise<CloudAccount>;
   signOut(this: void): Promise<void>;
   clearError(): void;
@@ -436,6 +441,15 @@ export function useCloudSession({
     [authClient, setAuthenticated],
   );
 
+  const completeBrowserSignIn = useCallback(async (result: AppSignInResult) => {
+    await completeCloudAuthResult({
+      result, currentAccountId: accountIdRef.current, setAuthenticated, reloadWindow: reloadForAccountStorageSwitch,
+      saveSession: (session) => saveSession({ ...session, ...result.refresh }),
+    });
+  }, [reloadForAccountStorageSwitch, setAuthenticated]);
+  const browserSignIn = useCloudBrowserSignInSession(enabled && !client, completeBrowserSignIn);
+  useCloudSessionKeepAlive(enabled && status === 'authenticated');
+
   const accountEmailVerification = useCloudAccountEmailVerification({ authClient, accountRef, setAuthenticated });
 
   const signOut = useCallback(async () => {
@@ -448,7 +462,8 @@ export function useCloudSession({
           // Best-effort: still sign out below.
         }
         try {
-          await authClient.logout(stored.token);
+          // Browser sign-ins end through revocation; older sessions through logout.
+          if (!(await revokeAppSignIn(stored, cloudFetchImpl()))) await authClient.logout(stored.token);
         } catch {
           // Best-effort: still clear local state below.
         }
@@ -473,6 +488,7 @@ export function useCloudSession({
     signUp,
     requestSignupCode,
     signInWithProvider,
+    browserSignIn,
     updateProfile,
     ...accountEmailVerification,
     signOut,

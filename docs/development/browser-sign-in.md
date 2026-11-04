@@ -239,3 +239,40 @@ Registered clients live in configuration, not in the database.
 runs from `scripts/test-cloud-migrations.sh`. It covers the cookie, `Origin`
 and CSRF checks, the display-code confirmation and limits, and every code and
 refresh rejection. Client, PKCE and return-path rules have unit tests.
+
+## Desktop app
+
+The desktop app shows a welcome screen with Log in and Sign up. Both open
+the system browser at `GET /v1/cloud/auth/app/authorize` on the configured
+API origin; Sign up adds `prompt=create` so the page can open on account
+creation. The code lives in `app/desktop/src/features/cloud/appSignIn/`.
+
+- Client ID: derived from the build's callback scheme (`kordi` ->
+  `kordi-desktop`, `kordi-beta` -> `kordi-desktop-beta`, `kordi-staging` ->
+  `kordi-desktop-staging`). Development builds may set
+  `VITE_KORDI_APP_CLIENT_ID`.
+- Redirect: a loopback listener in the native shell on an ephemeral port
+  (`http://127.0.0.1:<port>/auth/callback`). It completes only for the
+  `state` the app generated; the app checks `state` again before the
+  exchange. The listener stops after 15 minutes, on Cancel, or once a code
+  is exchanged.
+- Paste code: the wait screen accepts the displayed code and exchanges it
+  with the same verifier and redirect URI. One attempt exchanges at most one
+  code; a refused code (expired or used) can be replaced by another.
+- Availability: before offering browser sign-in the app sends
+  `GET /v1/cloud/auth/app/authorize?client_id=<id>`. `invalid_redirect_uri`
+  means the server knows the client. A 404 or `invalid_client` shows the
+  in-app email form instead, so older servers keep working.
+- Tokens: the access token, refresh token, client ID and token endpoint are
+  stored with the Cloud session in the OS keychain. The native shell
+  refreshes five minutes before expiry under one process-wide lock
+  (`cloud_session_refresh`), so windows and background tasks never present
+  a rotated refresh token twice. A refused refresh signs the app out.
+- Sign-out revokes the refresh token through `POST /v1/cloud/auth/app/revoke`.
+- Account changes: Cloud caches, the group outbox, attachments and file
+  storage are keyed by account ID, and signing in as a different account
+  activates that account's storage and reloads the window before any of its
+  data is shown.
+
+Provider sign-ins for model accounts are unchanged. The iOS app is a
+separate step.
