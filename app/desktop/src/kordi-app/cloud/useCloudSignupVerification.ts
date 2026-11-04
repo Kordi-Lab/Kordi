@@ -36,10 +36,11 @@ export function useCloudSignupVerification(
       }
       throw caught;
     }
+    const now = Date.now();
     setChallenge(next);
     setVerificationCode('');
-    setClockNow(Date.now());
-    setResendAt(Date.now() + next.retryAfterSeconds * 1000);
+    setClockNow(now);
+    setResendAt(now + next.retryAfterSeconds * 1000);
   }
 
   function resetVerification() {
