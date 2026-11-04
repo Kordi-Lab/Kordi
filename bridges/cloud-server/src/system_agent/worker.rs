@@ -29,6 +29,12 @@ pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
                 if let Err(error) = super::store::release_stale_runs(state.db_pool()).await {
                     eprintln!("[system-agent] Stale run check failed: {error}");
                 }
+                // Runs that ended by another path settle their pool usage here.
+                if let Err(error) =
+                    crate::resource_pools::usage::settle_ended_runs(state.db_pool()).await
+                {
+                    eprintln!("[system-agent] Resource pool settlement failed: {error}");
+                }
             }
             if ticks.is_multiple_of(PRUNE_EVERY_TICKS) {
                 if let Err(error) = crate::resource_pools::usage::prune(state.db_pool()).await {

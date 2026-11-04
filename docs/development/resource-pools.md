@@ -62,7 +62,7 @@ off.
 | `pools[].grounding` | The provider for Grounding runs. Defaults to `systemAgent`. |
 | `pools[].limits` | Daily limits; see below. Every limit defaults to `"unlimited"`. |
 | `pools[].stopped` | Emergency stop. A stopped pool queues nothing and hands no key to a runner, so runs it had already queued fail. |
-| `pools[].organizations` | Organization ids served by this pool. An organization may appear in one pool only. |
+| `pools[].organizations` | Organization ids (`org_…`) served by this pool. An organization may appear in one pool only. Ids that do not exist on the server are kept, with a startup warning. |
 
 A provider:
 
@@ -74,7 +74,7 @@ A provider:
 | `apiKeyEnv` | The name of an environment variable that holds the API key. |
 | `apiKeyFile` | A file that holds the API key. Exactly one of `apiKeyEnv` and `apiKeyFile`. |
 | `headers` | Optional extra request headers, such as a gateway's `HTTP-Referer` and `X-Title` attribution headers. At most 16; printable ASCII. Credential and framing headers (`Authorization`, `Cookie`, `Host`, `Content-Type` and similar) are refused. |
-| `estimatedCostMicrosPerRun` | Optional estimate of one run's cost in millionths of a currency unit, used only by `poolSpendMicrosPerDay`. |
+| `estimatedCostMicrosPerRun` | Estimate of one run's cost in millionths of a currency unit, used only by `poolSpendMicrosPerDay`. Required above 0 on every provider of a pool that sets a spend ceiling. |
 
 Use `"provider": "openrouter"` for OpenRouter and other gateways whose model
 ids carry a vendor prefix, such as `vendor/model-name`. With `openai`, the
@@ -95,7 +95,8 @@ clear. `0` refuses every run:
 
 The server refuses to start when the file is missing, larger than 256 KiB,
 not valid JSON, has an unknown field, names an unknown default pool, repeats a
-pool id, binds an organization twice, or has an invalid provider, URL, model,
+pool id, binds an organization twice or without the `org_` prefix, sets a
+spend ceiling without cost estimates, or has an invalid provider, URL, model,
 header, or an API key that cannot be read. Messages name the pool and field.
 They never contain a key, and a value that might be a pasted key is not
 echoed. The startup log lists each pool's id and limits only.
@@ -128,10 +129,14 @@ Admission happens in the transaction that queues the run:
 3. If any limit is reached, the admission's savepoint rolls back and the run is
    not queued.
 
+Only limited counters are kept: a pool without a pool-wide limit keeps no
+pool counter, and a run with no limited counter at all (every run of the pool
+built without a pool file) is admitted without any write.
+
 When the System agent is refused, it stays silent: no message, nothing
 queued, and nothing replayed later. The conversation's message cursor moves
-past the new messages, due reminders are marked as fired, and the open card is
-marked as seen, exactly as if the pass had run and chosen to say nothing. A
+past the new messages, due reminders are marked as fired, and every card the
+pass was woken for is marked as seen, exactly as if the pass had run and chosen to say nothing. A
 refused Grounding request gets the usual "Grounding isn't available" answer
 (card builds), the matching budget answer with the time until the next UTC
 day (matching and room themes), or nothing at all (group intros, nearby
@@ -145,8 +150,8 @@ once):
   model may have been called.
 - A run that failed or was cancelled before any runner claimed it is
   released, and its count is given back.
-- A run that ends by another path keeps its reservation and stays counted,
-  which never under-counts.
+- A run that ends by another path (a stop, an expiry, a deleted account) is
+  settled by the System agent worker within about a minute, by the same rule.
 
 Usage older than 90 days is pruned about once an hour by the System agent
 worker.

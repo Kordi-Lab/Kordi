@@ -76,13 +76,55 @@ pub(super) async fn stay_silent(
     .bind(super::store::offered_reminders(input))
     .execute(&mut *tx)
     .await?;
-    let card = &input["openCard"];
-    if let (true, Some(event_id), Some(revision)) = (
-        changed.rows_affected() > 0,
-        card["eventId"].as_str(),
-        card["revision"].as_i64(),
-    ) {
-        mark_card_seen(&mut *tx, candidate.conversation_id, event_id, revision).await?;
+    if changed.rows_affected() > 0 {
+        for (event_id, revision) in woken_cards(input) {
+            mark_card_seen(&mut *tx, candidate.conversation_id, &event_id, revision).await?;
+        }
     }
     tx.commit().await
+}
+
+/// Every card the pass was woken for or shown, with the revision it saw: the
+/// open card and each `card_changed` hook.
+fn woken_cards(input: &Value) -> Vec<(String, i64)> {
+    let hooks = input["hooks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|hook| hook["name"] == "card_changed");
+    let mut cards: Vec<(String, i64)> = std::iter::once(&input["openCard"])
+        .chain(hooks)
+        .filter_map(|card| {
+            Some((
+                card["eventId"].as_str()?.to_string(),
+                card["revision"].as_i64()?,
+            ))
+        })
+        .collect();
+    cards.sort();
+    cards.dedup();
+    cards
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn every_woken_card_is_marked() {
+        let input = json!({
+            "openCard": {"eventId": "plan_a", "revision": 4},
+            "hooks": [
+                {"name": "new_messages", "sinceSequence": 3},
+                {"name": "card_changed", "eventId": "plan_a", "revision": 4},
+                {"name": "card_changed", "eventId": "plan_b", "revision": 2},
+                {"name": "t_minus_2h", "key": "t_minus_2h:plan_c", "eventId": "plan_c"},
+            ],
+        });
+        assert_eq!(
+            super::woken_cards(&input),
+            vec![("plan_a".to_string(), 4), ("plan_b".to_string(), 2)]
+        );
+        assert!(super::woken_cards(&json!({"hooks": []})).is_empty());
+    }
 }

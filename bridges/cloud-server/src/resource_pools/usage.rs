@@ -7,7 +7,8 @@
 //! the counter is below its limit; the row lock of the upsert serializes
 //! concurrent admissions, so no limit is ever passed. The reservation row is
 //! keyed by run id: admitting the same run again counts nothing, and
-//! settlement changes a reservation at most once.
+//! settlement changes a reservation at most once. Unlimited counters are not
+//! kept, and a run with no limited counter leaves no rows at all.
 
 use chrono::{NaiveDate, Utc};
 use sqlx_core::acquire::Acquire;
@@ -87,6 +88,13 @@ pub async fn reserve_on(
     if scope_limit == Some(0) || pool_runs == Some(0) || pool_spend.is_some_and(|c| cost > c) {
         return Ok(Admission::Exhausted);
     }
+    // Only limited counters are kept, so an unlimited pool (such as the
+    // pool built without a pool file) admits every run without a write.
+    let count_scope = scope_limit.is_some();
+    let count_pool = pool_runs.is_some() || pool_spend.is_some();
+    if !count_scope && !count_pool {
+        return Ok(Admission::Admitted);
+    }
 
     let mut savepoint = tx.begin().await?;
     let inserted: Option<String> = query_scalar(
@@ -110,28 +118,30 @@ pub async fn reserve_on(
         savepoint.commit().await?;
         return Ok(Admission::Admitted);
     }
-    let counted = raise(
-        &mut savepoint,
-        pool.id(),
-        day,
-        request.feature.as_str(),
-        request.scope_id,
-        cost,
-        scope_limit,
-        None,
-    )
-    .await?
-        && raise(
+    let counted = (!count_scope
+        || raise(
             &mut savepoint,
             pool.id(),
             day,
-            POOL_FEATURE,
-            POOL_SCOPE,
+            request.feature.as_str(),
+            request.scope_id,
             cost,
-            pool_runs,
-            pool_spend,
+            scope_limit,
+            None,
         )
-        .await?;
+        .await?)
+        && (!count_pool
+            || raise(
+                &mut savepoint,
+                pool.id(),
+                day,
+                POOL_FEATURE,
+                POOL_SCOPE,
+                cost,
+                pool_runs,
+                pool_spend,
+            )
+            .await?);
     if counted {
         savepoint.commit().await?;
         Ok(Admission::Admitted)
@@ -263,6 +273,31 @@ pub async fn settle_ended_run(conn: &mut PgConnection, run_id: &str) -> sqlx_cor
         Settlement::Released
     };
     settle(conn, run_id, settlement).await
+}
+
+/// Settles the reservations of runs that ended by another path (a stop, an
+/// expiry, a deleted account) and so were never settled. Returns how many
+/// were settled.
+pub async fn settle_ended_runs(pool: &PgPool) -> sqlx_core::Result<usize> {
+    let ended: Vec<String> = query_scalar(
+        "SELECT reservation.run_id FROM cloud_resource_pool_reservations reservation
+         LEFT JOIN cloud_agent_fallback_runs run ON run.run_id = reservation.run_id
+         WHERE reservation.state = 'reserved'
+           AND (run.run_id IS NULL OR run.status NOT IN ('queued', 'leased', 'running'))
+         ORDER BY reservation.created_at
+         LIMIT 500",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut settled = 0;
+    for run_id in ended {
+        let mut tx = pool.begin().await?;
+        if settle_ended_run(&mut tx, &run_id).await? {
+            settled += 1;
+        }
+        tx.commit().await?;
+    }
+    Ok(settled)
 }
 
 /// Runs counted for one scope of a pool on `day`.

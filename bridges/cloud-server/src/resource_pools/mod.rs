@@ -304,6 +304,11 @@ impl ResourcePools {
             .map_or_else(|| self.default_pool(), |&index| &self.pools[index])
     }
 
+    /// Organization ids bound to a pool explicitly.
+    pub fn bound_organizations(&self) -> impl Iterator<Item = &str> {
+        self.bindings.keys().map(String::as_str)
+    }
+
     /// Whether `pool_id` from a run route (absent on runs queued before pools
     /// existed) names `pool`.
     pub fn route_names(&self, pool: &ResourcePool, route_pool: Option<&str>) -> bool {
@@ -312,6 +317,31 @@ impl ResourcePools {
             None => pool.id == self.default_pool().id,
         }
     }
+}
+
+/// Warns at startup about bound organization ids that do not exist, such as
+/// a typo or an organization from another deployment. They are kept: the
+/// organization may be created later.
+pub async fn warn_unknown_organizations(
+    db: &sqlx_postgres::PgPool,
+    pools: &ResourcePools,
+) -> Result<(), sqlx_core::Error> {
+    let bound: Vec<String> = pools.bound_organizations().map(str::to_string).collect();
+    if bound.is_empty() {
+        return Ok(());
+    }
+    let unknown: Vec<String> = sqlx_core::query_scalar::query_scalar(
+        "SELECT id FROM unnest($1::text[]) AS bound(id)
+         WHERE NOT EXISTS (SELECT 1 FROM cloud_organizations o WHERE o.organization_id = bound.id)
+         ORDER BY id",
+    )
+    .bind(&bound)
+    .fetch_all(db)
+    .await?;
+    for id in unknown {
+        eprintln!("[resource-pools] Bound organization {id} does not exist on this server");
+    }
+    Ok(())
 }
 
 #[cfg(test)]

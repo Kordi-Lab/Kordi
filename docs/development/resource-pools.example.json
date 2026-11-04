@@ -32,7 +32,8 @@
         "provider": "openai-compatible",
         "baseUrl": "https://llm.example.test/v1",
         "model": "example-small-model",
-        "apiKeyEnv": "KORDI_POOL_TEAM_EXAMPLE_API_KEY"
+        "apiKeyEnv": "KORDI_POOL_TEAM_EXAMPLE_API_KEY",
+        "estimatedCostMicrosPerRun": 500
       },
       "limits": {
         "systemAgentRunsPerConversationPerDay": 7,

@@ -102,7 +102,8 @@ async fn concurrent_admissions_never_pass_a_conversation_limit() {
         scope_runs(&db, &pool, Feature::SystemAgent, "conversation-a").await,
         3
     );
-    assert_eq!(pool_runs(&db, &pool).await, 3);
+    // The pool has no pool-wide limit, so no pool counter is kept.
+    assert_eq!(pool_runs(&db, &pool).await, 0);
     // Another conversation has its own allowance.
     assert!(admit(
         &db,
@@ -236,7 +237,6 @@ async fn settlement_is_idempotent_and_only_a_release_gives_a_run_back() {
     }
     assert_eq!(released, 1);
     assert_eq!(scope_runs(&db, &pool, Feature::SystemAgent, scope).await, 1);
-    assert_eq!(pool_runs(&db, &pool).await, 1);
     // The freed run can be used again.
     assert!(
         admit(&db, &pool, Feature::SystemAgent, scope, "pip_after_release")
@@ -373,4 +373,60 @@ async fn each_utc_day_starts_over() {
         );
         tx.commit().await.unwrap();
     }
+}
+
+async fn reserved(db: &PgPool, run_id: &str) -> Option<String> {
+    sqlx_core::query_scalar::query_scalar(
+        "SELECT state FROM cloud_resource_pool_reservations WHERE run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_optional(db)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+#[ignore = "requires a task-owned PostgreSQL database in DATABASE_URL"]
+async fn an_unlimited_pool_admits_without_writing() {
+    let db = test_db().await;
+    let pool = pool_with(PoolLimits::default(), 0);
+    assert!(admit(&db, &pool, Feature::SystemAgent, "c", "free-1")
+        .await
+        .admitted());
+    assert!(admit(&db, &pool, Feature::Grounding, "p", "free-2")
+        .await
+        .admitted());
+    assert_eq!(reserved(&db, &key(&pool, "free-1")).await, None);
+    assert_eq!(pool_runs(&db, &pool).await, 0);
+    assert_eq!(scope_runs(&db, &pool, Feature::SystemAgent, "c").await, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires a task-owned PostgreSQL database in DATABASE_URL"]
+async fn runs_that_ended_elsewhere_are_settled_by_the_sweep() {
+    let db = test_db().await;
+    let pool = pool_with(
+        PoolLimits {
+            grounding_runs_per_person: Some(1),
+            ..PoolLimits::default()
+        },
+        0,
+    );
+    // A run removed before any runner claimed it (here: never inserted).
+    assert!(admit(&db, &pool, Feature::Grounding, "p", "gone")
+        .await
+        .admitted());
+    assert_eq!(
+        admit(&db, &pool, Feature::Grounding, "p", "blocked").await,
+        Admission::Exhausted
+    );
+    assert!(settle_ended_runs(&db).await.unwrap() >= 1);
+    assert_eq!(
+        reserved(&db, &key(&pool, "gone")).await.as_deref(),
+        Some("released")
+    );
+    assert_eq!(scope_runs(&db, &pool, Feature::Grounding, "p").await, 0);
+    assert!(admit(&db, &pool, Feature::Grounding, "p", "after")
+        .await
+        .admitted());
 }

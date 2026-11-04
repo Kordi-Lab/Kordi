@@ -42,13 +42,15 @@ fn two_pools() -> Value {
                 "systemAgent": {
                     "baseUrl": "https://models.example.test/v1",
                     "model": "partner-model",
-                    "apiKeyEnv": "KORDI_POOL_PARTNER_KEY"
+                    "apiKeyEnv": "KORDI_POOL_PARTNER_KEY",
+                    "estimatedCostMicrosPerRun": 2000
                 },
                 "grounding": {
                     "provider": "openai-compatible",
                     "baseUrl": "https://models.example.test/v1",
                     "model": "partner-small-model",
-                    "apiKeyEnv": "KORDI_POOL_PARTNER_KEY"
+                    "apiKeyEnv": "KORDI_POOL_PARTNER_KEY",
+                    "estimatedCostMicrosPerRun": 500
                 },
                 "limits": {
                     "groundingRunsPerPersonPerDay": 5,
@@ -242,6 +244,26 @@ fn invalid_files_fail_with_a_clear_message() {
         (
             Box::new(|f| f["pools"][0]["limits"]["poolRunsPerDay"] = json!(-1)),
             "a limit must be a whole number or unlimited",
+        ),
+        (
+            Box::new(|f| f["pools"][1]["organizations"] = json!(["partner_a"])),
+            "organization ids must start with org_",
+        ),
+        (
+            Box::new(|f| {
+                f["pools"][0]["limits"]["poolSpendMicrosPerDay"] = json!(1000);
+                f["pools"][0]["systemAgent"]["estimatedCostMicrosPerRun"] = json!(0);
+            }),
+            "pool \"shared\" poolSpendMicrosPerDay needs estimatedCostMicrosPerRun",
+        ),
+        (
+            Box::new(|f| {
+                f["pools"][1]["grounding"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("estimatedCostMicrosPerRun");
+            }),
+            "pool \"partner\" poolSpendMicrosPerDay needs estimatedCostMicrosPerRun",
         ),
         (
             Box::new(|f| f["pools"][0]["limits"]["poolRunsPerDay"] = json!("lots")),

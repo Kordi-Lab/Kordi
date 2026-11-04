@@ -423,6 +423,11 @@ pub async fn run(
                 .join(", "),
             pools.default_pool().id()
         );
+        if let Err(error) =
+            crate::resource_pools::warn_unknown_organizations(state.db_pool(), pools).await
+        {
+            eprintln!("[resource-pools] Could not check bound organizations: {error}");
+        }
         state = state.with_system_agent(SystemAgentService::new(system_agent_config));
     } else {
         println!("Kordi System agent is disabled");

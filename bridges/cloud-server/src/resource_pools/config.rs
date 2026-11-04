@@ -10,12 +10,14 @@ use std::{env, fmt, fs};
 
 use serde::Deserialize;
 
-use super::{PoolLimits, PoolProvider, ResourcePool, ResourcePools};
+use super::{Feature, PoolLimits, PoolProvider, ResourcePool, ResourcePools};
 use crate::service_model_config::validate_base_url;
 use crate::system_agent::SystemAgentProviderAuth;
 
 pub const RESOURCE_POOLS_FILE_ENV: &str = "KORDI_RESOURCE_POOLS_FILE";
 
+/// Every organization id starts with this.
+const ORGANIZATION_PREFIX: &str = "org_";
 const MAX_FILE_BYTES: u64 = 256 * 1024;
 const MAX_ID_CHARS: usize = 64;
 const MAX_MODEL_CHARS: usize = 200;
@@ -211,8 +213,23 @@ pub(super) fn parse(
         if let Some(grounding) = &entry.grounding {
             pool = pool.with_grounding(provider(grounding, &at("grounding"), &mut get)?);
         }
+        // A spend ceiling counts estimated costs, so every provider of the
+        // pool needs one; a zero estimate would never reach the ceiling.
+        let unpriced = [Feature::SystemAgent, Feature::Grounding]
+            .into_iter()
+            .any(|feature| pool.provider(feature).estimated_cost_micros() == 0);
+        if pool.limits().pool_spend_micros.is_some() && unpriced {
+            return Err(ResourcePoolConfigError::new(at(
+                "poolSpendMicrosPerDay needs estimatedCostMicrosPerRun above 0 on every provider",
+            )));
+        }
         for organization_id in entry.organizations {
             validate_id(&at("organization id"), &organization_id)?;
+            if !organization_id.starts_with(ORGANIZATION_PREFIX) {
+                return Err(ResourcePoolConfigError::new(at(&format!(
+                    "organization ids must start with {ORGANIZATION_PREFIX}"
+                ))));
+            }
             bindings.push((organization_id, entry.id.clone()));
         }
         pools.push(pool);
