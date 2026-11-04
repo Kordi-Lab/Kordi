@@ -19,21 +19,47 @@ pub fn public_origin() -> String {
         .as_deref()
         .or(development_origin())
         .expect("An ops public origin is required");
-    let url = url::Url::parse(value).expect("Invalid public origin");
-    assert!(
-        url.host_str().is_some()
-            && url.username().is_empty()
-            && url.password().is_none()
-            && url.query().is_none()
-            && url.fragment().is_none()
-            && (url.path().is_empty() || url.path() == "/"),
-        "Invalid public origin"
-    );
-    assert!(
-        url.scheme() == "https" || (cfg!(debug_assertions) && url.scheme() == "http"),
-        "Public origin requires HTTPS"
-    );
-    url.origin().ascii_serialization()
+    validate_public_origin(value, cfg!(debug_assertions)).unwrap_or_else(|err| panic!("{err}"))
+}
+
+/// Check a configured public origin and return its serialized form.
+///
+/// Plain `http` is accepted for a loopback host (`127.0.0.1`, `localhost`,
+/// `[::1]`), so a local release build behind no TLS proxy can start. Every
+/// other host requires HTTPS, except in debug builds when `allow_any_http`
+/// keeps existing development fixtures working.
+pub(crate) fn validate_public_origin(
+    value: &str,
+    allow_any_http: bool,
+) -> Result<String, &'static str> {
+    let url = url::Url::parse(value).map_err(|_| "Invalid public origin")?;
+    if url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || !(url.path().is_empty() || url.path() == "/")
+    {
+        return Err("Invalid public origin");
+    }
+    let secure = match url.scheme() {
+        "https" => true,
+        "http" => allow_any_http || is_loopback_host(&url),
+        _ => false,
+    };
+    if !secure {
+        return Err("Public origin requires HTTPS");
+    }
+    Ok(url.origin().ascii_serialization())
+}
+
+fn is_loopback_host(url: &url::Url) -> bool {
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) => ip == std::net::Ipv4Addr::LOCALHOST,
+        Some(url::Host::Ipv6(ip)) => ip == std::net::Ipv6Addr::LOCALHOST,
+        Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
+        None => false,
+    }
 }
 
 fn development_origin() -> Option<&'static str> {
@@ -74,7 +100,66 @@ pub(crate) const fn development_default(value: &'static str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::agent_persona;
+    use super::{agent_persona, validate_public_origin};
+
+    #[test]
+    fn release_origin_allows_http_only_on_loopback() {
+        for origin in [
+            "http://127.0.0.1:17081",
+            "http://localhost:17081/",
+            "http://LOCALHOST",
+            "http://[::1]:8080",
+        ] {
+            assert!(validate_public_origin(origin, false).is_ok(), "{origin}");
+        }
+        assert_eq!(
+            validate_public_origin("http://127.0.0.1:17081/", false).unwrap(),
+            "http://127.0.0.1:17081"
+        );
+        for origin in [
+            "http://example.test",
+            "http://127.0.0.2:17081",
+            "http://10.0.0.1",
+            "http://localhost.example.test",
+            "http://[::2]",
+            "ftp://127.0.0.1",
+            "ws://localhost",
+        ] {
+            assert_eq!(
+                validate_public_origin(origin, false),
+                Err("Public origin requires HTTPS"),
+                "{origin}"
+            );
+        }
+        assert_eq!(
+            validate_public_origin("https://example.test", false).unwrap(),
+            "https://example.test"
+        );
+    }
+
+    #[test]
+    fn origin_rejects_paths_credentials_and_queries() {
+        for origin in [
+            "https://example.test/app",
+            "https://user@example.test",
+            "https://example.test/?a=1",
+            "https://example.test/#x",
+            "http://user:pass@127.0.0.1",
+            "not a url",
+        ] {
+            assert_eq!(
+                validate_public_origin(origin, false),
+                Err("Invalid public origin"),
+                "{origin}"
+            );
+        }
+    }
+
+    #[test]
+    fn debug_builds_keep_accepting_any_http_origin() {
+        assert!(validate_public_origin("http://example.test", true).is_ok());
+    }
+
     #[test]
     fn persona_requires_explicit_release_content() {
         assert!(agent_persona(None, None).is_err());

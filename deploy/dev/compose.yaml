@@ -112,6 +112,12 @@ services:
       S3_ACCESS_KEY: ${MINIO_ROOT_USER}
       S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       KORDI_CLOUD_PUBLIC_BASE_URL: http://127.0.0.1:${KORDI_DEBUG_PUBLIC_API_PORT:-${KORDI_DEBUG_API_PORT:-17081}}
+      # Release builds require an explicit app callback scheme.
+      KORDI_CLIENT_CALLBACK_SCHEME: ${KORDI_CLIENT_CALLBACK_SCHEME:-kordi-beta}
+      # Optional same-origin web sign-in pages. Set KORDI_DEBUG_WEB_PAGES_DIR
+      # in deploy/dev/.env to a directory of pages (absolute, or relative to
+      # deploy/dev); it is mounted read-only. Unset serves no pages.
+      KORDI_WEB_PAGES_DIR: ${KORDI_DEBUG_WEB_PAGES_DIR:+/srv/kordi-web-pages}
       KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST: "http://127.0.0.1:,http://localhost:,kordi-beta://oauth/callback"
       KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY: ${KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY:?Set KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY in deploy/dev/.env}
       KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY_ID: local-debug:v1
@@ -178,6 +184,9 @@ services:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
+    volumes:
+      # An empty named volume stands in when no pages directory is set.
+      - ${KORDI_DEBUG_WEB_PAGES_DIR:-web-pages-empty}:/srv/kordi-web-pages:ro
     ports:
       - "127.0.0.1:${KORDI_DEBUG_API_PORT:-17081}:17081"
     restart: unless-stopped
@@ -229,3 +238,4 @@ volumes:
   nats-data:
   minio-data:
   runner-sandbox:
+  web-pages-empty:

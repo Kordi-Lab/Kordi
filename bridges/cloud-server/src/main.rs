@@ -53,6 +53,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         kordi_cloud_server::distribution::callback_scheme();
     }
 
+    // A set but unusable pages directory is a configuration error, not a
+    // reason to start without the sign-in pages.
+    kordi_cloud_server::web_pages::WebPagesDir::from_env()?;
+
     let cli = Cli::parse();
     match cli.command {
         Commands::Serve {
