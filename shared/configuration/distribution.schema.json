@@ -215,7 +215,8 @@
               "type": "string",
               "enum": [
                 "k8s",
-                "fly"
+                "fly",
+                "render"
               ]
             }
           }
@@ -472,6 +473,46 @@
         "required": [
           "authentication"
         ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "services": {
+            "properties": {
+              "runner": {
+                "properties": {
+                  "sandboxBackend": {
+                    "const": "render"
+                  }
+                },
+                "required": [
+                  "sandboxBackend"
+                ]
+              }
+            },
+            "required": [
+              "runner"
+            ]
+          }
+        },
+        "required": [
+          "services"
+        ]
+      },
+      "then": {
+        "properties": {
+          "resources": {
+            "properties": {
+              "sandboxCpuMillis": {
+                "const": 1000
+              },
+              "sandboxMemoryMiB": {
+                "const": 2048
+              }
+            }
+          }
+        }
       }
     }
   ]

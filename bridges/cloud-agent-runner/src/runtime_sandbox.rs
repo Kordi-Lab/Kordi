@@ -8,6 +8,7 @@ pub enum SandboxBackendMode {
     Local,
     K8s,
     Fly,
+    Render,
     Invalid,
 }
 
@@ -15,6 +16,7 @@ pub fn sandbox_backend_mode_from_env() -> SandboxBackendMode {
     match std::env::var("KORDI_CLOUD_SANDBOX_BACKEND") {
         Ok(value) if value.trim().eq_ignore_ascii_case("k8s") => SandboxBackendMode::K8s,
         Ok(value) if value.trim().eq_ignore_ascii_case("fly") => SandboxBackendMode::Fly,
+        Ok(value) if value.trim().eq_ignore_ascii_case("render") => SandboxBackendMode::Render,
         Ok(value) if !value.trim().is_empty() && !value.trim().eq_ignore_ascii_case("local") => {
             SandboxBackendMode::Invalid
         }
@@ -34,6 +36,12 @@ pub fn sandbox_backend_for_run(
             crate::fly_sandbox::FlySandboxBackend::from_env(sandbox_id)
                 .map(|backend| std::sync::Arc::new(backend) as SandboxBackendHandle)
                 .map_err(|_| "invalid_fly_sandbox_configuration")
+        }
+        SandboxBackendMode::Render => {
+            let sandbox_id = run.sandbox_id.as_deref().ok_or("missing_sandbox")?;
+            crate::render_sandbox::RenderSandboxBackend::from_env(sandbox_id)
+                .map(|backend| std::sync::Arc::new(backend) as SandboxBackendHandle)
+                .map_err(|_| "invalid_render_sandbox_configuration")
         }
         SandboxBackendMode::Local => {
             let id = run.sandbox_id.as_deref().unwrap_or(&run.run_id);

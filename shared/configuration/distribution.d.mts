@@ -34,7 +34,7 @@ export interface DistributionConfiguration {
     model: { provider: 'openai' | 'openai-compatible' | 'vertex-ai'; baseURL: string; model: string };
     systemAgent: AgentPolicy;
     supportAgent: AgentPolicy;
-    runner: { concurrency: number; pollMilliseconds: number; sandboxBackend: 'k8s' | 'fly' };
+    runner: { concurrency: number; pollMilliseconds: number; sandboxBackend: 'k8s' | 'fly' | 'render' };
     connectorCallsPerHour: number;
   };
   resources: {

@@ -99,3 +99,31 @@ test('service launcher supplies the selected policy and refuses missing sandbox 
   assert.equal(run().status, 0);
   assert.deepEqual(JSON.parse(readFileSync(output)), {origin: expected.backendOrigin, sandbox: 'k8s', cpu: '1000'});
 });
+
+test('Render sandbox selection uses independent bindings without changing existing backends', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'render-distribution-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const profile = app();
+  profile.services.runner.sandboxBackend = 'render';
+  assert.throws(() => validateDistributionConfiguration(profile, expected), /1c-2g/);
+  profile.resources.sandboxMemoryMiB = 2048;
+  assert.equal(serviceEnvironment(validateDistributionConfiguration(profile, expected), 'runner').KORDI_CLOUD_SANDBOX_BACKEND, 'render');
+  const selected = path.join(root, 'profile.json');
+  // Keep all existing fixture assets beside the copied profile.
+  for (const key of ['desktopIcon', 'desktopBundleIcon', 'iosIcon']) {
+    if (profile.clients[key]) profile.clients[key] = path.basename(profile.clients[key]);
+  }
+  for (const file of ['fixture.png', 'fixture.icns']) {
+    writeFileSync(path.join(root, file), readFileSync(path.join(path.dirname(fixture), file)));
+  }
+  writeFileSync(selected, JSON.stringify(profile));
+  const env = { ...process.env, KORDI_DISTRIBUTION_PROFILE: selected,
+    KORDI_EXPECTED_EDITION: 'app', KORDI_EXPECTED_ENVIRONMENT: 'production', KORDI_EXPECTED_BACKEND_ORIGIN: expected.backendOrigin };
+  const keys = ['KORDI_RENDER_SANDBOX_OWNER', 'KORDI_RENDER_SANDBOX_GROUP', 'KORDI_RENDER_SANDBOX_TOKEN', 'KORDI_RENDER_WORKSPACE_ROOT'];
+  for (const key of keys) delete env[key];
+  const run = () => spawnSync(process.execPath, ['scripts/run-configured-service.mjs', 'runner', process.execPath, '-e', 'process.exit(process.env.KORDI_CLOUD_SANDBOX_BACKEND === "render" ? 0 : 1)'], { env, encoding: 'utf8' });
+  assert.notEqual(run().status, 0);
+  for (const key of keys) env[key] = 'synthetic-only';
+  assert.equal(run().status, 0);
+  assert.equal(app().services.runner.sandboxBackend, 'k8s');
+});

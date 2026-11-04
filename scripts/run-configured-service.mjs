@@ -7,9 +7,11 @@ try {
   if (!binary || !['server', 'runner'].includes(service)) throw new Error();
   const { profile } = distributionFromEnvironment();
   if (service === 'runner') {
-    const required = profile.services.runner.sandboxBackend === 'k8s'
-      ? ['KORDI_CLOUD_SANDBOX_NAMESPACE', 'KORDI_CLOUD_SANDBOX_IMAGE']
-      : ['KORDI_FLY_SANDBOX_APP', 'KORDI_FLY_SANDBOX_REGION', 'KORDI_FLY_SANDBOX_IMAGE', 'KORDI_FLY_SANDBOX_TOKEN'];
+    const required = {
+      k8s: ['KORDI_CLOUD_SANDBOX_NAMESPACE', 'KORDI_CLOUD_SANDBOX_IMAGE'],
+      fly: ['KORDI_FLY_SANDBOX_APP', 'KORDI_FLY_SANDBOX_REGION', 'KORDI_FLY_SANDBOX_IMAGE', 'KORDI_FLY_SANDBOX_TOKEN'],
+      render: ['KORDI_RENDER_SANDBOX_OWNER', 'KORDI_RENDER_SANDBOX_GROUP', 'KORDI_RENDER_SANDBOX_TOKEN', 'KORDI_RENDER_WORKSPACE_ROOT'],
+    }[profile.services.runner.sandboxBackend];
     if (required.some((key) => !process.env[key]?.trim())) throw new Error();
   }
   const child = spawn(binary, args, { stdio: 'inherit', shell: false,

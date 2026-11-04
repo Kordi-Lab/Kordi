@@ -39,11 +39,15 @@ async fn main() -> Result<()> {
 
     match kordi_cloud_agent_runner::runtime::sandbox_backend_mode_from_env() {
         kordi_cloud_agent_runner::runtime::SandboxBackendMode::Invalid => {
-            anyhow::bail!("Unknown sandbox backend; expected local, k8s, or fly");
+            anyhow::bail!("Unknown sandbox backend; expected local, k8s, fly, or render");
         }
         kordi_cloud_agent_runner::runtime::SandboxBackendMode::Fly => {
             kordi_cloud_agent_runner::fly_sandbox::FlySandboxConfig::from_env()
                 .context("Fly sandbox configuration must be valid before leasing runs")?;
+        }
+        kordi_cloud_agent_runner::runtime::SandboxBackendMode::Render => {
+            kordi_cloud_agent_runner::render_sandbox::RenderSandboxConfig::from_env()
+                .context("Render sandbox configuration must be valid before leasing runs")?;
         }
         _ => {}
     }

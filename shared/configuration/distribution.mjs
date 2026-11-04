@@ -83,7 +83,7 @@ export function validateDistributionConfiguration(input, expected) {
   object(s.runner, ['concurrency', 'pollMilliseconds', 'sandboxBackend'], 'Runner');
   integer(s.runner.concurrency, 1, 4, 'Runner concurrency');
   integer(s.runner.pollMilliseconds, 100, 60000, 'Runner poll interval');
-  if (!['k8s', 'fly'].includes(s.runner.sandboxBackend)) fail('Release sandbox must be isolated.');
+  if (!['k8s', 'fly', 'render'].includes(s.runner.sandboxBackend)) fail('Release sandbox must be isolated.');
   integer(s.connectorCallsPerHour, 1, 100000, 'Connector budget');
   const res = value.resources;
   object(res, ['provider', 'cpuLimit', 'memoryMiB', 'sandboxCpuMillis', 'sandboxMemoryMiB', 'bindings'], 'Resources');
@@ -92,6 +92,7 @@ export function validateDistributionConfiguration(input, expected) {
   integer(res.memoryMiB, 256, 262144, 'Memory limit');
   integer(res.sandboxCpuMillis, 100, 16000, 'Sandbox CPU limit');
   integer(res.sandboxMemoryMiB, 128, 32768, 'Sandbox memory limit');
+  if (s.runner.sandboxBackend === 'render' && (res.sandboxCpuMillis !== 1000 || res.sandboxMemoryMiB !== 2048)) fail('Render sandbox resources must match the 1c-2g plan.');
   object(res.bindings, ['project', 'region', 'zone', 'instance', 'database', 'objectStorage', 'serviceIdentity'], 'Resource bindings');
   for (const name of Object.values(res.bindings)) text(name, binding, 'Resource binding name');
   object(value.apple, ['teamBinding', 'identityBinding', 'notaryProfileBinding', 'exportMethod'], 'Apple packaging');
