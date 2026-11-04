@@ -93,6 +93,7 @@
         "bridges/cloud-agent-runner/**",
         "bridges/cloud-server/**",
         "bridges/cloud-temporal-bridge/**",
+        "bridges/system-agent-eval/**",
         "bridges/Cargo.toml",
         "shared/rust/**",
         "shared/omp-runtime/**",
@@ -131,6 +132,7 @@
       "paths": [
         "bridges/cloud-server/**",
         "bridges/cloud-agent-runner/**",
+        "bridges/system-agent-eval/**",
         "agent/crates/tools/**",
         "agent/crates/human-simulator/**",
         "shared/blob-emoji/**",

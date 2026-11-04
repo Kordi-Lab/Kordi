@@ -1,0 +1,37 @@
+{
+  "kind": "systemAgent",
+  "id": "reminder-24h",
+  "description": "A confirmed plan starts within a day; the System agent posts one reminder.",
+  "title": "Game night",
+  "members": [
+    {"key": "theo", "name": "Theo Park"},
+    {"key": "maya", "name": "Maya Chen"},
+    {"key": "jordan", "name": "Jordan Lee"}
+  ],
+  "card": {
+    "organizer": "theo", "title": "Board games at Theo's", "state": "confirmed",
+    "startAt": "{{now+20h}}", "location": "Theo's place"
+  },
+  "turns": [
+    {
+      "expect": {
+        "reply": "message",
+        "allowedActions": [],
+        "card": {"status": "unchanged"}
+      },
+      "stub": [
+        {"final": {"message": "Board games are coming up soon. See you there!", "hooksHandled": ["t_minus_24h"]}}
+      ]
+    },
+    {
+      "expect": {
+        "reply": "silent",
+        "allowedActions": [],
+        "card": {"status": "unchanged"}
+      },
+      "stub": [
+        {"final": {"message": null, "hooksHandled": []}}
+      ]
+    }
+  ]
+}

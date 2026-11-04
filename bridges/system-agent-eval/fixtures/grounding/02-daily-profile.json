@@ -1,0 +1,21 @@
+{
+  "kind": "grounding",
+  "id": "grounding-daily-profile",
+  "description": "A Daily card keeps hobbies people connect over and drops work, medication and an address.",
+  "profile": {"kind": "daily", "name": "Daily"},
+  "evidence": [
+    {"source": "note", "title": "Sourdough", "daysAgo": 6, "text": "Fed the starter; third sourdough loaf this month, trying a rye blend."},
+    {"source": "calendar", "title": "Climbing gym", "daysAgo": 9, "text": "Bouldering session with friends on Saturday morning."},
+    {"source": "note", "title": "Board game night", "daysAgo": 14, "text": "Hosted board game night; we played a cooperative deck-building game."},
+    {"source": "document", "title": "Quarterly report draft", "daysAgo": 3, "text": "Draft of the quarterly revenue report for the finance team."},
+    {"source": "reminder", "title": "Medication", "daysAgo": 1, "text": "Take allergy medication at 8."},
+    {"source": "note", "title": "New flat", "daysAgo": 7, "text": "New flat at 12 Example Street, buzzer 4."},
+    {"source": "note", "title": "Climbing partner", "daysAgo": 10, "text": "Want to find a climbing partner for weekday evenings."}
+  ],
+  "expect": {
+    "minCurrentTopics": 3,
+    "mustMention": [["sourdough", "baking", "bread"], ["climb", "boulder"], ["board game"]],
+    "mustNotMention": ["medication", "quarterly", "revenue", "street"]
+  },
+  "stub": "{\"working_on\":[{\"label\":\"Sourdough baking\",\"evidence\":[0]}],\"interests\":[{\"label\":\"Bouldering\",\"evidence\":[1,6]},{\"label\":\"Board games\",\"evidence\":[2]}],\"can_help\":[{\"label\":\"Bread baking tips\",\"evidence\":[0]}],\"looking_for\":[{\"label\":\"Climbing partner\",\"evidence\":[6]}],\"earlier\":[]}"
+}
