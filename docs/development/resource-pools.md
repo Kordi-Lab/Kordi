@@ -60,7 +60,7 @@ off.
 | `pools[].id` | 1 to 64 letters, digits, `.`, `_` or `-`; unique. Stored on each run, so keep it stable. |
 | `pools[].systemAgent` | The provider for System agent passes. Required. |
 | `pools[].grounding` | The provider for Grounding runs. Defaults to `systemAgent`. |
-| `pools[].limits` | Daily limits; see below. Every limit defaults to unlimited. |
+| `pools[].limits` | Daily limits; see below. Every limit defaults to `"unlimited"`. |
 | `pools[].stopped` | Emergency stop. A stopped pool queues nothing and hands no key to a runner, so runs it had already queued fail. |
 | `pools[].organizations` | Organization ids served by this pool. An organization may appear in one pool only. |
 
@@ -73,14 +73,16 @@ A provider:
 | `model` | The model id sent to the endpoint. |
 | `apiKeyEnv` | The name of an environment variable that holds the API key. |
 | `apiKeyFile` | A file that holds the API key. Exactly one of `apiKeyEnv` and `apiKeyFile`. |
-| `headers` | Optional extra request headers, such as `HTTP-Referer` and `X-Title` for OpenRouter. At most 16; printable ASCII. Credential and framing headers (`Authorization`, `Cookie`, `Host`, `Content-Type` and similar) are refused. |
+| `headers` | Optional extra request headers, such as a gateway's `HTTP-Referer` and `X-Title` attribution headers. At most 16; printable ASCII. Credential and framing headers (`Authorization`, `Cookie`, `Host`, `Content-Type` and similar) are refused. |
 | `estimatedCostMicrosPerRun` | Optional estimate of one run's cost in millionths of a currency unit, used only by `poolSpendMicrosPerDay`. |
 
 Use `"provider": "openrouter"` for OpenRouter and other gateways whose model
-ids carry a vendor prefix, such as `openai/gpt-6.1-terra`. With `openai`, the
+ids carry a vendor prefix, such as `vendor/model-name`. With `openai`, the
 runner treats an `openai/` prefix as redundant and removes it.
 
-Limits, per UTC day, `null` or absent for unlimited, `0` to refuse all:
+Limits are per UTC day. Each is a whole number, or `"unlimited"`. An absent
+field and `null` also mean unlimited, but write `"unlimited"` so the intent is
+clear. `0` refuses every run:
 
 | Field | Counted per |
 | --- | --- |

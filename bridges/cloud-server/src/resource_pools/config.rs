@@ -98,17 +98,41 @@ struct ProviderEntry {
     estimated_cost_micros_per_run: u64,
 }
 
+/// Daily limits. Each is a whole number, or `"unlimited"`; `null` and an
+/// absent field also mean unlimited.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct LimitsEntry {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "limit")]
     system_agent_runs_per_conversation_per_day: Option<u32>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "limit")]
     grounding_runs_per_person_per_day: Option<u32>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "limit")]
     pool_runs_per_day: Option<u64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "limit")]
     pool_spend_micros_per_day: Option<u64>,
+}
+
+const UNLIMITED: &str = "unlimited";
+
+/// Reads a limit: a whole number, `"unlimited"` or `null`. The error never
+/// repeats the value, which could be a pasted secret.
+fn limit<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: TryFrom<u64>,
+{
+    let invalid = || serde::de::Error::custom("a limit must be a whole number or unlimited");
+    match serde_json::Value::deserialize(deserializer)? {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::String(word) if word.trim() == UNLIMITED => Ok(None),
+        serde_json::Value::Number(number) => number
+            .as_u64()
+            .and_then(|value| T::try_from(value).ok())
+            .map(Some)
+            .ok_or_else(invalid),
+        _ => Err(invalid()),
+    }
 }
 
 pub(super) fn from_file_env() -> Result<Option<ResourcePools>, ResourcePoolConfigError> {

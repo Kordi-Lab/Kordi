@@ -17,8 +17,8 @@ fn env(key: &str) -> Option<String> {
     }
 }
 
-/// A shared default pool through an OpenRouter-style gateway, limited to 3
-/// System agent runs per conversation, and a partner pool for one
+/// A shared default pool through a gateway with vendor-prefixed model ids,
+/// limited to 3 System agent runs per conversation, and a partner pool for one
 /// organization.
 fn two_pools() -> Value {
     json!({
@@ -241,7 +241,18 @@ fn invalid_files_fail_with_a_clear_message() {
         ),
         (
             Box::new(|f| f["pools"][0]["limits"]["poolRunsPerDay"] = json!(-1)),
-            "expected u64 at line",
+            "a limit must be a whole number or unlimited",
+        ),
+        (
+            Box::new(|f| f["pools"][0]["limits"]["poolRunsPerDay"] = json!("lots")),
+            "a limit must be a whole number or unlimited",
+        ),
+        (
+            Box::new(|f| {
+                f["pools"][0]["limits"]["systemAgentRunsPerConversationPerDay"] =
+                    json!(5_000_000_000_u64)
+            }),
+            "a limit must be a whole number or unlimited",
         ),
     ];
     for (edit, expected) in cases {
@@ -265,7 +276,10 @@ fn errors_never_echo_secrets() {
     let message = error_for(|f| {
         f["pools"][0]["limits"]["poolRunsPerDay"] = json!("pasted-synthetic-secret-value")
     });
-    assert!(!message.contains("pasted-synthetic-secret-value"), "{message}");
+    assert!(
+        !message.contains("pasted-synthetic-secret-value"),
+        "{message}"
+    );
     // Debug output of a pool hides keys.
     let pools = parse_value(&two_pools()).unwrap();
     let debug = format!("{pools:?}");
@@ -332,10 +346,31 @@ fn the_example_pool_file_is_valid() {
     })
     .expect("the documented example parses");
     let default = pools.default_pool();
-    assert_eq!(
-        default.limits().system_agent_runs_per_conversation,
-        Some(50)
-    );
+    assert_eq!(default.limits().system_agent_runs_per_conversation, Some(3));
     assert_eq!(default.limits().grounding_runs_per_person, None);
+    let team = pools.by_id("team-example").unwrap();
+    assert_eq!(team.limits().system_agent_runs_per_conversation, Some(7));
+    assert_eq!(
+        pools
+            .resolve(Some("org_00000000000000000000000000000001"))
+            .id(),
+        "team-example"
+    );
     assert_eq!(pools.pools().len(), 2);
+}
+
+#[test]
+fn limits_accept_unlimited_null_or_absence() {
+    let mut file = two_pools();
+    file["pools"][0]["limits"] = json!({
+        "systemAgentRunsPerConversationPerDay": "unlimited",
+        "groundingRunsPerPersonPerDay": null,
+        "poolRunsPerDay": 0,
+    });
+    let pools = parse_value(&file).unwrap();
+    let limits = pools.default_pool().limits();
+    assert_eq!(limits.system_agent_runs_per_conversation, None);
+    assert_eq!(limits.grounding_runs_per_person, None);
+    assert_eq!(limits.pool_runs, Some(0));
+    assert_eq!(limits.pool_spend_micros, None);
 }
