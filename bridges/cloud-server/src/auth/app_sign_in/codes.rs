@@ -14,7 +14,8 @@ pub const AUTHORIZATION_CODE_PREFIX: &str = "kordi_ac_";
 /// Lifetime of a code returned to the app through its redirect URI.
 pub const REDIRECT_CODE_LIFETIME_SECS: i64 = 60;
 /// Lifetime of a code the browser shows for the user to paste into the app.
-pub const DISPLAY_CODE_LIFETIME_SECS: i64 = 300;
+/// The paste path is a last resort, so it is no longer lived than a redirect.
+pub const DISPLAY_CODE_LIFETIME_SECS: i64 = 60;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CodeDelivery {
@@ -50,6 +51,7 @@ pub struct AuthorizationGrant {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IssuedCode {
     pub code: String,
+    pub issued_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -128,7 +130,11 @@ pub async fn issue_code(
     .bind(expires_at)
     .execute(pool)
     .await?;
-    Ok(IssuedCode { code, expires_at })
+    Ok(IssuedCode {
+        code,
+        issued_at: now,
+        expires_at,
+    })
 }
 
 /// Mark a code used and return its binding. The first presentation consumes
@@ -234,7 +240,7 @@ mod tests {
     #[test]
     fn delivery_lifetimes_stay_short() {
         assert_eq!(CodeDelivery::Redirect.lifetime(), Duration::seconds(60));
-        assert_eq!(CodeDelivery::Display.lifetime(), Duration::seconds(300));
+        assert_eq!(CodeDelivery::Display.lifetime(), Duration::seconds(60));
         assert!(random_code().starts_with(AUTHORIZATION_CODE_PREFIX));
         assert_ne!(random_code(), random_code());
     }

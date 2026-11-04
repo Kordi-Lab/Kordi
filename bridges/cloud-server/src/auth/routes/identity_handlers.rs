@@ -320,6 +320,9 @@ pub(super) async fn oauth_callback(
                     )
                     .await;
             }
+            if let Some(return_to) = web_oauth_return_to(&redirect_after) {
+                return web_oauth_success(&body.session.token, &return_to);
+            }
             let mut url = redirect_after;
             let separator = if url.contains('#') { '&' } else { '#' };
             url.push(separator);

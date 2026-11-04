@@ -9,6 +9,9 @@
 //!
 //! See `docs/development/browser-sign-in.md` for the endpoint contract.
 
+/// Default path of the web page that signs the user in for an app.
+pub const APP_SIGN_IN_PAGE_PATH: &str = "/sign-in/app";
+
 pub mod clients;
 pub mod codes;
 pub mod tokens;

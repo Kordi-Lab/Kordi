@@ -34,10 +34,9 @@ async fn unknown_clients_and_redirect_uris_are_refused_without_a_redirect() {
         ),
     ] {
         let (status, body) = harness
-            .json(
-                "POST",
+            .web(
                 "/v1/cloud/auth/app/authorize",
-                Some(&account.web_token),
+                &account.web_token,
                 authorize_body(client_id, redirect_uri, &pkce.challenge),
             )
             .await;
@@ -113,42 +112,6 @@ async fn malformed_requests_return_the_error_to_the_app() {
         assert_eq!(pairs["error"], error, "{query}");
         assert!(!pairs.contains_key("code"));
     }
-}
-
-#[tokio::test]
-#[ignore = "Requires a task-owned disposable PostgreSQL database"]
-async fn authorizing_requires_a_signed_in_web_session() {
-    let harness = harness().await;
-    let account = harness.web_account().await;
-    let pkce = pkce();
-    let body = authorize_body(DESKTOP, LOOPBACK, &pkce.challenge);
-    for bearer in [None, Some("kordi_cs_not-a-session"), Some("other-token")] {
-        let (status, response) = harness
-            .json("POST", "/v1/cloud/auth/app/authorize", bearer, body.clone())
-            .await;
-        assert_oauth_error(
-            status,
-            &response,
-            StatusCode::UNAUTHORIZED,
-            "login_required",
-        );
-    }
-    // An app's own access token may not authorize another app.
-    let tokens = harness.signed_in(&account, DESKTOP, LOOPBACK).await;
-    let (status, response) = harness
-        .json(
-            "POST",
-            "/v1/cloud/auth/app/authorize/display-code",
-            Some(&token(&tokens, "access_token")),
-            authorize_body(IOS, "kordi://auth/callback", &pkce.challenge),
-        )
-        .await;
-    assert_oauth_error(
-        status,
-        &response,
-        StatusCode::FORBIDDEN,
-        "web_session_required",
-    );
 }
 
 #[tokio::test]

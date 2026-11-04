@@ -3,8 +3,8 @@
 
 use super::*;
 use crate::auth::app_sign_in::codes::{is_s256_challenge, issue_code};
-use crate::auth::app_sign_in::tokens::sign_in_for_session;
 use crate::auth::app_sign_in::{AppClientRegistry, AuthorizationGrant, CodeDelivery};
+use crate::auth::rate_limit::AccountActionLimit;
 
 mod sign_ins;
 mod token;
@@ -22,7 +22,13 @@ pub(super) fn app_sign_in_page_url() -> String {
     std::env::var(APP_SIGN_IN_PAGE_ENV)
         .ok()
         .filter(|value| url::Url::parse(value).is_ok())
-        .unwrap_or_else(|| format!("{}/sign-in/app", crate::distribution::public_origin()))
+        .unwrap_or_else(|| {
+            format!(
+                "{}{}",
+                crate::distribution::public_origin(),
+                crate::auth::app_sign_in::APP_SIGN_IN_PAGE_PATH
+            )
+        })
 }
 
 /// An RFC 6749 error body that also carries the `errorCode`/`message`
@@ -90,6 +96,10 @@ pub(super) struct AppAuthorizationParams {
     pub code_challenge: Option<String>,
     pub code_challenge_method: Option<String>,
     pub state: Option<String>,
+    /// Display codes only: the user confirmed they started this sign-in
+    /// from their own app on this device.
+    #[serde(default, skip_serializing)]
+    pub confirmed: Option<bool>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -244,8 +254,26 @@ pub(super) async fn app_authorize_start(
     }
 }
 
+/// Codes one account may request across every app.
+const CODE_ISSUE_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "app-sign-in-code",
+    limit: 30,
+    window: std::time::Duration::from_secs(10 * 60),
+};
+
+/// Displayed codes one account may request for one app.
+const DISPLAY_CODE_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "app-sign-in-display-code",
+    limit: 5,
+    window: std::time::Duration::from_secs(10 * 60),
+};
+
+/// The warning the sign-in page shows next to a displayed code.
+pub const DISPLAY_CODE_WARNING: &str =
+    "Only paste this code into the Kordi app on this device. Never share it.";
+
 /// `POST /v1/cloud/auth/app/authorize`: called by the sign-in page with the
-/// web session's bearer token. Returns the redirect URL carrying the code.
+/// web session cookie. Returns the redirect URL carrying the code.
 pub(super) async fn app_authorize(
     State(state): State<Arc<ServerState>>,
     Extension(registry): Extension<Arc<AppClientRegistry>>,
@@ -266,9 +294,11 @@ pub(super) async fn app_authorize(
     .await
 }
 
-/// `POST /v1/cloud/auth/app/authorize/display-code`: like the authorization
-/// endpoint, but returns a code for the page to show when the app's
-/// redirect is blocked. The app exchanges it with its verifier as usual.
+/// `POST /v1/cloud/auth/app/authorize/display-code`: the last-resort
+/// fallback when the app's redirect is blocked. The page calls it only after
+/// the user confirms they started this sign-in from their own app on this
+/// device (`"confirmed": true`). The app exchanges the code with its
+/// verifier as usual.
 pub(super) async fn app_authorize_display_code(
     State(state): State<Arc<ServerState>>,
     Extension(registry): Extension<Arc<AppClientRegistry>>,
@@ -302,7 +332,7 @@ async fn authorize_with_delivery(
         return limited_response(retry_after);
     }
     let pool = state.db_pool();
-    let session = match web_session(state, headers).await {
+    let session = match authenticated_web_session(state, headers).await {
         Ok(session) => session,
         Err(response) => return *response,
     };
@@ -310,6 +340,27 @@ async fn authorize_with_delivery(
         Ok(valid) => valid,
         Err(rejection) => return rejection_response(rejection),
     };
+    if delivery == CodeDelivery::Display && params.confirmed != Some(true) {
+        return oauth_error(
+            StatusCode::BAD_REQUEST,
+            "confirmation_required",
+            "Confirm that you started this sign-in from your own app on this device.",
+        );
+    }
+    let mut limits = vec![(CODE_ISSUE_LIMIT, session.account_id.clone())];
+    if delivery == CodeDelivery::Display {
+        limits.push((
+            DISPLAY_CODE_LIMIT,
+            format!("{}:{}", session.account_id, valid.grant.client_id),
+        ));
+    }
+    for (limit, key) in limits {
+        if let RateLimitDecision::Limited { retry_after } =
+            rate_limiter.observe_account_limit(limit, &key).await
+        {
+            return limited_response(retry_after);
+        }
+    }
     let issued = match issue_code(pool, &session.account_id, &valid.grant, delivery).await {
         Ok(issued) => issued,
         Err(_) => {
@@ -345,71 +396,17 @@ async fn authorize_with_delivery(
         CodeDelivery::Display => serde_json::json!({
             "code": issued.code,
             "state": valid.state,
+            "clientId": valid.grant.client_id,
+            "appName": registry
+                .client(&valid.grant.client_id)
+                .map(|client| client.name.clone()),
+            "requestedAt": issued.issued_at.to_rfc3339(),
             "expiresAt": issued.expires_at.to_rfc3339(),
             "expiresIn": expires_in,
+            "warning": DISPLAY_CODE_WARNING,
         }),
     };
     no_store((StatusCode::OK, Json(body)).into_response())
-}
-
-/// The signed-in web session behind an authorization request. Only a session
-/// from a direct sign-in may authorize an app; an app's own access token may
-/// not mint codes for other apps.
-async fn web_session(
-    state: &ServerState,
-    headers: &HeaderMap,
-) -> Result<CloudSession, Box<Response>> {
-    let login_required = || {
-        Box::new(oauth_error(
-            StatusCode::UNAUTHORIZED,
-            "login_required",
-            "Sign in to Kordi to continue.",
-        ))
-    };
-    let token = bearer_token_from_headers(headers)
-        .filter(|token| token.starts_with(SESSION_TOKEN_PREFIX))
-        .ok_or_else(login_required)?;
-    let pool = state.db_pool();
-    let row = match lookup_session(pool, token).await {
-        Ok(Some(row)) => row,
-        Ok(None) => return Err(login_required()),
-        Err(_) => {
-            return Err(Box::new(oauth_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "server_error",
-                "Could not validate session.",
-            )));
-        }
-    };
-    match sign_in_for_session(pool, &row.token_id).await {
-        Ok(None) => {}
-        Ok(Some(_)) => {
-            return Err(Box::new(oauth_error(
-                StatusCode::FORBIDDEN,
-                "web_session_required",
-                "Sign in on the web page to authorize this app.",
-            )));
-        }
-        Err(_) => {
-            return Err(Box::new(oauth_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "server_error",
-                "Could not validate session.",
-            )));
-        }
-    }
-    if let Err(error) = state
-        .admission()
-        .authorize_account(pool, &row.account_id)
-        .await
-    {
-        return Err(Box::new(error.response()));
-    }
-    Ok(CloudSession {
-        token_id: row.token_id,
-        account_id: row.account_id,
-        device_id: row.device_id,
-    })
 }
 
 #[cfg(test)]

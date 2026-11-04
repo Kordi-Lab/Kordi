@@ -10,6 +10,8 @@ use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 
 mod rejections;
+mod web_authorize;
+mod web_session;
 
 pub(super) const DESKTOP: &str = "kordi-desktop";
 pub(super) const IOS: &str = "kordi-ios";
@@ -71,9 +73,22 @@ impl Harness {
         bearer: Option<&str>,
         body: Option<(&str, String)>,
     ) -> (StatusCode, Value, HeaderMap) {
+        let headers = bearer
+            .map(|token| vec![("Authorization".to_string(), format!("Bearer {token}"))])
+            .unwrap_or_default();
+        self.send_with(method, uri, headers, body).await
+    }
+
+    pub(super) async fn send_with(
+        &self,
+        method: &str,
+        uri: &str,
+        headers: Vec<(String, String)>,
+        body: Option<(&str, String)>,
+    ) -> (StatusCode, Value, HeaderMap) {
         let mut request = HttpRequest::builder().method(method).uri(uri);
-        if let Some(token) = bearer {
-            request = request.header("Authorization", format!("Bearer {token}"));
+        for (name, value) in headers {
+            request = request.header(name, value);
         }
         let body = match body {
             Some((content_type, body)) => {
@@ -109,6 +124,20 @@ impl Harness {
                 method,
                 uri,
                 bearer,
+                Some(("application/json", body.to_string())),
+            )
+            .await;
+        (status, value)
+    }
+
+    /// A JSON request from the web sign-in page: session cookie, exact
+    /// public `Origin`, and the CSRF header.
+    pub(super) async fn web(&self, uri: &str, web_token: &str, body: Value) -> (StatusCode, Value) {
+        let (status, value, _) = self
+            .send_with(
+                "POST",
+                uri,
+                web_headers(web_token),
                 Some(("application/json", body.to_string())),
             )
             .await;
@@ -181,10 +210,9 @@ impl Harness {
         pkce: &Pkce,
     ) -> String {
         let (status, body) = self
-            .json(
-                "POST",
+            .web(
                 "/v1/cloud/auth/app/authorize",
-                Some(web_token),
+                web_token,
                 authorize_body(client_id, redirect_uri, &pkce.challenge),
             )
             .await;
@@ -258,6 +286,20 @@ impl Harness {
         assert_eq!(status, StatusCode::OK, "{body}");
         body
     }
+}
+
+pub(super) fn web_headers(web_token: &str) -> Vec<(String, String)> {
+    use crate::auth::routes::web_session_handlers::{
+        web_csrf_token, WEB_CSRF_HEADER, WEB_SESSION_COOKIE,
+    };
+    vec![
+        (
+            "Cookie".to_string(),
+            format!("{WEB_SESSION_COOKIE}={web_token}"),
+        ),
+        ("Origin".to_string(), crate::distribution::public_origin()),
+        (WEB_CSRF_HEADER.to_string(), web_csrf_token(web_token)),
+    ]
 }
 
 pub(super) fn authorize_body(client_id: &str, redirect_uri: &str, challenge: &str) -> Value {
@@ -377,36 +419,6 @@ async fn code_exchange_refresh_and_sign_out_happy_path() {
     assert_eq!(body["error"], "invalid_grant");
     // The web session that authorized the app is untouched.
     assert_eq!(harness.me_status(&account.web_token).await, StatusCode::OK);
-}
-
-#[tokio::test]
-#[ignore = "Requires a task-owned disposable PostgreSQL database"]
-async fn display_code_is_exchanged_with_the_apps_verifier() {
-    let harness = harness().await;
-    let account = harness.web_account().await;
-    let pkce = pkce();
-    let redirect_uri = "kordi://auth/callback";
-    let (status, body) = harness
-        .json(
-            "POST",
-            "/v1/cloud/auth/app/authorize/display-code",
-            Some(&account.web_token),
-            authorize_body(IOS, redirect_uri, &pkce.challenge),
-        )
-        .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["expiresIn"], 300);
-    assert_eq!(body["state"], "state-1");
-    assert!(body.get("redirectUrl").is_none());
-    let code = token(&body, "code");
-    let (status, tokens) = harness
-        .exchange(IOS, &code, redirect_uri, &pkce.verifier)
-        .await;
-    assert_eq!(status, StatusCode::OK, "{tokens}");
-    assert_eq!(
-        harness.me_status(&token(&tokens, "access_token")).await,
-        StatusCode::OK
-    );
 }
 
 #[tokio::test]

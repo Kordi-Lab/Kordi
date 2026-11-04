@@ -1,7 +1,9 @@
 //! The signed-in apps of an account: list and revoke one.
 
 use super::*;
-use crate::auth::app_sign_in::tokens::{list_active_sign_ins, revoke_account_sign_in};
+use crate::auth::app_sign_in::tokens::{
+    list_active_sign_ins, revoke_account_sign_in, sign_in_for_session,
+};
 use crate::auth::devices::device_display_identity;
 
 #[derive(Debug, Serialize)]

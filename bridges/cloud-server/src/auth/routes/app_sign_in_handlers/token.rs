@@ -9,11 +9,26 @@ use crate::auth::app_sign_in::tokens::{
     sign_in_for_token, start_sign_in,
 };
 use crate::auth::app_sign_in::{IssuedTokens, RefreshOutcome};
+use crate::auth::rate_limit::AccountActionLimit;
 
 /// Placeholder device name for a browser sign-in without device details.
 /// It follows the `oauth-<method>-device` pattern so later metadata updates
 /// may replace it.
 const BROWSER_PLACEHOLDER_DEVICE_NAME: &str = "oauth-browser-device";
+
+/// Code exchanges one account may complete across every app.
+const REDEMPTION_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "app-sign-in-redemption",
+    limit: 30,
+    window: std::time::Duration::from_secs(10 * 60),
+};
+
+/// Code exchanges one account may complete for one app.
+const CLIENT_REDEMPTION_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "app-sign-in-client-redemption",
+    limit: 10,
+    window: std::time::Duration::from_secs(10 * 60),
+};
 
 #[derive(Debug, Default, Deserialize)]
 pub(super) struct TokenRequest {
@@ -108,7 +123,9 @@ pub(in crate::auth::routes) async fn app_token(
         );
     };
     match request.grant_type.as_deref() {
-        Some("authorization_code") => exchange_code(&state, &client_id, &request, peer_ip).await,
+        Some("authorization_code") => {
+            exchange_code(&state, &rate_limiter, &client_id, &request, peer_ip).await
+        }
         Some("refresh_token") => refresh(&state, &client_id, &request).await,
         _ => oauth_error(
             StatusCode::BAD_REQUEST,
@@ -138,6 +155,7 @@ fn device_registration(
 
 async fn exchange_code(
     state: &ServerState,
+    rate_limiter: &CloudRateLimiter,
     client_id: &str,
     request: &TokenRequest,
     peer_ip: Option<IpAddr>,
@@ -184,6 +202,20 @@ async fn exchange_code(
             Ok(()) => invalid_grant("The authorization code was already used."),
             Err(_) => server_error(),
         };
+    }
+    for (limit, key) in [
+        (REDEMPTION_LIMIT, presented.account_id.clone()),
+        (
+            CLIENT_REDEMPTION_LIMIT,
+            format!("{}:{}", presented.account_id, client_id),
+        ),
+    ] {
+        if let RateLimitDecision::Limited { retry_after } =
+            rate_limiter.observe_account_limit(limit, &key).await
+        {
+            // Dropping the transaction leaves the code unused.
+            return limited_response(retry_after);
+        }
     }
     let rejection = if presented.client_id != client_id {
         Some("The authorization code was issued to another app.")

@@ -89,6 +89,7 @@ mod signup_email_handlers;
 mod simulator_accounts;
 mod support;
 mod types;
+mod web_session_handlers;
 
 use app_invitation_handlers::*;
 use app_sign_in_handlers::*;
@@ -114,6 +115,7 @@ use session_pins::*;
 use session_visibility::*;
 use support::*;
 use types::ErrorBody;
+use web_session_handlers::*;
 
 pub(crate) use contact_acceptance::{direct_person_session_id, open_direct_conversation};
 pub(crate) use contact_send::{send_request, ContactOutcome};
@@ -183,6 +185,15 @@ pub fn routes_with_shared_rate_limiter(
             post(app_authorize_display_code),
         )
         .route("/v1/cloud/auth/app/token", post(app_token))
+        .route("/v1/cloud/auth/web/login", post(web_login))
+        .route("/v1/cloud/auth/web/signup", post(web_signup))
+        .route("/v1/cloud/auth/web/session", get(web_session_status))
+        .route("/v1/cloud/auth/web/logout", post(web_logout))
+        .route(
+            "/v1/cloud/auth/web/oauth/:provider/start",
+            get(web_oauth_start),
+        )
+        .route(WEB_OAUTH_COMPLETE_PATH, get(web_oauth_complete))
         .route("/v1/cloud/auth/app/revoke", post(revoke_app_token))
         .layer(Extension(app_clients.clone()))
         .layer(Extension(rate_limiter.clone()))
