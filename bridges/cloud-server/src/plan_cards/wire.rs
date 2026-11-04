@@ -239,6 +239,7 @@ impl ProposeRequest {
         let start_at = upcoming_start(self.start_at.as_deref(), plan_past)?;
         let end_at = normalize_instant(self.end_at.as_deref())
             .map_err(|message| bad_request("invalid_end_at", message))?;
+        validate_time_range(start_at.as_deref(), end_at.as_deref())?;
         let mut options = Vec::with_capacity(self.options.len());
         for (index, option) in self.options.into_iter().enumerate() {
             let label = option.label.trim().to_string();
@@ -285,6 +286,19 @@ impl ProposeRequest {
             options,
         })
     }
+}
+
+fn validate_time_range(start: Option<&str>, end: Option<&str>) -> Result<(), Rejection> {
+    let parse = |value: &str| chrono::DateTime::parse_from_rfc3339(value).ok();
+    if let (Some(start), Some(end)) = (start.and_then(parse), end.and_then(parse)) {
+        if end < start {
+            return Err(bad_request(
+                "invalid_time_range",
+                "endAt must not be before startAt. Supply a new end time or leave it unresolved.",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// A plan or option that starts more than ten minutes ago cannot be proposed.
