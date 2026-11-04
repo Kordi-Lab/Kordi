@@ -98,6 +98,8 @@
 
 .app-scroll-area {
   --app-scrollbar-thumb: transparent;
+  --app-scrollbar-thumb-hover: rgba(196, 196, 196, 0.72);
+  --app-scrollbar-thumb-active: var(--app-scrollbar-thumb-hover);
   scrollbar-gutter: stable both-edges;
 }
 
@@ -116,7 +118,6 @@
 }
 
 :is(.app-scroll-area, .app-agent-studio-view-scroll)::-webkit-scrollbar-thumb {
-  min-height: 32px;
   border-radius: 9999px;
   border: 2px solid transparent;
   background: var(--app-scrollbar-thumb);
@@ -132,11 +133,15 @@
   background-color: var(--app-scrollbar-thumb-active);
 }
 
+.app-agent-studio-view-scroll::-webkit-scrollbar-thumb {
+  min-height: 32px;
+}
+
 /* Prefer the inset, rounded thumb where supported. Standard scrollbar styling
  * otherwise overrides these pseudo-elements in Chromium and newer WebKit. */
 @supports selector(::-webkit-scrollbar) {
-  :is(.app-scroll-area, .app-agent-studio-view-scroll),
-  :is(.app-scroll-area, .app-agent-studio-view-scroll):is(:hover, :focus-within) {
+  .app-agent-studio-view-scroll,
+  .app-agent-studio-view-scroll:is(:hover, :focus-within) {
     scrollbar-width: auto;
     scrollbar-color: auto;
   }
