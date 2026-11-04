@@ -6,7 +6,7 @@ async fn upgrade_from_121_adds_document_shares() {
     let pool = fixture(121).await;
     execute(&pool, "INSERT INTO cloud_attachments(attachment_id,owner_account_id,object_key,content_type,size_bytes,created_at,finalized_at) VALUES('att-doc','fixture-owner','attachments/fixture-owner/att-doc','text/markdown',10,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").await;
     let before: Vec<(Value,)> =
-        query_as("SELECT to_jsonb(a) - ARRAY['document_source_attachment_id','document_title'] FROM cloud_attachments a ORDER BY attachment_id")
+        query_as("SELECT to_jsonb(a) - ARRAY['document_source_attachment_id','document_title','organization_id'] FROM cloud_attachments a ORDER BY attachment_id")
             .fetch_all(&pool)
             .await
             .unwrap();
@@ -15,7 +15,7 @@ async fn upgrade_from_121_adds_document_shares() {
     b.unwrap();
     latest_version(&pool).await;
     let after: Vec<(Value,)> =
-        query_as("SELECT to_jsonb(a) - ARRAY['document_source_attachment_id','document_title'] FROM cloud_attachments a ORDER BY attachment_id")
+        query_as("SELECT to_jsonb(a) - ARRAY['document_source_attachment_id','document_title','organization_id'] FROM cloud_attachments a ORDER BY attachment_id")
             .fetch_all(&pool)
             .await
             .unwrap();
@@ -168,7 +168,7 @@ async fn upgrade_from_123_adds_document_sources() {
     b.unwrap();
     latest_version(&pool).await;
     let after: Vec<(Value, Option<String>)> = query_as(
-        "SELECT to_jsonb(a) - ARRAY['document_source_attachment_id','document_title'], \
+        "SELECT to_jsonb(a) - ARRAY['document_source_attachment_id','document_title','organization_id'], \
                 document_source_attachment_id \
          FROM cloud_attachments a ORDER BY attachment_id",
     )
@@ -446,7 +446,7 @@ async fn upgrade_from_128_adds_document_title() {
     let pool = fixture(128).await;
     execute(&pool, "INSERT INTO cloud_attachments(attachment_id,owner_account_id,object_key,content_type,size_bytes,created_at,finalized_at) VALUES('att-doc','fixture-owner','attachments/fixture-owner/att-doc','text/markdown',10,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").await;
     let snapshot =
-        "SELECT to_jsonb(a) - 'document_title' FROM cloud_attachments a ORDER BY attachment_id";
+        "SELECT to_jsonb(a) - ARRAY['document_title','organization_id'] FROM cloud_attachments a ORDER BY attachment_id";
     let before: Vec<(Value,)> = query_as(snapshot).fetch_all(&pool).await.unwrap();
     let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
     a.unwrap();

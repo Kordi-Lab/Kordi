@@ -1,10 +1,9 @@
 import SwiftUI
 
-/// The trailing header control's label: the agent's avatar with the online
-/// dot in a personal session (#2091), the ellipsis everywhere else. Both open
+/// The trailing header control's label: the agent's avatar in a personal
+/// session (#2091), the ellipsis everywhere else. Both open
 /// the session details.
 struct ConversationHeaderTrailingLabel: View {
-    @Environment(\.kordiChatTheme) private var chatTheme
     let conversation: ConversationSummary
 
     static func hidesSharedBackground(for conversation: ConversationSummary) -> Bool {
@@ -14,7 +13,7 @@ struct ConversationHeaderTrailingLabel: View {
     var body: some View {
         Group {
             if conversation.personalAgentId != nil {
-                PersonalAgentAvatar(conversation: conversation, size: 32, ringColor: chatTheme.canvas)
+                PersonalAgentAvatar(conversation: conversation, size: 32)
             } else {
                 Image(systemName: "ellipsis")
                     .font(.body.weight(.semibold))
