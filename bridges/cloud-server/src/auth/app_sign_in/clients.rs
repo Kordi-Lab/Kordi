@@ -119,6 +119,18 @@ impl AppClientRegistry {
     }
 }
 
+/// Schemes a browser handles itself, which must never receive a code.
+const UNSAFE_SCHEMES: [&str; 8] = [
+    "javascript",
+    "data",
+    "file",
+    "blob",
+    "vbscript",
+    "about",
+    "filesystem",
+    "view-source",
+];
+
 fn validate_registered_redirect_uri(uri: &str) -> Result<(), &'static str> {
     if uri.len() > MAX_REDIRECT_URI_CHARS || uri.trim() != uri {
         return Err("is too long or has surrounding spaces");
@@ -134,6 +146,7 @@ fn validate_registered_redirect_uri(uri: &str) -> Result<(), &'static str> {
         "https" => Ok(()),
         "http" if loopback_host(&url).is_some() => Ok(()),
         "http" => Err("plain HTTP is only allowed for loopback addresses"),
+        scheme if UNSAFE_SCHEMES.contains(&scheme) => Err("has a scheme that runs in the browser"),
         scheme if scheme.len() > 2 => Ok(()),
         _ => Err("has an unsupported scheme"),
     }

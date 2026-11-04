@@ -191,6 +191,40 @@ async fn web_login_keeps_the_session_out_of_page_scripts() {
 
 #[tokio::test]
 #[ignore = "Requires a task-owned disposable PostgreSQL database"]
+async fn signing_in_again_ends_the_session_the_cookie_held() {
+    let harness = harness().await;
+    let email = password_account(&harness).await;
+    let login = serde_json::json!({ "email": email, "password": PASSWORD }).to_string();
+    let origin = ("Origin".to_string(), crate::distribution::public_origin());
+    let mut sessions = Vec::new();
+    for _ in 0..2 {
+        let mut headers = vec![origin.clone()];
+        if let Some(previous) = sessions.last() {
+            headers.push((
+                "Cookie".to_string(),
+                format!("{WEB_SESSION_COOKIE}={previous}"),
+            ));
+        }
+        let (status, body, headers) = harness
+            .send_with(
+                "POST",
+                "/v1/cloud/auth/web/login",
+                headers,
+                Some(("application/json", login.clone())),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        sessions.push(cookie_value(&set_cookies(&headers), WEB_SESSION_COOKIE));
+    }
+    assert_eq!(
+        harness.me_status(&sessions[0]).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(harness.me_status(&sessions[1]).await, StatusCode::OK);
+}
+
+#[tokio::test]
+#[ignore = "Requires a task-owned disposable PostgreSQL database"]
 async fn failed_web_provider_sign_in_returns_to_the_page() {
     let harness = harness().await;
     let (status, _, headers) = harness
@@ -233,6 +267,43 @@ async fn failed_web_provider_sign_in_returns_to_the_page() {
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+}
+
+#[tokio::test]
+#[ignore = "Requires a task-owned disposable PostgreSQL database"]
+async fn web_provider_start_sends_the_browser_to_the_provider() {
+    std::env::set_var("KORDI_OAUTH_GITHUB_CLIENT_ID", "synthetic-web-start-client");
+    std::env::set_var(
+        "KORDI_OAUTH_GITHUB_CLIENT_SECRET",
+        "synthetic-web-start-secret",
+    );
+    let harness = harness().await;
+    let (status, body, headers) = harness
+        .send(
+            "GET",
+            "/v1/cloud/auth/web/oauth/github/start?returnTo=%2Faccount",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "{body}");
+    let location = headers.get("location").unwrap().to_str().unwrap();
+    assert!(
+        location.starts_with("https://github.com/login/oauth/authorize?"),
+        "{location}"
+    );
+    assert!(
+        location.contains("client_id=synthetic-web-start-client"),
+        "{location}"
+    );
+    assert!(
+        location.contains("code_challenge_method=S256"),
+        "{location}"
+    );
+    assert_eq!(
+        headers.get("cache-control").unwrap().to_str().unwrap(),
+        "no-store"
+    );
 }
 
 #[test]

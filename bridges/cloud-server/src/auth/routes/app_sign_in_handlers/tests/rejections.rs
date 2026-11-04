@@ -220,7 +220,19 @@ async fn reusing_a_rotated_refresh_token_revokes_the_sign_in() {
         .refresh(DESKTOP, &token(&first, "refresh_token"))
         .await;
     assert_eq!(status, StatusCode::OK);
-    // The rotated token is presented again, as a thief holding a copy would.
+    // The rotated token is presented again after the grace period, as a
+    // thief holding a copy would.
+    query(
+        "UPDATE cloud_app_refresh_tokens SET rotated_at = rotated_at - INTERVAL '61 seconds' \
+         WHERE token_hash = $1",
+    )
+    .bind(crate::auth::app_sign_in::codes::hash_code(&token(
+        &first,
+        "refresh_token",
+    )))
+    .execute(&harness.pool)
+    .await
+    .unwrap();
     let (status, body) = harness
         .refresh(DESKTOP, &token(&first, "refresh_token"))
         .await;
@@ -399,10 +411,16 @@ async fn token_requests_are_validated_and_rate_limited() {
         .await;
     assert_oauth_error(status, &body, StatusCode::BAD_REQUEST, "invalid_request");
 
+    // Code exchanges share the per-address sign-in limit.
     let limited = harness_with_limit(2).await;
     let mut statuses = Vec::new();
     for _ in 0..3 {
-        statuses.push(limited.refresh(DESKTOP, "kordi_rt_unknown").await.0);
+        statuses.push(
+            limited
+                .exchange(DESKTOP, "unknown-code", LOOPBACK, "verifier")
+                .await
+                .0,
+        );
     }
     assert_eq!(statuses.last(), Some(&StatusCode::TOO_MANY_REQUESTS));
 }

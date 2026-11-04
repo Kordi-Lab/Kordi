@@ -3,8 +3,10 @@
 //! An access token is an ordinary `kordi_cs_` session row, so the existing
 //! session middleware, realtime tickets, and device checks apply unchanged.
 //! It carries its sign-in and keeps a fixed, short expiry. A refresh token
-//! is used once; presenting a rotated refresh token again revokes the whole
-//! sign-in, including every access token it issued.
+//! is used once. Presenting a rotated refresh token again within a short
+//! grace period returns the same successor, so a lost response or a
+//! concurrent refresh does not sign the app out; any later reuse revokes the
+//! whole sign-in, including every access token it issued.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration, Utc};
@@ -16,6 +18,10 @@ use sqlx_postgres::{PgPool, Postgres};
 
 use super::codes::hash_code as hash_token;
 use crate::auth::session::{hash_session_token, random_token_plaintext};
+
+mod refresh;
+
+pub use refresh::{rotate_refresh_token, REFRESH_REUSE_GRACE_SECS};
 
 pub const REFRESH_TOKEN_PREFIX: &str = "kordi_rt_";
 pub const ACCESS_TOKEN_LIFETIME_SECS: i64 = 60 * 60;
@@ -82,7 +88,15 @@ pub async fn start_sign_in(
     .bind(now)
     .execute(&mut **transaction)
     .await?;
-    issue_pair(transaction, &sign_in_id, account_id, device_id).await
+    issue_pair(transaction, &sign_in_id, account_id, device_id, None).await
+}
+
+/// The plaintext refresh and access tokens of a new pair. Random for a new
+/// sign-in; derived from the presented refresh token on rotation, so a
+/// retried refresh can return the same pair.
+struct PairTokens {
+    refresh_token: String,
+    access_token: String,
 }
 
 async fn issue_pair(
@@ -90,9 +104,14 @@ async fn issue_pair(
     sign_in_id: &str,
     account_id: &str,
     device_id: &str,
+    tokens: Option<PairTokens>,
 ) -> Result<IssuedTokens, sqlx_core::Error> {
     let now = Utc::now();
-    let access_token = random_token_plaintext();
+    let tokens = tokens.unwrap_or_else(|| PairTokens {
+        refresh_token: random_refresh_token(),
+        access_token: random_token_plaintext(),
+    });
+    let access_token = tokens.access_token;
     let access_token_id = format!("cs_{}", uuid::Uuid::new_v4().simple());
     let access_expires_at = now + Duration::seconds(ACCESS_TOKEN_LIFETIME_SECS);
     query(
@@ -110,7 +129,7 @@ async fn issue_pair(
     .execute(&mut **transaction)
     .await?;
 
-    let refresh_token = random_refresh_token();
+    let refresh_token = tokens.refresh_token;
     let refresh_expires_at = now + Duration::days(REFRESH_TOKEN_LIFETIME_DAYS);
     query(
         "INSERT INTO cloud_app_refresh_tokens (token_hash, sign_in_id, created_at, expires_at) \
@@ -133,95 +152,6 @@ async fn issue_pair(
         refresh_token,
         refresh_expires_at,
     })
-}
-
-/// Exchange a refresh token for a new pair. The presented token is rotated
-/// and cannot be used again.
-pub async fn rotate_refresh_token(
-    pool: &PgPool,
-    client_id: &str,
-    refresh_token: &str,
-) -> Result<RefreshOutcome, sqlx_core::Error> {
-    if !refresh_token.starts_with(REFRESH_TOKEN_PREFIX) {
-        return Ok(RefreshOutcome::Invalid);
-    }
-    let token_hash = hash_token(refresh_token);
-    let mut transaction = pool.begin().await?;
-    type Row = (
-        String,
-        DateTime<Utc>,
-        Option<DateTime<Utc>>,
-        String,
-        String,
-        String,
-        Option<DateTime<Utc>>,
-        Option<String>,
-    );
-    let row: Option<Row> = query_as(
-        "SELECT token.sign_in_id, token.expires_at, token.rotated_at, sign_in.client_id, \
-                sign_in.account_id, sign_in.device_id, sign_in.revoked_at, device.revoked_at \
-         FROM cloud_app_refresh_tokens token \
-         JOIN cloud_app_sign_ins sign_in ON sign_in.sign_in_id = token.sign_in_id \
-         JOIN cloud_devices device ON device.device_id = sign_in.device_id \
-         WHERE token.token_hash = $1 \
-         FOR UPDATE OF token, sign_in",
-    )
-    .bind(&token_hash)
-    .fetch_optional(&mut *transaction)
-    .await?;
-    let Some((
-        sign_in_id,
-        expires_at,
-        rotated_at,
-        token_client_id,
-        account_id,
-        device_id,
-        sign_in_revoked_at,
-        device_revoked_at,
-    )) = row
-    else {
-        return Ok(RefreshOutcome::Invalid);
-    };
-    if sign_in_revoked_at.is_some() || token_client_id != client_id {
-        return Ok(RefreshOutcome::Invalid);
-    }
-    if rotated_at.is_some() {
-        revoke_sign_in_in_transaction(
-            &mut transaction,
-            &sign_in_id,
-            revoked_reason::REFRESH_TOKEN_REUSE,
-        )
-        .await?;
-        transaction.commit().await?;
-        return Ok(RefreshOutcome::ReuseDetected { account_id });
-    }
-    if device_revoked_at.is_some() {
-        revoke_sign_in_in_transaction(
-            &mut transaction,
-            &sign_in_id,
-            revoked_reason::DEVICE_REVOKED,
-        )
-        .await?;
-        transaction.commit().await?;
-        return Ok(RefreshOutcome::Invalid);
-    }
-    let now = Utc::now();
-    if expires_at <= now {
-        return Ok(RefreshOutcome::Invalid);
-    }
-    query("UPDATE cloud_app_refresh_tokens SET rotated_at = $1 WHERE token_hash = $2")
-        .bind(now)
-        .bind(&token_hash)
-        .execute(&mut *transaction)
-        .await?;
-    query("UPDATE cloud_app_sign_ins SET last_refreshed_at = $1 WHERE sign_in_id = $2")
-        .bind(now)
-        .bind(&sign_in_id)
-        .execute(&mut *transaction)
-        .await?;
-    let issued = issue_pair(&mut transaction, &sign_in_id, &account_id, &device_id).await?;
-    transaction.commit().await?;
-    Ok(RefreshOutcome::Issued(issued))
 }
 
 /// Revoke a sign-in and every access token it issued. Idempotent.
@@ -262,6 +192,34 @@ pub async fn revoke_sign_in(
     let revoked = revoke_sign_in_in_transaction(&mut transaction, sign_in_id, reason).await?;
     transaction.commit().await?;
     Ok(revoked)
+}
+
+/// Revoke every sign-in on the given devices of an account, in the same
+/// transaction that revokes the devices. Re-authorizing a device clears its
+/// `revoked_at` but cannot bring these sign-ins back; refresh also refuses
+/// any sign-in created before the device's `last_revoked_at`, which a
+/// trigger records on every revocation.
+pub async fn revoke_device_sign_ins(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    device_ids: &[String],
+) -> Result<(), sqlx_core::Error> {
+    if device_ids.is_empty() {
+        return Ok(());
+    }
+    let sign_ins: Vec<(String,)> = query_as(
+        "SELECT sign_in_id FROM cloud_app_sign_ins \
+         WHERE account_id = $1 AND device_id = ANY($2) AND revoked_at IS NULL",
+    )
+    .bind(account_id)
+    .bind(device_ids)
+    .fetch_all(&mut **transaction)
+    .await?;
+    for (sign_in_id,) in sign_ins {
+        revoke_sign_in_in_transaction(transaction, &sign_in_id, revoked_reason::DEVICE_REVOKED)
+            .await?;
+    }
+    Ok(())
 }
 
 /// The sign-in and client that issued a refresh token or access token, if

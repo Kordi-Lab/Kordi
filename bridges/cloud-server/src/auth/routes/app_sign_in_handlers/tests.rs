@@ -9,8 +9,11 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 
+mod hardening;
+mod refresh_grace;
 mod rejections;
 mod web_authorize;
+mod web_oauth_binding;
 mod web_session;
 
 pub(super) const DESKTOP: &str = "kordi-desktop";
@@ -302,6 +305,7 @@ pub(super) fn web_headers(web_token: &str) -> Vec<(String, String)> {
     ]
 }
 
+/// The page's request after the user approved the app.
 pub(super) fn authorize_body(client_id: &str, redirect_uri: &str, challenge: &str) -> Value {
     serde_json::json!({
         "response_type": "code",
@@ -310,6 +314,7 @@ pub(super) fn authorize_body(client_id: &str, redirect_uri: &str, challenge: &st
         "code_challenge": challenge,
         "code_challenge_method": "S256",
         "state": "state-1",
+        "approved": true,
     })
 }
 
