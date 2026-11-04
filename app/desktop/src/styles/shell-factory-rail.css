@@ -84,3 +84,34 @@
   width: 14px;
   height: 14px;
 }
+
+/* Portaled Factory rows use the same density and type scale as Chat rows. */
+.app-agent-studio-rail.is-in-sidebar {
+  --agent-studio-type-body: 12px;
+  --agent-studio-type-caption: 10.5px;
+}
+
+.app-agent-studio-rail.is-in-sidebar .app-agent-studio-agent-row:not(.is-compact) {
+  min-height: 48px;
+  margin-bottom: 1px;
+  padding-block: 6px;
+}
+
+.app-agent-studio-rail.is-in-sidebar .app-agent-studio-agent-row strong {
+  line-height: 18px;
+}
+
+.app-agent-studio-rail.is-in-sidebar .app-agent-studio-agent-row small {
+  margin-top: 1px;
+  line-height: 16px;
+}
+
+.app-agent-studio-rail.is-in-sidebar .app-agent-studio-agent-state {
+  line-height: 16px;
+}
+
+.app-agent-studio-rail.is-in-sidebar .app-factory-rail-switch button,
+.app-agent-studio-rail.is-in-sidebar .app-factory-library-switch button {
+  min-height: 26px;
+  line-height: 16px;
+}

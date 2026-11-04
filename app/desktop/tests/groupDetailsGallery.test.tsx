@@ -58,8 +58,8 @@ test('GroupDetailsDialog renders a searchable member gallery with progressive co
   assert.match(markup, /placeholder="Search members"/);
   assert.match(markup, /data-group-member-grid/);
   assert.match(markup, /Alice/);
-  assert.match(markup, /class="app-presence-light"/);
-  assert.match(markup, /data-presence-status="online"/);
+  assert.doesNotMatch(markup, /class="app-presence-light"/);
+  assert.doesNotMatch(markup, /data-presence-status=/);
   assert.match(markup, /lucide-star/);
   assert.doesNotMatch(markup, />Admin<\/span>|>Member<\/span>|>People<\/span>/);
   assert.match(markup, /aria-label="Add people"/);
