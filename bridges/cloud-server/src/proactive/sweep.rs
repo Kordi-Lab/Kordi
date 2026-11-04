@@ -36,36 +36,60 @@ macro_rules! watched_sql {
 
 /// A new watched conversation starts at its newest message, so history is
 /// never evaluated.
-const SEED_SQL: &str = concat!(
-    "INSERT INTO cloud_agent_proactive_state
+macro_rules! seed_sql {
+    () => {
+        concat!(
+            "INSERT INTO cloud_agent_proactive_state
          (agent_id, owner_account_id, conversation_id, seen_sequence)
      SELECT agent.agent_id, agent.owner_account_id, c.conversation_id, c.latest_message_sequence
      FROM ",
-    watchers_sql!(),
-    " agent
+            watchers_sql!(),
+            " agent
      JOIN cloud_chat_conversation_members owner_member
        ON owner_member.account_id = agent.owner_account_id
       AND owner_member.membership_state = 'active'
      JOIN cloud_chat_conversations c ON c.conversation_id = owner_member.conversation_id
      WHERE ",
-    watched_sql!(),
+            watched_sql!(),
+        )
+    };
+}
+
+const SEED_SQL: &str = concat!(
+    seed_sql!(),
     " ON CONFLICT (agent_id, conversation_id) DO NOTHING"
 );
 
-/// Rows whose owner left the group or whose agent stopped watching. A later
-/// return starts again at the newest message.
-const PRUNE_SQL: &str = concat!(
-    "DELETE FROM cloud_agent_proactive_state state
+/// Capture the enablement boundary before acknowledging the setting change.
+/// Preserve cooldown and any still-running evaluation; messages written while
+/// disabled are history, while writes after this transaction remain eligible.
+pub(crate) async fn start_in_transaction(
+    transaction: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    agent_id: &str,
+) -> Result<(), sqlx_core::Error> {
+    query(concat!(
+        seed_sql!(),
+        " AND agent.agent_id = $2
+          ON CONFLICT (agent_id, conversation_id) DO UPDATE
+          SET seen_sequence = GREATEST(cloud_agent_proactive_state.seen_sequence, EXCLUDED.seen_sequence),
+              attempts = 0, retry_after = now(), updated_at = now()"
+    ))
+    .bind(crate::system_agent::membership::SYSTEM_AGENT_CONVERSATION_KINDS)
+    .bind(agent_id)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
+/// Membership loss removes an idle cursor. Disabled agents retain theirs:
+/// selection already excludes them, and retaining the row preserves cooldown
+/// and prevents an in-flight prune from erasing a new enablement boundary.
+const PRUNE_SQL: &str = "DELETE FROM cloud_agent_proactive_state state
      WHERE state.active_run_id IS NULL AND NOT EXISTS (
-         SELECT 1 FROM ",
-    watchers_sql!(),
-    " agent
-         JOIN cloud_chat_conversation_members member
-           ON member.account_id = agent.owner_account_id
-          AND member.conversation_id = state.conversation_id
-          AND member.membership_state = 'active'
-         WHERE agent.agent_id = state.agent_id)"
-);
+         SELECT 1 FROM cloud_chat_conversation_members member
+         WHERE member.account_id = state.owner_account_id
+           AND member.conversation_id = state.conversation_id
+           AND member.membership_state = 'active')";
 
 /// Candidates: $1 conversation kinds, $2 service accounts, $3 batch, $4 quiet
 /// seconds, $5 max wait seconds, $6 daily cap, $7 cap window start (RFC 3339).

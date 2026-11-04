@@ -206,6 +206,9 @@ pub async fn create_agent_definition(
     .await?;
     let mut agent = row_to_definition(row);
     store_personal::apply(&mut transaction, owner_account_id, &mut agent, personal).await?;
+    if agent.proactive.enabled {
+        crate::proactive::setting::start_in_transaction(&mut transaction, &agent.agent_id).await?;
+    }
     insert_agent_sync_event(
         &mut transaction,
         owner_account_id,
@@ -367,6 +370,9 @@ pub async fn update_agent_definition(
         &agent,
     )
     .await?;
+    if !was_proactive && agent.proactive.enabled {
+        crate::proactive::setting::start_in_transaction(&mut transaction, agent_id).await?;
+    }
     if was_proactive && !agent.proactive.enabled {
         crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?;
     }
@@ -420,6 +426,9 @@ pub async fn set_agent_proactive(
         &agent,
     )
     .await?;
+    if !was.enabled && setting.enabled {
+        crate::proactive::setting::start_in_transaction(&mut transaction, agent_id).await?;
+    }
     if was.enabled && !setting.enabled {
         crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?;
     }

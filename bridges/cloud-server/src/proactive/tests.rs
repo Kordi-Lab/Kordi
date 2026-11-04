@@ -7,6 +7,7 @@
 mod decision_db;
 mod default_agent_db;
 mod definition_db;
+mod enablement_db;
 mod fixture;
 mod offer_db;
 mod plain_reply_db;

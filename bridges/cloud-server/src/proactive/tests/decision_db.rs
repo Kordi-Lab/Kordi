@@ -310,7 +310,11 @@ async fn turning_the_setting_off_stops_everything() {
             .fetch_one(&f.pool)
             .await
             .unwrap();
-    assert_eq!(rows, 0, "turning it back on starts from the newest message");
+    assert_eq!(rows, 2, "both disabled cursors retain their cooldown");
+    assert!(
+        f.candidate(&config()).await.is_none(),
+        "disabled agents stay silent"
+    );
     let _: Value = body;
 }
 

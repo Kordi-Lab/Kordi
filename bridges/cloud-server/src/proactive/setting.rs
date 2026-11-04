@@ -1,6 +1,8 @@
 //! The `proactive` field of an agent definition, and what turning it off
 //! (or archiving the agent) stops.
 
+pub(crate) use super::sweep::start_in_transaction;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx_core::query::query;
@@ -109,14 +111,24 @@ pub async fn set_default(
     enabled: bool,
 ) -> Result<(), sqlx_core::Error> {
     let mut transaction = pool.begin().await?;
-    query(
-        "INSERT INTO cloud_account_proactive_settings (account_id, enabled) VALUES ($1, $2)
-         ON CONFLICT (account_id) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()",
+    // Lock the setting row so concurrent toggles agree on the transition.
+    query("INSERT INTO cloud_account_proactive_settings (account_id, enabled) VALUES ($1, false) ON CONFLICT DO NOTHING")
+        .bind(account_id).execute(&mut *transaction).await?;
+    let (was,): (bool,) = query_as(
+        "SELECT enabled FROM cloud_account_proactive_settings WHERE account_id = $1 FOR UPDATE",
     )
     .bind(account_id)
-    .bind(enabled)
-    .execute(&mut *transaction)
+    .fetch_one(&mut *transaction)
     .await?;
+    query("UPDATE cloud_account_proactive_settings SET enabled = $2, updated_at = now() WHERE account_id = $1")
+        .bind(account_id).bind(enabled).execute(&mut *transaction).await?;
+    if enabled && !was {
+        start_in_transaction(
+            &mut transaction,
+            &super::agents::default_agent_id(account_id),
+        )
+        .await?;
+    }
     if !enabled {
         let agent_id = super::agents::default_agent_id(account_id);
         stop_in_transaction(&mut transaction, &agent_id).await?;
