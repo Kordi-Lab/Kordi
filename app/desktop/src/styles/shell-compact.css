@@ -92,7 +92,7 @@ html.kordi-native-shell .kordi-app .app-shell[data-sidebar-collapsed='true'] .ap
   padding-left: calc(14px + var(--app-native-navigation-overhang, 0px));
 }
 html.kordi-native-shell .kordi-app .app-chat-pane-header {
-  border-bottom-color: var(--app-nav-rail-glass-border);
+  border-bottom-color: var(--app-chat-pane-divider, var(--app-nav-rail-glass-border));
 }
 
 /* Keyboard focus is independent of the panel's structural edges. */
