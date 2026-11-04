@@ -4,6 +4,8 @@ mod messaging;
 mod types;
 
 #[cfg(test)]
+mod runtime_tests;
+#[cfg(test)]
 mod tests;
 
 pub use host_impl::PluginHost;
