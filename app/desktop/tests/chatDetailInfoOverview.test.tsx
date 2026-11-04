@@ -34,7 +34,8 @@ test('chat detail info shows one row for an owner agent with cloud and local ide
 
   assert.equal(markup.match(/Owner: /g)?.length, 1);
   assert.match(markup, /data-chat-info-summary="">2 participants · 4 messages · Active /);
-  assert.equal(markup.match(/data-presence-status="online"/g)?.length, 2);
+  assert.equal(markup.match(/aria-description="Status: online"/g)?.length, 2);
+  assert.doesNotMatch(markup, /app-presence-light/);
   assert.doesNotMatch(markup, /Canonical graph|Context cache|delegation|snapshot/);
 });
 

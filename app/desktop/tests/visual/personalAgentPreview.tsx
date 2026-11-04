@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { AppShellFrame } from '../../src/app/AppShellFrame';
 import { useWorkspaceController } from '../../src/app/useWorkspaceController';
 import { useKordiLocalUiState } from '../../src/app/useKordiLocalUiState';
+import { applyChatTheme, readStoredChatTheme } from '../../src/app/themePreference';
 import { chatNavigationIndex } from '../../src/features/chat/chatNavigation';
 import { buildParticipantSpaces, filterParticipantSpaces } from '../../src/features/chat/participantSpaces';
 import { setPersonalAgentEntries } from '../../src/features/personalAgent/personalAgentStore';
@@ -23,6 +24,7 @@ import './chatProjectWorkspace.css';
 type PreviewChatsPageProps = ChatsPageProps['layout'] & ChatsPageProps['session'] & ChatsPageProps['transcript'] & ChatsPageProps['composer'] & ChatsPageProps['runtime'] & ChatsPageProps['auth'];
 
 setPersonalAgentEntries(previewPersonalAgents);
+applyChatTheme(readStoredChatTheme());
 const params = new URLSearchParams(location.search);
 const initialSessionId = params.get('session') || KORDI_SESSION;
 
@@ -70,9 +72,9 @@ function PersonalAgentPreview() {
     setNotice('Message added to the preview. No agent task was started.');
   };
   const pageProps = {
-    isNativeShell: true, showChatDetailRail: false, collapseChatSessions: !sidebarVisible,
+    isNativeShell: true, showChatDetailRail: true, collapseChatSessions: !sidebarVisible,
     setIsSessionPanelCollapsed: (collapsed: boolean) => setSidebarVisible(!collapsed),
-    showRightDetailRail: false, isDetailPanelCollapsed: true, setIsDetailPanelCollapsed: () => undefined,
+    showRightDetailRail: true, isDetailPanelCollapsed: true, setIsDetailPanelCollapsed: () => undefined,
     activeDetailTab: 'messages', setActiveDetailTab: () => undefined, activeArtifactId: null, setActiveArtifactId: () => undefined,
     activeConv: active, chatConversations: conversations, companionConversations: conversations, participantSpaces,
     activeConversationUsesCollaboration: false, activeCollaborationModelHost: null, desktopChatState: null,
