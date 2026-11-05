@@ -4,7 +4,7 @@
 //! | --- | --- |
 //! | `KORDI_OBJECT_STORAGE_BACKEND` | `s3` (default) or `gcs` |
 //! | `KORDI_OBJECT_STORAGE_ATTACHMENTS_BUCKET` | Attachment bucket. Required for `gcs`; overrides `S3_BUCKET` for `s3`. |
-//! | `KORDI_OBJECT_STORAGE_RELEASES_BUCKET` | Desktop release bucket. Enables releases for `gcs`; overrides `KORDI_RELEASE_S3_BUCKET` for `s3` (default `kordi-releases`). |
+//! | `KORDI_OBJECT_STORAGE_RELEASES_BUCKET` | Desktop release bucket. For `gcs`, serves releases from GCS; when unset, releases keep using `KORDI_RELEASE_S3_*`. For `s3`, overrides `KORDI_RELEASE_S3_BUCKET` (default `kordi-releases`). |
 //! | `KORDI_OBJECT_STORAGE_GCS_ENDPOINT` | JSON API origin, default `https://storage.googleapis.com` |
 //! | `KORDI_OBJECT_STORAGE_GCS_TOKEN_URL` | Token endpoint, default the instance metadata server |
 
@@ -97,6 +97,12 @@ impl ObjectStorageSettings {
     }
 }
 
+fn s3_release_store() -> Option<ReleaseCatalogStore> {
+    ReleaseStoreConfig::from_env()
+        .and_then(|config| MinioReleaseStore::new(config).ok())
+        .map(|backend| ReleaseCatalogStore::new(Arc::new(backend)))
+}
+
 struct Stores {
     attachments: Option<ObjectStore>,
     releases: Option<ReleaseCatalogStore>,
@@ -106,9 +112,7 @@ fn build_stores(settings: &ObjectStorageSettings) -> Result<Stores, &'static str
     match settings.backend {
         ObjectStorageBackend::S3 => Ok(Stores {
             attachments: S3Config::from_env().map(ObjectStore::s3),
-            releases: ReleaseStoreConfig::from_env()
-                .and_then(|config| MinioReleaseStore::new(config).ok())
-                .map(|backend| ReleaseCatalogStore::new(Arc::new(backend))),
+            releases: s3_release_store(),
         }),
         ObjectStorageBackend::Gcs => {
             let unavailable = |_| "Google Cloud Storage client could not be created";
@@ -124,7 +128,9 @@ fn build_stores(settings: &ObjectStorageSettings) -> Result<Stores, &'static str
                 Some(name) => Some(ReleaseCatalogStore::new(Arc::new(GcsReleaseStore::new(
                     gcs_bucket(&settings.gcs_endpoint, name, &tokens).map_err(unavailable)?,
                 )))),
-                None => None,
+                // Releases can stay on an S3-compatible store while
+                // attachments move first.
+                None => s3_release_store(),
             };
             Ok(Stores {
                 attachments,

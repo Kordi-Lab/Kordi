@@ -67,7 +67,7 @@ backends. `KORDI_OBJECT_STORAGE_BACKEND` selects it:
 | --- | --- |
 | `KORDI_OBJECT_STORAGE_BACKEND` | `s3` (default) or `gcs`. |
 | `KORDI_OBJECT_STORAGE_ATTACHMENTS_BUCKET` | Bucket for attachments, avatars, agent artifacts, and shared documents. Required for `gcs`; for `s3` it overrides `S3_BUCKET`. |
-| `KORDI_OBJECT_STORAGE_RELEASES_BUCKET` | Private desktop release bucket. For `s3` it overrides `KORDI_RELEASE_S3_BUCKET`, and the default stays `kordi-releases`. For `gcs` it must be set to serve releases, because bucket names are global. |
+| `KORDI_OBJECT_STORAGE_RELEASES_BUCKET` | Private desktop release bucket. For `s3` it overrides `KORDI_RELEASE_S3_BUCKET`, and the default stays `kordi-releases`. For `gcs` it serves releases from that GCS bucket; there is no default because bucket names are global. When it is unset, releases keep using the `KORDI_RELEASE_S3_*` store, so attachments can move first. |
 | `KORDI_OBJECT_STORAGE_GCS_ENDPOINT` | JSON API origin. Default `https://storage.googleapis.com`. |
 | `KORDI_OBJECT_STORAGE_GCS_TOKEN_URL` | Token endpoint. Default is the metadata server; tests point it at a local stand-in. |
 
