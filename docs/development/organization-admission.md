@@ -138,9 +138,10 @@ matching email again (`auth.identity.email_reverified`).
 ## API
 
 The join-request admin routes need a bearer cloud session, like the other
-organization routes. The four `/v1/cloud/account/organizations` routes also
-accept the web session cookie (`__Host-kordi_web_session`), so the kordi.ai
-pages can call them same-origin with `credentials: 'same-origin'`:
+organization routes. The `/v1/cloud/account/organizations` and
+`/v1/cloud/account/joinable-organizations` routes also accept the web session
+cookie (`__Host-kordi_web_session`), so the kordi.ai pages can call them
+same-origin with `credentials: 'same-origin'`:
 
 - A request with an `Authorization` header takes the bearer path unchanged.
 - Otherwise the cookie must name a web session; an app's access token there
@@ -153,6 +154,7 @@ pages can call them same-origin with `credentials: 'same-origin'`:
 | Route | Result |
 | --- | --- |
 | `GET /v1/cloud/account/organizations` | `organizations` (as `GET /v1/cloud/organizations`) and `configured`: per configured organization `id`, `organizationId`, `displayName`, `state`, `admission`, `joinOptions {emailCode, joinRequest}`, `claimedDomains`, `joinRequestFields`, `joinRequest {requestId, status, createdAt}` (open request), `verifiedAt`, `reverifyBy`, `expiresAt`, `entryPage`. |
+| `GET /v1/cloud/account/joinable-organizations` | The caller's verified primary `email` and `emailDomain` (both `null` without one), and `organizations`: the open configured organizations that claim that email and that the caller is not a member of, each with `id`, `organizationId`, `name`, `memberCount`, `joinOptions`, `requested` (an open join request), and `joinRequestFields`. Organizations with no join path and no open request are left out. The apps' "Find your organization" dialog joins with an email code to that email when `joinOptions.emailCode` is set, and otherwise sends a join request. |
 | `POST /v1/cloud/account/organizations/:id/email-code` | `{email}` in a claimed domain; sends a code; returns `{verificationId, expiresAt, retryAfterSeconds}`. |
 | `POST /v1/cloud/account/organizations/:id/email-code/verify` | `{verificationId, verificationCode}`; joins or renews; returns `{configured}`. |
 | `POST /v1/cloud/account/organizations/:id/join-requests` | `{fields: {key: value}}`; `201 {joinRequest}`. |

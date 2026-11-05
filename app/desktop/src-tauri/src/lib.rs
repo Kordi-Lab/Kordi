@@ -104,8 +104,9 @@ use media_preview_window::{
 };
 use tauri::{Emitter, Manager};
 use window_lifecycle::{
-    desktop_relaunch_after_update, should_hide_window_instead_of_close,
-    should_show_main_window_on_reopen, show_and_focus_main_window, update_relaunch_requested,
+    desktop_relaunch_after_update, desktop_reveal_main_window, should_hide_window_instead_of_close,
+    should_show_main_window_on_reopen, show_and_focus_main_window, show_main_window_after_fallback,
+    update_relaunch_requested,
 };
 use workspace::DesktopWorkspaceStatus;
 
@@ -210,6 +211,7 @@ pub fn run() {
             if update_relaunch_requested() {
                 show_and_focus_main_window(app.handle());
             }
+            show_main_window_after_fallback(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -217,6 +219,7 @@ pub fn run() {
             nearby_location::desktop_nearby_location_permission,
             transcript_trace::desktop_transcript_trace,
             auth_window::desktop_set_auth_window_surface,
+            desktop_reveal_main_window,
             window_backdrop::desktop_set_window_backdrop,
             app_icon::desktop_set_app_icon,
             desktop_workspace_status,

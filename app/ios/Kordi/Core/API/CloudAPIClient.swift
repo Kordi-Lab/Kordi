@@ -329,6 +329,19 @@ actor CloudAPIClient {
         try await send(path: "/v1/cloud/memory/settings", method: "GET", token: token, fallback: "Could not load memory settings.")
     }
 
+    func accountUsage(token: String) async throws -> CloudAccountUsage {
+        try await send(path: "/v1/cloud/account/usage", method: "GET", token: token, fallback: "Could not load usage.")
+    }
+
+    func organizationUsage(token: String, organizationId: String) async throws -> CloudOrganizationUsage {
+        try await send(
+            path: "/v1/cloud/organizations/\(escapedPath(organizationId))/usage",
+            method: "GET",
+            token: token,
+            fallback: "Could not load usage."
+        )
+    }
+
     func updateMemorySettings(token: String, memoryEnabled: Bool? = nil, excludeSensitive: Bool? = nil) async throws -> CloudMemorySettings {
         try await send(
             path: "/v1/cloud/memory/settings",

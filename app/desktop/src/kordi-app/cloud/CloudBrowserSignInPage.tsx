@@ -18,10 +18,37 @@ const GATE_DRAG_STYLE = {
   WebkitAppRegion: 'drag',
 } as const;
 
+// Keys that move focus or press the focused control.
+const KEYBOARD_FOCUS_KEYS = new Set(['Tab', 'Enter', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+
+/**
+ * Whether the person is using the keyboard. Opening the window focuses the
+ * first button without any key press; WebKit treats that focus as visible,
+ * so rings wait for a navigation key and hide again on a click.
+ */
+function useKeyboardFocus() {
+  const [keyboard, setKeyboard] = useState(false);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (KEYBOARD_FOCUS_KEYS.has(event.key)) setKeyboard(true);
+    };
+    const onPointerDown = () => setKeyboard(false);
+    document.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+    };
+  }, []);
+  return keyboard;
+}
+
 function GateFrame({ children }: { children: ReactNode }) {
+  const keyboardFocus = useKeyboardFocus();
   return (
     <div
       className="app-cloud-login-page app-cloud-browser-signin text-foreground"
+      data-keyboard-focus={keyboardFocus || undefined}
       style={{ WebkitAppRegion: 'no-drag' as const }}
     >
       <div className="app-cloud-login-accents pointer-events-none absolute inset-0" />

@@ -134,3 +134,58 @@ async fn upgrade_from_168_adds_pool_worker_runs() {
     .await;
     assert_eq!(count(pool.clone()).await, 0);
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_173_adds_usage_pauses() {
+    let pool = fixture(173).await;
+    let before: Option<String> = sqlx_core::query_scalar::query_scalar(
+        "SELECT to_regclass('public.cloud_usage_pauses')::text",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(before.is_none());
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+
+    execute(
+        &pool,
+        "INSERT INTO cloud_usage_pauses(pool_id,usage_day,conversation_id,organization_id,limit_id,reached) \
+         VALUES('fixture-pool','2026-01-01','fixture-conversation','org_fixture','pool.runs','daily_limit')",
+    )
+    .await;
+    let repeated = sqlx_core::raw_sql::raw_sql(
+        "INSERT INTO cloud_usage_pauses(pool_id,usage_day,conversation_id,limit_id,reached) \
+         VALUES('fixture-pool','2026-01-01','fixture-conversation','pool.stopped','stopped')",
+    )
+    .execute(&pool)
+    .await;
+    assert!(repeated.is_err(), "a pause is kept once per window");
+    for bad in [
+        "UPDATE cloud_usage_pauses SET limit_id = 'unknown'",
+        "UPDATE cloud_usage_pauses SET reached = 'none'",
+    ] {
+        let refused = sqlx_core::raw_sql::raw_sql(bad).execute(&pool).await;
+        assert!(refused.is_err(), "{bad} is refused");
+    }
+
+    // Running the released SQL again keeps the rows.
+    let migration = EMBEDDED_MIGRATIONS
+        .iter()
+        .find(|m| m.version == 174)
+        .unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    sqlx_core::raw_sql::raw_sql(migration.sql)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let (count,): (i64,) = query_as("SELECT count(*) FROM cloud_usage_pauses")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+}

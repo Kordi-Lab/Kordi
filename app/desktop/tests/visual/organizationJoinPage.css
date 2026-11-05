@@ -1,0 +1,3 @@
+html, body, #root { min-height: 100%; margin: 0; }
+body { background: var(--utility-background); }
+.org-join-visual-shell { min-height: 100vh; background: var(--utility-background); color: var(--utility-foreground); }

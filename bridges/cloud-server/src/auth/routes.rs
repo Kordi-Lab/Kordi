@@ -335,6 +335,7 @@ pub fn routes_with_shared_rate_limiter(
         .merge(crate::auth::session_activity::routes())
         .merge(crate::auth::subsessions::routes())
         .merge(crate::organizations::routes())
+        .merge(crate::resource_pools::routes::routes())
         .route(
             "/v1/cloud/avatar-assets",
             post(crate::avatars::assets::upload_avatar_asset)

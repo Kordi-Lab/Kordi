@@ -181,6 +181,12 @@ function accountLabelOf(account: CloudAccount | null): string {
  * to sync without blocking the settings page. Signed out, the client reads the
  * cache on this Mac and does not allow edits.
  */
+/** True when the request never got an answer from the server (offline, timeout, server down). */
+function unreachable(caught: unknown): boolean {
+  if (!(caught instanceof CloudAuthError)) return false;
+  return caught.code === 'network_error' || caught.status === 502 || caught.status === 503 || caught.status === 504;
+}
+
 export function createAccountMemoryClient(options: AccountMemoryClientOptions = {}): MemoryClient {
   let authClient = options.authClient ?? null;
   let memoryRoutes = options.memoryRoutes ?? null;
@@ -256,7 +262,14 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
       if (!desktop.isNativeShell()) return [];
       return (await desktop.listLocal()).map(toLesson);
     }
-    const response = await memory().list(stored.token);
+    let response;
+    try {
+      response = await memory().list(stored.token);
+    } catch (caught) {
+      // The Mac keeps a synced copy; show it when the server cannot be reached.
+      if (!unreachable(caught) || !desktop.isNativeShell()) throw caught;
+      return (await desktop.listLocal()).map(toLesson);
+    }
     markSynced(stored);
     syncDesktop();
     return response.memories.map(({ memoryId, ...rest }) => toLesson({ lessonId: memoryId, ...rest }));
@@ -266,7 +279,13 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
     async settings() {
       const stored = await session();
       if (!stored) return localSettings();
-      const settings = await memory().settings(stored.token);
+      let settings;
+      try {
+        settings = await memory().settings(stored.token);
+      } catch (caught) {
+        if (!unreachable(caught) || !desktop.isNativeShell()) throw caught;
+        return localSettings();
+      }
       mirrorSettings(settings);
       return fromWireSettings(settings);
     },

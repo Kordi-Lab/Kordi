@@ -4,7 +4,9 @@
 //! before its run is queued. When the pool's daily limit is used up, or its
 //! emergency stop is on, the System agent stays silent: nothing is queued,
 //! the messages and due reminders it would have answered are marked as seen,
-//! and nothing is replayed when the next day starts.
+//! and nothing is replayed when the next day starts. Nothing is posted into
+//! the conversation; the first refusal of a window is recorded so Settings
+//! can show since when the System agent is paused (`resource_pools::pauses`).
 
 use serde_json::Value;
 use sqlx_core::query::query;
@@ -15,6 +17,8 @@ use sqlx_postgres::{PgPool, Postgres};
 use super::cards::mark_card_seen;
 use super::config::SystemAgentConfig;
 use super::input::Candidate;
+use crate::resource_pools::pauses::{self, Pause};
+use crate::resource_pools::snapshot::{self, Reached};
 use crate::resource_pools::usage::{self, Admission};
 use crate::resource_pools::{Feature, ResourcePool};
 
@@ -61,14 +65,55 @@ pub(super) async fn admit(
     .await
 }
 
+/// A pass the conversation's pool refused, and why.
+pub(super) struct Refused<'a> {
+    pub resource_pool: &'a ResourcePool,
+    pub organization_id: Option<&'a str>,
+    pub admission: Admission,
+}
+
+/// The limit that refused a pass, as its snapshot `limitId` and reason: the
+/// stop switch, or the first used-up limit in the order admission checks
+/// them.
+async fn refused_by(
+    pool: &PgPool,
+    candidate: &Candidate,
+    refused: &Refused<'_>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(&'static str, Reached), sqlx_core::Error> {
+    if refused.admission == Admission::Stopped {
+        return Ok(("pool.stopped", Reached::Stopped));
+    }
+    let scope = candidate.conversation_id.to_string();
+    let snapshots = snapshot::load(
+        pool,
+        refused.resource_pool,
+        Some((Feature::SystemAgent, &scope)),
+        now,
+    )
+    .await?;
+    Ok(snapshot::first_reached(&snapshots).map_or(
+        ("conversation.system_agent_runs", Reached::DailyLimit),
+        |reached| (reached.limit_id, reached.reached),
+    ))
+}
+
 /// Drops a pass the pool would not admit, without a message or a backlog:
 /// the cursor moves past the new messages, offered reminders count as fired
-/// and the open card as seen, as if the pass had run and stayed silent.
+/// and the open card as seen, as if the pass had run and stayed silent. The
+/// first refusal of the window by a limit is recorded for Settings; `None`
+/// (a disabled organization) records nothing.
 pub(super) async fn stay_silent(
     pool: &PgPool,
     candidate: &Candidate,
     input: &Value,
+    refused: Option<&Refused<'_>>,
 ) -> Result<(), sqlx_core::Error> {
+    let now = chrono::Utc::now();
+    let pause = match refused {
+        Some(refused) => Some((refused, refused_by(pool, candidate, refused, now).await?)),
+        None => None,
+    };
     let mut tx = pool.begin().await?;
     let changed = query(
         "UPDATE cloud_pip_conversation_state
@@ -83,6 +128,17 @@ pub(super) async fn stay_silent(
     if changed.rows_affected() > 0 {
         for (event_id, revision) in woken_cards(input) {
             mark_card_seen(&mut *tx, candidate.conversation_id, &event_id, revision).await?;
+        }
+        if let Some((refused, (limit_id, reached))) = pause {
+            let pause = Pause {
+                pool_id: refused.resource_pool.id(),
+                conversation_id: candidate.conversation_id,
+                organization_id: refused.organization_id,
+                limit_id,
+                reached,
+                now,
+            };
+            pauses::record(&mut tx, &pause).await?;
         }
     }
     tx.commit().await

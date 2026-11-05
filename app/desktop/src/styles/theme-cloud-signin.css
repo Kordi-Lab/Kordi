@@ -9,6 +9,8 @@
   --app-cloud-signin-mark-shadow: 0 8px 28px oklch(0 0 0 / 0.35);
   --app-cloud-signin-muted: rgb(148 163 184);
   --app-cloud-signin-action-text: rgb(203 213 225);
+  /* Keyboard focus is a neutral ring, never the blue accent. */
+  --app-cloud-signin-focus: rgb(255 255 255 / 0.6);
 }
 
 .kordi-app.theme-light .app-cloud-starting-screen,
@@ -20,6 +22,7 @@
   --app-cloud-signin-mark-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.08);
   --app-cloud-signin-muted: rgb(100 116 139);
   --app-cloud-signin-action-text: rgb(51 65 85);
+  --app-cloud-signin-focus: rgb(15 23 42 / 0.5);
 }
 
 .app-cloud-starting-titlebar {
@@ -130,7 +133,7 @@
 }
 
 .app-cloud-signin-action:focus-visible {
-  outline: 2px solid var(--app-cloud-login-focus-border);
+  outline: 2px solid var(--app-cloud-signin-focus);
   outline-offset: 2px;
 }
 
@@ -303,11 +306,39 @@
   border-color: var(--app-cloud-login-border);
 }
 
+/* Dark mirrors light's ink button: a light fill with dark text, never the
+ * theme accent. Sign up keeps a visible fill and edge on the dark surface. */
+.kordi-app.theme-dark .app-cloud-browser-signin .app-cloud-login-submit {
+  background: oklch(0.95 0.012 82);
+  color: oklch(0.2 0.02 125);
+  border-color: transparent;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.35);
+}
+
+.kordi-app.theme-dark .app-cloud-browser-signin .app-cloud-welcome-secondary {
+  border-color: rgb(255 255 255 / 0.16);
+  background: rgb(255 255 255 / 0.10);
+}
+
+.kordi-app.theme-dark .app-cloud-browser-signin .app-cloud-welcome-secondary:hover {
+  border-color: rgb(255 255 255 / 0.26);
+}
+
 .app-cloud-login-submit:focus-visible,
 .app-cloud-welcome-secondary:focus-visible,
 .app-cloud-welcome-link:focus-visible {
-  outline: 2px solid var(--app-cloud-login-focus-border);
+  outline: 2px solid var(--app-cloud-signin-focus, var(--app-cloud-login-focus-border));
   outline-offset: 2px;
+}
+
+/* Focus that no key press caused, such as the window opening, draws no ring. */
+.app-cloud-browser-signin:not([data-keyboard-focus]) :is(
+  .app-cloud-login-submit,
+  .app-cloud-welcome-secondary,
+  .app-cloud-welcome-link,
+  .app-cloud-signin-action
+):focus-visible {
+  outline: none;
 }
 
 .app-cloud-welcome-link {
@@ -381,8 +412,8 @@
 }
 
 .app-cloud-browser-signin-paste-input:focus {
-  border-color: var(--app-cloud-login-focus-border);
-  box-shadow: 0 0 0 3px var(--app-cloud-login-focus-ring);
+  border-color: var(--app-cloud-signin-focus);
+  box-shadow: none;
 }
 
 .app-cloud-browser-signin-paste-input[aria-invalid="true"] {

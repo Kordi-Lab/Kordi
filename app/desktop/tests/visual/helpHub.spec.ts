@@ -389,7 +389,7 @@ for (const theme of ['dark', 'light']) {
         || card.y + card.height <= ring.y || card.y >= ring.y + ring.height;
       return containsRow && besideRow;
     }).toBe(true);
-    await expect(spotlight).toHaveCSS('border-top-width', '2px');
+    await expect(spotlight).toHaveCSS('border-top-width', '1px');
     await page.screenshot({ path: test.info().outputPath(`documents-spotlight-${theme}.png`) });
   });
 }

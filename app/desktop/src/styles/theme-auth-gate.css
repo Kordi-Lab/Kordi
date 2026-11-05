@@ -100,10 +100,11 @@ html.kordi-native-shell .app-cloud-workspace-surface {
   --app-cloud-login-page-bg: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 54%, rgb(226 232 240) 100%);
 }
 
-/* Frosted welcome window: only a faint veil over the macOS material, so the
- * blurred wallpaper stays visible. Text carries its own contrast. */
+/* Frosted welcome window. Light keeps a faint veil so the blurred wallpaper
+ * shows through. Dark needs a dense veil: the macOS material alone renders a
+ * washed-out mid grey under light-on-dark text. */
 .kordi-app.app-cloud-login-shell[data-frosted="true"] .app-cloud-login-page {
-  --app-cloud-login-page-bg: rgb(10 12 16 / 0.14);
+  --app-cloud-login-page-bg: rgb(14 16 20 / 0.82);
 }
 
 .kordi-app.theme-light.app-cloud-login-shell[data-frosted="true"] .app-cloud-login-page {

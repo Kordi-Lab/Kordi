@@ -19,6 +19,7 @@ pub mod claim;
 pub mod config;
 pub mod hooks;
 pub mod join_requests;
+mod joinable;
 pub mod store;
 #[cfg(test)]
 mod test_support;
@@ -67,6 +68,10 @@ pub fn account_routes() -> Router<Arc<ServerState>> {
         .route(
             "/v1/cloud/account/organizations/:config_id/join-requests",
             post(join_requests::submit),
+        )
+        .route(
+            "/v1/cloud/account/joinable-organizations",
+            get(joinable::list),
         )
 }
 
