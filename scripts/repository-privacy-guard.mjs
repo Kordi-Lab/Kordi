@@ -6,6 +6,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { INFRASTRUCTURE_TEXT_RULES } from './lib/infrastructure-privacy-rules.mjs';
+import { findPrivateIdentifiers, PRIVATE_IDENTIFIER_HASHES } from './lib/private-identifiers.mjs';
+
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPOSITORY_ROOT = path.dirname(SCRIPT_DIR);
 const PUBLIC_CONTACT_HASHES = new Set(JSON.parse(readFileSync(new URL('../legal/public-contact-hashes.json', import.meta.url), 'utf8')));
@@ -38,7 +41,7 @@ const TEXT_RULES = [
     // case-sensitive and ignores ordinary URL paths such as "/settings/users/...".
     id: 'local-home-path',
     description: 'developer home-directory path',
-    pattern: /\/Users\/(?!example(?:[\/\s<"'`]|$)|alice(?:[\/\s<"'`]|$)|owner(?:[\/\s<"'`]|$)|you(?:[\/\s<"'`]|$)|\.\.\.(?:[\/\s<"'`]|$)|\*(?:[\/\s<"'`]|$)|\$\{RUNNER_ACCOUNT\}(?:[\/\s<"'`]|$))[^/\s<"'`]+/,
+    pattern: /\/Users\/(?!example(?:[\/\s<"'`]|$)|Shared(?:[\/\s<"'`]|$)|runner(?:[\/\s<"'`]|$)|alice(?:[\/\s<"'`]|$)|owner(?:[\/\s<"'`]|$)|you(?:[\/\s<"'`]|$)|\.\.\.(?:[\/\s<"'`]|$)|\*(?:[\/\s<"'`]|$)|\$\{RUNNER_ACCOUNT\}(?:[\/\s<"'`]|$))[^/\s<"'`]+/,
   },
   {
     // Windows paths are case-insensitive, so a lowercase "c:\users\<name>" is still a home directory.
@@ -46,11 +49,7 @@ const TEXT_RULES = [
     description: 'developer home-directory path',
     pattern: /[A-Z]:\\Users\\(?!example(?:[\\\s<"'`]|$)|runner(?:[\\\s<"'`]|$)|user(?:[\\\s<"'`]|$))[^\\\s<"'`]+/i,
   },
-  {
-    id: 'production-instance',
-    description: 'concrete production instance identifier',
-    pattern: /\bkordi-product-app-\d+\b/i,
-  },
+  ...INFRASTRUCTURE_TEXT_RULES,
 ];
 
 const FORBIDDEN_DATA_EXTENSION = /\.(?:db|db-(?:wal|shm|journal)|sqlite|sqlite-(?:wal|shm|journal)|sqlite3|sqlite3-(?:wal|shm|journal)|jsonl|ndjson|dump|bak|backup|parquet|avro|csv|tsv|pem|key|p8|p12|pfx|jks|keystore)$/i;
@@ -141,9 +140,13 @@ export function inspectText(contents, options = {}) {
       const matches = contents.match(new RegExp(rule.pattern.source, 'gi')) ?? [];
       if (matches.every((email) => PUBLIC_CONTACT_HASHES.has(createHash('sha256').update(email.toLowerCase()).digest('hex')))) continue;
     }
-    if (rule.pattern.test(contents)) {
+    if (rule.test ? rule.test(contents) : rule.pattern.test(contents)) {
       findings.push({ rule: rule.id, description: rule.description });
     }
+  }
+
+  if (findPrivateIdentifiers(contents, options.identifierHashes ?? PRIVATE_IDENTIFIER_HASHES).length > 0) {
+    findings.push({ rule: 'private-identifier', description: 'hashed private infrastructure or identity identifier' });
   }
 
   const folded = contents.toLocaleLowerCase('en-US');
@@ -341,6 +344,10 @@ export function formatFinding(finding, options = {}) {
 function main() {
   const { comparison } = parseArguments(process.argv.slice(2));
   const denylist = process.env.KORDI_PRIVACY_DENYLIST ?? '';
+  if (!denylist.trim() && process.env.GITHUB_ACTIONS === 'true') {
+    // Forks and pull requests from forks never receive repository secrets.
+    console.log('[kordi] KORDI_PRIVACY_DENYLIST is unavailable here; the committed hashed identifiers and shape rules still apply.');
+  }
   const findings = scanRepository({ comparison, denylist });
   if (findings.length === 0) {
     const scope = comparison ? ` and new objects in ${comparison}` : '';
