@@ -262,6 +262,7 @@ pub fn router_with_shared_rate_limiter(
         .merge(crate::support::routes(state.clone()))
         .merge(crate::updates::routes::routes(state.clone()))
         .merge(ws_router)
+        .merge(crate::web_pages::routes_from_env())
         .route("/health", axum::routing::get(health))
         .route(
             "/ready",

@@ -5,8 +5,8 @@ authorization code and PKCE (RFC 6749, RFC 7636, RFC 8252). The app never
 handles the user's password. The browser returns a short-lived, single-use
 code, and the app exchanges it for tokens. Tokens never appear in a URL.
 
-This document describes the cloud server side. The app screens and the web
-sign-in page are separate steps.
+This document describes the cloud server side and the contract for the web
+sign-in pages. The app screens and the pages themselves are separate steps.
 
 ## Flow
 
@@ -123,7 +123,123 @@ itself (`javascript`, `data`, `file`, `blob`, `vbscript`, `about`,
 sign-in rather than falling back to the built-in list.
 
 `KORDI_AUTH_APP_SIGN_IN_PAGE_URL` sets the web sign-in page. It defaults to
-`/sign-in/app` on the public origin.
+`/sign-in/app` on the public origin, which serves the login page when web
+pages are configured (see below).
+
+## Same-origin web pages
+
+The session cookie is host-only, so the sign-in pages must be served from the
+API origin. `KORDI_WEB_PAGES_DIR` names a directory of static pages that the
+cloud server then serves. When it is unset or empty, no page route exists and
+behavior is unchanged. When it is set to a path that is not a directory, the
+server refuses to start.
+
+| Request | File |
+| --- | --- |
+| `GET /login` | `login.html` or `login/index.html` |
+| `GET /register` | `register.html` or `register/index.html` |
+| `GET /login/done` | `login/done.html` or `login/done/index.html` |
+| `GET /account` | `account.html` or `account/index.html` |
+| `GET /account/<page>` | `account/<page>.html` or `account/<page>/index.html` |
+| `GET /sign-in/app?<query>` | `303` to `/login?<query>`, query unchanged |
+| `GET /<path>.<ext>` | the asset file, for the extensions below |
+
+- Assets: `css`, `js`, `mjs`, `json`, `map`, `webmanifest`, `txt`, `svg`,
+  `png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `ico`, `woff2`, `woff`, `ttf`,
+  `otf`. Other files, including other `.html` files, are not served. Asset
+  requests under `/v1/` and `/v2/` are never served from the directory.
+- Path segments may contain only ASCII letters, digits, `-`, `_` and `.`.
+  Empty segments, segments that start with `.` (so `..` and hidden files),
+  percent-encoded characters and backslashes return `404`. The resolved file,
+  after following symbolic links, must stay inside the directory. Directories
+  are never listed. Files larger than 16 MiB are not served.
+- Pages: `Content-Type: text/html; charset=utf-8`, `Cache-Control: no-cache`,
+  `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`,
+  `Referrer-Policy: no-referrer`. Pages cannot be framed, so the display-code
+  confirmation cannot be clickjacked, and the sign-in query is not sent to
+  other sites.
+- Assets: their content type and `Cache-Control: public, max-age=3600`.
+- Every file: `X-Content-Type-Options: nosniff` and a weak `ETag`;
+  `If-None-Match` returns `304`. `HEAD` is supported.
+- Links from the pages to other parts of a site must be absolute URLs, since
+  only the routes above exist on the API origin.
+
+In the Docker development stack, set `KORDI_DEBUG_WEB_PAGES_DIR` in
+`deploy/dev/.env` to the pages directory (absolute, or relative to
+`deploy/dev`). It is mounted read-only at `/srv/kordi-web-pages` and passed as
+`KORDI_WEB_PAGES_DIR`. Unset, an empty volume is mounted and no pages are
+served.
+
+The `__Host-` cookies are `Secure`. Browsers accept them on `https` and treat
+`http://127.0.0.1`, `http://[::1]` and `http://localhost` as secure origins
+too, so a loopback development stack works. Check the target browser before
+relying on that. A release build accepts a plain `http` public origin only for
+those loopback hosts; every other host needs `https`.
+
+Cookies are not isolated by port, and every port of one host is the same
+site. On a loopback stack the `__Host-` cookies of an API at
+`http://localhost:17081` are therefore sent to, and the CSRF cookie readable
+by, any other page on `http://localhost:<port>`, such as a Vite dev server.
+The exact `Origin` check still refuses requests from those pages, but keep
+them apart anyway: serve the API and its pages on `localhost`, and run app
+callbacks, loopback listeners and dev servers on `127.0.0.1` (or the other
+way around, but never both on the same name). A loopback public origin is
+also reachable under the other loopback names on its port, so the server
+treats `http://127.0.0.1:<port>` and `http://localhost:<port>` alike when it
+checks sign-in return targets: neither may receive a session in a URL.
+
+## Page API contract
+
+All requests are same-origin `fetch` calls with `credentials: "same-origin"`
+(the default). The browser sends `Origin` on `POST`. Pages never read or store
+a session token: they keep only the CSRF token in memory, read it from the
+`__Host-kordi_web_csrf` cookie, or fetch it from `/v1/cloud/auth/web/session`.
+Error bodies are `{"errorCode", "message"}`.
+
+1. **Check the session.** `GET /v1/cloud/auth/web/session` returns
+   `{"account", "csrfToken"}`, or `401 login_required` when signed out.
+2. **Log in.** `POST /v1/cloud/auth/web/login` with JSON
+   `{"email", "password"}`. Success sets both cookies and returns the
+   `/v1/cloud/auth/login` body without `session.token`, plus `csrfToken`.
+3. **Sign up.** `POST /v1/cloud/auth/signup/code` with `{"email"}` returns
+   `{"verificationId", "expiresAt", "retryAfterSeconds"}` and emails a code
+   (when the server requires email verification). Then
+   `POST /v1/cloud/auth/web/signup` with `{"email", "password",
+   "displayName", "avatarSeed", "verificationId", "verificationCode"}`.
+   `avatarSeed` is any random string. Success is the same as log-in.
+4. **Google or GitHub.** Navigate the page (not `fetch`) to
+   `GET /v1/cloud/auth/web/oauth/google/start?returnTo=<path>` or
+   `.../github/start?returnTo=<path>`. `returnTo` is a path on this origin,
+   normally the current `/login?<query>` so the app request survives. Success
+   returns to it with the cookies set. Failure returns to it with
+   `#kordi_cloud_oauth_error=<message>&kordi_cloud_oauth_error_code=<code>`.
+   `oauth_browser_mismatch` means the sign-in finished in a browser that did
+   not start it (or a newer start replaced it); offer to start again.
+   Always show both buttons. `GET /v1/cloud/auth/capabilities` is
+   diagnostic only; a provider that is not configured fails at start with an
+   error the page shows.
+5. **Ask for approval.** Show the app name and the account, for example
+   "Kordi for Mac wants to sign in" and a "Continue as Ada
+   (ada@example.com)" button with a way to switch accounts. See
+   [Approval](#approval). Skip the click only right after the user signed
+   in, signed up, or finished Google or GitHub in this tab for this request.
+6. **Send the code to the app.** With the query the page was opened with
+   (`response_type`, `client_id`, `redirect_uri`, `code_challenge`,
+   `code_challenge_method`, `state`), call `POST /v1/cloud/auth/app/authorize`
+   with header `X-Kordi-CSRF-Token: <csrfToken>` and a JSON body of those six
+   fields plus `"approved": true`. Without it the server returns
+   `400 approval_required`. Navigate to `redirectUrl` from the response,
+   then show `/login/done`.
+7. **Display code, only if the redirect failed.** After the user confirms
+   they started this sign-in from their own app on this device, call
+   `POST /v1/cloud/auth/app/authorize/display-code` with the same header and
+   body plus `"confirmed": true`. Show `code`, `appName`, `requestedAt`,
+   `expiresAt` and `warning` as described above.
+8. **Sign out.** `POST /v1/cloud/auth/web/logout` with the CSRF header
+   clears the cookies.
+
+A `401 login_required` from step 6 or 7 means the session ended: show the log-in
+form again and keep the query.
 
 ## Endpoints
 
@@ -309,4 +425,6 @@ and CSRF checks, approval, the display-code confirmation and limits, the
 browser binding of web provider sign-ins, session replacement, device
 revocation, the refresh grace period and concurrency, the rate limits, and
 every code and refresh rejection. Client, PKCE, redirect and return-path
-rules have unit tests.
+rules have unit tests. `web_pages::tests` covers page and asset serving,
+traversal and symbolic-link escapes, headers, and the `/sign-in/app`
+redirect. `distribution::tests` covers the loopback `http` rule.
