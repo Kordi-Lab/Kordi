@@ -373,6 +373,12 @@ counters above (`resource_pools::snapshot`), and clients show it as-is:
 - `used` and `limit` (runs, or millionths for spend) are sent only to owners
   and admins of the organization. Members see percentages, reasons and reset
   times only.
+- `pool.runs` and `pool.spend` (and pause times other than the
+  per-conversation limit's) are shown only to an organization that has its
+  pool to itself: bound to it explicitly, with no other organization bound
+  to it, and not the default pool. On a shared pool they would show other
+  organizations' usage, so they are left out; a stopped shared pool still
+  shows `pool.stopped`, without amounts.
 - The per-conversation limit shows the caller's busiest conversation of the
   organization today, named by `conversationId`.
 - `pausedSince` is set on a reached limit once it refused the System agent in
@@ -383,9 +389,9 @@ Routes, behind the cloud session:
 - `GET /v1/cloud/account/usage`: every organization of the signed-in account
   (personal first) with its `name`, `kind`, the caller's `role` and its
   snapshots: the pool's caps, the per-conversation cap, and in the personal
-  organization the caller's Grounding cap.
+  organization the caller's Grounding cap. Expired memberships are left out.
 - `GET /v1/cloud/organizations/{id}/usage`: the same for one organization;
-  404 outside it.
+  404 outside it or when the membership has expired.
 
 When the System agent is refused, the first refusal of each window is kept in
 `cloud_usage_pauses` per pool and conversation, with the limit and reason, so

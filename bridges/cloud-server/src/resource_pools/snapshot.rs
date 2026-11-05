@@ -195,18 +195,42 @@ pub fn build(
         ));
     }
     if snapshots.is_empty() && stopped {
-        snapshots.push(UsageSnapshot {
-            limit_id: "pool.stopped",
-            scope: Scope::Pool,
-            conversation_id: None,
-            used: None,
-            limit: None,
-            used_percent: 100,
-            window: WINDOW_DAY,
-            resets_at: resets,
-            reached: Reached::Stopped,
-            paused_since: None,
-        });
+        snapshots.push(stopped_row(resets));
+    }
+    snapshots
+}
+
+/// The one row of a stopped pool with nothing else to show.
+fn stopped_row(resets_at: String) -> UsageSnapshot {
+    UsageSnapshot {
+        limit_id: "pool.stopped",
+        scope: Scope::Pool,
+        conversation_id: None,
+        used: None,
+        limit: None,
+        used_percent: 100,
+        window: WINDOW_DAY,
+        resets_at,
+        reached: Reached::Stopped,
+        paused_since: None,
+    }
+}
+
+/// [`build`] without the pool-wide rows, for an organization that shares
+/// the pool with others: their runs and spend count there, so `pool.runs`
+/// and `pool.spend` are left out. A stopped pool still yields one row
+/// saying so, without amounts.
+pub fn build_without_pool(
+    pool: &ResourcePool,
+    scoped: &[Scoped],
+    now: DateTime<Utc>,
+) -> Vec<UsageSnapshot> {
+    let mut snapshots = build(pool, scoped, Counter::default(), now);
+    snapshots.retain(|snapshot| snapshot.scope != Scope::Pool);
+    if snapshots.is_empty() && pool.is_stopped() {
+        snapshots.push(stopped_row(
+            resets_at(now).to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        ));
     }
     snapshots
 }

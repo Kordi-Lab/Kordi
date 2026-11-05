@@ -55,14 +55,21 @@ type PauseRow = (String, String, String, DateTime<Utc>);
 /// Fills `pausedSince` on every reached snapshot of `pool_id` from the
 /// pauses recorded on `day`: the earliest pause by that limit (any pause by
 /// the stop switch for a stopped pool), and for the per-conversation limit
-/// only pauses in its own conversation.
+/// only pauses in its own conversation. Unless `pool_wide`, only the
+/// per-conversation limit gets one: in a pool shared with other
+/// organizations, any other pause may come from one of their conversations.
 pub async fn attach(
     db: &PgPool,
     pool_id: &str,
     day: NaiveDate,
+    pool_wide: bool,
     snapshots: &mut [UsageSnapshot],
 ) -> sqlx_core::Result<()> {
-    if snapshots.iter().all(|s| s.reached == Reached::None) {
+    let shown = |s: &UsageSnapshot| pool_wide || s.scope == Scope::Conversation;
+    if snapshots
+        .iter()
+        .all(|s| s.reached == Reached::None || !shown(s))
+    {
         return Ok(());
     }
     let rows: Vec<PauseRow> = query_as(
@@ -74,7 +81,7 @@ pub async fn attach(
     .bind(day)
     .fetch_all(db)
     .await?;
-    for snapshot in snapshots.iter_mut() {
+    for snapshot in snapshots.iter_mut().filter(|s| shown(s)) {
         snapshot.paused_since = paused_since(snapshot, &rows);
     }
     Ok(())
