@@ -1,12 +1,12 @@
 # Agent-logged memories: where each one goes
 
 Status: proposal, 2026-10-22, for owner review before any code. First
-implementation slice of [#1977](https://github.com/Kordi-Lab/Kordi/issues/1977)
+implementation slice of [#1977](https://github.com/Kordi-AI/Kordi/issues/1977)
 (Human Context Protocol for Kordi memory). Builds on
 [hcp-memory-plan.md](hcp-memory-plan.md),
 [issue-1710-memory-controls.md](issue-1710-memory-controls.md) and
 [../common-ground.md](../common-ground.md). Also closes the "isolation in
-the agent" bullet of [#1971](https://github.com/Kordi-Lab/Kordi/issues/1971).
+the agent" bullet of [#1971](https://github.com/Kordi-AI/Kordi/issues/1971).
 
 ## The use case
 

@@ -557,7 +557,7 @@ enum PreviewData {
         return [
             ChatMessage(id: "links-agent-reference", conversationId: conversationId,
                 author: .agent, authorName: "Research Agent",
-                text: "Read the [GitHub issue](https://github.com/Kordi-Lab/Kordi/issues/1643) and [migration guide](https://example.net/migration) before the release.",
+                text: "Read the [GitHub issue](https://github.com/Kordi-AI/Kordi/issues/1643) and [migration guide](https://example.net/migration) before the release.",
                 createdAt: now.addingTimeInterval(-360), deliveryState: .delivered,
                 errorMessage: nil, requestMessageId: nil),
             ChatMessage(id: "links-human-prose", conversationId: conversationId,
@@ -567,7 +567,7 @@ enum PreviewData {
                 errorMessage: nil, requestMessageId: nil),
             ChatMessage(id: "links-agent-bare-url", conversationId: conversationId,
                 author: .agent, authorName: "Research Agent",
-                text: "https://github.com/Kordi-Lab/Kordi/issues/1643",
+                text: "https://github.com/Kordi-AI/Kordi/issues/1643",
                 createdAt: now.addingTimeInterval(-240), deliveryState: .delivered,
                 errorMessage: nil, requestMessageId: nil),
             ChatMessage(id: "links-own-card", conversationId: conversationId,
