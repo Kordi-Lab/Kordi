@@ -1,51 +1,12 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
-import {
-  cloudConversationKindFromConversationId,
-  cloudDirectPersonSessionId,
-  cloudPeerAccountIdFromConversationId,
-  cloudSessionIdFromConversationId,
-} from '@/features/collaboration/conversationIds';
 import type { CloudAccount, CloudAuthClient, CloudMessage } from './authClient';
-import { cloudDirectPersonMessagesForPeer } from './cloudCollaborationMemo';
-import { isTerminalCloudAgentResponse } from './cloudAgentMessages';
 import type { CloudMessageIndex } from './cloudMessageIndex';
-import { addReadInboundMessageIds, rollbackReadInboundMessageIds } from './cloudReadTracking';
+import {
+  addReadInboundMessageIds,
+  cloudDirectReadTarget,
+  rollbackReadInboundMessageIds,
+} from './cloudReadTracking';
 import { loadSession } from './session';
-
-function directReadTarget(account: CloudAccount, activeId: string, index: CloudMessageIndex) {
-  if (index.sourceAccountId !== account.accountId) return null;
-  const peerId = cloudConversationKindFromConversationId(activeId) === 'person'
-    ? cloudPeerAccountIdFromConversationId(activeId)
-    : [...index.byPeerId.keys()].find(peer => (
-        cloudDirectPersonSessionId(account.accountId, peer) === activeId
-      ));
-  if (!peerId || peerId === account.accountId) return null;
-  const sessionId = cloudDirectPersonSessionId(account.accountId, peerId);
-  const explicitSessionId = cloudSessionIdFromConversationId(activeId);
-  if (explicitSessionId && explicitSessionId !== sessionId) return null;
-  const unreadMessages = cloudDirectPersonMessagesForPeer(account, peerId, index.byPeerId.get(peerId) ?? [])
-    .filter(message => (
-      !index.groupRowByWireMessageId.has(message.messageId)
-      && ((message.fromAccountId === peerId
-        && message.toAccountId === account.accountId
-        && message.direction === 'incoming'
-        && !message.readAt)
-        // The owner's agent is authored by the owner on the wire, but its
-        // completed reply still needs to be read by that owner. Outgoing
-        // readAt records the peer's receipt and cannot gate this read.
-        || (message.fromAccountId === account.accountId
-          && (message.toAccountId === peerId || message.toAccountId === account.accountId)
-          && isTerminalCloudAgentResponse(message.body)))
-    ));
-  let observedSequence = 0;
-  const messageIds = unreadMessages.map(({ messageId, conversationSequence }) => {
-    if (Number.isSafeInteger(conversationSequence)) {
-      observedSequence = Math.max(observedSequence, conversationSequence!);
-    }
-    return messageId;
-  });
-  return messageIds.length ? { peerId, sessionId, messageIds, observedSequence } : null;
-}
 
 type ReadRequest = { messageIds: ReadonlySet<string> };
 type ReadScope = { requests: Map<string, ReadRequest>; acknowledgedIds: Set<string> };
@@ -73,7 +34,7 @@ export function useCloudDirectMessageReadReceipts({
   useEffect(() => {
     if (!account || !activeConversationId || !canMarkActiveConversationRead) return;
     const scope = scopeRef.current;
-    const target = directReadTarget(account, activeConversationId, messageIndex);
+    const target = cloudDirectReadTarget(account, activeConversationId, messageIndex);
     if (!scope || !target) return;
     const { peerId, sessionId, messageIds, observedSequence } = target;
     const pending = scope.requests.get(sessionId);
