@@ -1,6 +1,6 @@
 # Issue 1712: Connectors implementation plan
 
-Status: proposal, 2026-10-06. Tracks [#1712](https://github.com/Kordi-Lab/Kordi/issues/1712).
+Status: proposal, 2026-10-06. Tracks [#1712](https://github.com/Kordi-AI/Kordi/issues/1712).
 
 ## Summary
 

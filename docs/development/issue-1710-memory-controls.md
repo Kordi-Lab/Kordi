@@ -1,6 +1,6 @@
 # Issue 1710: Memory and runtime state controls
 
-Status: proposal, 2026-10-07. Tracks [#1710](https://github.com/Kordi-Lab/Kordi/issues/1710).
+Status: proposal, 2026-10-07. Tracks [#1710](https://github.com/Kordi-AI/Kordi/issues/1710).
 
 ## Summary
 

@@ -1,12 +1,15 @@
 //! Background runs for Common ground. Every run belongs to the Kordi-operated
-//! service account (the System agent's credential), so it uses the Kordi key
+//! service account, so it uses the key of its organization's resource pool
 //! rather than a member's own provider. Runs have no chat and no tools; the
 //! runner answers each with one completion, and the server parses the reply.
 
 use chrono::Utc;
-use sqlx_core::{query::query, transaction::Transaction};
+use sqlx_core::{query::query, query_scalar::query_scalar, transaction::Transaction};
 use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
+
+use crate::resource_pools::usage::{self, Settlement};
+use crate::resource_pools::Feature;
 
 /// Every Common ground run id starts with this.
 pub const RUN_PREFIX: &str = "cg_";
@@ -23,22 +26,59 @@ pub(super) struct NewRun<'a> {
     pub run_id: &'a str,
     /// The member the run works for.
     pub requester: &'a str,
+    /// The conversation the run works in, if any. Its organization picks the
+    /// resource pool; otherwise the requester's personal organization does.
+    pub conversation_id: Option<Uuid>,
     pub prompt: String,
     pub system_prompt: &'a str,
 }
 
+/// Queues a run in `tx` once the resource pool of its organization admits it,
+/// counted for the requester. Returns false, queueing nothing and leaving
+/// `tx` as it was, when the pool's daily limit is used up or it is stopped.
 pub(super) async fn insert(
     tx: &mut Transaction<'_, Postgres>,
     service: &crate::system_agent::SystemAgentConfig,
     run: NewRun<'_>,
-) -> sqlx_core::Result<()> {
+) -> sqlx_core::Result<bool> {
+    let organization_id: Option<String> =
+        match run.conversation_id {
+            Some(conversation_id) => query_scalar(
+                "SELECT organization_id FROM cloud_chat_conversations WHERE conversation_id = $1",
+            )
+            .bind(conversation_id)
+            .fetch_optional(&mut **tx)
+            .await?
+            .flatten(),
+            None => query_scalar(
+                "SELECT organization_id FROM cloud_organizations WHERE personal_account_id = $1",
+            )
+            .bind(run.requester)
+            .fetch_optional(&mut **tx)
+            .await?,
+        };
+    let pool = service.resource_pools().resolve(organization_id.as_deref());
+    let admission = usage::reserve(
+        tx,
+        &usage::Request {
+            run_id: run.run_id,
+            pool,
+            feature: Feature::Grounding,
+            scope_id: run.requester,
+            organization_id: organization_id.as_deref(),
+        },
+    )
+    .await?;
+    if !admission.admitted() {
+        return Ok(false);
+    }
     let now = Utc::now().to_rfc3339();
     query(
         "INSERT INTO cloud_agent_fallback_runs (
              run_id, idempotency_key, request_message_id, session_id, owner_account_id,
              requester_account_id, status, prompt, system_prompt, runtime_route_json,
-             created_at, updated_at, run_trigger, connector_audience
-         ) VALUES ($1, $1, $1, $2, $3, $4, 'queued', $5, $6, $7, $8, $8, 'background', 'owner_private')",
+             created_at, updated_at, run_trigger, connector_audience, organization_id
+         ) VALUES ($1, $1, $1, $2, $3, $4, 'queued', $5, $6, $7, $8, $8, 'background', 'owner_private', $9)",
     )
     .bind(run.run_id)
     .bind(format!("common-ground:{}", run.requester))
@@ -46,11 +86,12 @@ pub(super) async fn insert(
     .bind(run.requester)
     .bind(run.prompt)
     .bind(run.system_prompt)
-    .bind(service.model_routing())
+    .bind(pool.routing(Feature::Grounding))
     .bind(&now)
+    .bind(organization_id.as_deref())
     .execute(&mut **tx)
     .await?;
-    Ok(())
+    Ok(true)
 }
 
 /// Marks a claimed run completed. Returns false when the run is no longer
@@ -69,7 +110,11 @@ pub(super) async fn mark_completed(
     .bind(Utc::now().to_rfc3339())
     .execute(&mut **tx)
     .await?;
-    Ok(changed.rows_affected() > 0)
+    if changed.rows_affected() == 0 {
+        return Ok(false);
+    }
+    usage::settle(tx, run_id, Settlement::Consumed).await?;
+    Ok(true)
 }
 
 /// Marks an unfinished run failed. Returns false when the run is no longer
@@ -94,7 +139,11 @@ pub(super) async fn mark_failed(
     .bind(Utc::now().to_rfc3339())
     .execute(&mut **tx)
     .await?;
-    Ok(changed.rows_affected() > 0)
+    if changed.rows_affected() == 0 {
+        return Ok(false);
+    }
+    usage::settle_ended_run(tx, run_id).await?;
+    Ok(true)
 }
 
 /// Stores a finished run's reply with the feature that queued it.
@@ -131,3 +180,7 @@ pub async fn fail(
         super::matching::fail(pool, run_id, runner_id, code).await
     }
 }
+
+#[cfg(test)]
+#[path = "runs_pool_tests.rs"]
+mod pool_tests;

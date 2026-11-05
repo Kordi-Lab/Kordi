@@ -34,6 +34,18 @@ pub struct ServiceProviderAuth<'a> {
     /// prefix. The System agent's key belongs to its own sweep runs, never to
     /// an ordinary agent run that happens to be owned by its account.
     pub run_id_prefix: Option<&'a str>,
+    /// The resource pool this credential belongs to. When set, it only
+    /// serves runs whose route names that pool, or, for the default pool,
+    /// runs queued before pools existed.
+    pub resource_pool: Option<ServicePool<'a>>,
+}
+
+#[derive(Clone, Copy)]
+pub struct ServicePool<'a> {
+    pub id: &'a str,
+    pub is_default: bool,
+    /// Extra request headers the runner sends to this pool's endpoint.
+    pub headers: &'a std::collections::BTreeMap<String, String>,
 }
 
 impl ServiceProviderAuth<'_> {
@@ -52,10 +64,19 @@ impl ServiceProviderAuth<'_> {
                 .and_then(Value::as_str)
                 .map(str::trim)
                 == Some(self.auth_choice)
+            && self.resource_pool.is_none_or(|pool| {
+                match route
+                    .get(crate::resource_pools::ROUTE_POOL_FIELD)
+                    .and_then(Value::as_str)
+                {
+                    Some(id) => id == pool.id,
+                    None => pool.is_default,
+                }
+            })
     }
 }
 
-pub(super) async fn service_provider_auth_for_run(
+pub(crate) async fn service_provider_auth_for_run(
     owner_account_id: &str,
     run_id: &str,
     runtime_route: &Value,
@@ -75,18 +96,25 @@ pub(super) async fn service_provider_auth_for_run(
         .await
         .map_err(|message| sqlx_core::Error::Protocol(message.to_string()))?;
 
+    let mut payload = serde_json::json!({
+        "apiKey": token,
+        "baseUrl": service_auth.base_url,
+        "model": service_auth.model,
+        // The operator's configured model id is final, including a pool's
+        // model; the runner must not strip a prefix that belongs to a
+        // gateway's model id.
+        "verbatimModel": true,
+    });
+    if let Some(pool) = service_auth.resource_pool {
+        if !pool.headers.is_empty() {
+            payload["headers"] = serde_json::json!(pool.headers);
+        }
+    }
     Ok(Some(RunnerProviderAuthMaterial {
         snapshot_id: service_auth.snapshot_id.to_string(),
         provider: service_auth.provider.to_string(),
         auth_choice: service_auth.auth_choice.to_string(),
-        payload: serde_json::json!({
-            "apiKey": token,
-            "baseUrl": service_auth.base_url,
-            "model": service_auth.model,
-            // The operator's configured model id is final; the runner must
-            // not strip a prefix that belongs to a gateway's model id.
-            "verbatimModel": true,
-        }),
+        payload,
     }))
 }
 
@@ -136,6 +164,7 @@ mod tests {
             base_url: "https://api.openai.com/v1",
             model: "gpt",
             run_id_prefix: Some("pip_"),
+            resource_pool: None,
         };
         let material = service_provider_auth_for_run(
             "acct_kordi_pip",
@@ -157,6 +186,45 @@ mod tests {
         .unwrap()
         .is_none());
     }
+
+    #[tokio::test]
+    async fn a_pool_service_key_sends_its_headers_and_a_verbatim_model() {
+        let route = serde_json::json!({
+            "defaultAuthProvider": "openai",
+            "defaultAuthChoice": "pip-service-api-key",
+            (crate::resource_pools::ROUTE_POOL_FIELD): "research",
+        });
+        let credential = ServiceCredential::ApiKey("secret-pool-key".to_string());
+        let headers =
+            std::collections::BTreeMap::from([("X-Title".to_string(), "Kordi".to_string())]);
+        let material = service_provider_auth_for_run(
+            "acct_kordi_pip",
+            "pip_123",
+            &route,
+            vec![ServiceProviderAuth {
+                owner_account_id: "acct_kordi_pip",
+                snapshot_id: "pip-service-openai",
+                provider: "openai",
+                auth_choice: "pip-service-api-key",
+                credential: &credential,
+                base_url: "https://gateway.example.test/api/v1",
+                model: "openai/gpt-synthetic",
+                run_id_prefix: Some("pip_"),
+                resource_pool: Some(ServicePool {
+                    id: "research",
+                    is_default: false,
+                    headers: &headers,
+                }),
+            }],
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(material.payload["verbatimModel"], true);
+        assert_eq!(material.payload["model"], "openai/gpt-synthetic");
+        assert_eq!(material.payload["headers"]["X-Title"], "Kordi");
+    }
+
     struct CountingTokenSource(std::sync::atomic::AtomicUsize);
 
     #[async_trait::async_trait]
@@ -185,6 +253,7 @@ mod tests {
             base_url: endpoint,
             model: "google/synthetic-model",
             run_id_prefix: Some("cg_"),
+            resource_pool: None,
         };
         let route = serde_json::json!({
             "defaultAuthProvider": "vertex-ai",
