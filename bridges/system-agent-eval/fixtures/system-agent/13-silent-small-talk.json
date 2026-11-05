@@ -1,0 +1,26 @@
+{
+  "kind": "systemAgent",
+  "id": "silent-small-talk",
+  "description": "Small talk with no day, time, place or plan word.",
+  "title": "Friends",
+  "members": [
+    {"key": "jordan", "name": "Jordan Lee"},
+    {"key": "theo", "name": "Theo Park"}
+  ],
+  "turns": [
+    {
+      "messages": [
+        {"from": "jordan", "text": "lol nice photo", "minutesAgo": 3},
+        {"from": "theo", "text": "omg the dog is so cute", "minutesAgo": 2}
+      ],
+      "expect": {
+        "reply": "silent",
+        "allowedActions": [],
+        "card": {"status": "none"}
+      },
+      "stub": [
+        {"final": {"message": null, "hooksHandled": []}}
+      ]
+    }
+  ]
+}

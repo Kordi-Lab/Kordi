@@ -1,0 +1,26 @@
+{
+  "kind": "systemAgent",
+  "id": "silent-hypothetical",
+  "description": "A joke about a someday trip uses plan words but is not a plan.",
+  "title": "Friends",
+  "members": [
+    {"key": "riya", "name": "Riya Shah"},
+    {"key": "theo", "name": "Theo Park"}
+  ],
+  "turns": [
+    {
+      "messages": [
+        {"from": "riya", "text": "If we ever win the lottery we should plan a trip to the moon lol", "minutesAgo": 3},
+        {"from": "theo", "text": "haha sure, someday", "minutesAgo": 2}
+      ],
+      "expect": {
+        "reply": "silent",
+        "allowedActions": [],
+        "card": {"status": "none"}
+      },
+      "stub": [
+        {"final": {"message": null, "hooksHandled": []}}
+      ]
+    }
+  ]
+}

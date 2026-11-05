@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 mod fallback;
 mod omp;
-pub(crate) use omp::run as run_omp;
+pub use omp::run as run_omp;
 
 /// Stored run ids keep the old prefix.
 pub const RUN_PREFIX: &str = "pip_";
@@ -73,7 +73,8 @@ where
     }
 }
 
-pub(crate) async fn run_legacy<C, P>(
+/// The built-in Rust engine's loop; `run` picks it when the engine is `rust`.
+pub async fn run_legacy<C, P>(
     client: &C,
     provider: &P,
     run: &CloudAgentRun,

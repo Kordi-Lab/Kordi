@@ -22,6 +22,7 @@ mod people;
 mod profile;
 mod profiles;
 mod prompt;
+pub mod quality;
 mod redact;
 mod rooms;
 mod runs;

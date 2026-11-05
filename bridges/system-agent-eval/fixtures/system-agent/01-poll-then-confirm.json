@@ -1,0 +1,66 @@
+{
+  "kind": "systemAgent",
+  "id": "poll-then-confirm",
+  "description": "Two concrete days open a vote; the organizer settles it after votes come in.",
+  "title": "Dinner crew",
+  "members": [
+    {"key": "maya", "name": "Maya Chen"},
+    {"key": "jordan", "name": "Jordan Lee"},
+    {"key": "riya", "name": "Riya Shah"}
+  ],
+  "turns": [
+    {
+      "messages": [
+        {"from": "maya", "text": "Dinner this week? {{d+3:long}} or {{d+4:long}}, 7pm at Luigi's", "minutesAgo": 4},
+        {"from": "riya", "text": "ooh I could do either", "minutesAgo": 3}
+      ],
+      "expect": {
+        "reply": "message",
+        "allowedActions": ["propose", "vote"],
+        "requiredActions": ["propose"],
+        "card": {
+          "state": ["polling"],
+          "titleIncludes": ["dinner"],
+          "optionCount": 2
+        }
+      },
+      "stub": [
+        {"toolCalls": [{
+          "action": "propose", "conversationId": "$conversationId", "title": "Dinner at Luigi's",
+          "state": "polling", "location": "Luigi's", "participants": "$participants:maya",
+          "sourceMessageIds": "$newMessageIds",
+          "options": [
+            {"label": "{{d+3:weekday}} 7pm", "startAt": "{{d+3}}T19:00:00+00:00", "location": "Luigi's"},
+            {"label": "{{d+4:weekday}} 7pm", "startAt": "{{d+4}}T19:00:00+00:00", "location": "Luigi's"}
+          ]
+        }]},
+        {"final": {"message": "Two days are on the table, so I opened a vote. Vote on the card so we can lock it in.", "hooksHandled": []}}
+      ]
+    },
+    {
+      "cardActions": [
+        {"action": "vote", "by": "jordan", "option": 0},
+        {"action": "vote", "by": "riya", "option": 0}
+      ],
+      "messages": [
+        {"from": "maya", "text": "{{d+3:weekday}} it is then!", "minutesAgo": 2}
+      ],
+      "expect": {
+        "reply": "any",
+        "allowedActions": ["confirm", "vote", "rsvp"],
+        "requiredActions": ["confirm"],
+        "card": {
+          "state": ["confirmed"],
+          "startAt": "{{d+3}}T19:00:00+00:00"
+        }
+      },
+      "stub": [
+        {"toolCalls": [{
+          "action": "confirm", "eventId": "$eventId", "revision": "$revision",
+          "confirmedBy": "$member:maya", "optionId": "$option:0"
+        }]},
+        {"final": {"message": "{{d+3:weekday}} won the vote, so dinner is now fixed.", "hooksHandled": []}}
+      ]
+    }
+  ]
+}

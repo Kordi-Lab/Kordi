@@ -104,7 +104,7 @@ fn evidence_date(value: Option<&str>) -> Option<String> {
         .map(|day| day.to_string())
 }
 
-fn item(
+pub(in crate::common_ground) fn item(
     source: &str,
     title: &str,
     date: Option<String>,
