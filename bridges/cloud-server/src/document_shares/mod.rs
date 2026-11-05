@@ -257,6 +257,7 @@ pub(crate) async fn observe_public_address(
         PublicAccess::Write => DOCUMENT_PUBLIC_WRITE_LIMIT,
     };
     let key = rate_limit_client_key(client).to_string();
+    let limit = rate_limiter.address_limit(limit, client);
     match rate_limiter.observe_account_limit(limit, &key).await {
         RateLimitDecision::Allowed => Ok(()),
         RateLimitDecision::Limited { retry_after } => {

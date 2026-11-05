@@ -34,7 +34,9 @@ pub(super) use view::{list, read};
 
 use super::profiles::{self, Profile};
 use super::{card, db_error, err, limited, ROOM_IP_LIMIT, ROOM_JOIN_LIMIT, ROOM_OPEN_SQL};
-use crate::auth::rate_limit::{rate_limit_client_key, CloudRateLimiter, RateLimitDecision};
+use crate::auth::rate_limit::{
+    rate_limit_client_key, AccountActionLimit, CloudRateLimiter, RateLimitDecision,
+};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
 pub(super) const MAX_MEMBERS: i64 = 200;
@@ -145,10 +147,15 @@ fn member_count_sql(param: u8) -> String {
     )
 }
 
-/// The per-address key rooms are limited under.
-fn address_key(connect_info: Option<ConnectInfo<SocketAddr>>, headers: &HeaderMap) -> String {
+/// The per-address budget and key rooms are limited under.
+fn address_limit(
+    rate_limiter: &CloudRateLimiter,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
+    headers: &HeaderMap,
+) -> (AccountActionLimit, String) {
     let client = crate::client_ip::resolve_client_ip(headers, connect_info.map(|info| info.0.ip()));
-    format!("ip:{}", rate_limit_client_key(client))
+    let key = format!("ip:{}", rate_limit_client_key(client));
+    (rate_limiter.address_limit(ROOM_IP_LIMIT, client), key)
 }
 
 /// Codes are short, so guessing is limited per account and per address.
@@ -159,8 +166,8 @@ async fn check_limits(
     connect_info: Option<ConnectInfo<SocketAddr>>,
     headers: &HeaderMap,
 ) -> Option<Response> {
-    let ip_key = address_key(connect_info, headers);
-    for (limit, key) in [(ROOM_JOIN_LIMIT, account), (ROOM_IP_LIMIT, ip_key.as_str())] {
+    let (ip_limit, ip_key) = address_limit(rate_limiter, connect_info, headers);
+    for (limit, key) in [(ROOM_JOIN_LIMIT, account), (ip_limit, ip_key.as_str())] {
         if let RateLimitDecision::Limited { retry_after } =
             rate_limiter.observe_account_limit(limit, key).await
         {
