@@ -419,5 +419,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
     ),
     migration!(165, "browser sign-in for apps", "0165_browser_sign_in.sql"),
     migration!(166, "resource pool usage", "0166_resource_pool_usage.sql"),
-    migration!(167, "pool worker runs", "0167_pool_worker_runs.sql"),
+    migration!(169, "pool worker runs", "0169_pool_worker_runs.sql"),
 ];

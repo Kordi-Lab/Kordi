@@ -85,7 +85,7 @@ tests=(
   personal_agent_tests::upgrade_from_157_indexes_personal_agent_reads
   organization_tests::upgrade_from_161_adds_personal_organizations_and_ownership
   resource_pool_tests::upgrade_from_165_adds_resource_pool_usage
-  resource_pool_tests::upgrade_from_166_adds_pool_worker_runs
+  resource_pool_tests::upgrade_from_168_adds_pool_worker_runs
 )
 index=0
 for test_name in "${tests[@]}"; do

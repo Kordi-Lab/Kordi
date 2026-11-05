@@ -72,8 +72,10 @@ async fn upgrade_from_165_adds_resource_pool_usage() {
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_166_adds_pool_worker_runs() {
-    let pool = fixture(166).await;
+async fn upgrade_from_168_adds_pool_worker_runs() {
+    // Versions 167 and 168 belong to other changes; a fixture at 168 holds
+    // whichever of them exist on this branch.
+    let pool = fixture(168).await;
     let exists = |pool: PgPool| async move {
         query_as::<_, (Option<String>,)>(
             "SELECT to_regclass('public.cloud_pool_worker_runs')::text",
@@ -109,7 +111,7 @@ async fn upgrade_from_166_adds_pool_worker_runs() {
     // its tag.
     let migration = EMBEDDED_MIGRATIONS
         .iter()
-        .find(|m| m.version == 167)
+        .find(|m| m.version == 169)
         .unwrap();
     let mut tx = pool.begin().await.unwrap();
     sqlx_core::raw_sql::raw_sql(migration.sql)

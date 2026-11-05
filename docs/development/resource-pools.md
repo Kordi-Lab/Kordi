@@ -319,7 +319,7 @@ worker.
 
 Migration 0166 adds `cloud_resource_pool_usage`
 (one counter per pool, UTC day, feature and scope) and
-`cloud_resource_pool_reservations` (one row per admitted run). Migration 0167
+`cloud_resource_pool_reservations` (one row per admitted run). Migration 0169
 adds `cloud_pool_worker_runs` (the pool tag of each pool worker run, and the
 worker and lease token hash of its current lease).
 
