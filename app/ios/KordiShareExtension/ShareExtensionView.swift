@@ -18,6 +18,8 @@ final class ShareExtensionViewModel {
     var note = ""
     var query = ""
     var requiresSignIn = false
+    /// The saved session expired; opening Kordi refreshes it.
+    var sessionNeedsApp = false
     var sendingConversationID: String?
 
     init(
@@ -46,7 +48,8 @@ final class ShareExtensionViewModel {
                 return
             }
             guard !credential.isExpired else {
-                try? credentialStore.delete()
+                // Keep it: opening Kordi refreshes the session and rewrites it.
+                sessionNeedsApp = true
                 requiresSignIn = true
                 isLoading = false
                 return
@@ -63,6 +66,7 @@ final class ShareExtensionViewModel {
         guard credential != nil, configuration != nil else {
             didStart = false
             requiresSignIn = false
+            sessionNeedsApp = false
             errorMessage = nil
             isLoading = true
             await start()
@@ -90,7 +94,7 @@ final class ShareExtensionViewModel {
             context.completeRequest(returningItems: [], completionHandler: nil)
         } catch let error as ShareExtensionAPIError {
             if error == .sessionExpired {
-                try? credentialStore.delete()
+                sessionNeedsApp = true
                 requiresSignIn = true
             }
             errorMessage = error.localizedDescription
@@ -135,7 +139,7 @@ final class ShareExtensionViewModel {
             isLoading = false
         } catch let error as ShareExtensionAPIError {
             if error == .sessionExpired {
-                try? credentialStore.delete()
+                sessionNeedsApp = true
                 requiresSignIn = true
             }
             throw error
@@ -159,7 +163,7 @@ struct ShareExtensionView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if model.requiresSignIn {
                     unavailable(
-                        title: "Open Kordi to sign in",
+                        title: model.sessionNeedsApp ? "Open Kordi to continue" : "Open Kordi to sign in",
                         detail: model.errorMessage,
                         actionTitle: "Open Kordi",
                         action: model.openKordi

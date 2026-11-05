@@ -4,6 +4,8 @@ use crate::server::ServerState;
 
 const SWEEP_INTERVAL_SECS: u64 = 5;
 const STALE_CHECK_EVERY_TICKS: u32 = 12;
+/// About once an hour.
+const PRUNE_EVERY_TICKS: u32 = 720;
 
 /// Sweeps the System agent's conversations on a fixed interval. Only changed
 /// inputs or a due reminder queue a run, so an idle server issues no model
@@ -26,6 +28,17 @@ pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
             if ticks.is_multiple_of(STALE_CHECK_EVERY_TICKS) {
                 if let Err(error) = super::store::release_stale_runs(state.db_pool()).await {
                     eprintln!("[system-agent] Stale run check failed: {error}");
+                }
+                // Runs that ended by another path settle their pool usage here.
+                if let Err(error) =
+                    crate::resource_pools::usage::settle_ended_runs(state.db_pool()).await
+                {
+                    eprintln!("[system-agent] Resource pool settlement failed: {error}");
+                }
+            }
+            if ticks.is_multiple_of(PRUNE_EVERY_TICKS) {
+                if let Err(error) = crate::resource_pools::usage::prune(state.db_pool()).await {
+                    eprintln!("[system-agent] Resource pool usage pruning failed: {error}");
                 }
             }
             if let Err(error) = super::store::sweep(state.db_pool(), &config).await {

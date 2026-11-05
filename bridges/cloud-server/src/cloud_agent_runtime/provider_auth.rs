@@ -9,6 +9,8 @@ mod readiness;
 mod rejection;
 mod resolve;
 mod service;
+#[cfg(test)]
+pub(crate) use service::service_provider_auth_for_run;
 mod snapshots;
 
 pub use cipher::{EnvProviderAuthCipher, ProviderAuthCipher, ProviderAuthCipherError};
@@ -22,7 +24,8 @@ pub use resolve::{
     provider_auth_for_account_route, provider_auth_for_run, ProviderAuthForRunResult,
 };
 pub use service::{
-    RunnerProviderAuthMaterial, RunnerProviderAuthMaterialEnvelope, ServiceProviderAuth,
+    RunnerProviderAuthMaterial, RunnerProviderAuthMaterialEnvelope, ServicePool,
+    ServiceProviderAuth,
 };
 pub(crate) use snapshots::live_snapshot_for_route;
 pub use snapshots::{

@@ -146,10 +146,14 @@ pub(super) async fn queue(
     let new_run = NewRun {
         run_id: &run_id,
         requester: &need.account_id,
+        conversation_id: None,
         prompt: check_prompt(&need.text, &refs),
         system_prompt: CHECK_SYSTEM,
     };
-    runs::insert(&mut tx, service, new_run).await?;
+    // Without the pool's admission the request is simply not checked now.
+    if !runs::insert(&mut tx, service, new_run).await? {
+        return Ok(());
+    }
     tx.commit().await
 }
 

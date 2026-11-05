@@ -58,6 +58,39 @@ fn loopback_redirects_accept_any_port_but_nothing_else() {
 }
 
 #[test]
+fn ios_clients_accept_only_their_exact_custom_scheme_callback() {
+    let registry = AppClientRegistry::builtin();
+    for (client_id, scheme) in [
+        ("kordi-ios", "kordi"),
+        ("kordi-ios-beta", "kordi-beta"),
+        ("kordi-ios-staging", "kordi-staging"),
+    ] {
+        let client = registry.client(client_id).unwrap();
+        let callback = format!("{scheme}://auth/callback");
+        // The iPhone app has no loopback listener: one redirect URI only.
+        assert_eq!(client.redirect_uris, vec![callback.clone()], "{client_id}");
+        assert!(client.allows_redirect_uri(&callback), "{client_id}");
+        for rejected in [
+            format!("{scheme}://auth/callback/"),
+            format!("{scheme}://auth/callback?next=1"),
+            format!("{scheme}://auth/callback#fragment"),
+            format!("{scheme}://oauth/callback"),
+            format!("{scheme}://evil.example.test/auth/callback"),
+            format!("{}://auth/callback", scheme.to_uppercase()),
+            format!("{scheme}x://auth/callback"),
+            "http://127.0.0.1:51234/auth/callback".to_string(),
+            "http://127.0.0.1/auth/callback".to_string(),
+            "https://kordi.ai/auth/callback".to_string(),
+        ] {
+            assert!(
+                !client.allows_redirect_uri(&rejected),
+                "{client_id}: {rejected}"
+            );
+        }
+    }
+}
+
+#[test]
 fn ports_in_a_loopback_registration_are_exact() {
     assert!(redirect_uri_matches(
         "http://127.0.0.1:7000/cb",

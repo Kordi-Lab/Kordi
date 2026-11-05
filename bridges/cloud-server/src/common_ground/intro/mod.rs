@@ -116,10 +116,14 @@ pub(super) async fn queue(
     let new_run = NewRun {
         run_id: &run_id,
         requester: intro.creator,
+        conversation_id: Some(intro.conversation_id),
         prompt: intro_prompt(intro.name, intro.topic, &people),
         system_prompt: INTRO_SYSTEM,
     };
-    runs::insert(&mut tx, service, new_run).await?;
+    // Without the pool's admission the group simply gets no intro.
+    if !runs::insert(&mut tx, service, new_run).await? {
+        return Ok(());
+    }
     tx.commit().await
 }
 

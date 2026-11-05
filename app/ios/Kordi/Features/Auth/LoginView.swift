@@ -36,9 +36,8 @@ struct LoginView: View {
     private enum Field { case displayName, email, password, confirmPassword, verificationCode }
     private enum Submission: Equatable { case form, social(CloudOAuthProvider) }
 
-    init() {
-        let startsInSignup = ProcessInfo.processInfo.arguments.contains("--preview-signup")
-        _mode = State(initialValue: startsInSignup ? .signup : .login)
+    init(signup: Bool = ProcessInfo.processInfo.arguments.contains("--preview-signup")) {
+        _mode = State(initialValue: signup ? .signup : .login)
     }
 
     var body: some View {
