@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { CloudStartingScreen, KordiAppRoot } from '../src/KordiApp';
 import { KORDI_THEME_MODE_STORAGE_KEY } from '../src/app/themePreference';
 import { CloudLoginPage } from '../src/kordi-app/cloud/CloudLoginPage';
+import { KordiFlyingBird } from '../src/features/cloud/KordiFlyingBird';
 import { shouldShowCloudLoginGate } from '../src/features/cloud/sessionGate';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 const repoRoot = resolve(import.meta.dirname, '..');
@@ -67,8 +68,10 @@ function cssBlock(css: string, selector: string): string {
 import {
   applyCloudLoginWindowSize,
   applyKordiMainWindowSize,
+  CLOUD_WELCOME_WINDOW_SIZE,
   cloudLoginWindowSizeForMode,
   isTauriRuntime,
+  supportsFrostedGate,
 } from '../src/features/cloud/loginWindow';
 
 test('cloud shell source does not expose localhost bridge controls', () => {
@@ -270,7 +273,48 @@ test('cloud window surfaces keep their compact and workspace dimensions', async 
   assert.equal(isTauriRuntime({} as typeof globalThis), false);
   // Browser renders have no native IPC dependency.
   await applyCloudLoginWindowSize('signup');
+  await applyCloudLoginWindowSize('welcome');
   await applyKordiMainWindowSize();
+});
+
+test('browser sign-in uses a compact frosted window on macOS only', () => {
+  assert.deepEqual(CLOUD_WELCOME_WINDOW_SIZE, { width: 440, height: 480 });
+  const runtime = (platform: string, native = true) => ({
+    ...(native ? { __TAURI_INTERNALS__: {} } : {}),
+    navigator: { platform },
+  }) as unknown as typeof globalThis;
+  assert.equal(supportsFrostedGate(runtime('MacIntel')), true);
+  assert.equal(supportsFrostedGate(runtime('Win32')), false, 'other platforms keep an opaque page');
+  assert.equal(supportsFrostedGate(runtime('MacIntel', false)), false, 'browser renders have no material');
+
+  const nativeWindow = readSource('src-tauri/src/auth_window.rs');
+  assert.match(nativeWindow, /Self::Welcome => \(440\.0, 480\.0,/);
+  assert.match(nativeWindow, /MAIN_FRAME/, 'the main frame is remembered across a sign-out');
+
+  assert.match(readSource('src/styles/base.css'), /html\.kordi-native-shell body\.app-cloud-gate-active\.app-cloud-gate-frosted \{\s*background: transparent;/);
+  const css = readDesktopShellCss();
+  // A faint veil at most, so the blurred wallpaper stays visible.
+  assert.match(css, /theme-light\.app-cloud-login-shell\[data-frosted="true"\] \.app-cloud-login-page \{\s*--app-cloud-login-page-bg: rgb\(255 255 255 \/ 0\.10\);/);
+  assert.match(css, /\.kordi-app\.app-cloud-login-shell\[data-frosted="true"\] \.app-cloud-login-page \{\s*--app-cloud-login-page-bg: rgb\(10 12 16 \/ 0\.14\);/);
+  assert.match(css, /\[data-frosted="true"\] \.app-cloud-starting-screen\[data-visible="false"\]::before \{\s*opacity: 0;/);
+  const windowLayout = readSource('src-tauri/src/auth_window/layout.rs');
+  assert.match(windowLayout, /let material: isize = if welcome \{ 13 \} else \{ 7 \};/, 'the welcome window uses the HUD material');
+  // The frame is the visible window, clear of the title bar, with the group just above center.
+  assert.match(css, /\.app-cloud-login-surface > \.app-cloud-login-page\.app-cloud-browser-signin \{[^}]*position: fixed;[^}]*width: var\(--app-gate-window-width,[^}]*padding: 52px 24px 76px;/);
+  assert.match(css, /\.app-cloud-welcome-actions \{[^}]*max-width: 304px;/);
+});
+
+test('the welcome screen has no in-page window title and cuts the wing gap out of the bird', () => {
+  const page = readSource('src/kordi-app/cloud/CloudBrowserSignInPage.tsx');
+  assert.doesNotMatch(page, />\s*Kordi\s*</);
+  assert.match(page, /<KordiFlyingBird className="app-cloud-welcome-bird" cutout \/>/);
+
+  const cutout = renderToStaticMarkup(createElement(KordiFlyingBird, { cutout: true }));
+  assert.match(cutout, /<mask id="kordi-bird-cut-[A-Za-z0-9_-]+"/);
+  assert.match(cutout, /mask="url\(#kordi-bird-cut-[A-Za-z0-9_-]+\)"/);
+  assert.match(cutout, /app-kordi-flying-bird-wing app-kordi-flying-bird-wing-cut/);
+  const plain = renderToStaticMarkup(createElement(KordiFlyingBird));
+  assert.doesNotMatch(plain, /<mask/);
 });
 
 test('cloud starting screen renders only the flying Kordi bird', () => {
@@ -378,7 +422,7 @@ test('cloud gate auto theme follows system light before shell mount', () => {
 });
 
 test('cloud login gate reads persisted theme preference and native system theme before shell mount', () => {
-  const source = readSource('src/KordiApp.tsx');
+  const source = readSource('src/features/cloud/CloudGateShell.tsx');
   const baseCss = readSource('src/styles/base.css');
   const capabilities = readSource('src-tauri/capabilities/default.json');
 
@@ -389,14 +433,14 @@ test('cloud login gate reads persisted theme preference and native system theme 
   assert.match(source, /getCurrentWindow\(\)\.onThemeChanged/);
   assert.match(source, /nativeWindowThemeIsResolvedTheme/);
   assert.match(source, /classList\.toggle\('app-cloud-gate-active', active\)/);
-  assert.match(source, /active \? GATE_WINDOW_BACKGROUND\[theme\] : APP_WINDOW_BACKGROUND\[theme\]/);
+  assert.match(source, /!active\s*\? APP_WINDOW_BACKGROUND\[theme\]\s*: frosted \? FROSTED_GATE_WINDOW_BACKGROUND : GATE_WINDOW_BACKGROUND\[theme\]/);
   assert.match(baseCss, /body\.app-cloud-gate-active\.theme-light\s*\{[^}]*background:\s*linear-gradient\(180deg, rgb\(248 250 252\)/s);
   assert.match(capabilities, /core:window:allow-set-background-color/);
   assert.doesNotMatch(source, /const \[theme, setTheme\] = useState<ResolvedThemeMode>\(\(\) => readSystemTheme\(\)\)/);
 });
 
 test('cloud login gate has a native drag fallback before the app shell mounts', () => {
-  const shellSource = readSource('src/KordiApp.tsx');
+  const shellSource = readSource('src/features/cloud/CloudGateShell.tsx');
   const loginMarkup = renderToStaticMarkup(createElement(CloudLoginPage));
 
   assert.match(shellSource, /shouldStartNativeWindowDrag/);

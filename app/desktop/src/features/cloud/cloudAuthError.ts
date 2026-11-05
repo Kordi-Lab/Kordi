@@ -54,6 +54,12 @@ export type CloudAuthErrorCode =
   | 'invalid_time_zone'
   | 'invalid_website'
   | 'invalid_birthday'
+  // Browser sign-in (authorization code with PKCE).
+  | 'access_denied'
+  | 'sign_in_state_mismatch'
+  | 'sign_in_code_invalid'
+  | 'browser_sign_in_failed'
+  | 'browser_sign_in_timed_out'
   | 'unknown';
 
 export class CloudAuthError extends Error {

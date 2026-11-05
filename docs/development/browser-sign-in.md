@@ -428,3 +428,56 @@ every code and refresh rejection. Client, PKCE, redirect and return-path
 rules have unit tests. `web_pages::tests` covers page and asset serving,
 traversal and symbolic-link escapes, headers, and the `/sign-in/app`
 redirect. `distribution::tests` covers the loopback `http` rule.
+
+## Desktop app
+
+The desktop app shows a welcome screen with Log in and Sign up. Both open
+the system browser at `GET /v1/cloud/auth/app/authorize` on the configured
+API origin; Sign up adds `prompt=create` so the page can open on account
+creation. The code lives in `app/desktop/src/features/cloud/appSignIn/`.
+
+- Client ID: derived from the build's callback scheme (`kordi` ->
+  `kordi-desktop`, `kordi-beta` -> `kordi-desktop-beta`, `kordi-staging` ->
+  `kordi-desktop-staging`). Development builds may set
+  `VITE_KORDI_APP_CLIENT_ID`.
+- Redirect: a loopback listener in the native shell on an ephemeral port
+  (`http://127.0.0.1:<port>/auth/callback`). It completes only for the
+  `state` the app generated; the app checks `state` again before the
+  exchange. It serves connections concurrently, so an idle preconnect cannot
+  hold up the redirect, and refuses a repeated `state`, `code` or `error`.
+  Its pages send `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`,
+  `X-Content-Type-Options: nosniff` and a CSP that allows only inline style,
+  script and `data:` images. The listener stops after 10 minutes, on Cancel,
+  or once a code is exchanged.
+- Paste code: the wait screen accepts the displayed code and exchanges it
+  with the same verifier and redirect URI. One attempt exchanges at most one
+  code; a refused code (expired or used) can be replaced by another. Cancel
+  is disabled while a pasted code is exchanged; a sign-in that completes
+  after Cancel is revoked.
+- Availability: before offering browser sign-in the app sends
+  `GET /v1/cloud/auth/app/authorize?client_id=<id>`. `invalid_redirect_uri`
+  means the server knows the client. A 404, a 405 or `invalid_client` shows
+  the in-app email form instead, so older servers keep working. Any other
+  answer (a rate limit, a proxy or captive portal, an outage) keeps browser
+  sign-in and is not remembered, so the next launch asks again.
+- Tokens: the access token, refresh token, client ID and token endpoint are
+  stored with the Cloud session in the OS keychain. The native shell
+  refreshes five minutes before expiry under one process-wide lock
+  (`cloud_session_refresh`), so windows and background tasks never present
+  a rotated refresh token twice. The refresh writes its result only while
+  the stored session is still the one it refreshed, and sign-in and
+  sign-out take the same write lock, so a sign-out or account switch during
+  a refresh is never overwritten. A refused refresh signs the app out.
+- Native callers (scheduled tasks, account memory, connector and digest
+  tools, agent exchange, hosted provider auth) keep the account, not the
+  access token: each request or turn reads the stored session and refreshes
+  it first when the token expires within five minutes, for example after the
+  Mac wakes from sleep.
+- Sign-out revokes the refresh token through `POST /v1/cloud/auth/app/revoke`.
+- Account changes: Cloud caches, the group outbox, attachments and file
+  storage are keyed by account ID, and signing in as a different account
+  activates that account's storage and reloads the window before any of its
+  data is shown.
+
+Provider sign-ins for model accounts are unchanged. The iOS app is a
+separate step.

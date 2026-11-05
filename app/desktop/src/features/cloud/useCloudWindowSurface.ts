@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import { applyCloudLoginWindowSize, applyKordiMainWindowSize, isTauriRuntime, type CloudLoginMode } from './loginWindow';
+import { applyCloudLoginWindowSize, applyKordiMainWindowSize, isTauriRuntime, type CloudGateSurface } from './loginWindow';
 
-export function useCloudWindowSurface(surface: CloudLoginMode | 'main' | null) {
+export function useCloudWindowSurface(surface: CloudGateSurface | 'main' | null) {
   const [settled, setSettled] = useState<typeof surface>(null);
   const [previousSurface, setPreviousSurface] = useState(surface);
   if (surface !== previousSurface) {

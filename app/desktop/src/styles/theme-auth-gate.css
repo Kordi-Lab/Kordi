@@ -100,6 +100,21 @@ html.kordi-native-shell .app-cloud-workspace-surface {
   --app-cloud-login-page-bg: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 54%, rgb(226 232 240) 100%);
 }
 
+/* Frosted welcome window: only a faint veil over the macOS material, so the
+ * blurred wallpaper stays visible. Text carries its own contrast. */
+.kordi-app.app-cloud-login-shell[data-frosted="true"] .app-cloud-login-page {
+  --app-cloud-login-page-bg: rgb(10 12 16 / 0.14);
+}
+
+.kordi-app.theme-light.app-cloud-login-shell[data-frosted="true"] .app-cloud-login-page {
+  --app-cloud-login-page-bg: rgb(255 255 255 / 0.10);
+}
+
+.app-cloud-login-shell[data-frosted="true"] .app-cloud-login-accents,
+.app-cloud-login-shell[data-frosted="true"] .app-cloud-login-grain {
+  display: none;
+}
+
 /* Decorative radial accent layer behind the form. */
 .app-cloud-login-accents {
   background:
@@ -256,8 +271,23 @@ html.kordi-native-shell .app-cloud-workspace-surface {
   box-shadow: 0 10px 24px oklch(0.25 0.03 125 / 0.18);
 }
 
+/* Hover and press only lighten or darken the ink, never the theme accent. */
 .app-cloud-login-submit:hover:not(:disabled) {
-  background: var(--app-button-primary-hover);
+  filter: brightness(1.18);
+}
+
+.app-cloud-login-submit:active:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+/* The dark theme's ink is near white, which brightening cannot lift, so
+ * hover and press darken it instead. */
+.kordi-app.theme-dark .app-cloud-login-submit:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.kordi-app.theme-dark .app-cloud-login-submit:active:not(:disabled) {
+  filter: brightness(0.8);
 }
 
 .app-cloud-starting-screen {
@@ -271,8 +301,22 @@ html.kordi-native-shell .app-cloud-workspace-surface {
   z-index: 100;
   display: grid;
   place-items: center;
-  background: var(--app-cloud-login-page-bg);
   color: var(--utility-foreground);
+}
+
+/* The page color sits on its own layer so it can fade out over the frosted
+ * welcome window and back in when sign-in completes. */
+.app-cloud-starting-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--app-cloud-login-page-bg);
+  transition: opacity 180ms var(--app-motion-ease);
+}
+
+.app-cloud-login-shell[data-frosted="true"] .app-cloud-starting-screen[data-visible="false"]::before {
+  opacity: 0;
 }
 
 .kordi-app .app-cloud-starting-screen {
