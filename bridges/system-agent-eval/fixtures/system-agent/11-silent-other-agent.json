@@ -1,0 +1,25 @@
+{
+  "kind": "systemAgent",
+  "id": "silent-other-agent",
+  "description": "A member asks their own agent about their calendar; the System agent stays out of it.",
+  "title": "Team",
+  "members": [
+    {"key": "maya", "name": "Maya Chen"},
+    {"key": "jordan", "name": "Jordan Lee"}
+  ],
+  "turns": [
+    {
+      "messages": [
+        {"from": "maya", "text": "@MayaChenAgent can you check my calendar for Friday afternoon?", "minutesAgo": 2, "mentions": ["agent:maya"]}
+      ],
+      "expect": {
+        "reply": "silent",
+        "allowedActions": [],
+        "card": {"status": "none"}
+      },
+      "stub": [
+        {"final": {"message": null, "hooksHandled": []}}
+      ]
+    }
+  ]
+}
