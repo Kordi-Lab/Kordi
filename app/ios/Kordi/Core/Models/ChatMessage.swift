@@ -1198,6 +1198,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var messageKind: String?
     var voiceMessage: VoiceMessage?
     var planCard: PlanCard? = nil
+    /// Set on the System agent notice that a limit refused a run.
+    var usageLimit: ChatUsageLimit? = nil
     var agentExecution: AgentExecutionSnapshot?
     /// How an agent reply that keeps its partial text ended early.
     var agentReplyEnding: AgentReplyEnding? = nil
@@ -1291,6 +1293,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         messageKind: String? = nil,
         voiceMessage: VoiceMessage? = nil,
         planCard: PlanCard? = nil,
+        usageLimit: ChatUsageLimit? = nil,
         agentExecution: AgentExecutionSnapshot? = nil,
         agentReplyEnding: AgentReplyEnding? = nil,
         backgroundAgentSessions: [BackgroundAgentSession] = [],
@@ -1323,6 +1326,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.messageKind = messageKind
         self.voiceMessage = voiceMessage
         self.planCard = planCard
+        self.usageLimit = usageLimit
         self.agentExecution = agentExecution
         self.agentReplyEnding = agentReplyEnding
         self.backgroundAgentSessions = backgroundAgentSessions
@@ -1392,6 +1396,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         case localTimelineAnchorID
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, reactionTargetMessageId, messageAction
         case messageKind, voiceMessage
+        case usageLimit
         case agentExecution
         case agentReplyEnding
         case backgroundAgentSessions, sources
@@ -1428,6 +1433,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         messageAction = try container.decodeIfPresent(MessageActionMetadata.self, forKey: .messageAction)
         messageKind = try container.decodeIfPresent(String.self, forKey: .messageKind)
         voiceMessage = try container.decodeIfPresent(VoiceMessage.self, forKey: .voiceMessage)
+        usageLimit = (try? container.decodeIfPresent(ChatUsageLimit.self, forKey: .usageLimit)) ?? nil
         agentExecution = try container.decodeIfPresent(
             AgentExecutionSnapshot.self,
             forKey: .agentExecution

@@ -320,6 +320,11 @@ final class AppModel: ObservableObject {
     /// Server capabilities for the Memory screen. Nil until loaded or when the
     /// request fails, which keeps the Memory entry hidden.
     @Published private(set) var memoryCapabilities: CloudAuthCapabilities?
+    /// The signed-in account's organizations, for role-aware limit notices.
+    /// Loaded once per account and refreshed by Settings › Usage.
+    @Published private(set) var cloudOrganizations: [CloudOrganization] = []
+    private var cloudOrganizationsAccountId: String?
+    private var cloudOrganizationsLoad: Task<Void, Never>?
 
     let api: CloudAPIClient
     private let oauth: CloudOAuthSession
@@ -1190,6 +1195,39 @@ final class AppModel: ObservableObject {
         if previewMode { return PreviewMemoryService() }
         return CloudMemoryService(api: api) { [weak self] in self?.token }
     }
+    func makeUsageService() -> any UsageService {
+        if previewMode { return PreviewUsageService() }
+        return CloudUsageService(api: api) { [weak self] in self?.token }
+    }
+
+    /// The viewer's role in an organization; nil when unknown.
+    func organizationRole(_ organizationId: String?) -> String? {
+        guard let organizationId, cloudOrganizationsAccountId == account?.accountId else { return nil }
+        return cloudOrganizations.first { $0.organizationId == organizationId }?.role
+    }
+
+    /// Loads the organization list once for the signed-in account.
+    func loadOrganizationsIfNeeded() async {
+        guard let accountId = account?.accountId else { return }
+        if cloudOrganizationsAccountId == accountId { return }
+        if let load = cloudOrganizationsLoad { return await load.value }
+        let service = makeUsageService()
+        let load = Task { @MainActor [weak self] in
+            defer { self?.cloudOrganizationsLoad = nil }
+            guard let organizations = try? await service.organizations() else { return }
+            self?.updateOrganizations(organizations, accountId: accountId)
+        }
+        cloudOrganizationsLoad = load
+        await load.value
+    }
+
+    func updateOrganizations(_ organizations: [CloudOrganization], accountId: String? = nil) {
+        let accountId = accountId ?? account?.accountId
+        guard let accountId, accountId == account?.accountId else { return }
+        cloudOrganizations = organizations
+        cloudOrganizationsAccountId = accountId
+    }
+
     func makeDocumentService() -> any DocumentService { previewMode ? PreviewDocumentService() : CloudDocumentService(api: api) { [weak self] in self?.token } }
 
     func markDeviceReviewSeen() { deviceReviewRequired = false }
@@ -6382,6 +6420,7 @@ final class AppModel: ObservableObject {
             messageKind: messageKind,
             voiceMessage: message.voiceMessage,
             planCard: message.planCard,
+            usageLimit: message.usageLimit,
             agentExecution: ownerExecution ?? CloudMessageCodec.agentWaitingExecution(
                 deliveryState: CloudMessageCodec.isAgentExecutionClaim(message.body)
                     ? nil : CloudMessageCodec.agentResponseDeliveryState(message.body),
@@ -6440,6 +6479,7 @@ final class AppModel: ObservableObject {
                     messageKind: wire.messageKind,
                     voiceMessage: wire.voiceMessage,
                     planCard: wire.planCard,
+                    usageLimit: wire.usageLimit,
                     reactions: wire.reactions,
                     attachmentReactions: wire.attachmentReactions
                 )
@@ -6571,6 +6611,7 @@ final class AppModel: ObservableObject {
                 messageKind: payload.messageKind,
                 voiceMessage: payload.voiceMessage ?? wire.voiceMessage,
                 planCard: wire.planCard,
+                usageLimit: wire.usageLimit,
                 agentExecution: author == .agent ? CloudMessageCodec.agentWaitingExecution(
                     deliveryState: payload.deliveryState == "processing" ? .processing : nil,
                     updatedAtMs: payload.createdAtMs
@@ -7539,6 +7580,7 @@ final class AppModel: ObservableObject {
                     messageKind: message.messageKind,
                     voiceMessage: message.voiceMessage,
                     planCard: message.planCard,
+                    usageLimit: message.usageLimit,
                     conversationId: message.conversationId,
                     conversationSequence: message.conversationSequence,
                     version: message.version,

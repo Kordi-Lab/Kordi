@@ -21,8 +21,8 @@ use sqlx_postgres::{PgConnection, PgPool, Postgres};
 use super::{Feature, ResourcePool};
 
 /// The feature and scope of the counter for a whole pool.
-const POOL_FEATURE: &str = "*";
-const POOL_SCOPE: &str = "";
+pub(crate) const POOL_FEATURE: &str = "*";
+pub(crate) const POOL_SCOPE: &str = "";
 /// Usage older than this many days is pruned.
 const RETAIN_DAYS: i64 = 90;
 
@@ -322,7 +322,7 @@ pub async fn runs_on(
     Ok(runs.unwrap_or(0))
 }
 
-/// Removes usage and reservations older than the retention window.
+/// Removes usage, reservations and usage notices older than the retention window.
 pub async fn prune(pool: &PgPool) -> sqlx_core::Result<u64> {
     let cutoff = usage_day() - chrono::Duration::days(RETAIN_DAYS);
     let usage = query("DELETE FROM cloud_resource_pool_usage WHERE usage_day < $1")
@@ -333,7 +333,11 @@ pub async fn prune(pool: &PgPool) -> sqlx_core::Result<u64> {
         .bind(cutoff)
         .execute(pool)
         .await?;
-    Ok(usage.rows_affected() + reservations.rows_affected())
+    let notices = query("DELETE FROM cloud_usage_notices WHERE usage_day < $1")
+        .bind(cutoff)
+        .execute(pool)
+        .await?;
+    Ok(usage.rows_affected() + reservations.rows_affected() + notices.rows_affected())
 }
 
 #[cfg(test)]

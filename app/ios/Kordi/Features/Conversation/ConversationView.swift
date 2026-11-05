@@ -373,6 +373,7 @@ struct ConversationView: View {
     @State private var selectedCompanionConversation: ConversationSummary?
     @State private var showsCompanionPanel = false
     @State private var showsProviderAuthentication = false
+    @State private var showsUsageSettings = false
     @State private var hasOpenedCompanionPreview = false
     @State private var readPresentationID = UUID()
     @State private var isReadPresentationVisible = false
@@ -1406,6 +1407,9 @@ struct ConversationView: View {
         .sheet(isPresented: $showsProviderAuthentication) {
             AccountSheet(openingAuthentication: true)
         }
+        .sheet(isPresented: $showsUsageSettings) {
+            AccountSheet(opening: .usage)
+        }
         .alert("Could not open discussion", isPresented: Binding<Bool>(get: { threadNavigationError != nil }, set: { if !$0 { threadNavigationError = nil } })) {
             Button("Retry") {
                 if let root = scopedThreadRootMessageID, let sequence = threadPageRetrySequence {
@@ -1475,7 +1479,8 @@ struct ConversationView: View {
         viewportFrame: CGRect,
         proxy: ScrollViewProxy
     ) -> some View {
-        let message = row.message
+        let usageRole = model.organizationRole(row.message.usageLimit?.organizationId)
+        let message = UsagePresentation.displayMessage(row.message, role: usageRole)
         let avatar = avatarIdentity(for: message, mentionTargets: mentionTargets)
         let replySource = message.quotedReplyMessageId.flatMap { messageReferences.message(for: $0) }
         let backgroundSessions = message.backgroundAgentSessions.map {
@@ -1672,6 +1677,12 @@ struct ConversationView: View {
                     tracksCapture ? geometry.frame(in: .global) : .zero
                 } action: { frame in
                     if !frame.isEmpty { deleteCaptureFrames.frames[message.id] = frame }
+                }
+                if let usageLimit = message.usageLimit {
+                    UsageLimitNoticeFooter(
+                        showsUsageLink: UsagePresentation.offersUsageLink(usageLimit, role: usageRole),
+                        onOpenUsage: { showsUsageSettings = true }
+                    )
                 }
             }
         }

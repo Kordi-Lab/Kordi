@@ -365,9 +365,9 @@ async function navLabels(memoryClient: MemoryClient | null): Promise<string[]> {
 }
 
 test('account settings show Memory only when a client is available', async () => {
-  assert.deepEqual(await navLabels(null), ['Profile', 'Active sessions', 'Authentication', 'Notifications', 'Appearance']);
+  assert.deepEqual(await navLabels(null), ['Profile', 'Active sessions', 'Authentication', 'Notifications', 'Usage', 'Appearance']);
   assert.deepEqual(
     await navLabels(createPreviewMemoryClient({ latencyMs: 0 })),
-    ['Profile', 'Active sessions', 'Authentication', 'Notifications', 'Memory', 'Appearance'],
+    ['Profile', 'Active sessions', 'Authentication', 'Notifications', 'Memory', 'Usage', 'Appearance'],
   );
 });

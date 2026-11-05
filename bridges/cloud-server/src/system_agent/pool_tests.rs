@@ -16,7 +16,7 @@ use crate::plan_cards::tests::{participant, seed_account, seed_conversation};
 use crate::resource_pools::usage::tests::test_db;
 use crate::resource_pools::{test_provider, PoolLimits, ResourcePool, ResourcePools};
 
-async fn say(pool: &PgPool, sender: &str, conversation_id: Uuid, text: &str) {
+pub(super) async fn say(pool: &PgPool, sender: &str, conversation_id: Uuid, text: &str) {
     let request = SendMessageRequest {
         client_message_id: Uuid::new_v4(),
         kind: "text".to_string(),
@@ -34,7 +34,7 @@ async fn say(pool: &PgPool, sender: &str, conversation_id: Uuid, text: &str) {
         .unwrap();
 }
 
-async fn group_chat(pool: &PgPool, creator: &str, system_agent: &str) -> Uuid {
+pub(super) async fn group_chat(pool: &PgPool, creator: &str, system_agent: &str) -> Uuid {
     let chat = Uuid::new_v4();
     seed_conversation(pool, chat, creator, &[creator, system_agent]).await;
     query("UPDATE cloud_chat_conversations SET legacy_session_id = $2 WHERE conversation_id = $1")
@@ -52,7 +52,7 @@ async fn group_chat(pool: &PgPool, creator: &str, system_agent: &str) -> Uuid {
 }
 
 /// A team organization owned by `owner`.
-async fn team(pool: &PgPool, owner: &str) -> String {
+pub(super) async fn team(pool: &PgPool, owner: &str) -> String {
     let id = format!("org_test_{}", Uuid::new_v4().simple());
     query(
         "INSERT INTO cloud_organizations (organization_id, name, kind, created_by_account_id) \
@@ -66,7 +66,7 @@ async fn team(pool: &PgPool, owner: &str) -> String {
     id
 }
 
-async fn sweep(pool: &PgPool, config: &super::SystemAgentConfig) -> usize {
+pub(super) async fn sweep(pool: &PgPool, config: &super::SystemAgentConfig) -> usize {
     query("UPDATE cloud_pip_conversation_state SET checked_at = now() - interval '1 hour'")
         .execute(pool)
         .await
@@ -75,7 +75,10 @@ async fn sweep(pool: &PgPool, config: &super::SystemAgentConfig) -> usize {
 }
 
 /// (run id, pool in its route, organization) of each System agent run.
-async fn runs_in(pool: &PgPool, chat: Uuid) -> Vec<(String, Option<String>, Option<String>)> {
+pub(super) async fn runs_in(
+    pool: &PgPool,
+    chat: Uuid,
+) -> Vec<(String, Option<String>, Option<String>)> {
     query_as(
         "SELECT run.run_id, run.runtime_route_json->>'resourcePool', run.organization_id
          FROM cloud_agent_fallback_runs run
@@ -89,7 +92,7 @@ async fn runs_in(pool: &PgPool, chat: Uuid) -> Vec<(String, Option<String>, Opti
     .unwrap()
 }
 
-fn config_with(system_agent: &str, pools: ResourcePools) -> super::SystemAgentConfig {
+pub(super) fn config_with(system_agent: &str, pools: ResourcePools) -> super::SystemAgentConfig {
     let mut config = super::test_config(system_agent);
     config.resource_pools = Arc::new(pools);
     config
@@ -232,21 +235,29 @@ async fn an_exhausted_pool_stays_silent_without_a_backlog() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(seen, latest, "the messages are not kept for later");
+    assert_eq!(
+        seen,
+        latest - 1,
+        "the messages are not kept for later; only the paused line follows the cursor"
+    );
     assert_eq!(
         hooks[format!("t_minus_2h:{}", card.event_id)],
         json!(true),
         "the reminder will not fire later"
     );
-    let (posted,): (i64,) = query_as(
-        "SELECT count(*) FROM cloud_chat_messages WHERE conversation_id = $1 AND sender_account_id = $2",
+    let posted: Vec<(String,)> = query_as(
+        "SELECT message_kind FROM cloud_chat_messages WHERE conversation_id = $1 AND sender_account_id = $2",
     )
     .bind(chat)
     .bind(&system_agent)
-    .fetch_one(&pool)
+    .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(posted, 0, "the System agent says nothing");
+    assert_eq!(
+        posted,
+        [("system-notice".to_string(),)],
+        "the System agent answers nothing; one notice says it is paused"
+    );
     // The chat is quiet now: nothing makes the next sweep pick it again.
     assert_eq!(sweep(&pool, &config).await, 0);
     assert_eq!(runs_in(&pool, chat).await.len(), 1);

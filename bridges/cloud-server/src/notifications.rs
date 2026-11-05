@@ -13,10 +13,13 @@ mod message;
 mod nearby;
 #[path = "notifications_proactive.rs"]
 mod proactive;
+#[path = "notifications_usage.rs"]
+mod usage;
 
 pub(crate) use message::{is_agent_authored_message, is_frontend_visible_message};
 pub use nearby::NearbyAlertPush;
 pub use proactive::ProactiveOfferPush;
+pub use usage::UsageNoticePush;
 
 #[derive(Clone)]
 pub struct PushNotificationService {

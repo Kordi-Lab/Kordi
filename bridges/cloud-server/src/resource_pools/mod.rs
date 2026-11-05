@@ -16,6 +16,9 @@ use std::fmt;
 use crate::system_agent::SystemAgentProviderAuth;
 
 mod config;
+pub mod notices;
+pub mod routes;
+pub mod snapshot;
 pub mod usage;
 
 pub use config::{ResourcePoolConfigError, RESOURCE_POOLS_FILE_ENV};

@@ -35,6 +35,17 @@ pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
                 {
                     eprintln!("[system-agent] Resource pool settlement failed: {error}");
                 }
+                // Owners hear once per window when a pool passes 75% and 90%.
+                if let Err(error) = crate::resource_pools::notices::notify_owners(
+                    state.db_pool(),
+                    config.resource_pools(),
+                    state.notifications(),
+                    chrono::Utc::now(),
+                )
+                .await
+                {
+                    eprintln!("[system-agent] Usage notices failed: {error}");
+                }
             }
             if ticks.is_multiple_of(PRUNE_EVERY_TICKS) {
                 if let Err(error) = crate::resource_pools::usage::prune(state.db_pool()).await {

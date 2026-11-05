@@ -70,3 +70,5 @@ mod membership_tests;
 mod pool_tests;
 #[cfg(test)]
 mod sweep_tests;
+#[cfg(test)]
+mod usage_notice_tests;
