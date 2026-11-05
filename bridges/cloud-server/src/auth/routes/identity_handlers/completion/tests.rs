@@ -16,6 +16,7 @@ fn profile(email: &str, verified: bool) -> OAuthProfile {
         email: Some(email.into()),
         email_verified: verified,
         avatar_url: None,
+        hosted_domain: None,
     }
 }
 fn research() -> AdmissionPolicy {

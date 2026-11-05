@@ -27,6 +27,7 @@ pub(super) fn spawn_background_workers(
     crate::plan_cards::projection::spawn(state.db_pool().clone());
     crate::chat_sync::retention::spawn_retention_worker(state.db_pool().clone());
     crate::cloud_agent_runtime::runs::terminal_backfill::spawn(state.db_pool().clone());
+    crate::organizations::admission::spawn(state.clone());
     if let Some(notifications) = state.notifications() {
         notifications.spawn_message_notification_worker(state.db_pool().clone());
         notifications.spawn_calendar_worker(state.db_pool().clone());

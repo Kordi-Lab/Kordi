@@ -18,6 +18,7 @@ use serde::Serialize;
 
 use crate::server::ServerState;
 
+pub mod admission;
 mod handlers;
 mod policy;
 #[cfg(test)]
@@ -40,6 +41,7 @@ pub fn routes() -> Router<Arc<ServerState>> {
             "/v1/cloud/organizations/:organization_id/members/:account_id",
             axum::routing::patch(handlers::update_member).delete(handlers::remove_member),
         )
+        .merge(admission::routes())
 }
 
 pub const PERSONAL_KIND: &str = "personal";

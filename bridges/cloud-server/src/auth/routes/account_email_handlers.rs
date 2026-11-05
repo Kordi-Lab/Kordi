@@ -129,6 +129,12 @@ pub(super) async fn verify_account_email_code(
     {
         return account_email_error(error);
     }
+    crate::organizations::admission::hooks::record_verified_primary_email(
+        state.db_pool(),
+        state.organization_admission(),
+        &session.account_id,
+    )
+    .await;
     let _ = write_audit(
         state.db_pool(),
         Some(&session.account_id),

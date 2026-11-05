@@ -1,4 +1,5 @@
 use super::*;
+use crate::organizations::admission::hooks::record_verified_primary_email;
 mod existing_account;
 #[cfg(test)]
 mod legacy_signup_tests;
@@ -325,6 +326,9 @@ pub(super) async fn signup(
         eprintln!(
             "[auth] legacy signup without email code created unverified account {account_id}"
         );
+    } else {
+        let admission = state.organization_admission();
+        record_verified_primary_email(state.db_pool(), admission, &account_id).await;
     }
     apply_deferred_signup_avatar(&state, &account_id, &avatar, &now, deferred_avatar_bytes).await;
     rate_limiter

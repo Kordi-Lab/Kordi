@@ -65,19 +65,26 @@ pub(super) async fn list_organizations(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Response {
+    match organizations_for(state.db_pool(), &session.account_id).await {
+        Ok(organizations) => Json(json!({ "organizations": organizations })).into_response(),
+        Err(error) => error.into_response(),
+    }
+}
+
+/// The organizations `account_id` belongs to, personal first.
+pub(super) async fn organizations_for(
+    pool: &PgPool,
+    account_id: &str,
+) -> Result<Vec<OrganizationSummary>, ApiError> {
     let sql = format!(
         "{SUMMARY_SELECT} ORDER BY (o.kind = 'personal') DESC, o.created_at, o.organization_id"
     );
-    let rows: Vec<SummaryRow> = match query_as(&sql)
-        .bind(&session.account_id)
-        .fetch_all(state.db_pool())
+    let rows: Vec<SummaryRow> = query_as(&sql)
+        .bind(account_id)
+        .fetch_all(pool)
         .await
-    {
-        Ok(rows) => rows,
-        Err(_) => return server_error().into_response(),
-    };
-    let organizations: Vec<_> = rows.into_iter().filter_map(summary).collect();
-    Json(json!({ "organizations": organizations })).into_response()
+        .map_err(|_| server_error())?;
+    Ok(rows.into_iter().filter_map(summary).collect())
 }
 
 pub(super) async fn get_organization(
@@ -92,7 +99,7 @@ pub(super) async fn get_organization(
     }
 }
 
-async fn member_summary(
+pub(super) async fn member_summary(
     pool: &PgPool,
     account_id: &str,
     organization_id: &str,
