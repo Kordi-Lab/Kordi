@@ -33,6 +33,15 @@ const messages: Message[] = [
   { id: 'layout-file', role: 'person', senderType: 'human', sender: 'Maya Chen', text: 'Here is the implementation note.', time: '09:43', attachments: [{ kind: 'file', name: 'layout-notes.md', sizeBytes: 2048, downloadUrl: '/tests/visual/message-layout-notes.md' }] },
   { id: 'layout-failed', role: 'user', senderType: 'human', sender: 'You', isOwnMessage: true, text: 'A message waiting to be retried.', time: '09:44', statusChips: ['failed'] },
 ];
+// ?typing=1 ends the conversation with Kordi Support writing a reply.
+const showTyping = params.get('typing') === '1';
+if (showTyping) {
+  messages.push(
+    { id: 'layout-support-ask', role: 'user', senderType: 'human', sender: 'You', isOwnMessage: true, text: 'How do I change my Kordi ID?', time: '22:10', statusChips: ['delivered'] },
+    { id: 'layout-support-typing', role: 'person', senderType: 'human', sender: 'Kordi Support', sourceSenderLabel: 'Kordi Support', text: '', time: '22:10',
+      supportContactResponse: true, supportContactTyping: true, supportContactRequestId: 'layout-support-ask' },
+  );
+}
 function messagesSourceText() { return "What’s the cleanest way to keep replies easy to follow?"; }
 const liveTurn: DesktopChatTurnSnapshot = { id: 'layout-streaming', sessionId: 'sample', prompt: '', status: 'running', message: '', assistantText: 'Checking the layout…', thinkingText: '', tools: [], completed: false, succeeded: false,
   sourceMessage: { messageId: 'layout-source', senderLabel: 'Maya Chen', text: messagesSourceText() } };
@@ -46,8 +55,8 @@ function Preview() {
     <MessageLayoutSetting />
     <output data-last-action={action} style={{ minHeight: 26, color: 'var(--utility-muted-text)' }}>{action}</output>
     {selectionMode ? <button onClick={() => setSelectionMode(false)}>Cancel selection</button> : null}
-    <VirtualTranscript tail={<LiveChatTurnMessage turn={liveTurn} sender="Research assistant" onStopActiveTurn={() => setAction('stop:layout-streaming')}
-      onNavigateToMessage={id => { setAction(`navigate:${id}`); navigateToTranscriptMessage(id, scrollRef); }} />} tailKey="layout-streaming"
+    <VirtualTranscript tail={showTyping ? undefined : <LiveChatTurnMessage turn={liveTurn} sender="Research assistant" onStopActiveTurn={() => setAction('stop:layout-streaming')}
+      onNavigateToMessage={id => { setAction(`navigate:${id}`); navigateToTranscriptMessage(id, scrollRef); }} />} tailKey={showTyping ? undefined : "layout-streaming"}
       items={messages} sessionKey="layout-preview" getItemKey={message => message.id!} estimateSize={() => 120}
       scrollRef={scrollRef} scrollStyle={{ flex: 1, minHeight: 0, padding: '8px 4px' }}
       renderItem={message => <MessageBubble msg={message}
