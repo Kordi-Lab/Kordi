@@ -37,7 +37,9 @@ impl kordi_omp_runtime::HostTool for NoTools {
     }
 }
 
-async fn generate<C, P>(
+/// One Common ground completion with the engine's model, for `step` and for
+/// offline quality checks of card builds.
+pub async fn generate<C, P>(
     client: &C,
     provider: &P,
     engine: CloudModelEngine,
@@ -66,10 +68,16 @@ where
                 tools: vec![],
                 timeout_ms: (TIMEOUT_SECONDS - 10) * 1000,
             };
-            crate::omp_job::run(job, &NoTools, &|_| async { Ok(()) })
+            let result = crate::omp_job::run(job, &NoTools, &|_| async { Ok(()) })
                 .await
-                .map_err(|error| error.to_string())?
-                .text
+                .map_err(|error| error.to_string())?;
+            // One turn with no tools: the last reply's usage is the run's.
+            if let Some(usage) = &result.usage {
+                crate::usage_meter::record_omp_message(
+                    &json!({"role": "assistant", "usage": usage}),
+                );
+            }
+            result.text
         }
         CloudModelEngine::Rust => {
             let messages = [

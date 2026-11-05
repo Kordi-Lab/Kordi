@@ -1,0 +1,44 @@
+{
+  "kind": "systemAgent",
+  "id": "timezone-deal",
+  "description": "Everyone agrees on one lunch in a group whose members are in UTC+09:00; the start keeps the local wall-clock time.",
+  "title": "Lunch",
+  "members": [
+    {"key": "maya", "name": "Maya Chen", "timezone": "Asia/Tokyo"},
+    {"key": "jordan", "name": "Jordan Lee", "timezone": "Asia/Tokyo"},
+    {"key": "riya", "name": "Riya Shah", "timezone": "Asia/Tokyo"}
+  ],
+  "turns": [
+    {
+      "messages": [
+        {"from": "maya", "text": "Lunch on {{d+3:long}} at 12:30 at Ramen Ichi? My treat", "minutesAgo": 4},
+        {"from": "jordan", "text": "I'm in", "minutesAgo": 3},
+        {"from": "riya", "text": "works for me", "minutesAgo": 2}
+      ],
+      "expect": {
+        "reply": "message",
+        "allowedActions": ["propose", "rsvp", "confirm"],
+        "requiredActions": ["propose", "confirm"],
+        "card": {
+          "state": ["confirmed"],
+          "startAt": "{{d+3}}T12:30:00+09:00",
+          "locationIncludes": ["ramen"],
+          "going": ["jordan", "riya"]
+        }
+      },
+      "stub": [
+        {"toolCalls": [{
+          "action": "propose", "conversationId": "$conversationId", "title": "Lunch at Ramen Ichi",
+          "state": "awaitingConfirmation", "startAt": "{{d+3}}T12:30:00+09:00", "location": "Ramen Ichi",
+          "participants": "$participants:maya", "sourceMessageIds": "$newMessageIds"
+        }]},
+        {"toolCalls": [
+          {"action": "rsvp", "eventId": "$eventId", "participantId": "$member:jordan", "rsvp": "yes"},
+          {"action": "rsvp", "eventId": "$eventId", "participantId": "$member:riya", "rsvp": "yes"}
+        ]},
+        {"toolCalls": [{"action": "confirm", "eventId": "$eventId", "revision": "$revision", "confirmedBy": "$member:maya"}]},
+        {"final": {"message": "Everyone agreed, so lunch is now fixed.", "hooksHandled": []}}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "kind": "systemAgent",
+  "id": "repeat-temptation",
+  "description": "A vote is open and the System agent already asked people to vote; vague replies must not trigger the same nudge again.",
+  "title": "Movie night",
+  "members": [
+    {"key": "maya", "name": "Maya Chen"},
+    {"key": "jordan", "name": "Jordan Lee"},
+    {"key": "riya", "name": "Riya Shah"},
+    {"key": "theo", "name": "Theo Park"}
+  ],
+  "history": [
+    {"from": "maya", "text": "Movie night? {{d+3:long}} or {{d+4:long}} at 8pm, my place", "minutesAgo": 60},
+    {"from": "system", "text": "Two days are on the table, so I opened a vote. Vote on the card so we can lock it in.", "minutesAgo": 58}
+  ],
+  "card": {
+    "organizer": "maya", "title": "Movie night at Maya's", "state": "polling", "location": "Maya's place",
+    "options": [
+      {"label": "{{d+3:weekday}} 8pm", "startAt": "{{d+3}}T20:00:00+00:00"},
+      {"label": "{{d+4:weekday}} 8pm", "startAt": "{{d+4}}T20:00:00+00:00"}
+    ]
+  },
+  "turns": [
+    {
+      "messages": [
+        {"from": "jordan", "text": "yes", "minutesAgo": 3},
+        {"from": "riya", "text": "ok", "minutesAgo": 2}
+      ],
+      "expect": {
+        "reply": "any",
+        "allowedActions": [],
+        "card": {"status": "unchanged"}
+      },
+      "stub": [
+        {"final": {"message": null, "hooksHandled": []}}
+      ]
+    },
+    {
+      "messages": [
+        {"from": "theo", "text": "ok, either works for me", "minutesAgo": 2}
+      ],
+      "expect": {
+        "reply": "any",
+        "allowedActions": [],
+        "card": {"status": "unchanged"}
+      },
+      "stub": [
+        {"final": {"message": null, "hooksHandled": []}}
+      ]
+    }
+  ]
+}

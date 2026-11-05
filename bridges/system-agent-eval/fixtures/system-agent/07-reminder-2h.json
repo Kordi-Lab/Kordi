@@ -1,0 +1,27 @@
+{
+  "kind": "systemAgent",
+  "id": "reminder-2h",
+  "description": "The day-before reminder already went out; the two-hour reminder is due.",
+  "title": "Lunch",
+  "members": [
+    {"key": "riya", "name": "Riya Shah"},
+    {"key": "theo", "name": "Theo Park"}
+  ],
+  "card": {
+    "organizer": "riya", "title": "Lunch at Green Bowl", "state": "confirmed",
+    "startAt": "{{now+90m}}", "location": "Green Bowl",
+    "remindersSent": ["t_minus_24h"]
+  },
+  "turns": [
+    {
+      "expect": {
+        "reply": "message",
+        "allowedActions": [],
+        "card": {"status": "unchanged"}
+      },
+      "stub": [
+        {"final": {"message": "Lunch is in a couple of hours.", "hooksHandled": ["t_minus_2h"]}}
+      ]
+    }
+  ]
+}

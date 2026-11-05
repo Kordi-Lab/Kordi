@@ -8,6 +8,7 @@ mod documents;
 mod gather;
 mod related;
 
+pub(super) use gather::item;
 #[cfg(test)]
 pub(super) use gather::{link_url_for_tests, request_for_tests};
 #[cfg(test)]
