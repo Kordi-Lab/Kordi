@@ -11,7 +11,7 @@ async fn logout_invalidates_session_token() {
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse").await,
+            signup_body(&email, TEST_PASSWORD).await,
         ))
         .await
         .unwrap();
@@ -49,7 +49,7 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
             .clone()
             .oneshot(post(
                 "/v1/cloud/auth/signup",
-                signup_body(&a_email, "correct horse").await,
+                signup_body(&a_email, TEST_PASSWORD).await,
             ))
             .await
             .unwrap(),
@@ -60,7 +60,7 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
             .clone()
             .oneshot(post(
                 "/v1/cloud/auth/signup",
-                signup_body(&b_email, "correct horse").await,
+                signup_body(&b_email, TEST_PASSWORD).await,
             ))
             .await
             .unwrap(),
@@ -71,7 +71,7 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
             .clone()
             .oneshot(post(
                 "/v1/cloud/auth/signup",
-                signup_body(&c_email, "correct horse").await,
+                signup_body(&c_email, TEST_PASSWORD).await,
             ))
             .await
             .unwrap(),
@@ -201,7 +201,7 @@ async fn presence_separates_frontend_and_desktop_runtime_activity() {
                 "/v1/cloud/auth/signup",
                 signup_body_with_device(
                     &email,
-                    "correct horse",
+                    TEST_PASSWORD,
                     device_registration(41, "Test iPhone", "ios"),
                 )
                 .await,

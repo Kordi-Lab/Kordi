@@ -55,7 +55,7 @@ test('signup uploads avatar bytes separately and activates the returned referenc
 
   const result = await client.signup({ verificationId: 'test_challenge', verificationCode: '123456',
     email: 'ada@example.com',
-    password: 'correct horse',
+    password: 'Correct-horse-7',
     displayName: 'Ada',
     avatarSeed: 'signup_seed',
     avatarMutation: { action: 'upload', uploadedAsset: 'data:image/jpeg;base64,/9j/' },

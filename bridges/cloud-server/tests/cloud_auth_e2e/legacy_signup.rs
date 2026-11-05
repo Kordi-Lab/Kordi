@@ -11,7 +11,7 @@ fn legacy_body(email: &str) -> Body {
     Body::from(
         json!({
             "email": email,
-            "password": "correct horse",
+            "password": TEST_PASSWORD,
             "avatarSeed": "legacy_signup_e2e",
             "device": device_registration(7, "Legacy Mac", "macos"),
         })
@@ -91,7 +91,7 @@ async fn open_window_still_checks_a_code_that_is_sent() {
     let router = fast_router(Arc::new(state));
     let wrong = json!({
         "email": email,
-        "password": "correct horse",
+        "password": TEST_PASSWORD,
         "avatarSeed": "legacy_signup_e2e",
         "verificationId": "email_missing",
         "verificationCode": "000000",
@@ -111,7 +111,7 @@ async fn open_window_still_checks_a_code_that_is_sent() {
     let response = router
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse").await,
+            signup_body(&email, TEST_PASSWORD).await,
         ))
         .await
         .unwrap();

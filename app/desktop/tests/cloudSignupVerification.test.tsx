@@ -56,8 +56,8 @@ test('signup waits for an inbox code, retries wrong codes, and clears proof when
       await act(async () => button.click());
     }
     await fill('Email', 'owner@example.com');
-    await fill('Password', 'correct horse');
-    await fill('Confirm Password', 'correct horse');
+    await fill('Password', 'Correct-horse-7');
+    await fill('Confirm Password', 'Correct-horse-7');
     await submit();
     assert.deepEqual(sent, ['owner@example.com']);
     assert.equal(registrations.length, 0);

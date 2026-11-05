@@ -27,7 +27,7 @@ fn router(legacy_signup_until: Option<DateTime<Utc>>) -> Router {
 async fn signup(router: Router, extra: Value) -> (StatusCode, Value) {
     let mut body = json!({
         "email": "legacy-signup@example.test",
-        "password": "correct horse",
+        "password": "Correct-horse-7",
         "avatarSeed": "legacy_signup_test",
     });
     body.as_object_mut()

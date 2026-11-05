@@ -17,4 +17,16 @@ enum KordiLoginCopy {
         let page = configuration?.loginPage
         return (signup ? page?.signupSubtitle : page?.subtitle) ?? (accessibility ? "People and agents, together." : nil)
     }
+
+    private static let passwordRule = "at least 8 characters, with an uppercase letter, a lowercase letter, and a number"
+    static let passwordRuleHint = "Use \(passwordRule)."
+    static let weakPasswordMessage = "Password must have \(passwordRule)."
+
+    /// Mirrors the server sign-up policy; sign-in never checks it.
+    static func isStrongPassword(_ password: String) -> Bool {
+        password.count >= 8
+            && password.contains(where: \.isUppercase)
+            && password.contains(where: \.isLowercase)
+            && password.unicodeScalars.contains { ("0"..."9").contains($0) }
+    }
 }
