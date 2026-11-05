@@ -11,6 +11,7 @@ pub(crate) mod cards;
 mod config;
 pub(crate) mod context;
 mod input;
+mod limits;
 pub mod membership;
 mod mentions;
 mod prompt;
@@ -65,5 +66,7 @@ mod card_update_tests;
 mod context_boundary_tests;
 #[cfg(test)]
 mod membership_tests;
+#[cfg(test)]
+mod pool_tests;
 #[cfg(test)]
 mod sweep_tests;

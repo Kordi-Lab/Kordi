@@ -87,7 +87,7 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
         system_prompt.push_str("\n\n");
         system_prompt.push_str(&section);
     }
-    let mut headers = std::collections::BTreeMap::new();
+    let mut headers = auth.headers.clone();
     if let Some(account_id) = &auth.account_id {
         headers.insert("ChatGPT-Account-ID".to_string(), account_id.clone());
     }

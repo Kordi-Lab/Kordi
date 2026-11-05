@@ -20,6 +20,7 @@ mod personal_agent_tests;
 mod pin_stack_tests;
 mod proactive_tests;
 mod projection_tests;
+mod resource_pool_tests;
 mod signup_email_tests;
 mod title_tests;
 
