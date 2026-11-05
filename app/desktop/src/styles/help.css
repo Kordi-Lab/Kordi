@@ -1,6 +1,8 @@
 .help-icon-button { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; }
 .help-primary, .help-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; border-radius: 10px; padding: 8px 12px; font-size: 12px; font-weight: 600; }
-.help-primary { color: var(--app-sidebar-accent-text); background: var(--app-sidebar-accent); }
+/* Neutral ink primary, matching the other transient surfaces. */
+.help-primary { color: var(--app-transient-surface-fallback); background: var(--app-transient-text); }
+.help-primary:hover:not(:disabled) { background: color-mix(in oklab, var(--app-transient-text) 88%, var(--app-transient-surface-fallback)); }
 .help-secondary { background: var(--app-transient-raised-bg); color: var(--app-transient-text); border: 1px solid var(--app-transient-border); }
 .help-permission-list { list-style: none; padding: 0; margin: 4px 0 8px; }
 .help-permission-row { display: flex; gap: 14px; align-items: flex-start; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--app-transient-border); }
@@ -10,11 +12,10 @@
 .help-section { padding: 18px 0; border-bottom: 1px solid var(--app-transient-border); }
 .help-text-button { min-height: 34px; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
 
-/* The workspace stays visible beneath a target-shaped spotlight. */
+/* The page keeps its normal colors; a thin neutral outline marks the target. */
 .help-tour-layer { position: fixed; inset: 0; z-index: 300; pointer-events: none; }
-.help-tour-spotlight { position: fixed; border: 2px solid var(--app-sidebar-accent); border-radius: 10px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-sidebar-accent) 18%, transparent), 0 0 0 9999px rgb(0 0 0 / 24%); }
-.help-tour-dim { position: fixed; inset: 0; background: rgb(0 0 0 / 38%); }
-.help-tour-card { position: fixed; width: min(320px, calc(100vw - 24px)); pointer-events: auto; border-radius: 14px; background: var(--app-transient-surface-bg); color: var(--app-transient-text); border: 1px solid var(--app-transient-border); box-shadow: 0 12px 45px rgb(0 0 0 / 30%); outline: none; }
+.help-tour-spotlight { position: fixed; border: 1px solid color-mix(in oklab, var(--app-transient-text) 28%, transparent); border-radius: 10px; }
+.help-tour-card { position: fixed; width: min(320px, calc(100vw - 24px)); pointer-events: auto; border-radius: 14px; background: var(--app-transient-surface-bg); color: var(--app-transient-text); border: 1px solid var(--app-transient-border); box-shadow: var(--app-transient-shadow); outline: none; }
 .help-tour-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; color: var(--app-transient-muted-text); font-size: 11px; font-weight: 600; letter-spacing: .04em; }
 .help-tour-top .help-icon-button { width: 28px; height: 28px; border-radius: 7px; }
 .help-tour-card h2 { margin: 0 0 8px; font-size: 17px; line-height: 1.35; font-weight: 650; letter-spacing: -.025em; }
@@ -83,6 +84,10 @@
   -webkit-backdrop-filter: blur(24px) saturate(1.3);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 12%), 0 12px 40px rgb(0 0 0 / 24%) !important;
 }
+.help-tour-card {
+  --help-glass-bg: var(--app-transient-surface-bg);
+  box-shadow: inset 0 1px 0 var(--app-glass-highlight), var(--app-transient-shadow) !important;
+}
 .help-tour-arrow[data-side="right"] { border-right-color: var(--help-glass-bg); }
 .help-tour-arrow[data-side="left"] { border-left-color: var(--help-glass-bg); }
 .help-tour-arrow[data-side="bottom"] { border-bottom-color: var(--help-glass-bg); }
@@ -99,10 +104,11 @@
 .help-menu-note { margin: 2px 10px 10px; font-size: 11px; line-height: 1.5; color: var(--app-transient-muted-text); }
 
 .help-menu-section-label { margin: 4px 10px; font-size: 11px; color: var(--app-transient-muted-text); }
-.help-tour-sections-toggle { margin: 0; padding: 4px 0; font-size: 11px; color: var(--app-sidebar-accent); text-decoration: underline; text-underline-offset: 3px; }
+.help-tour-sections-toggle { margin: 0; padding: 4px 0; font-size: 11px; color: var(--app-transient-muted-text); text-decoration: underline; text-decoration-color: var(--app-transient-border); text-underline-offset: 3px; }
+.help-tour-sections-toggle:hover { color: var(--app-transient-text); }
 .help-tour-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 0 0 12px; }
 .help-tour-sections button { padding: 7px 8px; text-align: left; border-radius: 7px; font-size: 12px; background: var(--app-transient-raised-bg); }
-.help-tour-sections button[aria-current] { color: var(--app-sidebar-accent); }
+.help-tour-sections button[aria-current] { background: var(--app-transient-selected-bg); color: var(--app-transient-text); font-weight: 600; }
 .help-example-label { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 10px 16px; font-size: 12px; border-bottom: 1px solid var(--app-transient-border); color: var(--app-transient-muted-text); }
 .help-example-content { border: 0; margin: 0; padding: 0; min-width: 0; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .help-example-content > .cg-scroll { flex: 1; }
