@@ -16,6 +16,55 @@ pub(crate) async fn agent_desktop_ready(
     Ok(row.0)
 }
 
+/// Presence timeouts after its last beat for which a request is still held for a Mac.
+const DESKTOP_READY_GRACE_TIMEOUTS: i32 = 2;
+
+/// Whether a request should wait for a Mac of its agent's owner first.
+pub(in crate::cloud_agent_runtime) async fn prefer_ready_desktop(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> runs::RunResult<bool> {
+    // A ready owner Mac executes regardless of where the selected provider
+    // account is stored. Hosted credentials are resolved for its claimed run.
+    let agent = execution_agent_id(pool, input).await?;
+    let timeout = crate::presence::presence_timeout();
+    let grace = timeout * DESKTOP_READY_GRACE_TIMEOUTS;
+    let owner = &input.owner_account_id;
+    Ok(agent_desktop_recently_ready(pool, owner, &agent, timeout, grace).await?)
+}
+
+/// Whether a Mac of `owner` was ready to run `agent` within `grace`, the
+/// window in which a new request is still held for it. One missed readiness
+/// or presence beat must not hand a request to the cloud while the Mac is
+/// open. A Mac that signed off or disconnected with a fresh heartbeat does
+/// not count; one the stale sweep marked offline does, until `grace` ends.
+/// Execution itself still needs fresh readiness ([`claim`]).
+async fn agent_desktop_recently_ready(
+    pool: &PgPool,
+    owner: &str,
+    agent: &str,
+    timeout: chrono::Duration,
+    grace: chrono::Duration,
+) -> Result<bool, sqlx_core::Error> {
+    let seconds = |value: chrono::Duration| value.num_milliseconds() as f64 / 1000.0;
+    let row: (bool,) = query_as(
+        "SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r \
+         JOIN cloud_devices d USING(device_id) JOIN cloud_device_presence p USING(device_id) \
+         WHERE d.account_id=$1 AND d.revoked_at IS NULL AND r.agent_id=$2 \
+           AND r.updated_at > now() - make_interval(secs => $3) \
+           AND p.last_heartbeat_at::timestamptz > now() - make_interval(secs => $3) \
+           AND (p.state='online' OR p.last_heartbeat_at::timestamptz \
+                <= p.last_offline_at::timestamptz - make_interval(secs => $4)))",
+    )
+    .bind(owner)
+    .bind(agent)
+    .bind(seconds(grace))
+    .bind(seconds(timeout))
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0)
+}
+
 pub(in crate::cloud_agent_runtime) async fn claim(
     state: State<Arc<ServerState>>,
     session: Extension<CloudSession>,
