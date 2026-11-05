@@ -275,6 +275,39 @@ test('a server rejection reaches the panel as the error message', async () => {
   assert.equal((await client.syncState()).lastSyncedAt, null);
 });
 
+test('signed in but unable to reach the server, the list and settings come from this Mac', async () => {
+  const offline = new CloudAuthError('network_error', 'Network request failed.', 0);
+  const auth = fakeAuth({
+    async list() { throw offline; },
+    async settings() { throw offline; },
+  });
+  const native = fakeDesktop(true, [{
+    lessonId: 'local-1',
+    scope: 'conversation',
+    scopeId: 'conv-1',
+    scopeLabel: 'Launch copy',
+    source: 'manual',
+    text: 'Keep headlines short.',
+    createdAt: '2026-10-01T00:00:00.000Z',
+    updatedAt: '2026-10-01T00:00:00.000Z',
+    pendingUpload: false,
+  }]);
+  const client = createAccountMemoryClient({ ...wire(auth.client), loadSession: async () => session, desktop: native.desktop });
+  assert.deepEqual((await client.listLessons()).map((lesson) => lesson.lessonId), ['local-1']);
+  assert.deepEqual(await client.settings(), { lessonsEnabled: true, excludeSensitive: false });
+  assert.equal((await client.syncState()).lastSyncedAt, null);
+});
+
+test('a server error that is not a lost connection still reaches the panel', async () => {
+  const auth = fakeAuth({
+    async list() { throw new CloudAuthError('invalid_session', 'Sign in again.', 401); },
+  });
+  const native = fakeDesktop(true, []);
+  const client = createAccountMemoryClient({ ...wire(auth.client), loadSession: async () => session, desktop: native.desktop });
+  await assert.rejects(client.listLessons(), { message: 'Sign in again.' });
+  assert.deepEqual(native.calls, []);
+});
+
 test('signed out, the list and settings come from this Mac', async () => {
   const auth = fakeAuth();
   const native = fakeDesktop(true, [{
