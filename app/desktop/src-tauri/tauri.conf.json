@@ -21,6 +21,7 @@
         "minHeight": 760,
         "resizable": true,
         "fullscreen": false,
+        "visible": false,
         "transparent": true,
         "backgroundColor": "#00000000",
         "backgroundThrottling": "disabled",

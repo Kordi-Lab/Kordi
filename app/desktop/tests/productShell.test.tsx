@@ -295,7 +295,7 @@ test('browser sign-in uses a compact frosted window on macOS only', () => {
   const css = readDesktopShellCss();
   // A faint veil at most, so the blurred wallpaper stays visible.
   assert.match(css, /theme-light\.app-cloud-login-shell\[data-frosted="true"\] \.app-cloud-login-page \{\s*--app-cloud-login-page-bg: rgb\(255 255 255 \/ 0\.10\);/);
-  assert.match(css, /\.kordi-app\.app-cloud-login-shell\[data-frosted="true"\] \.app-cloud-login-page \{\s*--app-cloud-login-page-bg: rgb\(10 12 16 \/ 0\.14\);/);
+  assert.match(css, /\.kordi-app\.app-cloud-login-shell\[data-frosted="true"\] \.app-cloud-login-page \{\s*--app-cloud-login-page-bg: rgb\(14 16 20 \/ 0\.82\);/);
   assert.match(css, /\[data-frosted="true"\] \.app-cloud-starting-screen\[data-visible="false"\]::before \{\s*opacity: 0;/);
   const windowLayout = readSource('src-tauri/src/auth_window/layout.rs');
   assert.match(windowLayout, /let material: isize = if welcome \{ 13 \} else \{ 7 \};/, 'the welcome window uses the HUD material');

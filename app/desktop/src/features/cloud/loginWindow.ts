@@ -122,12 +122,37 @@ function listenForAuthWindowCrop() {
   })).catch(() => { authWindowCropListening = false; });
 }
 
+// The main window starts hidden (tauri.conf.json), so its bare frame never
+// shows before the first screen paints. The first screen shows it once.
+let mainWindowShown = false;
+
+/** Whether the main window is on screen; always true outside the native shell. */
+export function isMainWindowShown() {
+  return mainWindowShown || !isTauriRuntime();
+}
+
+export async function showMainWindow() {
+  if (isMainWindowShown()) return;
+  mainWindowShown = true;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('desktop_reveal_main_window');
+  } catch {
+    // The native side shows the window on its own after a delay.
+  }
+}
+
+export function __setMainWindowShownForTests(shown: boolean) {
+  mainWindowShown = shown;
+}
+
 const resizeNativeWindow = createWindowSizeCoordinator(async (surface: CloudGateSurface | 'main') => {
   listenForAuthWindowCrop();
   const { invoke } = await import('@tauri-apps/api/core');
   const crop = await invoke<AuthWindowCrop | undefined>('desktop_set_auth_window_surface', {
     surface,
-    animate: !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+    // A hidden window takes its first size at once.
+    animate: isMainWindowShown() && !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
   });
   applyAuthWindowCrop(crop);
 });
