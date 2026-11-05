@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import HelpTour from '../../src/features/onboarding/HelpTour';
 import { requestHelpGrounding } from '../../src/features/onboarding/helpNavigation';
 import { StrictMode, useLayoutEffect, useMemo, useState } from 'react';

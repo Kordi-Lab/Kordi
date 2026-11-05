@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GroupAvatar } from '../../src/kordi-app/components/GroupAvatar';

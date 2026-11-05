@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AuthPreview } from '../../src/dev/AuthPreview';

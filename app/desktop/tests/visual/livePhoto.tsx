@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { LivePhotoPlayback } from '../../src/kordi-app/components/livePhotoPlayback';
