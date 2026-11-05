@@ -17,6 +17,9 @@ struct KeychainSessionStore {
         self.developmentDefaults = developmentDefaults
     }
 
+    /// Separates stores; the shared sign-in refresher keys on it.
+    var serviceName: String { service }
+
     func loadToken() throws -> String? {
         try loadData(account: account).flatMap { String(data: $0, encoding: .utf8) }
     }
@@ -28,8 +31,8 @@ struct KeychainSessionStore {
     /// Removes the session token and, with it, any browser sign-in credential,
     /// so every sign-out path also drops the refresh token.
     func deleteToken() throws {
-        try deleteData(account: appSignInAccount)
-        try deleteData(account: account)
+        let results = [Result { try deleteData(account: appSignInAccount) }, Result { try deleteData(account: account) }]
+        for result in results { try result.get() }
     }
 
     func loadAppSignInCredential() throws -> AppSignInCredential? {
@@ -72,15 +75,21 @@ struct KeychainSessionStore {
         #if BETA && targetEnvironment(simulator)
         developmentDefaults.set(data, forKey: defaultsKey(for: account))
         #else
-        try? deleteData(account: account)
-        let query: [String: Any] = [
+        // Update in place, so a failed write never leaves the item deleted
+        // (losing a rotated refresh token would end the sign-in).
+        let item: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account
+        ]
+        let values: [String: Any] = [
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
             kSecValueData as String: data
         ]
-        let status = SecItemAdd(query as CFDictionary, nil)
+        let updated = SecItemUpdate(item as CFDictionary, values as CFDictionary)
+        if updated == errSecSuccess { return }
+        guard updated == errSecItemNotFound else { throw KeychainError(status: updated) }
+        let status = SecItemAdd(item.merging(values) { _, new in new } as CFDictionary, nil)
         guard status == errSecSuccess else { throw KeychainError(status: status) }
         #endif
     }

@@ -246,13 +246,19 @@ form again and keep the query.
 ### `GET /v1/cloud/auth/app/authorize`
 
 Query: `response_type=code`, `client_id`, `redirect_uri`, `code_challenge`,
-`code_challenge_method=S256`, `state` (required, up to 512 characters).
+`code_challenge_method=S256`, `state` (required, up to 512 characters), and
+optionally `prompt`.
 
 - Unknown client or unregistered redirect URI: `400` with `invalid_client`
   or `invalid_redirect_uri`. Nothing is sent to the redirect URI.
 - Any other invalid parameter: a redirect to `redirect_uri` with `error`,
   `error_description` and `state`.
 - Valid: a redirect to the web sign-in page with the same parameters.
+- `prompt=create` (OpenID Connect) is forwarded to the sign-in page, which
+  should then open on account creation instead of log-in. Any other `prompt`
+  value is dropped. The page sends `prompt` back to
+  `POST /v1/cloud/auth/app/authorize` or leaves it out; the server ignores it
+  there. The apps send it for Sign up.
 
 ### `POST /v1/cloud/auth/app/authorize`
 
@@ -507,20 +513,40 @@ The iPhone app shows a welcome screen with Log in and Sign up. Both open
 - Availability: the same probe and rules as the desktop app. The answer is
   remembered for the rest of the launch only when it is settled
   (`invalid_redirect_uri`, 404, 405 or `invalid_client`).
+- Requests go through the app's Cloud transport, which connects loopback
+  directly and works around a broken system proxy.
 - Tokens: the access token stays in the existing Keychain session item, and
   the refresh token, client ID, token endpoint, expiry and account ID are a
   second Keychain item (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`).
-  Removing the session item always removes the second one too. The app
-  refreshes five minutes before expiry, at launch, and when it returns to the
-  foreground. One refresh runs at a time, and its result is written only while
-  the stored sign-in is still the one it refreshed, so a sign-out during a
-  refresh wins and the new tokens are revoked. A refused refresh signs out.
-  A refresh reconnects realtime with the new token.
+  Both are updated in place, so a failed write never loses a rotated refresh
+  token. Removing the session item always removes the second one too.
+- Refresh: five minutes before expiry, at launch, when the app returns to the
+  foreground, and before background Nearby posts. One store per process runs
+  one refresh at a time and holds background execution time for it (the reuse
+  grace is 60 seconds). Its result is written only while the stored sign-in is
+  still the one it refreshed, so a sign-out during a refresh wins and the new
+  tokens are revoked. A refused refresh (`invalid_grant` or `invalid_client`)
+  signs out; anything else keeps the session and retries.
+- Session identity: work started under an earlier access token of the same
+  sign-in stays current after a refresh, so in-flight requests are not
+  dropped. A refresh reconnects realtime with the new token.
+- Launch: a stored sign-in for another server is dropped, and one left behind
+  by an older session is revoked. Only the server ending the session (401,
+  `invalid_session`, `account_missing`) discards the stored sign-in, revoking
+  it; a connection or server error keeps it, and the welcome screen restores
+  it when it appears or the app returns to the foreground.
+- Share extension: it never refreshes (a second process could present a
+  rotated token). With an expired token it shows "Open Kordi to continue";
+  opening the app refreshes the session and rewrites the extension's copy.
 - Sign-out revokes the refresh token through `POST /v1/cloud/auth/app/revoke`
   and then calls `POST /v1/cloud/auth/logout`.
 - Account changes: caches are keyed by account ID, and a browser sign-in that
   returns a different account than the one in memory signs that account out,
   clearing its caches, before the new account's data loads.
+
+A server that sets `KORDI_AUTH_APP_CLIENTS` replaces the built-in list, so
+it must include `kordi-ios` (and `kordi-ios-beta` on development servers) or
+iPhone users fall back to the in-app form.
 
 Follow-up: any app on the device can register a custom URL scheme. The next
 step is a claimed `https` universal-link redirect (an associated domain on

@@ -90,6 +90,14 @@ enum AppSignInRefreshError: Error, Equatable {
 }
 
 struct AppSignInClient: Sendable {
+    /// Sends one request. The app uses `CloudAPIClient.transportData`, which
+    /// connects loopback directly and falls back around a broken proxy.
+    typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
+    static func transport(using api: CloudAPIClient) -> Transport {
+        { request in try await api.transportData(for: request, fallback: "Could not reach the server.") }
+    }
+
     static let authorizePath = "/v1/cloud/auth/app/authorize"
     static let tokenPath = "/v1/cloud/auth/app/token"
     static let revokePath = "/v1/cloud/auth/app/revoke"
@@ -97,7 +105,7 @@ struct AppSignInClient: Sendable {
     let baseURL: URL
     let clientId: String
     let redirectURI: String
-    var session: URLSession = CloudAPIClient.reliableSession
+    let transport: Transport
 
     /// Each distribution has its own callback scheme (`kordi`, `kordi-beta`,
     /// `kordi-staging`, ...) and the server registers a matching iPhone client
@@ -113,12 +121,13 @@ struct AppSignInClient: Sendable {
         "\(scheme)://auth/callback"
     }
 
-    static func current(environment: KordiAppEnvironment = .current) -> AppSignInClient {
+    static func current(environment: KordiAppEnvironment = .current, transport: @escaping Transport) -> AppSignInClient {
         let scheme = environment.oauthCallbackURL.scheme ?? "kordi"
         return AppSignInClient(
             baseURL: environment.cloudBaseURL,
             clientId: clientId(forCallbackScheme: scheme),
-            redirectURI: redirectURI(forCallbackScheme: scheme)
+            redirectURI: redirectURI(forCallbackScheme: scheme),
+            transport: transport
         )
     }
 
@@ -146,7 +155,7 @@ struct AppSignInClient: Sendable {
     func probe(timeout: TimeInterval = 6) async -> BrowserSignInAvailability {
         var request = URLRequest(url: endpoint(Self.authorizePath, query: [("client_id", clientId)]), timeoutInterval: timeout)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        guard let (data, response) = try? await session.data(for: request),
+        guard let (data, response) = try? await transport(request),
               let http = response as? HTTPURLResponse else { return .unknown }
         return Self.availability(status: http.statusCode, body: data)
     }
@@ -183,7 +192,9 @@ struct AppSignInClient: Sendable {
         let status: Int
         let body: Data
         do {
-            (status, body) = try await Self.postForm(tokenEndpoint, fields, session: session)
+            (status, body) = try await Self.postForm(tokenEndpoint, fields, transport: transport)
+        } catch let error as CloudAPIError {
+            throw error
         } catch {
             throw CloudAPIError(code: "network_error", message: "Could not reach the server. Check your connection and try again.", statusCode: 0)
         }
@@ -198,7 +209,7 @@ struct AppSignInClient: Sendable {
 
     /// Rotates the refresh token. Uses the client and endpoint stored with the
     /// sign-in, so a stored sign-in keeps working after an app update.
-    static func refresh(_ credential: AppSignInCredential, session: URLSession, now: Date = Date()) async throws -> AppSignInCredential {
+    static func refresh(_ credential: AppSignInCredential, transport: Transport, now: Date = Date()) async throws -> AppSignInCredential {
         let status: Int
         let body: Data
         do {
@@ -206,7 +217,7 @@ struct AppSignInClient: Sendable {
                 ("grant_type", "refresh_token"),
                 ("client_id", credential.clientId),
                 ("refresh_token", credential.refreshToken),
-            ], session: session)
+            ], transport: transport)
         } catch {
             throw AppSignInRefreshError.unavailable
         }
@@ -227,14 +238,14 @@ struct AppSignInClient: Sendable {
 
     /// Ends the whole sign-in on the server (RFC 7009). Best effort: a failed
     /// request still lets the caller sign out locally.
-    static func revoke(_ credential: AppSignInCredential, session: URLSession) async {
+    static func revoke(_ credential: AppSignInCredential, transport: Transport) async {
         let endpoint = credential.tokenEndpoint.absoluteString
         guard endpoint.hasSuffix(tokenPath),
               let revokeURL = URL(string: String(endpoint.dropLast(tokenPath.count)) + revokePath) else { return }
         _ = try? await postForm(revokeURL, [
             ("client_id", credential.clientId),
             ("token", credential.refreshToken),
-        ], session: session)
+        ], transport: transport)
     }
 
     // MARK: Helpers
@@ -246,13 +257,13 @@ struct AppSignInClient: Sendable {
         return URL(string: base + path + suffix)!
     }
 
-    private static func postForm(_ url: URL, _ fields: [(String, String)], session: URLSession) async throws -> (Int, Data) {
+    private static func postForm(_ url: URL, _ fields: [(String, String)], transport: Transport) async throws -> (Int, Data) {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = Data(AppSignInForm.encode(fields).utf8)
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await transport(request)
         return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
     }
 
@@ -261,7 +272,7 @@ struct AppSignInClient: Sendable {
         return (object["error"] as? String) ?? (object["errorCode"] as? String)
     }
 
-    private static func exchangeError(status: Int, body: Data) -> CloudAPIError {
+    static func exchangeError(status: Int, body: Data) -> CloudAPIError {
         let error = errorCode(in: body)
         if status == 429 || error == "rate_limited" {
             return CloudAPIError(code: "rate_limited", message: "Too many attempts. Wait a moment, then try again.", statusCode: status)
@@ -336,15 +347,16 @@ enum AppSignInCallback {
               url.path == expected.path,
               let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems else { throw failed }
         func values(_ name: String) -> [String] { items.filter { $0.name == name }.map { $0.value ?? "" } }
-        guard values("state") == [expectedState] else {
-            throw CloudAPIError(code: "sign_in_state_mismatch", message: "This sign-in did not come from this app. Try again.", statusCode: 0)
-        }
+        // An error carries no code, so it is reported even without a matching state.
         if let error = values("error").first {
             if error == "access_denied" {
                 throw CloudAPIError(code: "access_denied", message: "Sign-in was canceled in the browser.", statusCode: 0)
             }
             let description = values("error_description").first?.trimmingCharacters(in: .whitespacesAndNewlines)
             throw CloudAPIError(code: "browser_sign_in_failed", message: description?.nonEmpty ?? failed.message, statusCode: 0)
+        }
+        guard values("state") == [expectedState] else {
+            throw CloudAPIError(code: "sign_in_state_mismatch", message: "This sign-in did not come from this app. Try again.", statusCode: 0)
         }
         let codes = values("code")
         guard codes.count == 1, let code = codes[0].trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty else { throw failed }

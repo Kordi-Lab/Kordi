@@ -333,7 +333,9 @@ final class AppModel: ObservableObject {
     private let attachmentFileStore = AttachmentFileStore()
     private let expressiveMediaLibrary = ExpressiveMediaLibraryStore()
     let conversationViewportMemory = ConversationViewportMemory()
-    private var token: String?
+    /// Every value joins `sessionIdentity`; nil ends the sign-in.
+    private var token: String? { didSet { sessionIdentity.follow(token) } }
+    private var sessionIdentity = CloudSessionIdentity()
     private var currentDeviceId: String?
     private var isRefreshingConnectorsCapability = false
     /// True until a capabilities fetch succeeds, so the account sheet retries.
@@ -523,8 +525,8 @@ final class AppModel: ObservableObject {
         } catch {
             if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
             presencePublisher.stop()
-            try? keychain.deleteToken()
-            try? shareCredentialStore.delete()
+            if await keepsBrowserSession(afterLaunchFailure: error) { errorMessage = userFacing(error, fallback: "Could not reach Kordi Cloud.") }
+            else { await discardStoredSession(); try? shareCredentialStore.delete() }
             token = nil
             currentDeviceId = nil
             account = nil
@@ -629,7 +631,7 @@ final class AppModel: ObservableObject {
         }
         do {
             let challenge = try await api.requestAccountEmailCode(token: token)
-            guard self.token == token, account?.accountId == accountId else { return nil }
+            guard sessionIdentity.contains(token), account?.accountId == accountId else { return nil }
             recordAccountEmailCode(
                 accountId: accountId,
                 challenge: challenge,
@@ -713,7 +715,7 @@ final class AppModel: ObservableObject {
 
     private func refreshAccountAfterEmailVerification(token: String, accountId: String) async {
         let refreshed = try? await api.me(token: token)
-        guard self.token == token, account?.accountId == accountId else { return }
+        guard sessionIdentity.contains(token), account?.accountId == accountId else { return }
         if let refreshed, refreshed.accountId == accountId, refreshed.primaryEmailVerified == true {
             account = refreshed
         } else {
@@ -897,7 +899,7 @@ final class AppModel: ObservableObject {
         let shouldRecordRemoteModelChanges = hasObservedOwnedAgentRouting
         isRefreshing = true
         if showSyncActivity { messageSyncState = .syncing }
-        defer { if self.token == token { isRefreshing = false } }
+        defer { if sessionIdentity.contains(token) { isRefreshing = false } }
         do {
             async let refreshedAccount = api.me(token: token)
             async let fetchedContacts = api.listContacts(token: token)
@@ -911,7 +913,7 @@ final class AppModel: ObservableObject {
             async let fetchedActiveCalls = try? api.activeCalls(token: token)
             async let fetchedPersonalAgents = try? api.listPersonalAgents(token: token)
             let (canonicalAccount, contactList) = try await (refreshedAccount, fetchedContacts)
-            guard self.token == token, self.account?.accountId == canonicalAccount.accountId else { return false }
+            guard sessionIdentity.contains(token), self.account?.accountId == canonicalAccount.accountId else { return false }
             self.account = canonicalAccount.preservingEmailVerification(from: self.account)
             contacts = contactList.sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
             didRefreshDirectory = true
@@ -921,7 +923,7 @@ final class AppModel: ObservableObject {
                 fetchedVisibility, fetchedAuth, fetchedDevices, canonicalLatestMessages,
                 fetchedActiveCalls, fetchedPersonalAgents
             )
-            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
+            guard sessionIdentity.contains(token), self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
             let sharedAgentOwnerIDs = Set(
                 contactList.map(\.accountId)
                     + (await api.cachedChatConversations()).flatMap(\.members).map(\.accountId)
@@ -930,7 +932,7 @@ final class AppModel: ObservableObject {
                 token: token,
                 ownerAccountIds: Array(sharedAgentOwnerIDs)
             )
-            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
+            guard sessionIdentity.contains(token), self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
             contacts = contactList.sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
             if let presence {
                 applyContactPresenceSnapshot(presence)
@@ -973,7 +975,7 @@ final class AppModel: ObservableObject {
                 + shared.map(\.ownerAccountId)
             )
             let history = await loadMessageHistories(token: token, peerAccountIds: peerAccountIds)
-            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
+            guard sessionIdentity.contains(token), self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
             let canonicalGroupSessionIds = await api.cachedChatConversations()
                 .filter { $0.kind == "group" && $0.latestMessageSequence > 0 }
                 .compactMap { $0.legacySessionId?.nonEmpty ?? $0.id.nonEmpty }
@@ -981,7 +983,7 @@ final class AppModel: ObservableObject {
                 token: token,
                 sessionIds: canonicalGroupSessionIds
             )
-            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
+            guard sessionIdentity.contains(token), self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
             let groupParticipantIds = Set(cloudMessagesByPeer.values.flatMap { messages in
                 messages.flatMap { CloudGroupMessageCodec.parse($0.body)?.participants.map(\.accountId) ?? [] }
             })
@@ -994,7 +996,7 @@ final class AppModel: ObservableObject {
                     token: token,
                     ownerAccountIds: Array(additionalOwners)
                 )
-                guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
+                guard sessionIdentity.contains(token), self.account?.accountId == account.accountId, !Task.isCancelled else { return false }
                 shared = normalizedSharedCloudAgents(shared + additional)
                 sharedCloudAgents = shared
             }
@@ -1013,7 +1015,7 @@ final class AppModel: ObservableObject {
             errorMessage = nil
         } catch {
             if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return false }
-            guard self.token == token, self.account?.accountId == account.accountId else { return false }
+            guard sessionIdentity.contains(token), self.account?.accountId == account.accountId else { return false }
             await rebuildConversationCatalog()
             recordCloudConnectionFailure(error)
             messageSyncState = .offline
@@ -1026,7 +1028,7 @@ final class AppModel: ObservableObject {
         guard let token, !previewMode else { return }
         do {
             let requests = try await api.listContactRequests(token: token)
-            guard token == self.token else { return }
+            guard sessionIdentity.contains(token) else { return }
             contactRequests = requests
         } catch {
             // The chat sync loop retries this best-effort inbox refresh. User-triggered
@@ -1038,7 +1040,7 @@ final class AppModel: ObservableObject {
         guard let token else { return }
         do {
             let presence = try await api.listContactPresence(token: token)
-            guard token == self.token else { return }
+            guard sessionIdentity.contains(token) else { return }
             applyContactPresenceSnapshot(presence)
         } catch {
             // Presence is best effort. Keep the most recent snapshot while the
@@ -1153,7 +1155,7 @@ final class AppModel: ObservableObject {
         defer { isRefreshingDevices = false }
         do {
             let refreshed = try await api.listDevices(token: token)
-            guard self.token == token, self.account?.accountId == account.accountId else { return }
+            guard sessionIdentity.contains(token), self.account?.accountId == account.accountId else { return }
             devices = refreshed
             currentDeviceId = refreshed.first(where: \.currentDevice)?.deviceId
             deviceReviewRequired = refreshed.contains { $0.needsReview && !$0.currentDevice }
@@ -1856,9 +1858,9 @@ final class AppModel: ObservableObject {
             reuseCompleted: !forceReload && messagesByConversation[conversation.id] != nil
                 && messageSyncState == .upToDate && (previewMode || cloudSyncTask != nil)
         ) { [weak self] in
-            guard let self, self.token == token, self.account?.accountId == accountID else { return false }
+            guard let self, sessionIdentity.contains(token), self.account?.accountId == accountID else { return false }
             let succeeded = await self.fetchConversationHistory(conversation)
-            guard succeeded, !Task.isCancelled, self.token == token,
+            guard succeeded, !Task.isCancelled, sessionIdentity.contains(token),
                   self.account?.accountId == accountID else { return false }
             // A successfully fetched empty session is cached too.
             if self.messagesByConversation[conversation.id] == nil {
@@ -1900,23 +1902,23 @@ final class AppModel: ObservableObject {
                 sessionId: conversation.sessionId
             )
             try Task.checkCancellation()
-            guard self.token == token, self.account?.accountId == account.accountId else { return false }
+            guard sessionIdentity.contains(token), self.account?.accountId == account.accountId else { return false }
             let loadedPin = await fetchedPin
             try Task.checkCancellation()
-            guard self.token == token, self.account?.accountId == account.accountId else { return false }
+            guard sessionIdentity.contains(token), self.account?.accountId == account.accountId else { return false }
             if let loadedPin {
                 sessionPinsByID[conversation.sessionId] = loadedPin.mergingHistory(from: sessionPinsByID[conversation.sessionId])
             }
             _ = await applyConversationHistoryPage(page, to: conversation, account: account, knownMessageIDs: knownMessageIDs)
             try Task.checkCancellation()
-            guard self.token == token, self.account?.accountId == account.accountId else { return false }
+            guard sessionIdentity.contains(token), self.account?.accountId == account.accountId else { return false }
             reconcilePendingAgentRequest(
                 conversationId: conversation.id,
                 wireMessages: page.messages
             )
             await rebuildConversationCatalog()
             try Task.checkCancellation()
-            guard self.token == token, self.account?.accountId == account.accountId else { return false }
+            guard sessionIdentity.contains(token), self.account?.accountId == account.accountId else { return false }
             if errorMessage == Self.cloudUnavailableMessage {
                 errorMessage = nil
             }
@@ -1924,7 +1926,7 @@ final class AppModel: ObservableObject {
         } catch {
             if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return false }
             if let pin = await fetchedPin {
-                guard self.token == token, self.account?.accountId == account.accountId else { return false }
+                guard sessionIdentity.contains(token), self.account?.accountId == account.accountId else { return false }
                 sessionPinsByID[conversation.sessionId] = pin.mergingHistory(from: sessionPinsByID[conversation.sessionId])
             }
             recordCloudConnectionFailure(error)
@@ -1943,7 +1945,7 @@ final class AppModel: ObservableObject {
         guard let token, let accountId = account?.accountId, !previewMode else { return }
         do {
             let rows = try await api.threadAttention(token: token)
-            guard self.token == token, account?.accountId == accountId, !Task.isCancelled else { return }
+            guard sessionIdentity.contains(token), account?.accountId == accountId, !Task.isCancelled else { return }
             var next: [String: CloudThreadAttention] = [:]
             for row in rows { next[row.sessionId] = row; next[row.conversationId] = row }
             guard next != threadAttentionBySession else { return }
@@ -1967,7 +1969,7 @@ final class AppModel: ObservableObject {
         guard let token, let accountId = account?.accountId else { throw URLError(.userAuthenticationRequired) }
         let page = try await api.threadPage(token: token, sessionId: conversation.sessionId, messageId: messageId, after: after)
         try Task.checkCancellation()
-        guard self.token == token, account?.accountId == accountId else { throw CancellationError() }
+        guard sessionIdentity.contains(token), account?.accountId == accountId else { throw CancellationError() }
         for message in [page.root] + page.messages { mergeCloudMessage(message, peerHint: nil) }
         let wires = conversation.kind == .group ? Self.groupWireMessages(for: conversation, in: cloudMessagesByPeer.values.flatMap { $0 }) : Self.directWireMessages(for: conversation, in: cloudMessagesByPeer)
         let projected = conversation.kind == .group ? Self.mapGroupMessages(wires, conversation: conversation, ownAccountId: accountId) : CloudDirectMessageProjector.project(wires, conversation: conversation, ownAccountId: accountId)
@@ -2746,7 +2748,7 @@ final class AppModel: ObservableObject {
                 scope: shared ? "shared" : "private",
                 action: "pin"
             )
-            guard self.token == token else { return false }
+            guard sessionIdentity.contains(token) else { return false }
             let updatedPin = pin.mergingHistory(from: sessionPinsByID[conversation.sessionId])
             sessionPinsByID[conversation.sessionId] = updatedPin.recording(CloudSessionPinAction(
                 kind: "pinned",
@@ -2759,7 +2761,7 @@ final class AppModel: ObservableObject {
             scheduleRealtimeSyncWake()
             return true
         } catch {
-            guard self.token == token else { return false }
+            guard sessionIdentity.contains(token) else { return false }
             if let pendingID { pendingSessionPinActions[conversation.sessionId]?.removeAll { $0.event.id == pendingID } }
             errorMessage = userFacing(error, fallback: "Could not pin this message.")
             return false
@@ -2787,7 +2789,7 @@ final class AppModel: ObservableObject {
                 scope: scope,
                 action: "unpin"
             )
-            guard self.token == token else { return false }
+            guard sessionIdentity.contains(token) else { return false }
             let updatedPin = pin.mergingHistory(from: sessionPinsByID[conversation.sessionId])
             sessionPinsByID[conversation.sessionId] = updatedPin.recording(CloudSessionPinAction(
                 kind: "unpinned",
@@ -2800,7 +2802,7 @@ final class AppModel: ObservableObject {
             scheduleRealtimeSyncWake()
             return true
         } catch {
-            guard self.token == token else { return false }
+            guard sessionIdentity.contains(token) else { return false }
             if let pendingID { pendingSessionPinActions[conversation.sessionId]?.removeAll { $0.event.id == pendingID } }
             errorMessage = userFacing(error, fallback: "Could not unpin this message.")
             return false
@@ -2955,7 +2957,7 @@ final class AppModel: ObservableObject {
         do {
             let updated = try await api.deleteAttachment(token: token, sessionId: conversation.sessionId,
                 messageId: message.reactionTargetMessageId ?? message.id, attachmentId: attachment.id, forEveryone: forEveryone)
-            guard self.token == token, account?.accountId == accountID else { return false }
+            guard sessionIdentity.contains(token), account?.accountId == accountID else { return false }
             if let updated {
                 mergeCloudMessage(updated, peerHint: conversation.peerAccountId)
                 await refreshLoadedConversationProjections()
@@ -2964,7 +2966,7 @@ final class AppModel: ObservableObject {
             }
             return true
         } catch {
-            guard self.token == token, account?.accountId == accountID else { return false }
+            guard sessionIdentity.contains(token), account?.accountId == accountID else { return false }
             errorMessage = userFacing(error, fallback: "Could not delete this photo.")
             return false
         }
@@ -3048,10 +3050,10 @@ final class AppModel: ObservableObject {
                     forEveryone: forEveryone,
                     clientMessageId: message.author == .me ? message.clientMessageId : nil
                 )
-                guard self.token == token, account?.accountId == deletingAccountID else { return false }
+                guard sessionIdentity.contains(token), account?.accountId == deletingAccountID else { return false }
                 removedIDs.insert(deletedID)
             } catch {
-                guard self.token == token, account?.accountId == deletingAccountID,
+                guard sessionIdentity.contains(token), account?.accountId == deletingAccountID,
                       !CloudTransportErrorPolicy.isCancellation(error) else { return false }
                 errorMessage = userFacing(error, fallback: "Could not delete this message.")
                 return false
@@ -3685,7 +3687,7 @@ final class AppModel: ObservableObject {
                 ownerAccountIds: ownerAccountIDs
             )
             guard !Task.isCancelled,
-                  self.token == token,
+                  sessionIdentity.contains(token),
                   self.account?.accountId == accountID else { return }
             replaceSharedCloudAgents(refreshedAgents, forOwnerAccountIDs: ownerAccountIDs)
         } catch {
@@ -3810,7 +3812,7 @@ final class AppModel: ObservableObject {
                     expectedVersion: version,
                     voice: outgoing
                 )
-                guard self.account?.accountId == expectedAccount, self.token == token else { return false }
+                guard self.account?.accountId == expectedAccount, sessionIdentity.contains(token) else { return false }
                 mergeCloudMessage(updated, peerHint: nil)
                 return true
             } catch let error as CloudAPIError where error.statusCode == 409 && !refreshed {
@@ -4363,10 +4365,10 @@ final class AppModel: ObservableObject {
                 token: token,
                 sessionId: conversation.sessionId
             )
-            guard !Task.isCancelled, self.token == token, account?.accountId == accountId else { return }
+            guard !Task.isCancelled, sessionIdentity.contains(token), account?.accountId == accountId else { return }
             sessionActivityByID[conversation.sessionId] = activity
         } catch {
-            guard self.token == token, account?.accountId == accountId,
+            guard sessionIdentity.contains(token), account?.accountId == accountId,
                   CloudTransportErrorPolicy.shouldSurface(error, taskIsCancelled: Task.isCancelled) else { return }
             errorMessage = userFacing(error, fallback: "Could not load session activity.")
         }
@@ -5350,7 +5352,7 @@ final class AppModel: ObservableObject {
         defer { isRefreshingFactory = false }
         do {
             let refreshed = try await api.listAgents(token: token)
-            guard self.token == token else { return }
+            guard sessionIdentity.contains(token) else { return }
             ownedCloudAgents = refreshed
             await rebuildConversationCatalog()
             cloudConnectionState = .connected
@@ -5640,7 +5642,7 @@ final class AppModel: ObservableObject {
                 conversationKind: conversation.cloudChatKind,
                 memberAccountIds: conversation.remotePeerAccountIds
             )
-            guard self.token == token,
+            guard sessionIdentity.contains(token),
                   self.account?.accountId == account.accountId else {
                 return false
             }
@@ -6666,7 +6668,7 @@ final class AppModel: ObservableObject {
             while !Task.isCancelled {
                 do {
                     let response = try await api.sync(token: token, cursor: nextCursor)
-                    guard self.token == token, !Task.isCancelled else { return }
+                    guard sessionIdentity.contains(token), !Task.isCancelled else { return }
                     if cloudConnectionState != .connected {
                         cloudConnectionState = .connected
                         if errorMessage == Self.cloudUnavailableMessage {
@@ -6689,7 +6691,7 @@ final class AppModel: ObservableObject {
                         if hasProviderAuthenticationChanges {
                             await refreshProviderAuthentication()
                         }
-                        guard self.token == token, !Task.isCancelled else { return }
+                        guard sessionIdentity.contains(token), !Task.isCancelled else { return }
                         applyCloudSyncEvents(pendingEvents)
                         await refreshPersonalAgentsIfNeeded(after: pendingEvents)
                         let hasDirectoryChanges = pendingEvents.contains {
@@ -6706,7 +6708,7 @@ final class AppModel: ObservableObject {
                     // without replaying message, call or device effects.
                     if hasPendingDirectoryRefresh {
                         let refreshed = await refreshWorkspace(showSyncActivity: false)
-                        guard self.token == token, !Task.isCancelled else { return }
+                        guard sessionIdentity.contains(token), !Task.isCancelled else { return }
                         if refreshed {
                             hasPendingDirectoryRefresh = false
                             shouldRefreshProjections = true
@@ -6716,7 +6718,7 @@ final class AppModel: ObservableObject {
                         await rebuildConversationCatalog()
                         await refreshLoadedConversationProjections()
                     }
-                    guard self.token == token, !Task.isCancelled else { return }
+                    guard sessionIdentity.contains(token), !Task.isCancelled else { return }
                     cloudSyncCursor = nextCursor
                     cloudSyncHasCurrentSequence = true
                     hasHydratedWireSnapshot = true

@@ -27,6 +27,8 @@ extension AppModel {
         if let previous = account?.accountId, previous != grant.account.accountId {
             await signOut()
         }
+        // A sign-in kept after a failed launch is replaced, not left alive.
+        if let leftover = await browserSignIn.endForSignOut() { await browserSignIn.revoke(leftover) }
         do {
             try await browserSignIn.store.save(grant.credential)
             try await completeAuthentication(grant.authResponse)
@@ -41,14 +43,12 @@ extension AppModel {
     }
 
     /// The stored access token for launch. A browser sign-in token that
-    /// expires within the refresh margin is refreshed first; a refused
-    /// refresh throws so launch signs out.
+    /// expires within the refresh margin is refreshed first. A refused
+    /// refresh throws an ended session; an expired token that could not be
+    /// refreshed throws a connection error, which keeps the sign-in.
     func browserSessionTokenForLaunch(_ stored: String?) async throws -> String? {
         guard let stored, !isPreviewMode else { return stored }
-        guard let credential = await browserSignIn.store.credential() else { return stored }
-        guard credential.accessToken == stored else {
-            // Left behind by an older session; it does not belong to this token.
-            _ = await browserSignIn.store.take()
+        guard await browserSignIn.store.launchCredential(origin: KordiAppEnvironment.current.cloudBaseURL) != nil else {
             return stored
         }
         switch await browserSignIn.store.refresh(ifExpiringWithin: AppSignInController.refreshMargin) {
@@ -61,23 +61,56 @@ extension AppModel {
         case .rejected:
             throw CloudAPIError(code: "invalid_session", message: "Your session expired. Sign in again.", statusCode: 401)
         case .unavailable:
+            guard let current = await browserSignIn.store.credential(), current.expiresAt > Date() else {
+                throw CloudAPIError(code: "network_error", message: "Could not reach the server.", statusCode: 0)
+            }
             scheduleBrowserSessionRetry()
-            return stored
+            return current.accessToken
         case .notBrowserSession:
-            return stored
+            return (try? keychain.loadToken()) ?? stored
         }
     }
 
+    /// Whether a failed launch keeps the stored browser sign-in: only the
+    /// server ending the session (401, `invalid_session`, `account_missing`)
+    /// discards it. Connection and server errors keep it for the next try.
+    func keepsBrowserSession(afterLaunchFailure error: Error) async -> Bool {
+        guard await browserSignIn.store.credential() != nil else { return false }
+        return !Self.sessionEnded(by: error)
+    }
+
+    nonisolated static func sessionEnded(by error: Error) -> Bool {
+        guard let error = error as? CloudAPIError else { return false }
+        return error.statusCode == 401 || ["invalid_session", "account_missing"].contains(error.code)
+    }
+
+    /// Removes the stored session after the server ended it, revoking a
+    /// browser sign-in instead of only forgetting it.
+    func discardStoredSession() async {
+        if let stored = await browserSignIn.endForSignOut() {
+            Task { await browserSignIn.revoke(stored) }
+        }
+        try? keychain.deleteToken()
+    }
+
+    /// Restores a browser sign-in kept after a failed launch, for example when
+    /// the welcome screen appears or the app returns to the foreground.
+    func resumeStoredBrowserSession() async {
+        guard phase == .signedOut, !isPreviewMode,
+              (try? keychain.loadToken()) != nil,
+              await browserSignIn.store.credential() != nil else { return }
+        await start()
+    }
+
     /// Refreshes a browser sign-in token that expires within the refresh
-    /// margin and adopts it. A refused refresh signs out.
+    /// margin and adopts it, or adopts a token background work already
+    /// refreshed. A refused refresh signs out.
     func refreshBrowserSessionIfNeeded() async {
         guard !isPreviewMode else { return }
         switch await browserSignIn.store.refresh(ifExpiringWithin: AppSignInController.refreshMargin) {
-        case .current(let current):
-            scheduleBrowserSessionRefresh(expiresAt: current.expiresAt)
-        case .refreshed(let next):
-            applyRefreshedSession(token: next.accessToken, expiresAt: next.expiresAtText, accountId: next.accountId)
-            scheduleBrowserSessionRefresh(expiresAt: next.expiresAt)
+        case .current(let credential), .refreshed(let credential):
+            applyRefreshedSession(token: credential.accessToken, expiresAt: credential.expiresAtText, accountId: credential.accountId)
+            scheduleBrowserSessionRefresh(expiresAt: credential.expiresAt)
         case .rejected:
             await signOut()
             errorMessage = "Your session expired. Sign in again."

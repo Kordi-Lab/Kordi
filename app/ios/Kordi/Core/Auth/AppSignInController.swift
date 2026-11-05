@@ -1,9 +1,12 @@
 import Foundation
+import os
+import UIKit
 
 /// Holds the stored browser sign-in and refreshes it. One refresh runs at a
-/// time, so a rotated refresh token is never presented twice, and a refresh
-/// writes its result only while the stored sign-in is still the one it
-/// refreshed: a sign-out or another sign-in during the request wins.
+/// time per process, so a rotated refresh token is never presented twice,
+/// and a refresh writes its result only while the stored sign-in is still
+/// the one it refreshed: a sign-out or another sign-in during the request
+/// wins, and the tokens it received are revoked.
 actor AppSignInSessionStore {
     enum RefreshResult: Equatable {
         /// No browser sign-in is stored (password or provider session, or signed out).
@@ -17,13 +20,28 @@ actor AppSignInSessionStore {
         case unavailable
     }
 
+    private static let stores = OSAllocatedUnfairLock<[String: AppSignInSessionStore]>(initialState: [:])
+
+    /// The one store for this Keychain service, shared by the app model and
+    /// background work such as Nearby, so their refreshes never overlap.
+    static func shared(keychain: KeychainSessionStore = KeychainSessionStore(), api: CloudAPIClient) -> AppSignInSessionStore {
+        stores.withLock { stores in
+            if let store = stores[keychain.serviceName] { return store }
+            let store = AppSignInSessionStore(keychain: keychain, transport: AppSignInClient.transport(using: api))
+            stores[keychain.serviceName] = store
+            return store
+        }
+    }
+
     private let keychain: KeychainSessionStore
-    private let session: URLSession
+    private let transport: AppSignInClient.Transport
+    private let holdsBackgroundTime: Bool
     private var inFlight: Task<RefreshResult, Never>?
 
-    init(keychain: KeychainSessionStore, session: URLSession = CloudAPIClient.reliableSession) {
+    init(keychain: KeychainSessionStore, transport: @escaping AppSignInClient.Transport, holdsBackgroundTime: Bool = true) {
         self.keychain = keychain
-        self.session = session
+        self.transport = transport
+        self.holdsBackgroundTime = holdsBackgroundTime
     }
 
     func credential() -> AppSignInCredential? {
@@ -42,6 +60,28 @@ actor AppSignInSessionStore {
         return stored
     }
 
+    func revoke(_ credential: AppSignInCredential) async {
+        await AppSignInClient.revoke(credential, transport: transport)
+    }
+
+    /// The stored sign-in that belongs to the stored session token, checked
+    /// after any refresh in flight. A sign-in from another server is dropped
+    /// without contacting it; one left behind by an older session is revoked.
+    func launchCredential(origin: URL) async -> AppSignInCredential? {
+        if let inFlight { _ = await inFlight.value }
+        guard let stored = credential() else { return nil }
+        guard Self.sameOrigin(stored.tokenEndpoint, origin) else {
+            try? keychain.deleteAppSignInCredential()
+            return nil
+        }
+        guard stored.accessToken == ((try? keychain.loadToken()) ?? nil) else {
+            try? keychain.deleteAppSignInCredential()
+            await revoke(stored)
+            return nil
+        }
+        return stored
+    }
+
     func refresh(ifExpiringWithin margin: TimeInterval, now: Date = Date()) async -> RefreshResult {
         if let inFlight { return await inFlight.value }
         guard let stored = credential() else { return .notBrowserSession }
@@ -54,10 +94,14 @@ actor AppSignInSessionStore {
     }
 
     private func performRefresh(_ stored: AppSignInCredential) async -> RefreshResult {
+        // The server's reuse grace is 60 seconds: keep running if the app is
+        // backgrounded mid-request, so the rotated token is not lost.
+        let backgroundTime = holdsBackgroundTime ? await AppSignInBackgroundTime.begin() : nil
+        defer { if let backgroundTime { Task { @MainActor in backgroundTime.end() } } }
         do {
-            let next = try await AppSignInClient.refresh(stored, session: session)
+            let next = try await AppSignInClient.refresh(stored, transport: transport)
             guard credential()?.refreshToken == stored.refreshToken else {
-                await AppSignInClient.revoke(next, session: session)
+                await revoke(next)
                 return .notBrowserSession
             }
             try keychain.saveAppSignInCredential(next)
@@ -68,6 +112,32 @@ actor AppSignInSessionStore {
         } catch {
             return .unavailable
         }
+    }
+
+    static func sameOrigin(_ endpoint: URL, _ origin: URL) -> Bool {
+        endpoint.scheme?.lowercased() == origin.scheme?.lowercased()
+            && endpoint.host?.lowercased() == origin.host?.lowercased()
+            && endpoint.port == origin.port
+    }
+}
+
+/// Background execution time for one refresh.
+@MainActor
+final class AppSignInBackgroundTime {
+    private var identifier = UIBackgroundTaskIdentifier.invalid
+
+    static func begin() -> AppSignInBackgroundTime {
+        let time = AppSignInBackgroundTime()
+        time.identifier = UIApplication.shared.beginBackgroundTask(withName: "Kordi sign-in refresh") { [weak time] in
+            time?.end()
+        }
+        return time
+    }
+
+    func end() {
+        guard identifier != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(identifier)
+        identifier = .invalid
     }
 }
 
@@ -89,15 +159,11 @@ final class AppSignInController {
     private var probeTask: Task<BrowserSignInAvailability, Never>?
     private var refreshTask: Task<Void, Never>?
 
-    init(
-        api: CloudAPIClient,
-        keychain: KeychainSessionStore,
-        makeClient: @escaping () -> AppSignInClient = { AppSignInClient.current() }
-    ) {
+    init(api: CloudAPIClient, keychain: KeychainSessionStore, makeClient: (() -> AppSignInClient)? = nil) {
         self.api = api
         self.webSession = CloudOAuthSession(api: api)
-        self.store = AppSignInSessionStore(keychain: keychain)
-        self.makeClient = makeClient
+        self.store = AppSignInSessionStore.shared(keychain: keychain, api: api)
+        self.makeClient = makeClient ?? { AppSignInClient.current(transport: AppSignInClient.transport(using: api)) }
     }
 
     /// The last settled answer, if any. `unknown` is never remembered.
@@ -148,6 +214,6 @@ final class AppSignInController {
     }
 
     func revoke(_ credential: AppSignInCredential) async {
-        await AppSignInClient.revoke(credential, session: client.session)
+        await store.revoke(credential)
     }
 }

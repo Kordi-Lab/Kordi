@@ -9,10 +9,13 @@ import UIKit
 struct WelcomeView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Set once the server is known to lack browser sign-in; picks the form's mode.
     @State private var fallback: AppSignInIntent? = WelcomeView.previewFallback
     @State private var activeIntent: AppSignInIntent?
+    /// A sign-in kept after a failed launch is being restored.
+    @State private var resuming = false
 
     /// `--preview-signup` and `--preview-email-sign-in` open the email form directly.
     private static var previewFallback: AppSignInIntent? {
@@ -29,7 +32,13 @@ struct WelcomeView: View {
                 welcome
             }
         }
-        .task { await settleAvailability() }
+        .task {
+            await resume()
+            await settleAvailability()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await resume() } }
+        }
     }
 
     private var isAccessibilitySize: Bool { dynamicTypeSize.isAccessibilitySize }
@@ -105,7 +114,7 @@ struct WelcomeView: View {
             .frame(maxWidth: .infinity, minHeight: 52)
         }
         .buttonStyle(WelcomeButtonStyle(primary: primary))
-        .disabled(activeIntent != nil)
+        .disabled(activeIntent != nil || resuming)
         .accessibilityLabel(title)
     }
 
@@ -115,8 +124,15 @@ struct WelcomeView: View {
         fallback = .login
     }
 
+    private func resume() async {
+        guard !resuming, activeIntent == nil else { return }
+        resuming = true
+        defer { resuming = false }
+        await model.resumeStoredBrowserSession()
+    }
+
     private func start(_ intent: AppSignInIntent) async {
-        guard activeIntent == nil else { return }
+        guard activeIntent == nil, !resuming else { return }
         activeIntent = intent
         model.errorMessage = nil
         defer { activeIntent = nil }
@@ -127,7 +143,8 @@ struct WelcomeView: View {
         }
         guard await model.signInWithBrowser(intent) else { return }
 #if canImport(UIKit)
-        UIAccessibility.post(notification: .announcement, argument: intent == .signup ? "Account created" : "Signed in")
+        // The page may have signed in to an existing account, so never claim one was created.
+        UIAccessibility.post(notification: .announcement, argument: "Signed in")
 #endif
     }
 }

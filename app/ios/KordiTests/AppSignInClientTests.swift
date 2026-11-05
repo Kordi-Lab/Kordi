@@ -5,7 +5,8 @@ final class AppSignInClientTests: XCTestCase {
     private let client = AppSignInClient(
         baseURL: URL(string: "https://cloud.example.test/")!,
         clientId: "kordi-ios-beta",
-        redirectURI: "kordi-beta://auth/callback"
+        redirectURI: "kordi-beta://auth/callback",
+        transport: { _ in throw URLError(.notConnectedToInternet) }
     )
 
     func testEachDistributionHasItsOwnIPhoneClient() {
