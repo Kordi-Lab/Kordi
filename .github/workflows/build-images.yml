@@ -1,0 +1,95 @@
+name: Build images
+
+# Builds the production container images on GitHub-hosted runners and pushes
+# them to Artifact Registry, so the production host only pulls images instead
+# of compiling them. The project, identity provider and service account are
+# repository secrets so public run logs mask them; the region variable turns
+# the job on. Without it the job is skipped and the run stays green.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - agent/**
+      - app/server/**
+      - app/desktop/src-tauri/**
+      - bridges/**
+      - shared/**
+      - simulations/**
+      - legal/distribution/**
+      - experiments/omp-provider-routing/**
+      - .dockerignore
+      - .github/workflows/build-images.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Queue main builds in order so an older run never moves the main tag back.
+  group: build-images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Build ${{ matrix.image }}
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      vars.KORDI_GCP_REGION != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: kordi-cloud-server
+            dockerfile: bridges/cloud-server/Dockerfile.runtime
+          - image: kordi-cloud-agent-runner
+            dockerfile: bridges/cloud-agent-runner/Dockerfile.runtime
+          - image: kordi-omp-route-worker
+            dockerfile: experiments/omp-provider-routing/Dockerfile
+    env:
+      REGISTRY: ${{ vars.KORDI_GCP_REGION }}-docker.pkg.dev
+      REPOSITORY: ${{ vars.KORDI_GCP_REGION }}-docker.pkg.dev/${{ secrets.KORDI_GCP_PROJECT }}/kordi-images
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed
+        with:
+          workload_identity_provider: ${{ secrets.KORDI_GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.KORDI_GCP_IMAGE_SA }}
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "$REGISTRY" --quiet
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          tags: |
+            ${{ env.REPOSITORY }}/${{ matrix.image }}:${{ github.sha }}
+            ${{ env.REPOSITORY }}/${{ matrix.image }}:main
+          cache-from: type=gha,scope=images-${{ matrix.image }}
+          cache-to: type=gha,scope=images-${{ matrix.image }},mode=max,ignore-error=true
+      - name: Record the pushed image
+        env:
+          IMAGE: ${{ matrix.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "\`$IMAGE\` at \`$GITHUB_SHA\`: \`$DIGEST\`" >> "$GITHUB_STEP_SUMMARY"
