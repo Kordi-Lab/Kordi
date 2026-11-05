@@ -91,6 +91,7 @@ tests=(
   account_email_tests::upgrade_from_169_adds_account_security_codes
   organization_claim_tests::upgrade_from_170_adds_organization_claims
   identity_email_tests::upgrade_from_167_backfills_identity_matching_email
+  resource_pool_tests::upgrade_from_173_adds_usage_pauses
 )
 index=0
 for test_name in "${tests[@]}"; do
@@ -133,10 +134,12 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib organizations:: -- --test-threads=1
 # Resource pool tests (docs/development/resource-pools.md): admission under
-# concurrency, settlement, silent exhaustion, and per-organization routing.
+# concurrency, settlement, silent exhaustion, per-organization routing, and
+# usage pauses and snapshots for Settings.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib -- resource_pools system_agent::pool_tests \
-    common_ground::runs::pool_tests pool_workers --include-ignored --test-threads=1
+    system_agent::usage_pause_tests common_ground::runs::pool_tests pool_workers \
+    --include-ignored --test-threads=1
 
 # Simulator regression tests use their own fresh database and scripted local
 # model. Never enable the opt-in live-provider tests in unattended CI.

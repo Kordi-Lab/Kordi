@@ -23,7 +23,10 @@ use crate::system_agent::SystemAgentProviderAuth;
 
 mod config;
 mod organizations;
+pub mod pauses;
 pub mod registry;
+pub mod routes;
+pub mod snapshot;
 pub mod usage;
 mod worker;
 
