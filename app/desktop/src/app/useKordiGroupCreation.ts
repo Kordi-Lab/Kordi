@@ -35,6 +35,7 @@ import {
   mergeOpenCanonicalSessionResult,
 } from './canonicalSessionStateMutations';
 import { uniqueStrings } from './useKordiAppModelHelpers';
+import { rememberSessionOrganization } from '@/features/organizations/sessionOrganization';
 
 type UseKordiGroupCreationArgs = {
   account: CloudAccount | null;
@@ -149,6 +150,7 @@ export function useKordiGroupCreation({
         groupSpaceId: sessionId,
       }), ...(groupAvatar ? { groupAvatar } : {}) },
     });
+    rememberSessionOrganization(sessionId, account?.accountId);
     nextCanonicalState = mergeOpenCanonicalSessionResult(
       nextCanonicalState,
       openResult,

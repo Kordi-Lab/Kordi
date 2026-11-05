@@ -309,10 +309,10 @@ test('the welcome screen has no in-page window title and cuts the wing gap out o
   assert.doesNotMatch(page, />\s*Kordi\s*</);
   assert.match(page, /<KordiFlyingBird className="app-cloud-welcome-bird" cutout \/>/);
 
+  // The gap is a hole in the body path, not a mask (see kordiFlyingBird.test.tsx).
   const cutout = renderToStaticMarkup(createElement(KordiFlyingBird, { cutout: true }));
-  assert.match(cutout, /<mask id="kordi-bird-cut-[A-Za-z0-9_-]+"/);
-  assert.match(cutout, /mask="url\(#kordi-bird-cut-[A-Za-z0-9_-]+\)"/);
-  assert.match(cutout, /app-kordi-flying-bird-wing app-kordi-flying-bird-wing-cut/);
+  assert.doesNotMatch(cutout, /<mask/);
+  assert.match(cutout, /class="app-kordi-flying-bird app-kordi-flying-bird-cutout"/);
   const plain = renderToStaticMarkup(createElement(KordiFlyingBird));
   assert.doesNotMatch(plain, /<mask/);
 });

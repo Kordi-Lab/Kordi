@@ -214,6 +214,7 @@ async fn real_bun_cloud_images_reach_provider_in_message_order_including_newer_i
             thinking: "low".into(),
             api_mode: OpenAiApiMode::ChatCompletions,
             account_id: None,
+            verbatim_model: false,
             headers: Default::default(),
         },
         worker: OmpRuntime::new(WorkerCommand {

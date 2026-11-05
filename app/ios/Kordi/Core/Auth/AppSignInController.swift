@@ -37,6 +37,7 @@ actor AppSignInSessionStore {
     private let transport: AppSignInClient.Transport
     private let holdsBackgroundTime: Bool
     private var inFlight: Task<RefreshResult, Never>?
+    private var switching: Task<OrganizationSwitchResult, Never>?
 
     init(keychain: KeychainSessionStore, transport: @escaping AppSignInClient.Transport, holdsBackgroundTime: Bool = true) {
         self.keychain = keychain
@@ -87,6 +88,9 @@ actor AppSignInSessionStore {
     }
 
     func refresh(ifExpiringWithin margin: TimeInterval, now: Date = Date()) async -> RefreshResult {
+        // An organization switch and a refresh never overlap, so a refresh
+        // always knows the organization of the tokens it receives.
+        while let switching { _ = await switching.value }
         if let inFlight { return await inFlight.value }
         guard let stored = credential() else { return .notBrowserSession }
         guard stored.expires(within: margin, now: now) else {
@@ -121,6 +125,98 @@ actor AppSignInSessionStore {
         }
     }
 
+    // MARK: Organization switch
+
+    /// The organization the stored session token acts in, when recorded.
+    /// Nil means the personal organization or a token issued before switching existed.
+    func tokenOrganization(for token: String) -> String? {
+        if let stored = credential() {
+            return stored.accessToken == token ? stored.organizationId : nil
+        }
+        return keychain.loadSessionOrganization(forToken: token)
+    }
+
+    /// Exchanges the stored access token for one bound to `organizationId`
+    /// and saves it with compare-and-swap: only while the stored credentials
+    /// still belong to the account and session the switch started from. The
+    /// refresh token is never replaced.
+    func switchOrganization(
+        to organizationId: String,
+        from start: OrganizationSwitchStart,
+        now: Date = Date(),
+        exchange: @escaping @Sendable (String) async throws -> CloudOrganizationTokenResponse
+    ) async -> OrganizationSwitchResult {
+        while inFlight != nil || switching != nil {
+            if let inFlight { _ = await inFlight.value } else if let switching { _ = await switching.value }
+        }
+        let task = Task { await self.performSwitch(to: organizationId, from: start, now: now, exchange: exchange) }
+        switching = task
+        let result = await task.value
+        switching = nil
+        return result
+    }
+
+    private func performSwitch(
+        to organizationId: String,
+        from start: OrganizationSwitchStart,
+        now: Date,
+        exchange: @Sendable (String) async throws -> CloudOrganizationTokenResponse
+    ) async -> OrganizationSwitchResult {
+        let browser = credential()
+        let presented: String
+        if let browser {
+            // Background work may have refreshed the token the caller holds.
+            guard browser.accountId == start.accountId else { return .superseded }
+            presented = browser.accessToken
+        } else {
+            guard ((try? keychain.loadToken()) ?? nil) == start.accessToken else { return .superseded }
+            presented = start.accessToken
+        }
+        guard let response = try? await exchange(presented),
+              Self.answers(response, organizationId: organizationId, accountId: start.accountId,
+                           deviceId: browser?.deviceId ?? start.deviceId, signInId: browser?.signInId) else { return .failed }
+        if let browser {
+            guard let accessToken = response.accessToken?.nonEmpty,
+                  let expiresIn = response.expiresIn, expiresIn.isFinite, expiresIn > 0 else { return .failed }
+            guard var current = credential(), current.accountId == browser.accountId,
+                  current.refreshToken == browser.refreshToken else { return .superseded }
+            current.accessToken = accessToken
+            current.expiresAt = now.addingTimeInterval(expiresIn)
+            current.organizationId = response.organizationId
+            do {
+                try keychain.saveAppSignInCredential(current)
+                try keychain.saveToken(accessToken)
+            } catch {
+                return .failed
+            }
+            return .switched(accessToken: accessToken, expiresAt: current.expiresAt, organizationId: response.organizationId)
+        }
+        // An older session token keeps its value; the server moved its claim.
+        guard response.accessToken?.nonEmpty.map({ $0 == presented }) ?? true else { return .failed }
+        guard credential() == nil, ((try? keychain.loadToken()) ?? nil) == presented else { return .superseded }
+        guard (try? keychain.saveSessionOrganization(response.organizationId, forToken: presented)) != nil else { return .failed }
+        return .switched(accessToken: presented, expiresAt: nil, organizationId: response.organizationId)
+    }
+
+    /// Whether the answer is for the switch that was asked for: the same
+    /// account, and the same device and sign-in when they are known.
+    static func answers(
+        _ response: CloudOrganizationTokenResponse,
+        organizationId: String,
+        accountId: String,
+        deviceId: String?,
+        signInId: String?
+    ) -> Bool {
+        func same(_ known: String?, _ answered: String?) -> Bool {
+            guard let known = known?.nonEmpty else { return true }
+            return answered?.nonEmpty == known
+        }
+        return response.accountId == accountId
+            && response.organizationId == organizationId
+            && same(deviceId, response.deviceId)
+            && same(signInId, response.signInId)
+    }
+
     /// Scheme, host and port, with an explicit default port equal to none.
     static func sameOrigin(_ endpoint: URL, _ origin: URL) -> Bool {
         func port(_ url: URL) -> Int? {
@@ -130,6 +226,22 @@ actor AppSignInSessionStore {
             && endpoint.host?.lowercased() == origin.host?.lowercased()
             && port(endpoint) == port(origin)
     }
+}
+
+/// The signed-in state an organization switch starts from.
+struct OrganizationSwitchStart: Equatable, Sendable {
+    let accountId: String
+    let accessToken: String
+    var deviceId: String? = nil
+}
+
+enum OrganizationSwitchResult: Equatable, Sendable {
+    /// The new token is saved. `expiresAt` is nil when the token did not change.
+    case switched(accessToken: String, expiresAt: Date?, organizationId: String)
+    /// A sign-in, sign-out, or account change happened first; nothing was saved.
+    case superseded
+    /// No usable answer, or an answer for another account, device, or sign-in.
+    case failed
 }
 
 /// Background execution time for one refresh.

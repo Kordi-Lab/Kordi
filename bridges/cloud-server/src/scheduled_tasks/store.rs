@@ -107,8 +107,9 @@ pub async fn create_scheduled_task(
     let row = query_as::<_, TaskRow>(
         "INSERT INTO scheduled_tool_tasks(
             task_id, owner_account_id, created_by_account_id, title, prompt, tool_payload_json,
-            schedule_json, timezone, target_runtime, enabled, status, next_run_at, created_at, updated_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,'active',$10,$11,$11)
+            schedule_json, timezone, target_runtime, enabled, status, next_run_at, created_at, updated_at,
+            organization_id
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,'active',$10,$11,$11,$12)
          RETURNING task_id, title, prompt, tool_payload_json->>'sessionId', schedule_json, target_runtime, enabled, status, next_run_at,
                    last_run_at, last_run_status, last_run_error, created_at, updated_at"
     )
@@ -123,6 +124,9 @@ pub async fn create_scheduled_task(
     .bind(input.target_runtime.as_str())
     .bind(next_run_at)
     .bind(ts(now))
+    .bind(crate::organizations::selection::requested(
+        input.organization_id.as_deref(),
+    ))
     .fetch_one(pool)
     .await?;
     row_to_task(row)

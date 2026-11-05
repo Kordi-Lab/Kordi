@@ -12,8 +12,19 @@
 #      imports them into containerd before applying minio.yaml, unless they
 #      are already imported. Importing archives built elsewhere is preferred;
 #      see deploy/minio/README.md.
-#   5. Applies the Deployment + Service manifests with the new tag.
-#   6. Waits for rollout, hits /health from inside the cluster.
+#   5. Applies the in-cluster LiveKit media server unless
+#      KORDI_CLUSTER_LIVEKIT=false.
+#   6. Applies the Deployment + Service manifests with the new tag.
+#   7. Waits for rollout, hits /health from inside the cluster.
+#
+# KORDI_CLUSTER_LIVEKIT (default true) controls only the in-cluster media
+# server. With false the script neither requires the kordi-livekit Secret nor
+# applies livekit.yaml, and it scales an existing in-cluster media server to
+# zero. The Cloud server offers calls only while the kordi-livekit Secret
+# exists, so leave it absent to run with calls off, or point its url at a
+# separate media host. A Secret whose url is on the public origin's host
+# would advertise the stopped in-cluster server, so the deploy refuses it
+# before building anything.
 #
 # No Docker daemon needed on the laptop. Idempotent: re-running with a
 # fresh binary triggers a rolling restart via image-tag rotation.
@@ -31,6 +42,14 @@ EXPECT_UNPUBLISHED_RELEASE="${KORDI_EXPECT_DESKTOP_RELEASE_UNPUBLISHED:-true}"
 VERIFY_PUBLIC_ORIGINS="${KORDI_VERIFY_PUBLIC_ORIGINS:-true}"
 VERIFY_RESOLVE_IP="${KORDI_VERIFY_RESOLVE_IP:-}"
 PUBLIC_ORIGIN="${KORDI_CLOUD_PUBLIC_BASE_URL:-https://kordi.ai}"
+CLUSTER_LIVEKIT="${KORDI_CLUSTER_LIVEKIT:-true}"
+case "${CLUSTER_LIVEKIT}" in
+    true | false) ;;
+    *)
+        echo "[deploy] KORDI_CLUSTER_LIVEKIT must be true or false" >&2
+        exit 1
+        ;;
+esac
 
 GCLOUD_SSH=(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --project "${SSH_PROJECT}")
 
@@ -39,6 +58,28 @@ GCLOUD_SSH=(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --project "$
 guard_command="$(python3 -c 'import pathlib, shlex, sys; print("python3 -c " + shlex.quote(pathlib.Path(sys.argv[1]).read_text()))' \
   "${REPO_ROOT}/scripts/backend_manifest_reapply.py")"
 "${GCLOUD_SSH[@]}" --command "$guard_command"
+
+if [ "${CLUSTER_LIVEKIT}" = "false" ]; then
+    PUBLIC_HOST="${PUBLIC_ORIGIN#*://}"
+    PUBLIC_HOST="${PUBLIC_HOST%%/*}"
+    PUBLIC_HOST="$(printf '%s' "${PUBLIC_HOST%%:*}" | tr '[:upper:]' '[:lower:]')"
+    echo "[deploy] checking that call media does not need the in-cluster server"
+    "${GCLOUD_SSH[@]}" --command "set -e
+secret=\$(kubectl -n kordi-cloud get secret kordi-livekit --ignore-not-found -o name)
+if [ -n \"\$secret\" ]; then
+    url=\$(kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.url}' | base64 -d)
+    host=\${url#*://}
+    host=\${host%%/*}
+    host=\$(printf '%s' \"\${host%%:*}\" | tr '[:upper:]' '[:lower:]')
+    if [ -z \"\$host\" ] || [ \"\$host\" = '${PUBLIC_HOST}' ]; then
+        echo '[deploy] kordi-livekit points at the in-cluster media server that KORDI_CLUSTER_LIVEKIT=false stops; delete the Secret to turn calls off, or set its url to a separate media host' >&2
+        exit 1
+    fi
+    echo '[deploy] kordi-livekit points at a separate media host: the server offers calls through it'
+else
+    echo '[deploy] kordi-livekit is absent: the server runs with calls off'
+fi"
+fi
 
 echo "[deploy] target:    ${SSH_TARGET} (project ${SSH_PROJECT}, zone ${SSH_ZONE})"
 echo "[deploy] image tag: ${IMAGE_TAG}"
@@ -138,14 +179,23 @@ kubectl -n kordi-cloud wait --for=jsonpath='{.status.phase}'=Succeeded pod/relea
 kubectl -n kordi-cloud logs pod/release-store-check
 kubectl -n kordi-cloud delete pod/release-store-check --wait=true >/dev/null"
 
-echo "[deploy] reconciling call media"
-"${GCLOUD_SSH[@]}" --command "set -e
+if [ "${CLUSTER_LIVEKIT}" = "true" ]; then
+    echo "[deploy] reconciling call media"
+    "${GCLOUD_SSH[@]}" --command "set -e
 kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.url}' | grep -q .
 kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.api-key}' | grep -q .
 kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.api-secret}' | grep -q .
 kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.keys}' | grep -q .
 kubectl apply -f ${REMOTE_DEPLOY}/bridges/cloud-server/deploy/k3s/manifests/livekit.yaml >/dev/null
 kubectl -n kordi-cloud rollout status deployment/livekit --timeout=180s"
+else
+    echo "[deploy] skipping in-cluster call media (KORDI_CLUSTER_LIVEKIT=false)"
+    "${GCLOUD_SSH[@]}" --command "set -e
+if kubectl -n kordi-cloud get deployment/livekit >/dev/null 2>&1; then
+    kubectl -n kordi-cloud scale deployment/livekit --replicas=0 >/dev/null
+    echo '[deploy] scaled the existing in-cluster media server to zero'
+fi"
+fi
 
 echo "[deploy] applying manifest with image=${IMAGE}"
 "${GCLOUD_SSH[@]}" --command "set -e

@@ -31,6 +31,20 @@ fn default_base_url(provider: &str, api_mode: OpenAiApiMode) -> Option<&'static 
     }
 }
 
+/// Whether an endpoint is the OpenAI API `/v1` root itself, on the global or
+/// a regional host (such as `eu.api.openai.com`), rather than another
+/// OpenAI-compatible service.
+pub(crate) fn is_openai_api(base_url: &str) -> bool {
+    reqwest::Url::parse(base_url.trim()).is_ok_and(|url| {
+        let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
+        url.scheme() == "https"
+            && url.port().is_none()
+            && (host == "api.openai.com" || host.ends_with(".api.openai.com"))
+            && url.path().trim_end_matches('/') == "/v1"
+            && url.query().is_none()
+    })
+}
+
 /// The endpoint for a snapshot: its own `baseUrl` when present, else the
 /// known endpoint of its provider. The native Anthropic and Google clients add
 /// their own version path (`/v1/messages`, `/v1beta/models`), which OMP catalog

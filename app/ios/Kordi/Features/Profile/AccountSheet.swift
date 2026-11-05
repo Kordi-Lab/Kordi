@@ -80,7 +80,7 @@ struct AccountSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 settingsLink(.profile) { accountHeader }
-                SettingsDivider()
+                AccountOrganizationSection()
 
                 SettingsSectionTitle("Notifications")
                 settingsLink(.notifications) {

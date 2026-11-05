@@ -44,10 +44,6 @@
   border-right: 0;
 }
 
-.app-contacts-field::placeholder {
-  color: var(--utility-muted-text);
-}
-
 .app-contact-request-select:focus-visible::after,
 .app-group-show-all:focus-visible,
 .app-contacts-icon-button:focus-visible,
@@ -63,40 +59,17 @@
   outline-offset: -2px;
 }
 
-/* Add contact panel */
+/* Add contact: the Kordi ID search sits in the list column like the contacts search,
+ * without a panel of its own. */
 .app-contacts-add-form {
-  border: 0;
-  border-radius: 10px;
-  background: color-mix(in oklab, var(--utility-foreground) 4.5%, transparent);
-  box-shadow: none;
-}
-
-.app-contacts-field {
-  border: 1px solid var(--app-divider);
-  background: var(--utility-background);
-  color: var(--utility-foreground);
-}
-
-.app-contacts-field:focus {
-  border-color: var(--app-quiet-control-focus-ring);
+  display: grid;
+  min-width: 0;
 }
 
 .app-contacts-card,
 .app-contacts-tile,
 .app-contacts-lookup-result {
   background: color-mix(in oklab, var(--utility-foreground) 5%, transparent);
-}
-
-.app-contacts-action-chip {
-  border: 1px solid color-mix(in oklab, var(--app-control-border) 82%, transparent);
-  background: color-mix(in oklab, var(--app-control-bg) 88%, transparent);
-  color: var(--utility-foreground);
-  box-shadow: none;
-}
-
-.app-contacts-action-chip:hover {
-  border-color: color-mix(in oklab, var(--app-control-border) 96%, transparent);
-  background: color-mix(in oklab, var(--app-control-hover) 92%, transparent);
 }
 
 /* Sections: a quiet heading row, then a block of rows. */

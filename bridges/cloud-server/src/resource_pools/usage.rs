@@ -84,7 +84,7 @@ pub async fn reserve_on(
     let scope_limit = limits.per_scope(request.feature).map(i64::from);
     let pool_runs = limits.pool_runs.map(clamp);
     let pool_spend = limits.pool_spend_micros.map(clamp);
-    let cost = clamp(pool.provider(request.feature).estimated_cost_micros());
+    let cost = clamp(pool.estimated_cost_micros(request.feature));
     if scope_limit == Some(0) || pool_runs == Some(0) || pool_spend.is_some_and(|c| cost > c) {
         return Ok(Admission::Exhausted);
     }

@@ -102,6 +102,10 @@ pub struct CreateCloudAgentRequest {
     /// `{"proactive": bool}`; validated by [`PersonalAgentSetting::parse`].
     #[serde(default)]
     pub personal_agent: Option<serde_json::Value>,
+    /// The organization that owns the new agent; the owner must belong to
+    /// it. Absent means the owner's personal organization.
+    #[serde(default)]
+    pub organization_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -53,7 +53,8 @@ mod account_actions;
 mod email_lockout;
 
 pub use account_actions::{
-    AccountActionLimit, AGENT_RUN_CLAIM_LIMIT, CONTACT_ADD_LIMIT, DOCUMENT_COLLAB_TICKET_LIMIT,
+    AccountActionLimit, ACCOUNT_SECURITY_CHANGE_LIMIT, ACCOUNT_SECURITY_PROOF_LIMIT,
+    AGENT_RUN_CLAIM_LIMIT, CONTACT_ADD_LIMIT, DOCUMENT_COLLAB_TICKET_LIMIT,
     DOCUMENT_PUBLIC_READ_LIMIT, DOCUMENT_PUBLIC_WRITE_LIMIT, EMAIL_VERIFICATION_LIMIT,
     MESSAGE_SEND_LIMIT,
 };
@@ -81,7 +82,10 @@ const MEMORY_FAMILIAR_CLIENT_PRUNE_THRESHOLD: usize = 10_000;
 impl CloudRateLimitConfig {
     pub const fn production() -> Self {
         Self {
-            per_ip_limit: 10,
+            // Only bursts are refused: people behind one address (an office,
+            // a household) sign in, refresh and open account pages without
+            // hitting this. Password guessing is bounded per email below.
+            per_ip_limit: 50,
             per_ip_window: Duration::from_secs(60),
             per_email_failure_limit: 5,
             per_email_lockout: Duration::from_secs(15 * 60),

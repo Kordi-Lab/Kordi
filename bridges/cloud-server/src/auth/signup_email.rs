@@ -12,8 +12,9 @@ mod store;
 
 pub use store::SignupCodeChallenge;
 pub(crate) use store::{
-    consume_account_email_code, consume_signup_code, request_account_email_code,
-    request_signup_code, SignupCodeError,
+    consume_account_code, consume_account_email_code, consume_organization_email_code,
+    consume_signup_code, request_account_code, request_account_email_code,
+    request_organization_email_code, request_signup_code, AccountCodePurpose, SignupCodeError,
 };
 
 /// Injectable delivery boundary; production uses SMTP, tests use a private inbox.

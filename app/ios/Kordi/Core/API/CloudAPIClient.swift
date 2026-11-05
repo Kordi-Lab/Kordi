@@ -68,7 +68,9 @@ actor CloudAPIClient {
     private let decoder = JSONDecoder()
     private let deviceIdentityStore: KeychainSessionStore
     private var livePhotoUploads: [String: CloudMessageAttachment] = [:]
-    private var activeAccountId: String?
+    private(set) var activeAccountId: String?
+    var newConversationOrganization: (accountId: String, organizationId: String)?
+    var organizationContext = CloudRequestOrganizationContext()
     private var chatConversationsById: [String: CloudChatConversation] = [:]
     private var chatConversationsBySessionId: [String: CloudChatConversation] = [:]
     private var chatMessagesById: [String: CloudChatMessage] = [:]
@@ -671,7 +673,7 @@ actor CloudAPIClient {
             path: "/v1/cloud/agents",
             method: "POST",
             token: token,
-            body: CloudAgentDefinitionRequest(draft: draft),
+            body: CloudAgentDefinitionRequest(draft: draft, organizationId: organizationIdForNewConversation(kind: "ai")),
             fallback: "Could not create this agent."
         )
         return response.agent
@@ -2467,7 +2469,8 @@ actor CloudAPIClient {
                 kind: kind,
                 sharedTitle: sharedTitle?.nonEmpty,
                 clientSessionId: sessionId,
-                memberAccountIds: desiredMembers.filter { $0 != accountId }.sorted()
+                memberAccountIds: desiredMembers.filter { $0 != accountId }.sorted(),
+                organizationId: organizationIdForNewConversation(kind: kind)
             ),
             fallback: "Could not open the reliable chat conversation."
         )
@@ -3051,8 +3054,7 @@ actor CloudAPIClient {
         fallback: String
     ) async throws {
         let request = try makeRequest(path: path, method: method, token: token, query: query, body: bodyData)
-        let (data, response) = try await transportData(for: request, fallback: fallback)
-        try validate(response: response, data: data, fallback: fallback)
+        _ = try await validatedData(for: request, fallback: fallback)
     }
 
     private func perform<Response: Decodable>(
@@ -3065,8 +3067,7 @@ actor CloudAPIClient {
     ) async throws -> Response {
         let request = try makeRequest(path: path, method: method, token: token, query: query, body: body)
         do {
-            let (data, response) = try await transportData(for: request, fallback: fallback)
-            try validate(response: response, data: data, fallback: fallback)
+            let data = try await validatedData(for: request, fallback: fallback)
             do {
                 return try decoder.decode(Response.self, from: data)
             } catch {
@@ -3107,6 +3108,7 @@ actor CloudAPIClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        applyOrganizationHeader(to: &request)
         return request
     }
 
@@ -3241,8 +3243,11 @@ private struct CloudAgentDefinitionRequest: Encodable {
     let resources: [CloudAgentResource]
     let skills: [CloudAgentSkill]
     let modelRouting: CloudModelRouting
+    /// Sent only on creation; nil keeps the agent in the personal organization.
+    let organizationId: String?
 
-    init(draft: CloudAgentDraft) {
+    init(draft: CloudAgentDraft, organizationId: String? = nil) {
+        self.organizationId = organizationId
         accessScope = draft.accessScope.rawValue
         name = draft.name
         role = draft.role
@@ -3335,22 +3340,6 @@ private struct ChatHistoryResponse: Decodable {
         case messages
         case nextBeforeSequence = "next_before_sequence"
         case hasMore = "has_more"
-    }
-}
-
-private struct ChatCreateConversationRequest: Encodable {
-    let clientOperationId: String
-    let kind: String
-    let sharedTitle: String?
-    let clientSessionId: String
-    let memberAccountIds: [String]
-
-    enum CodingKeys: String, CodingKey {
-        case clientOperationId = "client_operation_id"
-        case kind
-        case sharedTitle = "shared_title"
-        case clientSessionId = "client_session_id"
-        case memberAccountIds = "member_account_ids"
     }
 }
 
@@ -3478,6 +3467,7 @@ private extension CloudChatConversation {
             createdByAccountId: createdByAccountId,
             legacySessionId: legacySessionId,
             personalAgent: personalAgent,
+            organization: organization,
             forkedFromSessionId: forkedFromSessionId,
             forkedFromMessageId: forkedFromMessageId,
             latestMessageSequence: max(latestMessageSequence, sequence),
@@ -3497,6 +3487,7 @@ private extension CloudChatConversation {
             createdByAccountId: createdByAccountId,
             legacySessionId: legacySessionId,
             personalAgent: personalAgent,
+            organization: organization,
             forkedFromSessionId: forkedFromSessionId,
             forkedFromMessageId: forkedFromMessageId,
             latestMessageSequence: latestMessageSequence,
@@ -3516,6 +3507,7 @@ private extension CloudChatConversation {
             createdByAccountId: createdByAccountId,
             legacySessionId: legacySessionId,
             personalAgent: personalAgent,
+            organization: organization,
             forkedFromSessionId: forkedFromSessionId,
             forkedFromMessageId: forkedFromMessageId,
             latestMessageSequence: latestMessageSequence,

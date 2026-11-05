@@ -14,6 +14,8 @@ export type StoredSession = {
   refreshToken?: string;
   clientId?: string;
   tokenEndpoint?: string;
+  /** The organization the access token acts in, once a switch recorded it. */
+  organizationId?: string;
 };
 
 export interface SessionStorageBackend {
@@ -22,6 +24,12 @@ export interface SessionStorageBackend {
   clear(): Promise<void>;
   /** Refreshes a browser sign-in session; rejects with a stable code such as `invalid_grant`. */
   refresh?(session: StoredSession): Promise<StoredSession>;
+  /**
+   * Exchanges the access token for one bound to another organization and
+   * saves it only while the stored session is still `session`. Rejects with a
+   * stable code such as `session_changed` or `organization_not_found`.
+   */
+  switchOrganization?(session: StoredSession, organizationId: string): Promise<StoredSession>;
 }
 
 /** Browser sign-in access tokens last an hour; refresh this long before expiry. */
@@ -59,6 +67,12 @@ class TauriKeychainBackend implements SessionStorageBackend {
     // The native shell serializes refreshes across every window and task.
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke<StoredSession>('cloud_session_refresh', { previousToken: session.token });
+  }
+
+  async switchOrganization(session: StoredSession, organizationId: string): Promise<StoredSession> {
+    // The native shell saves the switched token with a compare-and-swap.
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke<StoredSession>('cloud_session_switch_organization', { previousToken: session.token, organizationId });
   }
 
   async clear(): Promise<void> {
@@ -105,6 +119,24 @@ class MemoryBackend implements SessionStorageBackend {
     this.cached = { ...next };
     return next;
   }
+
+  async switchOrganization(session: StoredSession, organizationId: string): Promise<StoredSession> {
+    const [{ exchangeOrganizationToken }, { baseCloudFetchImpl }, { cloudApiBaseUrl }] = await Promise.all([
+      import('@/features/organizations/organizationToken'),
+      import('./cloudTransport'),
+      import('./cloudApiEnvironment'),
+    ]);
+    const next = await exchangeOrganizationToken(session, organizationId, baseCloudFetchImpl(), cloudApiBaseUrl());
+    if (!isSameStoredSession(this.cached, session)) throw new Error(this.cached ? 'session_changed' : 'not_signed_in');
+    this.cached = { ...next };
+    return next;
+  }
+}
+
+/** Whether `current` is still the session `start` (same account and refresh token, or the same token). */
+export function isSameStoredSession(current: StoredSession | null, start: StoredSession): boolean {
+  if (!current || current.accountId !== start.accountId) return false;
+  return start.refreshToken ? current.refreshToken === start.refreshToken : !current.refreshToken && current.token === start.token;
 }
 
 let backendOverride: SessionStorageBackend | null = null;
@@ -113,6 +145,7 @@ let cachedSessionValue: StoredSession | null | undefined;
 let cachedSessionLoadPromise: Promise<StoredSession | null> | null = null;
 let sessionRevision = 0;
 let refreshInFlight: Promise<StoredSession | null> | null = null;
+let switchInFlight: { organizationId: string; promise: Promise<StoredSession> } | null = null;
 
 function resetSessionLoadCache(): void {
   sessionRevision += 1;
@@ -124,6 +157,7 @@ export function __setSessionBackendForTests(backend: SessionStorageBackend | nul
   backendOverride = backend;
   cachedBackend = null;
   refreshInFlight = null;
+  switchInFlight = null;
   resetSessionLoadCache();
 }
 
@@ -177,6 +211,50 @@ export function refreshSession(session: StoredSession): Promise<StoredSession | 
       refreshInFlight = null;
     });
   return refreshInFlight;
+}
+
+/** The session this window last loaded, without reading storage. */
+export function cachedSessionSnapshot(): StoredSession | null {
+  return cachedSessionValue ?? null;
+}
+
+/**
+ * Switches the stored session's access token to `organizationId`, once
+ * however many callers ask. The account, sign-in and refresh token stay the
+ * same. When another window refreshed or switched first, retries once from
+ * the stored session of the same account. Rejects with a stable code.
+ */
+export function switchSessionOrganization(organizationId: string): Promise<StoredSession> {
+  if (switchInFlight?.organizationId === organizationId) return switchInFlight.promise;
+  const promise = runOrganizationSwitch(organizationId).finally(() => {
+    if (switchInFlight?.promise === promise) switchInFlight = null;
+  });
+  switchInFlight = { organizationId, promise };
+  return promise;
+}
+
+async function runOrganizationSwitch(organizationId: string): Promise<StoredSession> {
+  const store = backend();
+  if (!store.switchOrganization) throw new Error('unsupported');
+  let session = await loadSession();
+  if (!session) throw new Error('not_signed_in');
+  for (let attempt = 0; ; attempt += 1) {
+    const revision = sessionRevision;
+    try {
+      const next = await store.switchOrganization(session, organizationId);
+      if (revision === sessionRevision) {
+        cachedSessionValue = { ...next };
+        cachedSessionLoadPromise = null;
+      }
+      return next;
+    } catch (error) {
+      if (attempt > 0 || refreshErrorCode(error) !== 'session_changed' || revision !== sessionRevision) throw error;
+      resetSessionLoadCache();
+      const current = await loadSession();
+      if (!current || current.accountId !== session.accountId) throw error;
+      session = current;
+    }
+  }
 }
 
 /** The stored session, refreshed first when a browser sign-in token is about to expire. */

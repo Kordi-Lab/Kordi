@@ -92,6 +92,28 @@ pub fn check_membership_change(
     Ok(())
 }
 
+/// Checks that an account with `role` may leave an organization of `kind`
+/// that has `owner_count` owners. Any member may leave a team, except its
+/// last owner, who must name another owner first.
+pub fn check_leave(
+    kind: &str,
+    role: OrganizationRole,
+    owner_count: i64,
+) -> Result<(), PolicyError> {
+    if kind != super::TEAM_KIND {
+        return Err(PolicyError::PersonalOrganization);
+    }
+    if role == OrganizationRole::Owner && owner_count <= 1 {
+        return Err(PolicyError::LastOwner);
+    }
+    Ok(())
+}
+
+/// Whether `role` may move content into or out of an organization.
+pub fn manages_content(role: OrganizationRole) -> bool {
+    role.manages_members()
+}
+
 #[cfg(test)]
 mod tests {
     use super::OrganizationRole::{Admin, Member, Owner};
@@ -177,6 +199,20 @@ mod tests {
                 Err(PolicyError::OwnerRequired)
             );
         }
+    }
+
+    #[test]
+    fn members_leave_a_team_but_the_last_owner_stays() {
+        assert_eq!(check_leave(TEAM, Member, 1), Ok(()));
+        assert_eq!(check_leave(TEAM, Admin, 1), Ok(()));
+        assert_eq!(check_leave(TEAM, Owner, 2), Ok(()));
+        assert_eq!(check_leave(TEAM, Owner, 1), Err(PolicyError::LastOwner));
+        assert_eq!(
+            check_leave("personal", Owner, 1),
+            Err(PolicyError::PersonalOrganization)
+        );
+        assert!(manages_content(Owner) && manages_content(Admin));
+        assert!(!manages_content(Member));
     }
 
     #[test]

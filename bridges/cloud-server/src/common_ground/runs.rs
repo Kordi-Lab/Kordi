@@ -27,37 +27,48 @@ pub(super) struct NewRun<'a> {
     /// The member the run works for.
     pub requester: &'a str,
     /// The conversation the run works in, if any. Its organization picks the
-    /// resource pool; otherwise the requester's personal organization does.
+    /// resource pool.
     pub conversation_id: Option<Uuid>,
+    /// The checked organization of the request that started the run
+    /// (organization-requests.md). Without a conversation it picks the pool;
+    /// background work names none and uses the requester's personal one.
+    pub organization_id: Option<&'a str>,
     pub prompt: String,
     pub system_prompt: &'a str,
 }
 
 /// Queues a run in `tx` once the resource pool of its organization admits it,
 /// counted for the requester. Returns false, queueing nothing and leaving
-/// `tx` as it was, when the pool's daily limit is used up or it is stopped.
+/// `tx` as it was, when the pool's daily limit is used up, the pool is
+/// stopped, or the organization is disabled.
 pub(super) async fn insert(
     tx: &mut Transaction<'_, Postgres>,
     service: &crate::system_agent::SystemAgentConfig,
     run: NewRun<'_>,
 ) -> sqlx_core::Result<bool> {
     let organization_id: Option<String> =
-        match run.conversation_id {
-            Some(conversation_id) => query_scalar(
+        match (run.conversation_id, run.organization_id) {
+            (Some(conversation_id), _) => query_scalar(
                 "SELECT organization_id FROM cloud_chat_conversations WHERE conversation_id = $1",
             )
             .bind(conversation_id)
             .fetch_optional(&mut **tx)
             .await?
             .flatten(),
-            None => query_scalar(
+            (None, Some(organization_id)) => Some(organization_id.to_string()),
+            (None, None) => query_scalar(
                 "SELECT organization_id FROM cloud_organizations WHERE personal_account_id = $1",
             )
             .bind(run.requester)
             .fetch_optional(&mut **tx)
             .await?,
         };
-    let pool = service.resource_pools().resolve(organization_id.as_deref());
+    let pools = service.resource_pools();
+    // A disabled organization's work is refused outright.
+    if !pools.admits(organization_id.as_deref()) {
+        return Ok(false);
+    }
+    let pool = pools.resolve(organization_id.as_deref());
     let admission = usage::reserve(
         tx,
         &usage::Request {
@@ -91,6 +102,8 @@ pub(super) async fn insert(
     .bind(organization_id.as_deref())
     .execute(&mut **tx)
     .await?;
+    // A pool worker pool's run waits for that pool's own worker.
+    crate::pool_workers::store::tag_run(tx, run.run_id, pool, Feature::Grounding).await?;
     Ok(true)
 }
 

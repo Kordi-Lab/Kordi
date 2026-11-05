@@ -40,6 +40,7 @@ async fn room_groups_carry_the_grounding_origin() {
             shared_title: Some("Plain".to_string()),
             client_session_id: format!("session:group:{}", Uuid::new_v4()),
             member_account_ids: vec![priya.clone()],
+            organization_id: None,
         },
     )
     .await

@@ -1,3 +1,4 @@
+use crate::cloud_session_organization::CloudBearerAuth;
 use std::path::{Path, PathBuf};
 
 use futures_util::StreamExt;
@@ -130,7 +131,7 @@ pub(super) async fn download(
         .extend(["v1", "cloud", "attachments", attachment_id, "content"]);
     let response = reqwest::Client::new()
         .get(url)
-        .bearer_auth(token)
+        .cloud_bearer_auth(token)
         .send()
         .await
         .map_err(|error| format!("Unable to download attachment: {error}"))?;

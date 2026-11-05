@@ -109,6 +109,7 @@ pub(crate) async fn create_room_group_in_transaction(
             title: Some(group_title),
             space_id: None,
             roles: None,
+            organization_id: None,
         }),
         None,
     )
@@ -316,12 +317,26 @@ pub(super) async fn create_conversation_with_options(
         }
     }
 
+    let requested_organization = match request.kind {
+        ConversationKind::Direct => None,
+        _ => request.organization_id.as_deref(),
+    };
+    let inherited = group
+        .as_ref()
+        .and_then(|group| group.organization_id.clone());
+    let organization_id = match inherited {
+        Some(inherited) => Some(inherited),
+        None => {
+            super::organization::for_creator(transaction, account_id, requested_organization)
+                .await?
+        }
+    };
     let conversation_id = Uuid::now_v7();
     query(
         "INSERT INTO cloud_chat_conversations \
          (conversation_id, kind, shared_title, created_by_account_id, client_operation_id, \
-          creation_fingerprint, legacy_session_id, group_space_id, group_title) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+          creation_fingerprint, legacy_session_id, group_space_id, group_title, organization_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(conversation_id)
     .bind(request.kind.as_str())
@@ -332,6 +347,7 @@ pub(super) async fn create_conversation_with_options(
     .bind(&client_session_id)
     .bind(source_space.or_else(|| group_title.map(|_| client_session_id.as_str())))
     .bind(group_title)
+    .bind(organization_id)
     .execute(&mut **transaction)
     .await?;
     for member in &members {

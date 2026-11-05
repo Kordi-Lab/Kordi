@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useMemo, useRef } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,14 @@ import { cn } from '@/lib/utils';
 import {
   BIRTHDAY_MIN,
   CLOUD_PROFILE_LIMITS,
+  cloudProfileHandleDraft,
   cloudProfileNumberPlaceholder,
   kordiIdLockedUntilLabel,
   localDateString,
   sanitizeKordiHandleInput,
   timeZoneOptions,
 } from './cloudProfileDraft';
+import { KordiIdChangeConfirmDialog, KordiIdLockedDialog } from './CloudProfileKordiIdDialogs';
 import type { CloudProfileEditor } from './useCloudProfileEditor';
 
 function AboutTextarea({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) {
@@ -71,6 +73,26 @@ export function CloudProfilePanel({
   const kordiIdLockedUntil = kordiIdLockedUntilLabel(account);
   const displayName = account.displayName?.trim() || account.primaryEmail?.trim() || 'Profile';
   const email = account.primaryEmail?.trim();
+  const [kordiIdDialog, setKordiIdDialog] = useState<'confirm' | 'locked' | null>(null);
+  // Closing the locked dialog returns focus to the field; that focus must not reopen it.
+  const skipLockedFocusRef = useRef(false);
+  const kordiIdChanged = fieldDraft.kordiId !== cloudProfileHandleDraft(account.kordiId);
+
+  const openLockedDialog = () => {
+    if (kordiIdLockedUntil) setKordiIdDialog('locked');
+  };
+  const closeLockedDialog = () => {
+    skipLockedFocusRef.current = true;
+    window.setTimeout(() => { skipLockedFocusRef.current = false; }, 0);
+    setKordiIdDialog(null);
+  };
+  const requestSave = () => {
+    if (kordiIdChanged) {
+      setKordiIdDialog('confirm');
+      return;
+    }
+    void editor.save();
+  };
 
   const textField = (field: 'location' | 'website', label: string, placeholder: string) => (
     <CloudProfileFieldRow label={label} htmlFor={id(field)} error={errors[field]} errorId={id(`${field}-error`)} invalid={Boolean(errors[field])}>
@@ -121,9 +143,6 @@ export function CloudProfilePanel({
           error={errors.kordiId}
           errorId={id('kordi-id-error')}
           invalid={Boolean(errors.kordiId)}
-          below={kordiIdLockedUntil
-            ? <div id={id('kordi-id-note')} className="app-cloud-profile-row-note">Changes again on {kordiIdLockedUntil}</div>
-            : null}
         >
           <span className="app-cloud-profile-at" aria-hidden="true">@</span>
           <input
@@ -132,12 +151,20 @@ export function CloudProfilePanel({
             onChange={(event) => editor.setField('kordiId', sanitizeKordiHandleInput(event.currentTarget.value))}
             className="app-cloud-profile-input"
             placeholder={kordiIdPlaceholder}
-            disabled={Boolean(kordiIdLockedUntil)}
+            readOnly={Boolean(kordiIdLockedUntil)}
+            onMouseDown={kordiIdLockedUntil ? (event) => { event.preventDefault(); openLockedDialog(); } : undefined}
+            onFocus={kordiIdLockedUntil ? () => {
+              if (skipLockedFocusRef.current) {
+                skipLockedFocusRef.current = false;
+                return;
+              }
+              openLockedDialog();
+            } : undefined}
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}
             aria-invalid={Boolean(errors.kordiId) || undefined}
-            aria-describedby={[errors.kordiId ? id('kordi-id-error') : '', kordiIdLockedUntil ? id('kordi-id-note') : ''].filter(Boolean).join(' ') || undefined}
+            aria-describedby={errors.kordiId ? id('kordi-id-error') : undefined}
           />
         </CloudProfileFieldRow>
         <CloudProfileFieldRow label="About" htmlFor={id('about')} error={errors.about} errorId={id('about-error')} invalid={Boolean(errors.about)} top>
@@ -199,7 +226,7 @@ export function CloudProfilePanel({
             ? <span id={id('form-error')} className="app-error-text text-rose-200" aria-live="polite">{errors.form}</span>
             : undefined}
           control={(
-            <Button type="button" className="h-8 rounded-lg px-3.5 text-[12px]" disabled={editor.isSaving || !editor.isDirty} onClick={() => { void editor.save(); }}>
+            <Button type="button" className="h-8 rounded-lg px-3.5 text-[12px]" disabled={editor.isSaving || !editor.isDirty} onClick={requestSave}>
               {editor.isSaving ? 'Saving…' : 'Save'}
             </Button>
           )}
@@ -224,6 +251,18 @@ export function CloudProfilePanel({
             )}
           />
         </SettingsSection>
+      ) : null}
+      {kordiIdDialog === 'confirm' ? (
+        <KordiIdChangeConfirmDialog
+          onCancel={() => setKordiIdDialog(null)}
+          onConfirm={() => {
+            setKordiIdDialog(null);
+            void editor.save();
+          }}
+        />
+      ) : null}
+      {kordiIdDialog === 'locked' && kordiIdLockedUntil ? (
+        <KordiIdLockedDialog availableOn={kordiIdLockedUntil} onClose={closeLockedDialog} />
       ) : null}
     </div>
   );

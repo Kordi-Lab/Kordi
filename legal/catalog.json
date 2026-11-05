@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "scope": "Conservative lock inventory, including build, test and optional dependencies; not a shipped-code SBOM.",
   "inputs": {
-    "Cargo.lock": "c3f6059ac5c030f786b08e84c2875fdfdbb0ddc827e71cec8a6eb70a797c9f85",
+    "Cargo.lock": "a7e7fb8fd5e429d68f5d4fb2069814499d1670d250dc6cd7ec15ed8a7f1b1f13",
     "pnpm-lock.yaml": "b1ab9e2c06646f73288db2ef5075bf48107bc0f4a8364e1a3726f5e8dee85e30",
     "shared/omp-runtime/bun.lock": "ceb1c45ea56f52fa440e8c3aa23377c484b8acb5ef512d0de8ab6cfc218ef43a",
     "bridges/cloud-temporal-bridge/go.mod": "c09969e162406833ad4a1c85524a1fbe4196fd84aea2ded9ef4c8b251da72c51",

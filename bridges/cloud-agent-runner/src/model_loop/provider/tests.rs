@@ -188,6 +188,7 @@ fn completion_request_uses_shared_provider_shape_without_rewriting_model() {
         thinking: "default".to_string(),
         api_mode: OpenAiApiMode::CodexOAuth,
         account_id: Some("acct".to_string()),
+        verbatim_model: false,
         headers: Default::default(),
     };
     let request = completion_request_from_cloud_messages(
@@ -225,6 +226,7 @@ fn fixture_auth() -> OpenAiProviderConfig {
         thinking: "default".into(),
         api_mode: OpenAiApiMode::ChatCompletions,
         account_id: None,
+        verbatim_model: false,
         headers: Default::default(),
     }
 }
@@ -439,6 +441,7 @@ fn native_search_retains_the_run_scoped_route() {
         thinking: "medium".into(),
         api_mode: OpenAiApiMode::CodexOAuth,
         account_id: Some("synthetic-account".into()),
+        verbatim_model: false,
         headers: Default::default(),
     };
     let search = config.web_search_runtime();

@@ -17,9 +17,11 @@ import '../../src/index.css';
 
 // Login-free preview of Common ground in the real Contacts page. A fetch stub answers the
 // `/v1/cloud/common-ground` routes from fixtures, with three profiles (`commonGroundVersion` 3).
-// Query: ?screen=home|build|card|look|lobby|results|match|meet|pair|pair-off, ?theme=light|dark, ?status=matching|matching-empty (results).
+// Query: ?screen=home|unbuilt|build|card|look|lobby|results|match|meet|pair|pair-off, ?theme=light|dark, ?status=matching|matching-empty (results).
+// "unbuilt" is Home with the Health card selected, which has no card yet, so Build opens in place.
 // "look" is the card page with the background and icon popover open; "pair" is Home with the
 // Pair popover open, and "pair-off" the same with sharing off.
+// ?noPrompt makes Allow end without a macOS prompt; ?buildEmpty makes Build find nothing in the sources.
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
 const screen = params.get('screen') ?? 'home';
@@ -74,6 +76,9 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (at < 0) return realFetch(input, init);
   const [path, query = ''] = url.slice(at + marker.length).split('?');
   const reply = ROUTES[`${init?.method ?? 'GET'} ${path}`];
+  if (params.has('buildEmpty') && path === 'card/build') {
+    return new Response(JSON.stringify({ errorCode: 'common_ground_no_sources', message: 'Choose at least one source.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+  }
   if (screen === 'pair-off' && path === 'pairings/code') {
     return new Response(JSON.stringify({ errorCode: 'common_ground_sharing_off', message: 'Turn on sharing to meet people.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
   }
@@ -117,7 +122,7 @@ const host: CgHost = {
   agentFiles: async () => fx.agentFiles,
   device: {
     status: async () => ({ calendar: 'granted', reminders: 'not_determined' }),
-    request: async () => ({ calendar: 'granted', reminders: 'granted' }),
+    request: async () => (params.has('noPrompt') ? { calendar: 'granted', reminders: 'not_determined' } : { calendar: 'granted', reminders: 'granted' }),
     titles: async () => Array.from({ length: 24 }, (_, index) => ({ title: `Event ${index + 1}`, date: '2026-10-01' })),
   },
   openUrl: () => undefined,
@@ -171,7 +176,7 @@ function Preview({ store }: { store: CommonGroundStore }) {
 
 void saveSession({ token: 'preview', accountId: fx.self.accountId, expiresAt: '2099-01-01T00:00:00Z' }).then(() => {
   // The build screen previews the Health profile, which has no card yet.
-  if (screen === 'build') localStorage.setItem(profileStorageKey(fx.self.accountId), 'cgp_health');
+  if (screen === 'build' || screen === 'unbuilt') localStorage.setItem(profileStorageKey(fx.self.accountId), 'cgp_health');
   const store = new CommonGroundStore(createCommonGroundClient(), { profiles: true, memory: localProfileMemory(fx.self.accountId) });
   for (const next of STACKS[screen] ?? []) store.open(next);
   createRoot(document.getElementById('root')!).render(<StrictMode><Preview store={store} /></StrictMode>);

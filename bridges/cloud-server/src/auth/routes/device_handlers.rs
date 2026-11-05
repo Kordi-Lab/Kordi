@@ -272,7 +272,7 @@ pub(super) async fn revoke_other_devices(
     revoke_devices(state, session, request.client_operation_id, None).await
 }
 
-async fn revoke_devices(
+pub(super) async fn revoke_devices(
     state: Arc<ServerState>,
     session: CloudSession,
     operation_id: uuid::Uuid,

@@ -189,7 +189,19 @@ test('cloud server manifest targets the hosted product public base', async () =>
   }
   assert.doesNotMatch(manifest, /\.(?:sslip|nip)\.io\b/);
   assert.deepEqual(findPrivateIdentifiers(manifest), [], 'the manifest must not name a former host');
-  assert.match(manifest, /KORDI_LIVEKIT_URL[\s\S]*name: kordi-livekit[\s\S]*key: url/);
+  // Release builds refuse to start without a callback scheme.
+  assert.match(manifest, /name: KORDI_CLIENT_CALLBACK_SCHEME\n(?: {14}#[^\n]*\n)* {14}value: "kordi"\n/);
+  // Without the kordi-livekit Secret the server starts with calls off.
+  for (const [name, key] of [
+    ['KORDI_LIVEKIT_URL', 'url'],
+    ['KORDI_LIVEKIT_API_KEY', 'api-key'],
+    ['KORDI_LIVEKIT_API_SECRET', 'api-secret'],
+  ]) {
+    assert.match(
+      manifest,
+      new RegExp(`name: ${name}\\n {14}valueFrom:\\n {16}secretKeyRef:\\n {18}name: kordi-livekit\\n {18}key: ${key}\\n {18}optional: true\\n`),
+    );
+  }
   for (const name of [
     'KORDI_APNS_ENVIRONMENT',
     'KORDI_APNS_KEY_ID',
@@ -273,10 +285,14 @@ test('product origin serves desktop routes without redirects', async () => {
   // forward the resolved client rather than the TCP peer.
   assert.equal(caddyfile.match(/header_up X-Real-IP \{client_ip\}/g)?.length, 2);
   assert.doesNotMatch(caddyfile, /\{remote_host\}/);
+  // Operators name their own edge proxy ranges and client-IP header; the
+  // defaults keep the original load-balancer behaviour.
   assert.match(
     caddyfile,
-    /servers :8080 \{[\s\S]*trusted_proxies static 130\.211\.0\.0\/22 35\.191\.0\.0\/16 \{\$KORDI_EDGE_LB_ADDRESS\}[\s\S]*trusted_proxies_strict/,
+    /servers :8080 \{\n\t\ttrusted_proxies static \{\$KORDI_TRUSTED_PROXIES:130\.211\.0\.0\/22 35\.191\.0\.0\/16\} \{\$KORDI_EDGE_LB_ADDRESS\}\n\t\tclient_ip_headers \{\$KORDI_CLIENT_IP_HEADER:X-Forwarded-For\}\n\t\ttrusted_proxies_strict\n/,
   );
+  assert.equal(caddyfile.match(/trusted_proxies static/g)?.length, 1);
+  assert.match(caddyfile, /unset, never empty/);
   assert.doesNotMatch(caddyfile, /trusted_proxies static[^\n]*(10\.|172\.|192\.168\.)/);
   assert.match(manifest, /nodePort: 30081/);
   assert.match(manifest, /type: NodePort/);

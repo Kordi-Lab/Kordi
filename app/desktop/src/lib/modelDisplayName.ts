@@ -23,3 +23,20 @@ export function modelEffortLabel(value: string): string {
   if (['xhigh', 'extrahigh', 'extra_high'].includes(value.toLowerCase())) return 'Extra high';
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
+
+/** Composer chip text while no provider account is connected, so no model is named. */
+export const COMPOSER_NO_MODEL_LABEL = '--';
+
+/**
+ * The composer chip's model and effort text. Without a connected provider there is no
+ * usable model, so both halves show a neutral placeholder instead of a default model.
+ */
+export function composerModelChipLabels({ model, modelLabel, thinking, hasProvider }: {
+  model: string;
+  modelLabel?: string | null;
+  thinking: string;
+  hasProvider: boolean;
+}): { model: string; effort: string } {
+  if (!hasProvider) return { model: COMPOSER_NO_MODEL_LABEL, effort: COMPOSER_NO_MODEL_LABEL };
+  return { model: modelShortName(model, modelLabel), effort: modelEffortLabel(thinking) };
+}

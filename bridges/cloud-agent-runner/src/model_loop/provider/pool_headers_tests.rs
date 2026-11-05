@@ -18,6 +18,8 @@ fn pool_material() -> ProviderAuthMaterial {
             "apiKey": "synthetic-pool-key",
             "baseUrl": "https://gateway.example.test/api/v1",
             "model": "vendor/synthetic-model",
+            // The server marks every service credential, pools included.
+            "verbatimModel": true,
             "headers": {
                 "http-referer": "https://app.example.test",
                 "x-title": "Example",
@@ -41,12 +43,41 @@ fn payload_headers_are_kept_except_reserved_ones() {
             ("x-title".to_string(), "Example".to_string()),
         ])
     );
+    assert!(auth.verbatim_model);
     let mut plain = pool_material();
     plain.payload.as_object_mut().unwrap().remove("headers");
     assert!(OpenAiProviderConfig::from_material(&plain)
         .unwrap()
         .headers
         .is_empty());
+}
+
+#[test]
+fn a_pool_keeps_its_headers_and_sends_its_openai_prefixed_model_verbatim() {
+    let mut material = pool_material();
+    material.provider = "openai".to_string();
+    let mut auth = OpenAiProviderConfig::from_material(&material).unwrap();
+    auth.apply_runtime_route(
+        &AgentRuntimeRoute {
+            default_model: Some("openai/gpt-synthetic".to_string()),
+            thinking: None,
+        },
+        "openai",
+    )
+    .unwrap();
+    // A member route would drop `openai/`; the pool's gateway needs it.
+    assert_eq!(auth.model, "openai/gpt-synthetic");
+    assert_eq!(
+        auth.headers.get("x-title").map(String::as_str),
+        Some("Example")
+    );
+    assert_eq!(
+        auth.request_options()
+            .headers
+            .get("http-referer")
+            .map(String::as_str),
+        Some("https://app.example.test")
+    );
 }
 
 /// Reads one HTTP request: the head as lowercase text and the JSON body.

@@ -59,7 +59,7 @@ fn server_error() -> Response {
     )
 }
 
-fn pools(state: &ServerState) -> Option<&ResourcePools> {
+fn pools(state: &ServerState) -> Option<Arc<ResourcePools>> {
     state
         .system_agent()
         .map(|service| service.config().resource_pools())
@@ -148,7 +148,7 @@ async fn account_usage(
         let snapshots = match pools(&state) {
             Some(pools) => match organization_snapshots(
                 db,
-                pools,
+                &pools,
                 &session.account_id,
                 &organization_id,
                 &kind,
@@ -199,7 +199,7 @@ async fn organization_usage(
     let snapshots = match pools(&state) {
         Some(pools) => match organization_snapshots(
             db,
-            pools,
+            &pools,
             &session.account_id,
             &organization_id,
             &kind,

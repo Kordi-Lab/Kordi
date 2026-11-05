@@ -20,6 +20,7 @@ use crate::updates::store::{
     MinioReleaseStore, ReleaseCatalogStore, ReleaseStoreConfig, ReleaseStoreError,
 };
 
+mod admission_state;
 mod logging;
 mod readiness;
 mod workers;
@@ -28,6 +29,7 @@ use logging::redact_url_credentials;
 
 pub struct ServerState {
     admission: crate::auth::admission::AdmissionPolicy,
+    organization_admission: Arc<crate::organizations::admission::OrganizationAdmission>,
     pool: PgPool,
     events: EventBus,
     chat_sync_wakes: Arc<crate::chat_sync::realtime::ChatSyncWakeHub>,
@@ -47,6 +49,7 @@ impl ServerState {
     pub fn new(pool: PgPool, events: EventBus) -> Self {
         Self {
             admission: Default::default(),
+            organization_admission: Default::default(),
             pool,
             events,
             chat_sync_wakes: crate::chat_sync::realtime::ChatSyncWakeHub::new(),
@@ -61,14 +64,6 @@ impl ServerState {
             connectors: crate::connectors::ConnectorRuntime::from_env(),
             document_rooms: crate::document_shares::collab::RoomRegistry::new(),
         }
-    }
-
-    pub fn admission(&self) -> &crate::auth::admission::AdmissionPolicy {
-        &self.admission
-    }
-    pub fn with_admission(mut self, policy: crate::auth::admission::AdmissionPolicy) -> Self {
-        self.admission = policy;
-        self
     }
 
     pub fn with_s3(mut self, s3: S3Config) -> Self {
@@ -258,6 +253,7 @@ pub fn router_with_shared_rate_limiter(
         )
         .merge(crate::digest::routes(state.clone()))
         .merge(crate::plan_cards::routes(state.clone()))
+        .merge(crate::pool_workers::routes(state.clone()))
         .merge(crate::projects::routes(state.clone()))
         .merge(crate::support::routes(state.clone()))
         .merge(crate::updates::routes::routes(state.clone()))
@@ -337,6 +333,9 @@ pub async fn run(
     let admission =
         crate::auth::admission::AdmissionPolicy::from_env().map_err(RunError::Configuration)?;
     let pool = init_pool(database_url).await.map_err(RunError::Pool)?;
+    let organizations = crate::organizations::admission::load(&pool)
+        .await
+        .map_err(RunError::Configuration)?;
     let events = match nats_url {
         Some(url) => {
             println!("Kordi cloud server connecting to NATS");
@@ -364,7 +363,8 @@ pub async fn run(
     });
     let mut state = ServerState::new(pool, events)
         .with_connector_call_limiter(rate_limiter.clone())
-        .with_admission(admission);
+        .with_admission(admission)
+        .with_organization_admission(organizations);
     if let Some(service) = signup_email {
         state = state.with_signup_email(service);
         println!("Kordi signup email verification is configured");
@@ -414,23 +414,16 @@ pub async fn run(
             "Kordi System agent configured as {} ({})",
             system_agent_config.name, system_agent_config.account_id
         );
-        // Pool ids and limits only; providers and keys are never printed.
-        let pools = system_agent_config.resource_pools();
-        println!(
-            "Kordi resource pools: {} (default {})",
-            pools
-                .pools()
-                .iter()
-                .map(|pool| pool.summary())
-                .collect::<Vec<_>>()
-                .join(", "),
-            pools.default_pool().id()
-        );
-        if let Err(error) =
-            crate::resource_pools::warn_unknown_organizations(state.db_pool(), pools).await
-        {
-            eprintln!("[resource-pools] Could not check bound organizations: {error}");
-        }
+        crate::resource_pools::registry::start(
+            system_agent_config.resource_pool_registry(),
+            state.db_pool(),
+        )
+        .await
+        .map_err(|error| {
+            RunError::SystemAgent(crate::system_agent::SystemAgentConfigError::ResourcePools(
+                error,
+            ))
+        })?;
         state = state.with_system_agent(SystemAgentService::new(system_agent_config));
     } else {
         println!("Kordi System agent is disabled");

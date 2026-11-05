@@ -39,6 +39,10 @@ pub struct CreateScheduledTaskRequest {
     pub target_runtime: ScheduledTaskTargetRuntime,
     #[serde(default)]
     pub tool_payload: serde_json::Value,
+    /// The organization that owns the task; the owner must belong to it.
+    /// Absent means the owner's personal organization.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organization_id: Option<String>,
 }
 
 impl CreateScheduledTaskRequest {

@@ -3,6 +3,7 @@
 //! each call goes back to the server broker with the lease and claim ids,
 //! authenticated with the signed-in desktop session. The broker holds every
 //! provider credential and returns only the tool result.
+use crate::cloud_session_organization::CloudBearerAuth;
 use std::sync::Arc;
 
 use kordi_cli::desktop_runtime::DesktopCloudExecutionLease;
@@ -207,7 +208,7 @@ async fn post_broker(
         .map_err(|_| unavailable())?;
     let mut response = client
         .post(format!("{}{path}", api_base.trim_end_matches('/')))
-        .bearer_auth(token)
+        .cloud_bearer_auth(token)
         .json(body)
         .send()
         .await

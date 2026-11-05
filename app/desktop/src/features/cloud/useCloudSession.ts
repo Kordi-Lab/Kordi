@@ -25,9 +25,8 @@ import { revokeAppSignIn, type AppSignInResult } from './appSignIn/appSignInClie
 import { useCloudBrowserSignInSession, useCloudSessionKeepAlive, type CloudBrowserSignInSession } from './appSignIn/cloudBrowserSignInSession';
 import { carryCloudAccountEmailVerification, cloudAccountsEqual } from './cloudAccountState';
 import { cloudFetchImpl } from './cloudTransport';
-import {
-  isCloudOAuthCancelled,
-} from './cloudOAuthCancellation';
+import { endCloudSessionIfRejected } from './cloudSessionRejection';
+import { isCloudOAuthCancelled } from './cloudOAuthCancellation';
 import { startCloudOAuthSignIn } from './cloudOAuthSignIn';
 import {
   useCloudAccountEmailVerification,
@@ -187,14 +186,15 @@ export function useCloudSession({
     let cancelled = false;
 
     const refreshAccount = async () => {
+      let token = '';
       try {
         const stored = await loadSession();
         if (!stored?.token || cancelled) return;
-        const next = await authClient.me(stored.token);
+        const next = await authClient.me((token = stored.token));
         if (!cancelled && next.accountId === account.accountId) setAuthenticated(next);
-      } catch {
-        // Session bootstrap/sign-out owns auth failure handling. Profile sync is
-        // best-effort so temporary network errors do not kick users out.
+      } catch (caught) {
+        // Best-effort: network errors keep the session; a rejected one ends once and shows sign-in.
+        if (!cancelled) endCloudSessionIfRejected(token, caught);
       }
     };
 

@@ -221,18 +221,24 @@ async fn enqueue(
         return Ok(false);
     }
     // The conversation's resource pool admits the pass, or it stays silent.
-    let (resource_pool, organization_id) = limits::pool_for(&mut tx, config, candidate).await?;
+    let (resource_pool, organization_id, admits) =
+        limits::pool_for(&mut tx, config, candidate).await?;
     let organization_id = organization_id.as_deref();
-    let admission =
-        limits::admit(&mut tx, resource_pool, organization_id, &run_id, candidate).await?;
-    if !admission.admitted() {
+    // A disabled organization's work never runs; that is not a limit, so
+    // nothing is recorded for Settings.
+    let admission = if admits {
+        Some(limits::admit(&mut tx, &resource_pool, organization_id, &run_id, candidate).await?)
+    } else {
+        None
+    };
+    if !admission.is_some_and(|admission| admission.admitted()) {
         tx.rollback().await?;
-        let refused = limits::Refused {
-            resource_pool,
+        let refused = admission.map(|admission| limits::Refused {
+            resource_pool: &resource_pool,
             organization_id,
             admission,
-        };
-        limits::stay_silent(pool, candidate, &input, &refused).await?;
+        });
+        limits::stay_silent(pool, candidate, &input, refused.as_ref()).await?;
         return Ok(false);
     }
     let now = Utc::now().to_rfc3339();
@@ -255,6 +261,9 @@ async fn enqueue(
     .bind(organization_id)
     .execute(&mut *tx)
     .await?;
+    // A pool worker pool's run waits for that pool's own worker.
+    crate::pool_workers::store::tag_run(&mut tx, &run_id, &resource_pool, Feature::SystemAgent)
+        .await?;
     tx.commit().await?;
     Ok(true)
 }

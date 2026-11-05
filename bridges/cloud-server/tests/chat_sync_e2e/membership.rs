@@ -20,6 +20,7 @@ async fn authoritative_group_membership_removal_stops_future_delivery() {
             shared_title: Some("Secure group".to_string()),
             client_session_id: format!("session:group:{}", Uuid::now_v7()),
             member_account_ids: vec![kept.clone(), removed.clone()],
+            organization_id: None,
         },
     )
     .await

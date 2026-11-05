@@ -121,7 +121,7 @@ test('profiles: the Share sheet preselects the room kind, and people show a prof
   assert.equal(personTitle({ name: 'Nadia' }), 'Nadia');
 });
 
-test('profiles: Home shows Your card with a Build row for an unbuilt profile; version 1 shows no profiles', async () => {
+test('profiles: Home opens Build in place for an unbuilt profile; version 1 shows no profiles', async () => {
   const { client } = mockServer({
     'GET profiles': { status: 200, body: { profiles: [work, health] } },
     'GET card?profile=cgp_health': { status: 200, body: owner({ card: null }) },
@@ -131,10 +131,14 @@ test('profiles: Home shows Your card with a Build row for an unbuilt profile; ve
   const store = new CommonGroundStore(client, { profiles: true, memory: memory('cgp_health').store });
   await store.loadHome();
   const html = renderToStaticMarkup(createElement(HomeScreen, { state: store.getSnapshot(), store, host: selfHost }));
-  assert.match(html, /Your card/);
-  assert.match(html, />Health</);
-  assert.match(html, /Not built/);
+  assert.match(html, /Build your Health profile/);
+  assert.match(html, /aria-label="Notes"/);
   assert.match(html, />Build</);
+  assert.doesNotMatch(html, /Your card|Not built|>Back</);
+  store.set({ owner: { ...store.getSnapshot().owner!, card: owner().card }, profiles: [work, { ...health, hasCard: true }] });
+  const built = renderToStaticMarkup(createElement(HomeScreen, { state: store.getSnapshot(), store, host: selfHost }));
+  assert.match(built, /Your card/);
+  assert.doesNotMatch(built, /Build your Health profile/);
   assert.doesNotMatch(html, /aria-label="Profiles"|New profile/);
   const { calls, client: oldClient } = mockServer({ 'GET card': { status: 200, body: owner() }, 'GET recent': { status: 200, body: { people: [] } } });
   const old = new CommonGroundStore(oldClient);
@@ -166,4 +170,19 @@ test('rapid card switches ignore an older response for the same selected card', 
   pending[0](healthOwner);
   await toHealth;
   assert.deepEqual(store.getSnapshot().owner?.card?.workingOn, ['Updated running plan']);
+});
+
+test('a build finished on Home stays on Home and loads recent people', async () => {
+  const { calls, client } = mockServer({
+    'GET card?profile=cgp_health': { status: 200, body: owner({ profile: health }) },
+    'GET recent': { status: 200, body: { people: [] } },
+    'GET profiles': { status: 200, body: { profiles: [work, { ...health, hasCard: true }] } },
+  });
+  const store = new CommonGroundStore(client, { profiles: true });
+  store.set({ profiles: [work, health], profileId: health.profileId, owner: owner({ card: null, profile: health, build: { status: 'building', errorCode: null } }), loaded: true });
+  await store.poll();
+  await tick();
+  assert.equal(store.top().name, 'home');
+  assert.ok(store.getSnapshot().owner?.card);
+  assert.equal(calls.some((call) => call.url.includes('recent')), true);
 });

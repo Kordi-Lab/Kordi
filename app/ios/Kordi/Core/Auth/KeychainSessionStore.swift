@@ -7,6 +7,7 @@ struct KeychainSessionStore {
     private let developmentDefaults: UserDefaults
     private let account = "cloud-session-token"
     private let appSignInAccount = "cloud-app-sign-in"
+    private let sessionOrganizationAccount = "cloud-session-organization"
     private let deviceIdentityAccount = "cloud-device-identity-p256"
 
     init(
@@ -31,8 +32,30 @@ struct KeychainSessionStore {
     /// Removes the session token and, with it, any browser sign-in credential,
     /// so every sign-out path also drops the refresh token.
     func deleteToken() throws {
-        let results = [Result { try deleteData(account: appSignInAccount) }, Result { try deleteData(account: account) }]
+        let results = [
+            Result { try deleteData(account: appSignInAccount) },
+            Result { try deleteData(account: account) },
+            Result { try deleteData(account: sessionOrganizationAccount) },
+        ]
         for result in results { try result.get() }
+    }
+
+    /// The organization a session token without a browser sign-in acts in.
+    /// The record names the token by digest, so it never applies to a later token.
+    func loadSessionOrganization(forToken token: String) -> String? {
+        guard let data = try? loadData(account: sessionOrganizationAccount),
+              let record = try? JSONDecoder().decode(SessionOrganizationRecord.self, from: data),
+              record.tokenDigest == Self.digest(token) else { return nil }
+        return record.organizationId
+    }
+
+    func saveSessionOrganization(_ organizationId: String, forToken token: String) throws {
+        let record = SessionOrganizationRecord(tokenDigest: Self.digest(token), organizationId: organizationId)
+        try saveData(JSONEncoder().encode(record), account: sessionOrganizationAccount)
+    }
+
+    private static func digest(_ token: String) -> String {
+        SHA256.hash(data: Data(token.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     func loadAppSignInCredential() throws -> AppSignInCredential? {
@@ -165,6 +188,11 @@ struct KeychainSessionStore {
         // Keep this fallback compile-time limited to isolated Beta Simulator builds.
         "kordi.beta-simulator.\(service).\(account)"
     }
+}
+
+private struct SessionOrganizationRecord: Codable {
+    let tokenDigest: String
+    let organizationId: String
 }
 
 private struct KeychainError: LocalizedError {

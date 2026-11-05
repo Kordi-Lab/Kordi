@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "personalOrganizations": {
+    "pool": "default"
+  },
+  "organizations": [
+    {
+      "id": "example-research",
+      "displayName": "Example Research",
+      "state": "disabled",
+      "pool": null,
+      "targetPool": "example-pool",
+      "admission": {
+        "claimedDomains": ["example.test"],
+        "domainMatch": "exact",
+        "requireGoogleHostedDomain": true,
+        "autoJoinMethods": ["google", "email_code"],
+        "reverifyIntervalMonths": 6,
+        "googleSignInReverifies": true,
+        "joinRequests": {
+          "enabled": true,
+          "approval": "organization_admins",
+          "fields": [
+            { "key": "affiliation", "label": "Affiliation", "required": null, "maxLength": null },
+            { "key": "purpose", "label": "Purpose", "required": null, "maxLength": null }
+          ],
+          "retentionDays": 30,
+          "approvedMembershipExpiry": "set_by_approver"
+        }
+      },
+      "membership": {
+        "requireMemberOwner": true,
+        "outsidersAllowed": true,
+        "workEndBoundSeconds": null
+      },
+      "adminsEnv": "KORDI_ORG_EXAMPLE_RESEARCH_ADMINS",
+      "entryPage": {
+        "title": "Example Research",
+        "summary": "For example.test researchers and approved academic users.",
+        "joinLabel": "Join Example Research",
+        "notOpenText": "Example Research is not open yet."
+      }
+    }
+  ]
+}

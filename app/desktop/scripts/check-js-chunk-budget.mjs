@@ -23,7 +23,9 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // The aligned chat navigation and session menu add less than 2 kB.
 // Browser sign-in (welcome and wait screens, PKCE flow, token refresh) adds 22 kB.
 // The compact frosted sign-in window and the cut-out bird add 3 kB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_674_000;
+// The launch release (organization selection and request headers, account security, browser
+// sign-in recovery and the split desktop features chunk) adds 19 kB, so it moves to 5.72 MB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_720_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;

@@ -109,6 +109,8 @@ struct ConversationSummary: Identifiable, Hashable {
     let subsessionId: String?
     /// The owned agent whose personal session this is (#2091).
     var personalAgentId: String? = nil
+    /// The team organization of a group; nil for personal conversations.
+    var organizationName: String? = nil
 
     init(
         id: String,
@@ -134,7 +136,8 @@ struct ConversationSummary: Identifiable, Hashable {
         unreadMentionCount: Int = 0,
         lastReadSequence: Int64 = 0,
         isLocalDraft: Bool = false,
-        subsessionId: String? = nil
+        subsessionId: String? = nil,
+        organizationName: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -162,6 +165,7 @@ struct ConversationSummary: Identifiable, Hashable {
         self.forkedFromSessionId = forkedFromSessionId
         self.isLocalDraft = isLocalDraft
         self.subsessionId = subsessionId
+        self.organizationName = organizationName
     }
 
     var remotePeerAccountIds: [String] {

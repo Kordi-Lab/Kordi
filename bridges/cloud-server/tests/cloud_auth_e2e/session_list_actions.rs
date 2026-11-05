@@ -246,19 +246,9 @@ async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin()
     let router = fast_router(state);
     let (token, account_id) = signup_account(&router, "session-list-actions").await;
     let session_id = format!("session:self-agent:{}", uuid::Uuid::now_v7());
-    store::create_conversation(
-        &pool,
-        &account_id,
-        CreateConversationRequest {
-            client_operation_id: uuid::Uuid::now_v7(),
-            kind: ConversationKind::Ai,
-            shared_title: Some("List actions".to_string()),
-            client_session_id: session_id.clone(),
-            member_account_ids: Vec::new(),
-        },
-    )
-    .await
-    .expect("create AI conversation");
+    store::create_conversation(&pool, &account_id, ai_request("List actions", &session_id))
+        .await
+        .expect("create AI conversation");
     let path = format!("/v1/cloud/sessions/{session_id}");
     let group_space_id = format!("group:space:{}", uuid::Uuid::now_v7());
     let group_pin_path = format!("/v1/cloud/group-spaces/{group_space_id}/pinned");
@@ -388,19 +378,9 @@ async fn message_pin_updates_are_durable_and_idempotent() {
     let router = fast_router(state);
     let (token, account_id) = signup_account(&router, "message-pin-actions").await;
     let session_id = format!("session:self-agent:{}", uuid::Uuid::now_v7());
-    store::create_conversation(
-        &pool,
-        &account_id,
-        CreateConversationRequest {
-            client_operation_id: uuid::Uuid::now_v7(),
-            kind: ConversationKind::Ai,
-            shared_title: Some("Message pins".to_string()),
-            client_session_id: session_id.clone(),
-            member_account_ids: Vec::new(),
-        },
-    )
-    .await
-    .expect("create AI conversation");
+    store::create_conversation(&pool, &account_id, ai_request("Message pins", &session_id))
+        .await
+        .expect("create AI conversation");
     let path = format!("/v1/cloud/sessions/{session_id}/pin");
     let message_id = uuid::Uuid::now_v7().to_string();
     let pin = || json!({ "messageId": message_id, "scope": "private" });
@@ -458,13 +438,7 @@ async fn chat_list_mutations_roll_back_when_sync_append_fails() {
     let conversation = store::create_conversation(
         &pool,
         &account_id,
-        CreateConversationRequest {
-            client_operation_id: uuid::Uuid::now_v7(),
-            kind: ConversationKind::Ai,
-            shared_title: Some("Atomic list actions".to_string()),
-            client_session_id: session_id.clone(),
-            member_account_ids: Vec::new(),
-        },
+        ai_request("Atomic list actions", &session_id),
     )
     .await
     .expect("create AI conversation")
@@ -580,4 +554,15 @@ async fn chat_list_mutations_roll_back_when_sync_append_fails() {
     .expect("count rolled back message pins");
     assert_eq!(message_pin_count.0, 0);
     super::session_pin_history::assert_no_pin_history(&pool, conversation.id).await;
+}
+
+fn ai_request(title: &str, session_id: &str) -> CreateConversationRequest {
+    CreateConversationRequest {
+        client_operation_id: uuid::Uuid::now_v7(),
+        kind: ConversationKind::Ai,
+        shared_title: Some(title.to_string()),
+        client_session_id: session_id.to_string(),
+        member_account_ids: Vec::new(),
+        organization_id: None,
+    }
 }

@@ -85,6 +85,12 @@ tests=(
   personal_agent_tests::upgrade_from_157_indexes_personal_agent_reads
   organization_tests::upgrade_from_161_adds_personal_organizations_and_ownership
   resource_pool_tests::upgrade_from_165_adds_resource_pool_usage
+  organization_tests::upgrade_from_166_adds_organization_admission
+  organization_tests::upgrade_from_167_adds_organization_selection
+  resource_pool_tests::upgrade_from_168_adds_pool_worker_runs
+  account_email_tests::upgrade_from_169_adds_account_security_codes
+  organization_claim_tests::upgrade_from_170_adds_organization_claims
+  identity_email_tests::upgrade_from_167_backfills_identity_matching_email
   resource_pool_tests::upgrade_from_173_adds_usage_pauses
 )
 index=0
@@ -132,8 +138,8 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
 # usage pauses and snapshots for Settings.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib -- resource_pools system_agent::pool_tests \
-    system_agent::usage_pause_tests common_ground::runs::pool_tests --include-ignored \
-    --test-threads=1
+    system_agent::usage_pause_tests common_ground::runs::pool_tests pool_workers \
+    --include-ignored --test-threads=1
 
 # Simulator regression tests use their own fresh database and scripted local
 # model. Never enable the opt-in live-provider tests in unattended CI.

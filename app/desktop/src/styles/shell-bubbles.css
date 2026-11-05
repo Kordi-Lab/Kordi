@@ -177,11 +177,14 @@ body[data-kordi-chat-theme="classic"] .kordi-app.theme-light .app-chat-bubble-pe
   color: var(--app-chat-reply-own) !important;
 }
 
+/* Sits where the reply text will start: hugs its dots at the start of the text column, so a
+ * full-width thread row does not stretch and centre it, and a bubble stays dot-sized. */
 .app-support-contact-typing {
   display: inline-flex;
+  align-self: flex-start;
   min-height: 1.25rem;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 5px;
   padding-inline: 1px;
   color: color-mix(in oklab, var(--utility-foreground) 52%, transparent);

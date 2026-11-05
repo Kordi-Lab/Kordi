@@ -25,6 +25,7 @@ use super::runs::{self, NewRun, CARD_PREFIX};
 use super::{card, db_error, err, limited, profiles, BUILD_LIMIT};
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::memory_store::ProfileTarget;
+use crate::organizations::requests::RequestOrganization;
 use crate::{auth::routes::CloudSession, server::ServerState};
 use documents::{gather_documents, DOCUMENTS_SOURCE};
 use gather::{gather, BuildRequest};
@@ -40,6 +41,7 @@ pub(super) async fn start(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
+    organization: Option<Extension<RequestOrganization>>,
     Json(request): Json<BuildRequest>,
 ) -> Response {
     let Some(system_agent) = state.system_agent() else {
@@ -157,6 +159,9 @@ pub(super) async fn start(
             run_id: &run_id,
             requester: account,
             conversation_id: None,
+            organization_id: organization
+                .as_ref()
+                .map(|Extension(organization)| organization.organization_id.as_str()),
             prompt: user_prompt,
             system_prompt: &system_prompt,
         };

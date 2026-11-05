@@ -30,6 +30,14 @@ export function desktopAgentFiles(): (() => Promise<CgAgentFile[]>) | null {
   return () => invokeDesktop<CgAgentFile[]>('common_ground_agent_files');
 }
 
+/**
+ * Why Allow ended without access when macOS showed no prompt. A `tauri dev` binary runs under
+ * the app that launched it, which macOS asks about instead, so it cannot ask.
+ */
+export function noPromptReason(dev = Boolean(import.meta.env?.DEV)): string {
+  return dev ? 'This development build cannot ask macOS for access.' : 'macOS did not ask for access.';
+}
+
 export function privacySettingsUrl(source: CgDeviceSource): string {
   const pane = source === 'calendar' ? 'Privacy_Calendars' : 'Privacy_Reminders';
   return `x-apple.systempreferences:com.apple.preference.security?${pane}`;

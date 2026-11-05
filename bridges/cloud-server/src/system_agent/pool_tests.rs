@@ -1,8 +1,6 @@
 //! System agent passes and resource pools against a real database. Ignored
 //! by default; run them with a task-owned PostgreSQL in `DATABASE_URL`.
 
-use std::sync::Arc;
-
 use chrono::{Duration, Utc};
 use serde_json::{json, Value};
 use sqlx_core::query::query;
@@ -16,7 +14,7 @@ use crate::plan_cards::tests::{participant, seed_account, seed_conversation};
 use crate::resource_pools::usage::tests::test_db;
 use crate::resource_pools::{test_provider, PoolLimits, ResourcePool, ResourcePools};
 
-pub(super) async fn say(pool: &PgPool, sender: &str, conversation_id: Uuid, text: &str) {
+pub(crate) async fn say(pool: &PgPool, sender: &str, conversation_id: Uuid, text: &str) {
     let request = SendMessageRequest {
         client_message_id: Uuid::new_v4(),
         kind: "text".to_string(),
@@ -34,7 +32,7 @@ pub(super) async fn say(pool: &PgPool, sender: &str, conversation_id: Uuid, text
         .unwrap();
 }
 
-pub(super) async fn group_chat(pool: &PgPool, creator: &str, system_agent: &str) -> Uuid {
+pub(crate) async fn group_chat(pool: &PgPool, creator: &str, system_agent: &str) -> Uuid {
     let chat = Uuid::new_v4();
     seed_conversation(pool, chat, creator, &[creator, system_agent]).await;
     query("UPDATE cloud_chat_conversations SET legacy_session_id = $2 WHERE conversation_id = $1")
@@ -52,7 +50,7 @@ pub(super) async fn group_chat(pool: &PgPool, creator: &str, system_agent: &str)
 }
 
 /// A team organization owned by `owner`.
-pub(super) async fn team(pool: &PgPool, owner: &str) -> String {
+pub(crate) async fn team(pool: &PgPool, owner: &str) -> String {
     let id = format!("org_test_{}", Uuid::new_v4().simple());
     query(
         "INSERT INTO cloud_organizations (organization_id, name, kind, created_by_account_id) \
@@ -63,10 +61,19 @@ pub(super) async fn team(pool: &PgPool, owner: &str) -> String {
     .execute(pool)
     .await
     .unwrap();
+    query(
+        "INSERT INTO cloud_organization_members (organization_id, account_id, role) \
+         VALUES ($1, $2, 'owner')",
+    )
+    .bind(&id)
+    .bind(owner)
+    .execute(pool)
+    .await
+    .unwrap();
     id
 }
 
-pub(super) async fn sweep(pool: &PgPool, config: &super::SystemAgentConfig) -> usize {
+pub(crate) async fn sweep(pool: &PgPool, config: &super::SystemAgentConfig) -> usize {
     query("UPDATE cloud_pip_conversation_state SET checked_at = now() - interval '1 hour'")
         .execute(pool)
         .await
@@ -75,7 +82,7 @@ pub(super) async fn sweep(pool: &PgPool, config: &super::SystemAgentConfig) -> u
 }
 
 /// (run id, pool in its route, organization) of each System agent run.
-pub(super) async fn runs_in(
+pub(crate) async fn runs_in(
     pool: &PgPool,
     chat: Uuid,
 ) -> Vec<(String, Option<String>, Option<String>)> {
@@ -92,9 +99,9 @@ pub(super) async fn runs_in(
     .unwrap()
 }
 
-pub(super) fn config_with(system_agent: &str, pools: ResourcePools) -> super::SystemAgentConfig {
+pub(crate) fn config_with(system_agent: &str, pools: ResourcePools) -> super::SystemAgentConfig {
     let mut config = super::test_config(system_agent);
-    config.resource_pools = Arc::new(pools);
+    config.resource_pools = crate::resource_pools::ResourcePoolRegistry::new(pools);
     config
 }
 

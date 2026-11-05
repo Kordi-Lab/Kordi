@@ -22,12 +22,14 @@ use crate::resource_pools::snapshot::{self, Reached};
 use crate::resource_pools::usage::{self, Admission};
 use crate::resource_pools::{Feature, ResourcePool};
 
-/// The pool that serves a conversation and the organization it belongs to.
-pub(super) async fn pool_for<'a>(
+/// The pool that serves a conversation, the organization it belongs to, and
+/// whether that organization's work may run at all (a disabled organization's
+/// may not).
+pub(super) async fn pool_for(
     tx: &mut Transaction<'_, Postgres>,
-    config: &'a SystemAgentConfig,
+    config: &SystemAgentConfig,
     candidate: &Candidate,
-) -> Result<(&'a ResourcePool, Option<String>), sqlx_core::Error> {
+) -> Result<(ResourcePool, Option<String>, bool), sqlx_core::Error> {
     let organization_id: Option<String> = query_scalar(
         "SELECT organization_id FROM cloud_chat_conversations WHERE conversation_id = $1",
     )
@@ -35,8 +37,10 @@ pub(super) async fn pool_for<'a>(
     .fetch_optional(&mut **tx)
     .await?
     .flatten();
-    let pool = config.resource_pools().resolve(organization_id.as_deref());
-    Ok((pool, organization_id))
+    let pools = config.resource_pools();
+    let pool = pools.resolve(organization_id.as_deref()).clone();
+    let admits = pools.admits(organization_id.as_deref());
+    Ok((pool, organization_id, admits))
 }
 
 /// Admits one pass of `run_id` in `tx`, counted for the conversation.
@@ -97,15 +101,19 @@ async fn refused_by(
 /// Drops a pass the pool would not admit, without a message or a backlog:
 /// the cursor moves past the new messages, offered reminders count as fired
 /// and the open card as seen, as if the pass had run and stayed silent. The
-/// first refusal of the window is recorded for Settings.
+/// first refusal of the window by a limit is recorded for Settings; `None`
+/// (a disabled organization) records nothing.
 pub(super) async fn stay_silent(
     pool: &PgPool,
     candidate: &Candidate,
     input: &Value,
-    refused: &Refused<'_>,
+    refused: Option<&Refused<'_>>,
 ) -> Result<(), sqlx_core::Error> {
     let now = chrono::Utc::now();
-    let (limit_id, reached) = refused_by(pool, candidate, refused, now).await?;
+    let pause = match refused {
+        Some(refused) => Some((refused, refused_by(pool, candidate, refused, now).await?)),
+        None => None,
+    };
     let mut tx = pool.begin().await?;
     let changed = query(
         "UPDATE cloud_pip_conversation_state
@@ -121,15 +129,17 @@ pub(super) async fn stay_silent(
         for (event_id, revision) in woken_cards(input) {
             mark_card_seen(&mut *tx, candidate.conversation_id, &event_id, revision).await?;
         }
-        let pause = Pause {
-            pool_id: refused.resource_pool.id(),
-            conversation_id: candidate.conversation_id,
-            organization_id: refused.organization_id,
-            limit_id,
-            reached,
-            now,
-        };
-        pauses::record(&mut tx, &pause).await?;
+        if let Some((refused, (limit_id, reached))) = pause {
+            let pause = Pause {
+                pool_id: refused.resource_pool.id(),
+                conversation_id: candidate.conversation_id,
+                organization_id: refused.organization_id,
+                limit_id,
+                reached,
+                now,
+            };
+            pauses::record(&mut tx, &pause).await?;
+        }
     }
     tx.commit().await
 }

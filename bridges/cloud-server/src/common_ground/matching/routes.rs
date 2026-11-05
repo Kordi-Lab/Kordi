@@ -17,6 +17,7 @@ use crate::auth::rate_limit::CloudRateLimiter;
 use crate::common_ground::actions::{attach, relationship, relationships, room_extras};
 use crate::common_ground::profiles::{self, ProfileQuery};
 use crate::common_ground::{card, db_error, limited, people, rooms};
+use crate::organizations::requests::RequestOrganization;
 use crate::{auth::routes::CloudSession, server::ServerState};
 
 /// A person with the profile they share with the viewer.
@@ -48,6 +49,7 @@ pub(in crate::common_ground) async fn results(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
+    organization: Option<Extension<RequestOrganization>>,
     Path(code): Path<String>,
 ) -> Response {
     let Some(system_agent) = state.system_agent() else {
@@ -55,6 +57,9 @@ pub(in crate::common_ground) async fn results(
     };
     let pool = state.db_pool();
     let account = session.account_id.as_str();
+    let organization_id = organization
+        .as_ref()
+        .map(|Extension(organization)| organization.organization_id.as_str());
     let (room_id, open) = match rooms::my_room(pool, &code, account).await {
         Ok(Some(room)) => room,
         Ok(None) => return rooms::room_not_found(),
@@ -128,6 +133,7 @@ pub(in crate::common_ground) async fn results(
             &viewer,
             &stale,
             Some(room_id),
+            organization_id,
         )
         .await;
         match queued {
@@ -144,6 +150,7 @@ pub(in crate::common_ground) async fn results(
             room_id,
             account,
             &theme_members,
+            organization_id,
         )
         .await;
         match queued {
@@ -208,6 +215,7 @@ pub(in crate::common_ground) async fn match_detail(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
+    organization: Option<Extension<RequestOrganization>>,
     Path(other): Path<String>,
     Query(params): Query<ProfileQuery>,
 ) -> Response {
@@ -282,6 +290,9 @@ pub(in crate::common_ground) async fn match_detail(
         viewer,
         std::slice::from_ref(other_card),
         None,
+        organization
+            .as_ref()
+            .map(|Extension(o)| o.organization_id.as_str()),
     )
     .await
     {

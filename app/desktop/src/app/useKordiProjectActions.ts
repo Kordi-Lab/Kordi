@@ -10,6 +10,7 @@ import type { AttachmentItem } from '@/features/chat/composerController.types';
 import type { ComposerDraftState } from '@/features/chat/composerDrafts';
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
+import { rememberSessionOrganization } from '@/features/organizations/sessionOrganization';
 import type {
   ComposerScope,
   ComposerSelectorType,
@@ -79,6 +80,7 @@ export function useKordiProjectActions({
       const nextState = isDraft
         ? await createDesktopProjectSession(requestedProjectRoot, undefined, workspace)
         : await moveDesktopChatSessionToProject(sessionId, requestedProjectRoot, workspace);
+      if (isDraft) rememberSessionOrganization(nextState.activeSessionId);
       if (!sessionId || sessionId === activeConversationId) {
         setDesktopState(nextState);
         if (!sessionId) {

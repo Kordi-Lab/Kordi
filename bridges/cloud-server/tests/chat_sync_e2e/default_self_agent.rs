@@ -18,6 +18,7 @@ async fn legacy_default_self_agent_session_is_independent_per_account() {
             shared_title: None,
             client_session_id: "session:self-agent:default".to_string(),
             member_account_ids: Vec::new(),
+            organization_id: None,
         },
     )
     .await
@@ -32,6 +33,7 @@ async fn legacy_default_self_agent_session_is_independent_per_account() {
             shared_title: None,
             client_session_id: "session:self-agent:default".to_string(),
             member_account_ids: Vec::new(),
+            organization_id: None,
         },
     )
     .await

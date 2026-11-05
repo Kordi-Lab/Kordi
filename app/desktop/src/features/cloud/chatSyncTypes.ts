@@ -35,6 +35,8 @@ export type ChatSyncConversation = {
   origin?: 'grounding' | null;
   /** Set on an owned agent's personal session (`kind: 'ai'`), naming that agent. */
   personal_agent?: { agent_id: string } | null;
+  /** The owning team organization; absent for personal conversations and on older servers. */
+  organization?: { organization_id: string; name: string } | null;
   forked_from_session_id?: string | null;
   forked_from_message_id?: string | null;
   latest_message_sequence: number;

@@ -10,6 +10,7 @@ use tokio_util::sync::CancellationToken;
 use crate::client::{AgentRuntimeRoute, ProviderAuthMaterial};
 
 use super::{CloudModelProvider, ModelLoopError, ModelProviderResponse, ModelToolCall};
+pub(crate) use endpoint::is_openai_api;
 use endpoint::{
     base_url_for, ensure_plain_api_key, ensure_supported_api, is_owner_local_provider_endpoint,
     normalize_provider,
@@ -38,6 +39,11 @@ pub struct OpenAiProviderConfig {
     pub thinking: String,
     pub api_mode: OpenAiApiMode,
     pub account_id: Option<String>,
+    /// Set by the server for its own service credentials (System agent,
+    /// Support, resource pools). Their configured model id goes to a
+    /// non-OpenAI endpoint verbatim; member routes keep dropping their
+    /// provider prefix.
+    pub verbatim_model: bool,
     /// Extra request headers from the provider payload, such as a
     /// gateway's attribution headers.
     pub headers: BTreeMap<String, String>,
@@ -137,6 +143,10 @@ impl OpenAiProviderConfig {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToString::to_string);
+        let verbatim_model = payload
+            .get("verbatimModel")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         let thinking = payload
             .get("thinking")
             .and_then(Value::as_str)
@@ -152,6 +162,7 @@ impl OpenAiProviderConfig {
             thinking,
             api_mode,
             account_id,
+            verbatim_model,
             headers: payload_headers::from_payload(payload),
         })
     }
@@ -171,7 +182,14 @@ impl OpenAiProviderConfig {
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            self.model = normalize_routed_model(model, provider, self.api_mode).to_string();
+            self.model = if self.verbatim_model
+                && self.api_mode == OpenAiApiMode::ChatCompletions
+                && !is_openai_api(&self.base_url)
+            {
+                model.to_string()
+            } else {
+                normalize_routed_model(model, provider, self.api_mode).to_string()
+            };
         }
         if let Some(thinking) = route
             .thinking
@@ -224,6 +242,8 @@ fn normalize_model_for_mode(model: &str, api_mode: OpenAiApiMode) -> &str {
     model
 }
 
+/// Drops a route's leading provider id, as in `custom/deepseek-chat` or a
+/// member's `openai/gpt-5.6`.
 fn normalize_routed_model<'a>(model: &'a str, provider: &str, api_mode: OpenAiApiMode) -> &'a str {
     let normalized = normalize_model_for_mode(model, api_mode);
     let Some((prefix, value)) = normalized.split_once('/') else {

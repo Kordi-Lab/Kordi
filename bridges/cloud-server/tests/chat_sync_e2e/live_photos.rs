@@ -20,6 +20,7 @@ async fn live_photo_send_is_atomic_authorized_and_idempotent() {
             shared_title: None,
             client_session_id: direct_person_session_id(&owner, &peer),
             member_account_ids: vec![peer.clone()],
+            organization_id: None,
         },
     )
     .await

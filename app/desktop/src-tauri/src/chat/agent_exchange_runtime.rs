@@ -1,4 +1,5 @@
 //! Cloud transports messages; the existing lease still runs tools on the Mac.
+use crate::cloud_session_organization::CloudBearerAuth;
 use kordi_cli::desktop_runtime::DesktopCloudExecutionLease;
 use kordi_core::error::{KordiError, KordiResult};
 use kordi_tools::{ReachOutRequest, ReachOutResponse, ReachOutRuntime};
@@ -18,7 +19,7 @@ impl Transport {
         let token = crate::cloud_session_refresh::fresh_token_for(&self.lease.owner_account_id)
             .await
             .ok_or_else(unavailable)?;
-        let response=self.client.post(&self.endpoint).bearer_auth(token).json(&json!({"claimId":self.lease.claim_id,"action":action,"toolCallId":id,"arguments":args})).send().await.map_err(|_|unavailable())?;
+        let response=self.client.post(&self.endpoint).cloud_bearer_auth(token).json(&json!({"claimId":self.lease.claim_id,"action":action,"toolCallId":id,"arguments":args})).send().await.map_err(|_|unavailable())?;
         if !response.status().is_success() {
             return Err(unavailable());
         }

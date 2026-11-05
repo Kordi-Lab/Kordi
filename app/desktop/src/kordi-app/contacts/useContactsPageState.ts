@@ -147,10 +147,6 @@ export function useAddContactForm({
       await onAddContactByNodeId(nodeId);
       setAddContactState('sent');
       markRequested(nodeId);
-      if (contactNodeId.trim() === nodeId) {
-        setContactNodeId('');
-        setLookupResult(null);
-      }
     } catch (error) {
       setAddContactState('error');
       setAddContactError(error instanceof Error ? error.message : 'Unable to send contact request');
@@ -167,15 +163,12 @@ export function useAddContactForm({
 
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
 
-  const statusMessage = addContactState === 'sent'
-    ? 'Request sent. It stays under Requests until they respond.'
-    : addContactState === 'pending' || lookupRequestPending
-      ? 'Request pending. It stays under Requests until they respond.'
-      : addContactState === 'error'
-        ? addContactError || 'Unable to send contact request.'
-        : lookupState === 'error'
-          ? lookupError || 'No account found.'
-          : '';
+  // A sent or pending request shows as "Pending" in the result row; only errors get a line.
+  const statusMessage = addContactState === 'error'
+    ? addContactError || 'Unable to send contact request.'
+    : lookupState === 'error'
+      ? lookupError || 'No account found.'
+      : '';
 
   return {
     contactNodeId,

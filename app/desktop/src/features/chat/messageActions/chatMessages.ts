@@ -2,7 +2,7 @@ import { chatSendShouldAutoFollowMain, composerQuoteFromMessageAction } from './
 export { chatSendShouldAutoFollowMain, chatSendIsBusy } from './chatSendState';
 import { mergeBackgroundDesktopChatState } from '../desktopChatStateReducers';
 import { appendCanonicalRequestToLocalState, mergeCanonicalSessionState } from './canonicalSendState';
-import { ensureLocalChatSessionInCanonicalState, materializeLocalChatSession } from './localChatSessionCreation';
+import { ensureLocalChatSessionInCanonicalState, materializeLocalChatSession, withSessionOrganization } from './localChatSessionCreation';
 import { beginChatPerformanceSpan, finishChatPerformanceSpan } from '@/features/performance/chatPerformance';
 import { ConversationSendQueue } from './conversationSendQueue';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
@@ -1381,7 +1381,7 @@ export function useChatMessageActions({
         if (primaryIdentityId) {
           const sessionTitle = optimisticSessionTitleFromMessage(text, attachmentsToSend, 'New chat');
           try {
-            canonicalBaseState = await openOrCreateCanonicalSession({
+            canonicalBaseState = await openOrCreateCanonicalSession(withSessionOrganization({
               id: noProviderShortcutSessionId,
               kind: 'self-agent',
               title: sessionTitle,
@@ -1393,7 +1393,7 @@ export function useChatMessageActions({
                 createdFrom: 'chat-create-flow',
                 ...sessionTitleMetadata(sessionTitle === 'New chat' ? 'placeholder' : 'auto'),
               },
-            });
+            }));
           } catch (error) {
             localChatSendInFlightRef.current = null;
             setIsDesktopChatSending(false);
@@ -1550,7 +1550,7 @@ export function useChatMessageActions({
           const primaryIdentityId = ownedAgentIdentityId(canonicalSessionState);
           if (primaryIdentityId) {
             const sessionTitle = optimisticSessionTitleFromMessage(text, attachmentsToSend, 'New chat');
-            canonicalBaseState = await openOrCreateCanonicalSession({
+            canonicalBaseState = await openOrCreateCanonicalSession(withSessionOrganization({
               id: canonicalSessionId,
               kind: 'self-agent',
               title: sessionTitle,
@@ -1562,7 +1562,7 @@ export function useChatMessageActions({
                 createdFrom: 'chat-create-flow',
                 ...sessionTitleMetadata(sessionTitle === 'New chat' ? 'placeholder' : 'auto'),
               },
-            });
+            }));
           }
         }
         const sentUserRequest = {

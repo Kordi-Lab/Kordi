@@ -115,6 +115,7 @@ pub(crate) async fn verify_account_email(
     .bind(Utc::now().to_rfc3339())
     .execute(&mut *tx)
     .await?;
+    crate::auth::identity_email::reverify_identity_emails(&mut tx, account_id, &email).await?;
     tx.commit().await?;
     Ok(())
 }

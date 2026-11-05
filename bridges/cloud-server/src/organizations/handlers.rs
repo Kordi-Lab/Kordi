@@ -1,6 +1,7 @@
 //! Organization routes. Mutations lock the organization row first, so
 //! concurrent changes to one organization run one at a time and the owner
-//! count they check cannot go stale.
+//! count they check cannot go stale. Members join through invitations
+//! (`invitations.rs`); this file serves reads and role changes.
 
 use std::sync::Arc;
 
@@ -23,20 +24,43 @@ use crate::server::ServerState;
 const MAX_ID_LEN: usize = 128;
 const MEMBER_PAGE_SIZE: i64 = 200;
 
-type Tx<'a> = sqlx_core::transaction::Transaction<'a, Postgres>;
-type SummaryRow = (String, String, String, String, i64, DateTime<Utc>);
-type MemberRow = (String, Option<String>, String, DateTime<Utc>);
+pub(super) type Tx<'a> = sqlx_core::transaction::Transaction<'a, Postgres>;
+type SummaryRow = (
+    String,
+    String,
+    String,
+    String,
+    i64,
+    DateTime<Utc>,
+    bool,
+    Option<DateTime<Utc>>,
+);
+type MemberRow = (
+    String,
+    Option<String>,
+    String,
+    DateTime<Utc>,
+    Option<DateTime<Utc>>,
+);
 
+/// Organizations of account $1. An expired membership no longer counts.
 const SUMMARY_SELECT: &str = "SELECT o.organization_id, o.name, o.kind, m.role, \
         (SELECT count(*) FROM cloud_organization_members c \
-         WHERE c.organization_id = o.organization_id), \
-        o.created_at \
+         WHERE c.organization_id = o.organization_id \
+           AND (c.expires_at IS NULL OR c.expires_at > now())), \
+        o.created_at, o.member_owned_content, m.expires_at \
      FROM cloud_organization_members m \
      JOIN cloud_organizations o ON o.organization_id = m.organization_id \
-     WHERE m.account_id = $1";
+     WHERE m.account_id = $1 AND (m.expires_at IS NULL OR m.expires_at > now())";
+
+const MEMBER_SELECT: &str =
+    "SELECT m.account_id, a.display_name, m.role, m.joined_at, m.expires_at \
+     FROM cloud_organization_members m \
+     JOIN cloud_accounts a ON a.account_id = m.account_id \
+     WHERE m.organization_id = $1 AND (m.expires_at IS NULL OR m.expires_at > now())";
 
 fn summary(row: SummaryRow) -> Option<OrganizationSummary> {
-    let (organization_id, name, kind, role, member_count, created_at) = row;
+    let (organization_id, name, kind, role, member_count, created_at, rule, expires_at) = row;
     Some(OrganizationSummary {
         organization_id,
         name,
@@ -44,20 +68,23 @@ fn summary(row: SummaryRow) -> Option<OrganizationSummary> {
         role: OrganizationRole::parse(&role)?,
         member_count,
         created_at: created_at.to_rfc3339(),
+        member_owned_content: rule,
+        membership_expires_at: expires_at.map(|at| at.to_rfc3339()),
     })
 }
 
 fn member(row: MemberRow) -> Option<OrganizationMember> {
-    let (account_id, display_name, role, joined_at) = row;
+    let (account_id, display_name, role, joined_at, expires_at) = row;
     Some(OrganizationMember {
         account_id,
         display_name,
         role: OrganizationRole::parse(&role)?,
         joined_at: joined_at.to_rfc3339(),
+        membership_expires_at: expires_at.map(|at| at.to_rfc3339()),
     })
 }
 
-fn valid_id(value: &str) -> bool {
+pub(super) fn valid_id(value: &str) -> bool {
     !value.is_empty() && value.len() <= MAX_ID_LEN
 }
 
@@ -65,19 +92,26 @@ pub(super) async fn list_organizations(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Response {
+    match organizations_for(state.db_pool(), &session.account_id).await {
+        Ok(organizations) => Json(json!({ "organizations": organizations })).into_response(),
+        Err(error) => error.into_response(),
+    }
+}
+
+/// The organizations `account_id` belongs to, personal first.
+pub(super) async fn organizations_for(
+    pool: &PgPool,
+    account_id: &str,
+) -> Result<Vec<OrganizationSummary>, ApiError> {
     let sql = format!(
         "{SUMMARY_SELECT} ORDER BY (o.kind = 'personal') DESC, o.created_at, o.organization_id"
     );
-    let rows: Vec<SummaryRow> = match query_as(&sql)
-        .bind(&session.account_id)
-        .fetch_all(state.db_pool())
+    let rows: Vec<SummaryRow> = query_as(&sql)
+        .bind(account_id)
+        .fetch_all(pool)
         .await
-    {
-        Ok(rows) => rows,
-        Err(_) => return server_error().into_response(),
-    };
-    let organizations: Vec<_> = rows.into_iter().filter_map(summary).collect();
-    Json(json!({ "organizations": organizations })).into_response()
+        .map_err(|_| server_error())?;
+    Ok(rows.into_iter().filter_map(summary).collect())
 }
 
 pub(super) async fn get_organization(
@@ -92,7 +126,7 @@ pub(super) async fn get_organization(
     }
 }
 
-async fn member_summary(
+pub(super) async fn member_summary(
     pool: &PgPool,
     account_id: &str,
     organization_id: &str,
@@ -127,18 +161,16 @@ pub(super) async fn list_members(
         Ok(None) => return not_found().into_response(),
         Err(error) => return error.into_response(),
     }
-    let rows: Vec<MemberRow> = match query_as(
-        "SELECT m.account_id, a.display_name, m.role, m.joined_at \
-         FROM cloud_organization_members m \
-         JOIN cloud_accounts a ON a.account_id = m.account_id \
-         WHERE m.organization_id = $1 AND ($2::text IS NULL OR m.account_id > $2) \
-         ORDER BY m.account_id LIMIT $3",
-    )
-    .bind(&organization_id)
-    .bind(page.after.as_deref())
-    .bind(MEMBER_PAGE_SIZE + 1)
-    .fetch_all(pool)
-    .await
+    let sql = format!(
+        "{MEMBER_SELECT} AND ($2::text IS NULL OR m.account_id > $2) \
+         ORDER BY m.account_id LIMIT $3"
+    );
+    let rows: Vec<MemberRow> = match query_as(&sql)
+        .bind(&organization_id)
+        .bind(page.after.as_deref())
+        .bind(MEMBER_PAGE_SIZE + 1)
+        .fetch_all(pool)
+        .await
     {
         Ok(rows) => rows,
         Err(_) => return server_error().into_response(),
@@ -154,18 +186,11 @@ pub(super) async fn list_members(
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct AddMemberRequest {
-    account_id: String,
-    role: String,
-}
-
-#[derive(Debug, Deserialize)]
 pub(super) struct UpdateMemberRequest {
     role: String,
 }
 
-fn parse_role(value: &str) -> Result<OrganizationRole, ApiError> {
+pub(super) fn parse_role(value: &str) -> Result<OrganizationRole, ApiError> {
     OrganizationRole::parse(value).ok_or_else(|| {
         err(
             "invalid_role",
@@ -175,20 +200,22 @@ fn parse_role(value: &str) -> Result<OrganizationRole, ApiError> {
     })
 }
 
-/// Locks the organization and returns its kind and the caller's role.
-/// Organizations the caller does not belong to are not found.
-async fn lock_for_change(
+/// Locks the organization and returns its kind, the caller's role, and
+/// whether the admission file defines it. Organizations the caller does not
+/// belong to are not found.
+pub(super) async fn lock_for_change(
     tx: &mut Tx<'_>,
     organization_id: &str,
     actor_account_id: &str,
-) -> Result<(String, OrganizationRole), ApiError> {
+) -> Result<(String, OrganizationRole, bool), ApiError> {
     if !valid_id(organization_id) {
         return Err(not_found());
     }
-    let row: Option<(String, Option<String>)> = query_as(
-        "SELECT o.kind, m.role FROM cloud_organizations o \
+    let row: Option<(String, Option<String>, bool)> = query_as(
+        "SELECT o.kind, m.role, o.config_id IS NOT NULL FROM cloud_organizations o \
          LEFT JOIN cloud_organization_members m \
            ON m.organization_id = o.organization_id AND m.account_id = $2 \
+          AND (m.expires_at IS NULL OR m.expires_at > now()) \
          WHERE o.organization_id = $1 FOR UPDATE OF o",
     )
     .bind(organization_id)
@@ -197,15 +224,26 @@ async fn lock_for_change(
     .await
     .map_err(|_| server_error())?;
     match row {
-        Some((kind, Some(role))) => Ok((
+        Some((kind, Some(role), configured)) => Ok((
             kind,
             OrganizationRole::parse(&role).ok_or_else(server_error)?,
+            configured,
         )),
         _ => Err(not_found()),
     }
 }
 
-async fn owner_count(tx: &mut Tx<'_>, organization_id: &str) -> Result<i64, ApiError> {
+/// Members of an organization from the admission file join through its
+/// admission rules, so the generic API cannot add them or change roles.
+pub(super) fn configured_refusal() -> ApiError {
+    err(
+        "configured_organization",
+        "Members of this organization join through its admission rules.",
+        StatusCode::CONFLICT,
+    )
+}
+
+pub(super) async fn owner_count(tx: &mut Tx<'_>, organization_id: &str) -> Result<i64, ApiError> {
     let (count,): (i64,) = query_as(
         "SELECT count(*) FROM cloud_organization_members \
          WHERE organization_id = $1 AND role = 'owner'",
@@ -217,14 +255,15 @@ async fn owner_count(tx: &mut Tx<'_>, organization_id: &str) -> Result<i64, ApiE
     Ok(count)
 }
 
-async fn target_role(
+pub(super) async fn target_role(
     tx: &mut Tx<'_>,
     organization_id: &str,
     account_id: &str,
 ) -> Result<OrganizationRole, ApiError> {
     let row: Option<(String,)> = query_as(
         "SELECT role FROM cloud_organization_members \
-         WHERE organization_id = $1 AND account_id = $2",
+         WHERE organization_id = $1 AND account_id = $2 \
+           AND (expires_at IS NULL OR expires_at > now())",
     )
     .bind(organization_id)
     .bind(account_id)
@@ -241,86 +280,28 @@ async fn target_role(
     }
 }
 
-async fn fetch_member(
+pub(super) async fn fetch_member(
     tx: &mut Tx<'_>,
     organization_id: &str,
     account_id: &str,
 ) -> Result<OrganizationMember, ApiError> {
-    let row: MemberRow = query_as(
-        "SELECT m.account_id, a.display_name, m.role, m.joined_at \
-         FROM cloud_organization_members m \
-         JOIN cloud_accounts a ON a.account_id = m.account_id \
-         WHERE m.organization_id = $1 AND m.account_id = $2",
-    )
-    .bind(organization_id)
-    .bind(account_id)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|_| server_error())?;
+    let sql = format!("{MEMBER_SELECT} AND m.account_id = $2");
+    let row: MemberRow = query_as(&sql)
+        .bind(organization_id)
+        .bind(account_id)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(|_| server_error())?;
     member(row).ok_or_else(server_error)
 }
 
-fn check(
+pub(super) fn check(
     kind: &str,
     actor: OrganizationRole,
     change: MembershipChange,
     owners: i64,
 ) -> Result<(), ApiError> {
     check_membership_change(kind, actor, change, owners).map_err(ApiError::from)
-}
-
-pub(super) async fn add_member(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-    Path(organization_id): Path<String>,
-    Json(request): Json<AddMemberRequest>,
-) -> Response {
-    let result: Result<OrganizationMember, ApiError> = async {
-        let role = parse_role(&request.role)?;
-        let account_id = request.account_id.trim();
-        let mut tx = state.db_pool().begin().await.map_err(|_| server_error())?;
-        let (kind, actor) = lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
-        let owners = owner_count(&mut tx, &organization_id).await?;
-        check(&kind, actor, MembershipChange::Add { role }, owners)?;
-        let exists: Option<(String,)> =
-            query_as("SELECT account_id FROM cloud_accounts WHERE account_id = $1")
-                .bind(account_id)
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(|_| server_error())?;
-        if !valid_id(account_id) || exists.is_none() {
-            return Err(err(
-                "account_not_found",
-                "Account not found.",
-                StatusCode::NOT_FOUND,
-            ));
-        }
-        let inserted = query(
-            "INSERT INTO cloud_organization_members (organization_id, account_id, role) \
-             VALUES ($1, $2, $3) ON CONFLICT (organization_id, account_id) DO NOTHING",
-        )
-        .bind(&organization_id)
-        .bind(account_id)
-        .bind(role.as_str())
-        .execute(&mut *tx)
-        .await
-        .map_err(|_| server_error())?;
-        if inserted.rows_affected() == 0 {
-            return Err(err(
-                "already_member",
-                "That account is already a member.",
-                StatusCode::CONFLICT,
-            ));
-        }
-        let member = fetch_member(&mut tx, &organization_id, account_id).await?;
-        tx.commit().await.map_err(|_| server_error())?;
-        Ok(member)
-    }
-    .await;
-    match result {
-        Ok(member) => (StatusCode::CREATED, Json(json!({ "member": member }))).into_response(),
-        Err(error) => error.into_response(),
-    }
 }
 
 pub(super) async fn update_member(
@@ -332,7 +313,8 @@ pub(super) async fn update_member(
     let result: Result<OrganizationMember, ApiError> = async {
         let to = parse_role(&request.role)?;
         let mut tx = state.db_pool().begin().await.map_err(|_| server_error())?;
-        let (kind, actor) = lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
+        let (kind, actor, configured) =
+            lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
         let from = target_role(&mut tx, &organization_id, &account_id).await?;
         let owners = owner_count(&mut tx, &organization_id).await?;
         check(
@@ -341,8 +323,12 @@ pub(super) async fn update_member(
             MembershipChange::ChangeRole { from, to },
             owners,
         )?;
+        if configured {
+            return Err(configured_refusal());
+        }
         query(
-            "UPDATE cloud_organization_members SET role = $3 \
+            "UPDATE cloud_organization_members SET role = $3, \
+                 expires_at = CASE WHEN $3 = 'owner' THEN NULL ELSE expires_at END \
              WHERE organization_id = $1 AND account_id = $2",
         )
         .bind(&organization_id)
@@ -369,10 +355,17 @@ pub(super) async fn remove_member(
 ) -> Response {
     let result: Result<(), ApiError> = async {
         let mut tx = state.db_pool().begin().await.map_err(|_| server_error())?;
-        let (kind, actor) = lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
+        let (kind, actor, configured) =
+            lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
         let role = target_role(&mut tx, &organization_id, &account_id).await?;
         let owners = owner_count(&mut tx, &organization_id).await?;
         check(&kind, actor, MembershipChange::Remove { role }, owners)?;
+        if configured {
+            super::admission::store::remove_admitted_member(&mut tx, &organization_id, &account_id)
+                .await?;
+            tx.commit().await.map_err(|_| server_error())?;
+            return Ok(());
+        }
         query(
             "DELETE FROM cloud_organization_members \
              WHERE organization_id = $1 AND account_id = $2",

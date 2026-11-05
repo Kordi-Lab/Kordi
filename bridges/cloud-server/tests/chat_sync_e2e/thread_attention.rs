@@ -23,6 +23,7 @@ async fn unread_threads_are_discoverable_without_history_and_keep_independent_cu
             shared_title: None,
             client_session_id: direct_person_session_id(&owner, &peer),
             member_account_ids: vec![peer.clone()],
+            organization_id: None,
         },
     )
     .await

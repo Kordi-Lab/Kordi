@@ -10,6 +10,7 @@
 //! model. The reply text goes back to the caller, which submits it to the
 //! server for the same checks a cloud reply gets.
 
+use crate::cloud_session_organization::CloudBearerAuth;
 use std::sync::Arc;
 
 use kordi_cli::desktop_runtime::{DesktopRuntimeProfile, DesktopRuntimeSession};
@@ -68,7 +69,7 @@ async fn post_observe(url: &str, account_id: &str, body: &Value) -> Result<Value
         .map_err(|_| unavailable())?;
     let mut response = client
         .post(url)
-        .bearer_auth(token)
+        .cloud_bearer_auth(token)
         .json(body)
         .send()
         .await

@@ -419,5 +419,31 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
     ),
     migration!(165, "browser sign-in for apps", "0165_browser_sign_in.sql"),
     migration!(166, "resource pool usage", "0166_resource_pool_usage.sql"),
+    migration!(
+        167,
+        "organization admission",
+        "0167_organization_admission.sql"
+    ),
+    migration!(
+        168,
+        "organization selection",
+        "0168_organization_selection.sql"
+    ),
+    migration!(169, "pool worker runs", "0169_pool_worker_runs.sql"),
+    migration!(
+        170,
+        "account security email codes",
+        "0170_account_security_codes.sql"
+    ),
+    migration!(
+        171,
+        "organization claims on sessions",
+        "0171_organization_claims.sql"
+    ),
+    migration!(
+        173,
+        "identity matching email",
+        "0173_identity_matching_email.sql"
+    ),
     migration!(174, "usage pauses", "0174_usage_pauses.sql"),
 ];

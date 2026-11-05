@@ -19,6 +19,7 @@ async fn bootstrap_resolves_session_pins_for_the_viewer() {
             shared_title: Some("Pinned group".to_string()),
             client_session_id: session_id.clone(),
             member_account_ids: vec![peer.clone()],
+            organization_id: None,
         },
     )
     .await

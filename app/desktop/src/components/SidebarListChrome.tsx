@@ -47,12 +47,15 @@ export function SidebarListAction({ icon: Icon, label, onClick, disabled, expand
   );
 }
 
-export function SidebarSearchField({ value, onChange, placeholder, label, className }: {
+export function SidebarSearchField({ value, onChange, placeholder, label, className, autoFocus, onEnter }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   label?: string;
   className?: string;
+  autoFocus?: boolean;
+  /** Runs on Enter, for fields that search on demand instead of as you type. */
+  onEnter?: () => void;
 }) {
   return (
     <label className={cn('app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5', className)}>
@@ -62,6 +65,12 @@ export function SidebarSearchField({ value, onChange, placeholder, label, classN
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         aria-label={label ?? placeholder}
+        autoFocus={autoFocus}
+        onKeyDown={onEnter ? (event) => {
+          if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+          event.preventDefault();
+          onEnter();
+        } : undefined}
         className="w-full min-w-0 bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
       />
     </label>

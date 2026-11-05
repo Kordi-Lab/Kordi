@@ -183,7 +183,7 @@ pub fn build(
         let feature = scoped
             .first()
             .map_or(Feature::SystemAgent, |scoped| scoped.feature);
-        let cost = pool.provider(feature).estimated_cost_micros();
+        let cost = pool.estimated_cost_micros(feature);
         let next = pool_counter.spend_micros.saturating_add(cost);
         snapshots.push(snapshot(
             "pool.spend",

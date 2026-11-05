@@ -3,7 +3,7 @@ import { Brain, Monitor } from 'lucide-react';
 
 import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { ConnectorsSection } from './BuildConnectors';
-import { DeviceRows, type CgDeviceTitles } from './BuildDeviceRows';
+import { DeviceRows, type CgDeviceBlocked, type CgDeviceTitles } from './BuildDeviceRows';
 import { DocumentsRow } from './BuildDocuments';
 import { agentFilesSummary, buildFailureMessage, canBuildProfile, commonGroundBuildRequest, notesHint, type CgBuildChoices } from './buildRequest';
 import { DEVICE_SOURCES } from './deviceAccess';
@@ -33,8 +33,15 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
   const profile = currentProfile(state);
   const sourcesOn = Boolean(host.sources);
   const top = state.stack[state.stack.length - 1];
-  const { picks, change } = useSourcePicks(store, profile?.profileId ?? null, profile?.sources, top.name === 'build' && Boolean(top.memory), sourcesOn);
+  const { picks, change: savePicks } = useSourcePicks(store, profile?.profileId ?? null, profile?.sources, top.name === 'build' && Boolean(top.memory), sourcesOn);
   const [titles, setTitles] = useState<CgDeviceTitles>({});
+  const [blocked, setBlocked] = useState<CgDeviceBlocked>({});
+  // Errors show after Build here (or the card's last failed build on opening) and clear with the next change to the sources.
+  const [phase, setPhase] = useState<'opened' | 'attempted' | 'edited'>('opened');
+  const change: typeof savePicks = (update) => {
+    setPhase('edited');
+    savePicks(update);
+  };
 
   const building = state.owner?.build.status === 'building' || state.busy === 'build';
   if (building) return <CgProgress line="Building your card" />;
@@ -53,6 +60,7 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
     ...(sourcesOn ? { documents: picks.documents, picks } : {}),
   };
   const failed = state.owner?.build.status === 'failed' && !state.notice ? buildFailureMessage(state.owner.build.errorCode) : null;
+  const notice = phase === 'attempted' ? state.notice ?? failed : phase === 'opened' ? failed : null;
   const hasAgentFiles = Boolean(agentFiles?.length);
   const agentsRow = host.agentFiles ? (
     <CgRow
@@ -86,6 +94,8 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
         host={host}
         titles={titles}
         setTitles={setTitles}
+        blocked={blocked}
+        setBlocked={setBlocked}
         included={picks.device}
         setIncluded={(update) => change((current) => ({ ...current, device: update(current.device) }))}
       >
@@ -102,8 +112,11 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
         </CgGroup>
       </CgSection>
       <div className="cg-actions-center">
-        <CgNotice text={state.notice ?? failed} />
-        <button type="button" data-help-target="grounding-build" className="cg-build-pill" disabled={!canBuildProfile(choices)} onClick={() => void store.build(commonGroundBuildRequest(choices))}>
+        <CgNotice text={notice} />
+        <button type="button" data-help-target="grounding-build" className="cg-build-pill" disabled={!canBuildProfile(choices)} onClick={() => {
+          setPhase('attempted');
+          void store.build(commonGroundBuildRequest(choices));
+        }}>
           Build
         </button>
       </div>

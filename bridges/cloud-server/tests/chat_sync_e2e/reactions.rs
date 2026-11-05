@@ -19,6 +19,7 @@ async fn unicode_reactions_are_idempotent_authorized_and_synced() {
             shared_title: None,
             client_session_id: direct_person_session_id(&owner, &peer),
             member_account_ids: vec![peer.clone()],
+            organization_id: None,
         },
     )
     .await
