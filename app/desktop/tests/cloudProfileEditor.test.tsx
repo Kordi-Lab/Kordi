@@ -27,6 +27,12 @@ const dialog = (current: CloudAccount, onUpdateProfile: (input: CloudProfileUpda
   memoryClient: null,
 });
 
+function dialogButton(label: string) {
+  const button = Array.from(document.querySelectorAll('[role="dialog"][aria-labelledby^="kordi-id-"] button')).find((item) => item.textContent === label);
+  assert.ok(button, label);
+  return button as HTMLButtonElement;
+}
+
 function labelledField(label: string) {
   const element = Array.from(document.querySelectorAll('label')).find((item) => item.textContent === label);
   assert.ok(element, label);
@@ -67,7 +73,18 @@ test('profile table saves changed fields and shows a taken Kordi ID under its ro
     await type(kordiId, '@ma_ya');
     assert.equal(kordiId.value, 'maya');
     assert.equal(saveButton().disabled, false);
+
+    // A new Kordi ID is confirmed first; Cancel keeps the draft unsaved.
     await act(async () => saveButton().click());
+    const confirm = document.querySelector('[role="dialog"][aria-labelledby="kordi-id-change-title"]');
+    assert.equal(confirm?.querySelector('h2')?.textContent, 'Change your Kordi ID?');
+    assert.equal(confirm?.querySelector('p')?.textContent, 'You can change it once a year.');
+    await act(async () => dialogButton('Cancel').click());
+    assert.equal(document.querySelector('[role="dialog"][aria-labelledby="kordi-id-change-title"]'), null);
+    assert.deepEqual(sent, []);
+
+    await act(async () => saveButton().click());
+    await act(async () => dialogButton('Change').click());
 
     assert.deepEqual(sent, [{ displayName: 'Maya', kordiId: 'maya' }]);
     const alert = kordiId.closest('.app-cloud-profile-row')!.querySelector('[role="alert"]');
@@ -93,15 +110,23 @@ test('a Kordi ID changed within the year is read-only until its next change date
     const locked = { ...account, kordiIdChangeAvailableAt: '2999-03-04T12:00:00Z' };
     await act(async () => root.render(dialog(locked, asyncNoop)));
     const kordiId = labelledField('Kordi ID');
-    assert.equal(kordiId.disabled, true);
+    assert.equal(kordiId.readOnly, true);
     assert.equal(kordiId.value, 'mayaold');
-    const note = kordiId.closest('.app-cloud-profile-row')!.querySelector('.app-cloud-profile-row-note');
-    assert.equal(note?.textContent, 'Changes again on March 4, 2999');
-    assert.match(kordiId.getAttribute('aria-describedby') ?? '', new RegExp(note!.id));
+    assert.equal(kordiId.closest('.app-cloud-profile-row')!.textContent, 'Kordi ID@', 'no note under the field');
+    assert.equal(document.querySelector('[role="dialog"][aria-labelledby="kordi-id-locked-title"]'), null);
+
+    // Clicking the field explains the lock in a dialog.
+    await act(async () => {
+      kordiId.dispatchEvent(new installed.dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    });
+    const lockedDialog = document.querySelector('[role="dialog"][aria-labelledby="kordi-id-locked-title"]');
+    assert.equal(lockedDialog?.querySelector('h2')?.textContent, 'Kordi ID');
+    assert.equal(lockedDialog?.querySelector('p')?.textContent, 'You can change it again on March 4, 2999.');
+    await act(async () => dialogButton('OK').click());
+    assert.equal(document.querySelector('[role="dialog"][aria-labelledby="kordi-id-locked-title"]'), null, 'focus returning to the field does not reopen it');
 
     await act(async () => root.render(dialog({ ...account, kordiIdChangeAvailableAt: null }, asyncNoop)));
-    assert.equal(labelledField('Kordi ID').disabled, false);
-    assert.equal(document.querySelector('.app-cloud-profile-row-note'), null);
+    assert.equal(labelledField('Kordi ID').readOnly, false);
   } finally {
     await act(async () => root.unmount());
     installed.restore();

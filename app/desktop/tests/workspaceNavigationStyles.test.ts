@@ -32,3 +32,23 @@ test('workspace rail navigation has explicit light and dark theme tokens', () =>
   assert.match(lightTokens, /--app-nav-rail-active-text:\s*var\(--app-sidebar-title-text\);/);
   assert.doesNotMatch(lightTokens, /--app-nav-rail-active-bg:\s*oklch\(58% 0\.115 242\);/);
 });
+
+test('every rail badge is the same neutral pill capped at 9+', async () => {
+  const { formatRailBadgeCount } = await import('../src/pages/workspaceSidebar.badges');
+  assert.equal(formatRailBadgeCount(1), '1');
+  assert.equal(formatRailBadgeCount(9), '9');
+  assert.equal(formatRailBadgeCount(10), '9+');
+
+  const source = readSource('src/pages/workspaceSidebar.navigation.tsx');
+  const styles = readSource('src/styles/shell-sidebar.css');
+  assert.equal((source.match(/app-nav-rail-unread-badge/g) ?? []).length, 1, 'contact requests and unread chats share one badge');
+  assert.doesNotMatch(source, /emerald|bg-green/);
+  const badge = styles.match(/\.app-nav-rail-unread-badge\s*\{([^}]*)\}/)?.[1] ?? '';
+  assert.match(badge, /height:\s*16px;/);
+  assert.match(badge, /background:\s*var\(--app-nav-rail-badge-bg\);/);
+  assert.match(badge, /color:\s*var\(--app-nav-rail-badge-text\);/);
+  assert.match(badge, /box-shadow:\s*0 0 0 1\.5px var\(--app-nav-rail-unread-ring\);/);
+  for (const file of ['src/styles/theme-tokens.css', 'src/styles/theme-palette.css']) {
+    assert.match(readSource(file), /--app-nav-rail-badge-bg:/, file);
+  }
+});

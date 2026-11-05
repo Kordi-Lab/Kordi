@@ -11,10 +11,7 @@ import {
 } from '@/pages/workspaceSidebar.update';
 import type { WorkspaceSidebarAccount } from '@/pages/workspaceSidebar.types';
 import { HelpEntry } from '@/features/onboarding/HelpEntry';
-
-function formatUnreadCount(value: number) {
-  return value > 99 ? '99+' : `${value}`;
-}
+import { formatRailBadgeCount } from '@/pages/workspaceSidebar.badges';
 
 export function WorkspaceNavigationRail({
   isNativeShell,
@@ -61,6 +58,8 @@ export function WorkspaceNavigationRail({
             const Icon = item.icon;
             const active = activeNav === item.id;
             const unread = item.id === 'agent-chats' ? agentUnread : item.id === 'chats' ? contactUnread : 0;
+            const requests = item.id === 'contacts' ? pendingContactRequestCount : 0;
+            const badgeCount = unread > 0 ? unread : requests;
             return (
               <button
                 key={item.id}
@@ -71,24 +70,18 @@ export function WorkspaceNavigationRail({
                 data-active={active ? 'true' : 'false'}
                 aria-label={unread > 0
                   ? `${item.label}, ${unread} unread message${unread === 1 ? '' : 's'}`
-                  : item.label}
+                  : requests > 0
+                    ? `${item.label}, ${requests} pending contact request${requests === 1 ? '' : 's'}`
+                    : item.label}
                 aria-current={active ? 'page' : undefined}
                 title={item.label}
               >
-                <span className="relative grid h-6 w-6 place-items-center rounded-[10px]">
+                <span className="grid h-6 w-6 place-items-center rounded-[10px]">
                   <Icon className="h-[18px] w-[18px]" />
-                  {item.id === 'contacts' && pendingContactRequestCount > 0 ? (
-                    <span
-                      className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-emerald-300 px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]"
-                      aria-label={`${formatUnreadCount(pendingContactRequestCount)} pending contact request${pendingContactRequestCount === 1 ? '' : 's'}`}
-                    >
-                      {formatUnreadCount(pendingContactRequestCount)}
-                    </span>
-                  ) : null}
                 </span>
-                {unread > 0 ? (
+                {badgeCount > 0 ? (
                   <span className="app-nav-rail-unread-badge" aria-hidden="true">
-                    {formatUnreadCount(unread)}
+                    {formatRailBadgeCount(badgeCount)}
                   </span>
                 ) : null}
               </button>

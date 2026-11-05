@@ -144,3 +144,26 @@ test('selected text keeps each bubble’s own ink in light and dark themes', asy
     }
   }
 });
+
+test('the reply typing dots start under the sender in Threads and stay dot-sized in Chat', async ({ page }) => {
+  await page.goto(`${fixture}?typing=1&layout=chat`);
+  const typing = page.locator('[data-support-contact-typing]');
+  const expectDotSized = async () => {
+    await typing.scrollIntoViewIfNeeded();
+    expect((await typing.boundingBox())!.width).toBeLessThan(48);
+  };
+  await expectDotSized();
+
+  // Switching layouts while the reply is in progress moves the dots with the text column.
+  await page.getByRole('button', { name: 'Threads', exact: true }).click();
+  await expectDotSized();
+  const row = page.locator('#app-transcript-message-layout-support-typing');
+  const dots = (await typing.boundingBox())!;
+  const header = (await row.locator('.app-thread-message-header').boundingBox())!;
+  expect(Math.abs(dots.x - header.x)).toBeLessThanOrEqual(2);
+  expect(dots.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
+
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await expect(page.locator('.app-thread-message-row')).toHaveCount(0);
+  await expectDotSized();
+});

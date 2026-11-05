@@ -328,11 +328,13 @@ test('contact detail modal suppresses detail text when it repeats the visible ac
 test('contacts add surface uses concise public Kordi ID controls without implementation wording', () => {
   const source = readFileSync(new URL('../src/kordi-app/contacts/ContactsAddForm.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /placeholder="Kordi ID, e\.g\. @482731906"/);
+  assert.match(source, /<SidebarSearchField/);
+  assert.match(source, /placeholder="Search by Kordi ID"/);
   assert.match(source, /Send request/);
   assert.doesNotMatch(source, /Search by exact account ID/);
   assert.doesNotMatch(source, /Send an approval request/);
-  assert.match(source, /Request pending/);
+  assert.match(source, /'Pending'/);
+  assert.doesNotMatch(source, /Request pending|Searching…|type="submit"/);
   assert.doesNotMatch(source, /Account ID, e\.g\. acct_/);
   assert.doesNotMatch(source, /Bridge node ID/);
   assert.doesNotMatch(source, /Add by node ID/);
