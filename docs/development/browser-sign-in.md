@@ -246,13 +246,19 @@ form again and keep the query.
 ### `GET /v1/cloud/auth/app/authorize`
 
 Query: `response_type=code`, `client_id`, `redirect_uri`, `code_challenge`,
-`code_challenge_method=S256`, `state` (required, up to 512 characters).
+`code_challenge_method=S256`, `state` (required, up to 512 characters), and
+optionally `prompt`.
 
 - Unknown client or unregistered redirect URI: `400` with `invalid_client`
   or `invalid_redirect_uri`. Nothing is sent to the redirect URI.
 - Any other invalid parameter: a redirect to `redirect_uri` with `error`,
   `error_description` and `state`.
 - Valid: a redirect to the web sign-in page with the same parameters.
+- `prompt=create` (OpenID Connect) is forwarded to the sign-in page, which
+  should then open on account creation instead of log-in. Any other `prompt`
+  value is dropped. The page sends `prompt` back to
+  `POST /v1/cloud/auth/app/authorize` or leaves it out; the server ignores it
+  there. The apps send it for Sign up.
 
 ### `POST /v1/cloud/auth/app/authorize`
 
@@ -479,5 +485,74 @@ creation. The code lives in `app/desktop/src/features/cloud/appSignIn/`.
   activates that account's storage and reloads the window before any of its
   data is shown.
 
-Provider sign-ins for model accounts are unchanged. The iOS app is a
-separate step.
+Provider sign-ins for model accounts are unchanged.
+
+## iPhone app
+
+The iPhone app shows a welcome screen with Log in and Sign up. Both open
+`GET /v1/cloud/auth/app/authorize` on the build's API origin in an
+`ASWebAuthenticationSession`; Sign up adds `prompt=create`. The code lives in
+`app/ios/Kordi/Core/Auth/AppSignInClient.swift`,
+`app/ios/Kordi/Core/Auth/AppSignInController.swift`,
+`app/ios/Kordi/App/AppModel+BrowserSignIn.swift` and
+`app/ios/Kordi/Features/Auth/WelcomeView.swift`.
+
+- Client ID and redirect: derived from the build's callback scheme, with an
+  iPhone client separate from the desktop one (`kordi` -> `kordi-ios`,
+  `kordi-beta` -> `kordi-ios-beta`, `kordi-staging` -> `kordi-ios-staging`).
+  The redirect is `<scheme>://auth/callback`, the only redirect URI those
+  clients register. `Kordi Beta` uses `kordi-beta` against the loopback
+  development API; `Kordi` uses the production scheme against
+  `https://kordi.ai`. A build whose scheme has no registered client gets
+  `invalid_client` and shows the in-app form.
+- The web authentication session itself receives the callback for the
+  scheme, so the code never passes through the system URL router. The app
+  checks the callback's scheme, host, path and its single `state` before the
+  exchange. Because the session always receives the redirect, the iPhone app
+  has no paste-code step.
+- Availability: the same probe and rules as the desktop app. The answer is
+  remembered for the rest of the launch only when it is settled
+  (`invalid_redirect_uri`, 404, 405 or `invalid_client`).
+- Requests go through the app's Cloud transport, which connects loopback
+  directly and works around a broken system proxy.
+- Tokens: the access token stays in the existing Keychain session item, and
+  the refresh token, client ID, token endpoint, expiry and account ID are a
+  second Keychain item (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`).
+  Both are updated in place, so a failed write never loses a rotated refresh
+  token. Removing the session item always removes the second one too.
+- Refresh: five minutes before expiry, at launch, when the app returns to the
+  foreground, and before background Nearby posts. One store per process runs
+  one refresh at a time and holds background execution time for it (the reuse
+  grace is 60 seconds). Its result is written only while the stored sign-in is
+  still the one it refreshed, so a sign-out during a refresh wins and the new
+  tokens are revoked. A refused refresh (`invalid_grant` or `invalid_client`)
+  signs out; anything else keeps the session and retries.
+- Session identity: work started under an earlier access token of the same
+  sign-in stays current after a refresh, so in-flight requests are not
+  dropped. A refresh reconnects realtime with the new token.
+- Launch: a stored sign-in for another server is dropped. The refresh
+  credential is the source of truth, so a session token left behind by a
+  refresh whose second write failed is repaired. A password or provider
+  sign-in removes and revokes any kept browser sign-in first. Only the server ending the session (401,
+  `invalid_session`, `account_missing`) discards the stored sign-in, revoking
+  it; a connection or server error keeps it, and the welcome screen restores
+  it when it appears or the app returns to the foreground. Log in and Sign up
+  stay usable during that; tapping one cancels the restore.
+- Share extension: it never refreshes (a second process could present a
+  rotated token). With an expired token it shows "Open Kordi to continue";
+  opening the app refreshes the session and rewrites the extension's copy.
+- Sign-out revokes the refresh token through `POST /v1/cloud/auth/app/revoke`
+  and then calls `POST /v1/cloud/auth/logout`.
+- Account changes: caches are keyed by account ID, and a browser sign-in that
+  returns a different account than the one in memory signs that account out,
+  clearing its caches, before the new account's data loads.
+
+A server that sets `KORDI_AUTH_APP_CLIENTS` replaces the built-in list, so
+it must include `kordi-ios` (and `kordi-ios-beta` on development servers) or
+iPhone users fall back to the in-app form.
+
+Follow-up: any app on the device can register a custom URL scheme. The next
+step is a claimed `https` universal-link redirect (an associated domain on
+the API origin and an `ASWebAuthenticationSession` HTTPS callback, available
+from iOS 17.4), registered as the iPhone clients' redirect URI in place of the
+custom scheme.
