@@ -86,6 +86,7 @@ tests=(
   organization_tests::upgrade_from_161_adds_personal_organizations_and_ownership
   resource_pool_tests::upgrade_from_165_adds_resource_pool_usage
   organization_tests::upgrade_from_166_adds_organization_admission
+  identity_email_tests::upgrade_from_167_backfills_identity_matching_email
 )
 index=0
 for test_name in "${tests[@]}"; do

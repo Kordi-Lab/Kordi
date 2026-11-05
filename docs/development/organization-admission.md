@@ -114,6 +114,26 @@ purged after 30 days. The hourly sweep repeats this, also when the file is
 unset. Adding the id back reopens it; former members join again by the
 normal rules.
 
+## Verified provider emails
+
+A Google or GitHub identity joins an existing account by email only when the
+provider verified that email (Google: `email_verified` in both userinfo and the
+ID token; GitHub: the verified primary email) and the account's own primary
+email is verified. Otherwise the sign-in is refused with
+`oauth_email_requires_sign_in`. This rule governs new links only: an identity
+that is already linked keeps signing in to its account, whether or not that
+account's primary email is verified.
+
+Once linked, an identity never moves to another account. Each identity keeps
+the email it may be matched by (`cloud_account_identities.matching_email`).
+When the provider reports a different email, or stops verifying it, the link
+stays but that email is no longer evidence: it does not prove the account's
+primary email and does not admit to organizations. The change is written to the
+account's security log (`auth.identity.email_changed` or
+`auth.identity.email_unverified`, provider only). Proving the new address with
+a Kordi email code (account email or organization email code) makes it the
+matching email again (`auth.identity.email_reverified`).
+
 ## API
 
 The join-request admin routes need a bearer cloud session, like the other
@@ -164,4 +184,6 @@ Migration 0167 adds `cloud_organizations.config_id` (unique, team only),
 `cloud_organization_members.configured_admin` and `configured_admin_email`,
 `cloud_account_identities.hosted_domain`, `cloud_organization_admissions`,
 `cloud_organization_join_requests`, and `cloud_organization_email_codes`
-(same rules as the account email codes).
+(same rules as the account email codes). Migration 0173 adds
+`cloud_account_identities.matching_email`, filled from verified provider
+emails.
