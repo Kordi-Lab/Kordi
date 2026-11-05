@@ -13,7 +13,6 @@ use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, RateLimite
 use crate::calls::{CallMediaConfig, CallMediaConfigError};
 use crate::events::{EventBus, EventBusError};
 use crate::notifications::{PushNotificationConfigError, PushNotificationService};
-use crate::organizations::admission::OrganizationAdmission;
 use crate::pg::{init_pool, PgPoolError};
 use crate::support::{PendingSupportConfig, SupportConfigError, SupportService};
 use crate::system_agent::{PendingSystemAgentConfig, SystemAgentConfigError, SystemAgentService};
@@ -21,6 +20,7 @@ use crate::updates::store::{
     MinioReleaseStore, ReleaseCatalogStore, ReleaseStoreConfig, ReleaseStoreError,
 };
 
+mod admission_state;
 mod logging;
 mod readiness;
 mod workers;
@@ -29,7 +29,7 @@ use logging::redact_url_credentials;
 
 pub struct ServerState {
     admission: crate::auth::admission::AdmissionPolicy,
-    organization_admission: Arc<OrganizationAdmission>,
+    organization_admission: Arc<crate::organizations::admission::OrganizationAdmission>,
     pool: PgPool,
     events: EventBus,
     chat_sync_wakes: Arc<crate::chat_sync::realtime::ChatSyncWakeHub>,
@@ -64,22 +64,6 @@ impl ServerState {
             connectors: crate::connectors::ConnectorRuntime::from_env(),
             document_rooms: crate::document_shares::collab::RoomRegistry::new(),
         }
-    }
-
-    pub fn admission(&self) -> &crate::auth::admission::AdmissionPolicy {
-        &self.admission
-    }
-    pub fn with_admission(mut self, policy: crate::auth::admission::AdmissionPolicy) -> Self {
-        self.admission = policy;
-        self
-    }
-    pub fn organization_admission(&self) -> &OrganizationAdmission {
-        &self.organization_admission
-    }
-    /// Takes an admission file already synced to the database.
-    pub fn with_organization_admission(mut self, synced: OrganizationAdmission) -> Self {
-        self.organization_admission = Arc::new(synced);
-        self
     }
 
     pub fn with_s3(mut self, s3: S3Config) -> Self {
@@ -429,6 +413,23 @@ pub async fn run(
             "Kordi System agent configured as {} ({})",
             system_agent_config.name, system_agent_config.account_id
         );
+        // Pool ids and limits only; providers and keys are never printed.
+        let pools = system_agent_config.resource_pools();
+        println!(
+            "Kordi resource pools: {} (default {})",
+            pools
+                .pools()
+                .iter()
+                .map(|pool| pool.summary())
+                .collect::<Vec<_>>()
+                .join(", "),
+            pools.default_pool().id()
+        );
+        if let Err(error) =
+            crate::resource_pools::warn_unknown_organizations(state.db_pool(), pools).await
+        {
+            eprintln!("[resource-pools] Could not check bound organizations: {error}");
+        }
         state = state.with_system_agent(SystemAgentService::new(system_agent_config));
     } else {
         println!("Kordi System agent is disabled");

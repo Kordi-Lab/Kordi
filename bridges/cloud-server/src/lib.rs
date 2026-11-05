@@ -30,6 +30,7 @@ pub mod plan_cards;
 pub mod presence;
 pub mod proactive;
 pub mod projects;
+pub mod resource_pools;
 pub mod scheduled_tasks;
 pub mod server;
 pub(crate) mod service_model;

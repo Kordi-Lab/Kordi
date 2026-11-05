@@ -521,7 +521,7 @@ private struct RootView: View {
                 LaunchingView()
                     .transition(.opacity)
             case .signedOut:
-                LoginView()
+                WelcomeView()
                     .transition(.opacity)
             case .signedIn:
                 MainTabView(hasTopAccessory: hasTopAccessory)

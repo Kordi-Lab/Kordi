@@ -49,7 +49,7 @@ impl Job<'_> {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let mut headers = std::collections::BTreeMap::new();
+        let mut headers = self.auth.headers.clone();
         if let Some(account_id) = &self.auth.account_id {
             headers.insert("ChatGPT-Account-ID".into(), account_id.clone());
         }

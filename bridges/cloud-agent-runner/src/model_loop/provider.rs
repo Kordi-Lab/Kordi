@@ -4,7 +4,7 @@ use kordi_provider::{
     ProviderAuthMode, RequestOptions, StreamEvent,
 };
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use tokio_util::sync::CancellationToken;
 
 use crate::client::{AgentRuntimeRoute, ProviderAuthMaterial};
@@ -18,6 +18,9 @@ use model_choice::{default_thinking_for_model, snapshot_model};
 
 mod endpoint;
 mod model_choice;
+mod payload_headers;
+#[cfg(test)]
+mod pool_headers_tests;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenAiApiMode {
@@ -35,6 +38,9 @@ pub struct OpenAiProviderConfig {
     pub thinking: String,
     pub api_mode: OpenAiApiMode,
     pub account_id: Option<String>,
+    /// Extra request headers from the provider payload, such as a
+    /// gateway's attribution headers.
+    pub headers: BTreeMap<String, String>,
 }
 
 impl OpenAiProviderConfig {
@@ -146,6 +152,7 @@ impl OpenAiProviderConfig {
             thinking,
             api_mode,
             account_id,
+            headers: payload_headers::from_payload(payload),
         })
     }
 
@@ -196,7 +203,11 @@ impl OpenAiProviderConfig {
             },
             auth_account_id: self.account_id.clone(),
             base_url: self.base_url.clone(),
-            headers: HashMap::new(),
+            headers: self
+                .headers
+                .iter()
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect::<HashMap<_, _>>(),
             cancel: CancellationToken::new(),
             retry_callback: None,
             max_retries: 2,

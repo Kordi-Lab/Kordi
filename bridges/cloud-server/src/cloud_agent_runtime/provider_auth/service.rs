@@ -34,6 +34,18 @@ pub struct ServiceProviderAuth<'a> {
     /// prefix. The System agent's key belongs to its own sweep runs, never to
     /// an ordinary agent run that happens to be owned by its account.
     pub run_id_prefix: Option<&'a str>,
+    /// The resource pool this credential belongs to. When set, it only
+    /// serves runs whose route names that pool, or, for the default pool,
+    /// runs queued before pools existed.
+    pub resource_pool: Option<ServicePool<'a>>,
+}
+
+#[derive(Clone, Copy)]
+pub struct ServicePool<'a> {
+    pub id: &'a str,
+    pub is_default: bool,
+    /// Extra request headers the runner sends to this pool's endpoint.
+    pub headers: &'a std::collections::BTreeMap<String, String>,
 }
 
 impl ServiceProviderAuth<'_> {
@@ -52,10 +64,19 @@ impl ServiceProviderAuth<'_> {
                 .and_then(Value::as_str)
                 .map(str::trim)
                 == Some(self.auth_choice)
+            && self.resource_pool.is_none_or(|pool| {
+                match route
+                    .get(crate::resource_pools::ROUTE_POOL_FIELD)
+                    .and_then(Value::as_str)
+                {
+                    Some(id) => id == pool.id,
+                    None => pool.is_default,
+                }
+            })
     }
 }
 
-pub(super) async fn service_provider_auth_for_run(
+pub(crate) async fn service_provider_auth_for_run(
     owner_account_id: &str,
     run_id: &str,
     runtime_route: &Value,
@@ -75,15 +96,21 @@ pub(super) async fn service_provider_auth_for_run(
         .await
         .map_err(|message| sqlx_core::Error::Protocol(message.to_string()))?;
 
+    let mut payload = serde_json::json!({
+        "apiKey": token,
+        "baseUrl": service_auth.base_url,
+        "model": service_auth.model,
+    });
+    if let Some(pool) = service_auth.resource_pool {
+        if !pool.headers.is_empty() {
+            payload["headers"] = serde_json::json!(pool.headers);
+        }
+    }
     Ok(Some(RunnerProviderAuthMaterial {
         snapshot_id: service_auth.snapshot_id.to_string(),
         provider: service_auth.provider.to_string(),
         auth_choice: service_auth.auth_choice.to_string(),
-        payload: serde_json::json!({
-            "apiKey": token,
-            "baseUrl": service_auth.base_url,
-            "model": service_auth.model,
-        }),
+        payload,
     }))
 }
 
@@ -133,6 +160,7 @@ mod tests {
             base_url: "https://api.openai.com/v1",
             model: "gpt",
             run_id_prefix: Some("pip_"),
+            resource_pool: None,
         };
         assert!(service_provider_auth_for_run(
             "acct_kordi_pip",
@@ -181,6 +209,7 @@ mod tests {
             base_url: endpoint,
             model: "google/synthetic-model",
             run_id_prefix: Some("cg_"),
+            resource_pool: None,
         };
         let route = serde_json::json!({
             "defaultAuthProvider": "vertex-ai",

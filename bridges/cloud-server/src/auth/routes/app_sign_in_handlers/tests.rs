@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 
 mod hardening;
+mod prompt;
 mod refresh_grace;
 mod rejections;
 mod web_authorize;
