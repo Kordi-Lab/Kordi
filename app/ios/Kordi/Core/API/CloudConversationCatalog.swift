@@ -395,10 +395,8 @@ enum CloudConversationCatalog {
                         + callMessages.map(\.messageId)
                 ).count,
                 unreadMentionCount: unreadMentionMessageIds.count,
-                lastReadSequence: lastReadSequence(
-                    in: canonical,
-                    accountId: account.accountId
-                )
+                lastReadSequence: lastReadSequence(in: canonical, accountId: account.accountId),
+                organizationName: GroupOrganizationCatalog.name(groupSpaceId: groupSpaceId, canonical: canonicalConversations)
             )
         }
     }

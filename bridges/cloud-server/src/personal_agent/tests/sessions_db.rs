@@ -128,6 +128,7 @@ async fn the_marker_follows_the_setting_and_clients_cannot_forge_a_session() {
             shared_title: None,
             client_session_id: format!("session:self-agent:{}:personal:cloud_agent_new", f.owner),
             member_account_ids: vec![f.owner.clone()],
+            organization_id: None,
         },
     )
     .await;
@@ -141,6 +142,7 @@ async fn the_marker_follows_the_setting_and_clients_cannot_forge_a_session() {
             shared_title: None,
             client_session_id: format!("session:self-agent:{}", Uuid::new_v4().simple()),
             member_account_ids: vec![f.owner.clone()],
+            organization_id: None,
         },
     )
     .await

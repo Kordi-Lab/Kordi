@@ -46,6 +46,7 @@ pub(crate) async fn open_direct_conversation(
             shared_title: None,
             client_session_id: session_id,
             member_account_ids: vec![peer.to_string()],
+            organization_id: None,
         },
     )
     .await

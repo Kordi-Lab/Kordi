@@ -188,6 +188,7 @@ async fn own_conversation(pool: &sqlx_postgres::PgPool, account_id: &str) -> Uui
             shared_title: None,
             client_session_id: format!("session:send-budget:{}", Uuid::new_v4().simple()),
             member_account_ids: Vec::new(),
+            organization_id: None,
         },
     )
     .await

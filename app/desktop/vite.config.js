@@ -59,7 +59,7 @@ export default defineConfig(({ command, mode }) => {
               { name: 'contact-common-ground', minSize: 0, test: /[\\/]src[\\/]kordi-app[\\/]contacts[\\/](?:ContactCommonGround\.tsx|contactMatch\.ts)$/ },
               // Split before the 700 kB chunk budget, as agent-factory is.
               { name: 'cloud-features', test: /[\\/]src[\\/]features[\\/]cloud[\\/]/, maxSize: 650_000 },
-              { name: 'desktop-features', test: (id) => /[\\/]src[\\/]features[\\/]/.test(id) && !DOCUMENT_EDITOR_SOURCE.test(id) && !HELP_CENTER_SOURCE.test(id) },
+              { name: 'desktop-features', test: (id) => /[\\/]src[\\/]features[\\/]/.test(id) && !DOCUMENT_EDITOR_SOURCE.test(id) && !HELP_CENTER_SOURCE.test(id), maxSize: 650_000 },
               // After the app groups, so modules the app shares with the editor stay in app chunks.
               { name: 'document-editor', test: (id) => DOCUMENT_EDITOR_PACKAGES.test(id) || DOCUMENT_EDITOR_SOURCE.test(id) },
               { name: 'workspace-ui', test: /[\\/]src[\\/](?:app|components|kordi-app|pages)[\\/]/ },

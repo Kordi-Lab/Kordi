@@ -27,7 +27,7 @@ use crate::cloud_agent_runtime::runs::{
 use crate::server::ServerState;
 
 pub(crate) mod service_auth;
-use service_auth::{include_service_provider_auth, service_provider_auths};
+use service_auth::{include_service_provider_auth, pool_snapshot, service_provider_auths};
 
 pub(crate) async fn notify_run_response(state: &ServerState, response_message_id: Option<&str>) {
     let Some(notifications) = state.notifications() else {
@@ -66,6 +66,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             post(super::runs::stop::stop_run_route),
         )
         .merge(desktop_routes::routes())
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::organizations::requests::organization_scoped,
+        ))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,
@@ -247,13 +251,14 @@ async fn complete_runner_run(
             StatusCode::BAD_REQUEST,
         );
     };
+    let pools = pool_snapshot(&state);
     match super::runs::completion::complete_run_with_service_auth(
         state.db_pool(),
         &run_id,
         &runner_id,
         &input.response_text,
         input.omp_state.as_ref(),
-        &service_auth::service_provider_auths(&state),
+        &service_provider_auths(&state, pools.as_deref()),
     )
     .await
     {
@@ -318,7 +323,8 @@ async fn fetch_runner_provider_auth(
         );
     };
     let cipher = EnvProviderAuthCipher::from_env().ok();
-    let service_auths = service_provider_auths(&state);
+    let pools = pool_snapshot(&state);
+    let service_auths = service_provider_auths(&state, pools.as_deref());
 
     match provider_auth_for_run(
         state.db_pool(),

@@ -35,6 +35,11 @@ pub fn spawn_scheduled_task_worker(state: Arc<ServerState>) -> JoinHandle<()> {
             if let Err(err) = crate::scheduled_tasks::mac::expire_waiting(state.db_pool()).await {
                 eprintln!("[scheduled_tasks] expire runs waiting for a Mac: {err}");
             }
+            if let Err(err) =
+                crate::organizations::selection::expire_memberships(state.db_pool()).await
+            {
+                eprintln!("[organizations] expire memberships: {err}");
+            }
             crate::connectors::events::run_retention_sweep(state.db_pool()).await;
             crate::connectors::polling::spawn_poll_sweep(state.db_pool(), state.connectors());
         }

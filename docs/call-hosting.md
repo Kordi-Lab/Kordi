@@ -269,7 +269,10 @@ for the underlying transport requirements.
 
 Run the product firewall helper and deployment helpers only with the authorized
 target, project, and zone explicitly set. The Cloud deploy checks that every
-`kordi-livekit` secret field exists before reconciling LiveKit.
+`kordi-livekit` secret field exists before reconciling LiveKit. To deploy
+without the in-cluster media server, for example with calls off or with media
+on a separate host, set `KORDI_CLUSTER_LIVEKIT=false`; see the
+[k3s deploy guide](../bridges/cloud-server/deploy/k3s/README.md#voice-and-video-media).
 
 ```bash
 bash bridges/cloud-server/deploy/k3s/configure-product-firewall.sh

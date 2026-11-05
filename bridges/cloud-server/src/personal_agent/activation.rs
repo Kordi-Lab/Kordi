@@ -114,6 +114,7 @@ async fn create(
         shared_title: None,
         client_session_id: session_id,
         member_account_ids: vec![owner_account_id.to_string()],
+        organization_id: None,
     };
     let outcome = store::create_personal_session_in_transaction(
         transaction,

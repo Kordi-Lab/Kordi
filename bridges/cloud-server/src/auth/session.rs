@@ -31,7 +31,26 @@ pub struct CloudSessionRow {
     pub account_id: String,
     pub device_id: String,
     pub expires_at: DateTime<Utc>,
+    pub organization: SessionOrganization,
 }
+
+/// The organization claim of a session (migration 0171) and the facts needed
+/// to check it, read with the session itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionOrganization {
+    /// The claimed organization; `None` means the personal organization.
+    pub claimed: Option<String>,
+    /// The account's personal organization.
+    pub personal: Option<String>,
+    /// The account is still an active member of the claimed organization.
+    pub claim_active: bool,
+}
+
+/// Selects the [`SessionOrganization`] columns for the session row `token`.
+pub(crate) const SESSION_ORGANIZATION_COLUMNS: &str = "token.organization_id, \
+     cloud_personal_organization(token.account_id), \
+     token.organization_id IS NOT NULL \
+       AND cloud_is_organization_member(token.organization_id, token.account_id)";
 
 #[derive(Debug)]
 pub enum SessionError {
@@ -119,24 +138,41 @@ pub async fn lookup_session(
     let token_hash = hash_session_token(plaintext_token);
     let now = Utc::now();
 
-    let row: Option<(String, String, String, String)> = query_as(
-        "SELECT token.token_id, token.account_id, token.device_id, token.expires_at \
+    type Row = (
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        bool,
+    );
+    let row: Option<Row> = query_as(&format!(
+        "SELECT token.token_id, token.account_id, token.device_id, token.expires_at, \
+                {SESSION_ORGANIZATION_COLUMNS} \
          FROM cloud_refresh_tokens token \
          JOIN cloud_devices device ON device.device_id = token.device_id \
          WHERE token.token_hash = $1 AND token.revoked_at IS NULL AND token.expires_at > $2 \
-           AND device.account_id = token.account_id AND device.revoked_at IS NULL",
-    )
+           AND device.account_id = token.account_id AND device.revoked_at IS NULL"
+    ))
     .bind(&token_hash)
     .bind(now.to_rfc3339())
     .fetch_optional(pool)
     .await?;
 
     Ok(row.map(
-        |(token_id, account_id, device_id, expires_at)| CloudSessionRow {
-            token_id,
-            account_id,
-            device_id,
-            expires_at: parse_rfc3339(expires_at),
+        |(token_id, account_id, device_id, expires_at, claimed, personal, claim_active)| {
+            CloudSessionRow {
+                token_id,
+                account_id,
+                device_id,
+                expires_at: parse_rfc3339(expires_at),
+                organization: SessionOrganization {
+                    claimed,
+                    personal,
+                    claim_active,
+                },
+            }
         },
     ))
 }

@@ -100,6 +100,10 @@ pub(crate) async fn service_provider_auth_for_run(
         "apiKey": token,
         "baseUrl": service_auth.base_url,
         "model": service_auth.model,
+        // The operator's configured model id is final, including a pool's
+        // model; the runner must not strip a prefix that belongs to a
+        // gateway's model id.
+        "verbatimModel": true,
     });
     if let Some(pool) = service_auth.resource_pool {
         if !pool.headers.is_empty() {
@@ -162,15 +166,16 @@ mod tests {
             run_id_prefix: Some("pip_"),
             resource_pool: None,
         };
-        assert!(service_provider_auth_for_run(
+        let material = service_provider_auth_for_run(
             "acct_kordi_pip",
             "pip_123",
             &route,
-            vec![system_agent_key()]
+            vec![system_agent_key()],
         )
         .await
         .unwrap()
-        .is_some());
+        .unwrap();
+        assert_eq!(material.payload["verbatimModel"], true);
         assert!(service_provider_auth_for_run(
             "acct_kordi_pip",
             "run_from_a_member",
@@ -181,6 +186,45 @@ mod tests {
         .unwrap()
         .is_none());
     }
+
+    #[tokio::test]
+    async fn a_pool_service_key_sends_its_headers_and_a_verbatim_model() {
+        let route = serde_json::json!({
+            "defaultAuthProvider": "openai",
+            "defaultAuthChoice": "pip-service-api-key",
+            (crate::resource_pools::ROUTE_POOL_FIELD): "research",
+        });
+        let credential = ServiceCredential::ApiKey("secret-pool-key".to_string());
+        let headers =
+            std::collections::BTreeMap::from([("X-Title".to_string(), "Kordi".to_string())]);
+        let material = service_provider_auth_for_run(
+            "acct_kordi_pip",
+            "pip_123",
+            &route,
+            vec![ServiceProviderAuth {
+                owner_account_id: "acct_kordi_pip",
+                snapshot_id: "pip-service-openai",
+                provider: "openai",
+                auth_choice: "pip-service-api-key",
+                credential: &credential,
+                base_url: "https://gateway.example.test/api/v1",
+                model: "openai/gpt-synthetic",
+                run_id_prefix: Some("pip_"),
+                resource_pool: Some(ServicePool {
+                    id: "research",
+                    is_default: false,
+                    headers: &headers,
+                }),
+            }],
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(material.payload["verbatimModel"], true);
+        assert_eq!(material.payload["model"], "openai/gpt-synthetic");
+        assert_eq!(material.payload["headers"]["X-Title"], "Kordi");
+    }
+
     struct CountingTokenSource(std::sync::atomic::AtomicUsize);
 
     #[async_trait::async_trait]

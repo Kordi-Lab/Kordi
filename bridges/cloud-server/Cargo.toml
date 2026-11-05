@@ -52,6 +52,8 @@ argon2 = "0.5"
 async-trait = "0.1"
 google-cloud-auth = { version = "1.18", default-features = false }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+# Verifies pool worker identity tokens (RS256 and ES256); already built for rustls.
+ring = "0.17"
 password-hash = { version = "0.5", features = ["alloc", "rand_core"] }
 async-nats = "0.37"
 bytes = "1"

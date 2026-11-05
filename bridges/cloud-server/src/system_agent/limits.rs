@@ -18,12 +18,14 @@ use super::input::Candidate;
 use crate::resource_pools::usage::{self, Admission};
 use crate::resource_pools::{Feature, ResourcePool};
 
-/// The pool that serves a conversation and the organization it belongs to.
-pub(super) async fn pool_for<'a>(
+/// The pool that serves a conversation, the organization it belongs to, and
+/// whether that organization's work may run at all (a disabled organization's
+/// may not).
+pub(super) async fn pool_for(
     tx: &mut Transaction<'_, Postgres>,
-    config: &'a SystemAgentConfig,
+    config: &SystemAgentConfig,
     candidate: &Candidate,
-) -> Result<(&'a ResourcePool, Option<String>), sqlx_core::Error> {
+) -> Result<(ResourcePool, Option<String>, bool), sqlx_core::Error> {
     let organization_id: Option<String> = query_scalar(
         "SELECT organization_id FROM cloud_chat_conversations WHERE conversation_id = $1",
     )
@@ -31,8 +33,10 @@ pub(super) async fn pool_for<'a>(
     .fetch_optional(&mut **tx)
     .await?
     .flatten();
-    let pool = config.resource_pools().resolve(organization_id.as_deref());
-    Ok((pool, organization_id))
+    let pools = config.resource_pools();
+    let pool = pools.resolve(organization_id.as_deref()).clone();
+    let admits = pools.admits(organization_id.as_deref());
+    Ok((pool, organization_id, admits))
 }
 
 /// Admits one pass of `run_id` in `tx`, counted for the conversation.

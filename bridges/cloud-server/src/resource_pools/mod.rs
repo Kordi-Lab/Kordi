@@ -4,27 +4,61 @@
 //! A pool names the OpenAI-compatible providers that the System agent and
 //! Grounding runs use, the daily limits that bound them, and the
 //! organizations it serves. One pool is the default for every organization
-//! that is not bound explicitly. Pools are read once at startup from the file
-//! named by `KORDI_RESOURCE_POOLS_FILE`; without that file the server builds a
-//! single unlimited default pool from the System agent's own provider
-//! settings, so existing deployments keep working unchanged. See
+//! that is not bound explicitly. Pools are read from the file named by
+//! `KORDI_RESOURCE_POOLS_FILE` at startup and again whenever it changes (see
+//! [`registry`]); without that file the server builds a single unlimited
+//! default pool from the System agent's own provider settings, so existing
+//! deployments keep working unchanged.
+//!
+//! A pool runs its work in one of two places, its executor: the control
+//! plane (the server's own runners call the pool's provider with a key the
+//! server holds), or the pool's own worker, which holds its own credential
+//! and claims only the runs tagged with its pool id. See
 //! `docs/development/resource-pools.md`.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 
 use crate::system_agent::SystemAgentProviderAuth;
 
 mod config;
+mod organizations;
+pub mod registry;
 pub mod usage;
+mod worker;
 
 pub use config::{ResourcePoolConfigError, RESOURCE_POOLS_FILE_ENV};
+pub use organizations::{ConfiguredBindings, ORGANIZATIONS_FILE_ENV};
+pub use registry::{warn_unknown_organizations, ResourcePoolRegistry};
+pub use worker::WorkerIdentity;
 
 /// The pool id of the pool built from environment settings alone.
 pub const ENV_DEFAULT_POOL_ID: &str = "default";
 
 /// The run route field that records which pool a queued run belongs to.
 pub const ROUTE_POOL_FIELD: &str = "resourcePool";
+/// The run route field that marks a run queued for its pool's own worker.
+pub const ROUTE_EXECUTOR_FIELD: &str = "poolExecutor";
+
+/// Where a pool's runs execute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Executor {
+    /// The control plane's runners call the pool's provider with a key the
+    /// server holds.
+    ControlPlane,
+    /// The pool's own worker claims the pool's runs and calls its own
+    /// provider; the server holds no credential for the pool.
+    PoolWorker,
+}
+
+impl Executor {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ControlPlane => "control_plane",
+            Self::PoolWorker => "pool_worker",
+        }
+    }
+}
 
 /// Server-paid work that a pool meters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -123,27 +157,67 @@ impl PoolLimits {
 }
 
 #[derive(Debug, Clone)]
+enum Execution {
+    ControlPlane {
+        system_agent: PoolProvider,
+        grounding: Option<PoolProvider>,
+    },
+    PoolWorker {
+        /// The workload identity a worker must present. `None` accepts no
+        /// worker, which is how an operator revokes a worker quickly.
+        identity: Option<WorkerIdentity>,
+        estimated_cost_micros: u64,
+    },
+}
+
+#[derive(Debug, Clone)]
 pub struct ResourcePool {
     id: String,
-    system_agent: PoolProvider,
-    grounding: Option<PoolProvider>,
+    execution: Execution,
     limits: PoolLimits,
     stopped: bool,
 }
 
 impl ResourcePool {
+    /// A pool whose runs execute in the control plane with `system_agent`'s
+    /// provider.
     pub fn new(id: impl Into<String>, system_agent: PoolProvider) -> Self {
         Self {
             id: id.into(),
-            system_agent,
-            grounding: None,
+            execution: Execution::ControlPlane {
+                system_agent,
+                grounding: None,
+            },
             limits: PoolLimits::default(),
             stopped: false,
         }
     }
 
-    pub fn with_grounding(mut self, grounding: PoolProvider) -> Self {
-        self.grounding = Some(grounding);
+    /// A pool whose runs execute on its own worker. The server holds no
+    /// provider for it; `estimated_cost_micros` prices one run of either
+    /// feature for a spend ceiling.
+    pub fn pool_worker(
+        id: impl Into<String>,
+        identity: Option<WorkerIdentity>,
+        estimated_cost_micros: u64,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            execution: Execution::PoolWorker {
+                identity,
+                estimated_cost_micros,
+            },
+            limits: PoolLimits::default(),
+            stopped: false,
+        }
+    }
+
+    /// Sets the Grounding provider of a control plane pool. Ignored for a
+    /// pool worker pool.
+    pub fn with_grounding(mut self, provider: PoolProvider) -> Self {
+        if let Execution::ControlPlane { grounding, .. } = &mut self.execution {
+            *grounding = Some(provider);
+        }
         self
     }
 
@@ -165,8 +239,12 @@ impl ResourcePool {
     pub fn summary(&self) -> String {
         let limit = |value: Option<u64>| value.map_or("unlimited".to_string(), |v| v.to_string());
         format!(
-            "{}{} [system agent {}/conversation/day, grounding {}/person/day, pool {} runs/day, {} spend/day]",
+            "{}{}{} [system agent {}/conversation/day, grounding {}/person/day, pool {} runs/day, {} spend/day]",
             self.id,
+            match self.executor() {
+                Executor::ControlPlane => "",
+                Executor::PoolWorker => " (pool worker)",
+            },
             if self.stopped { " (stopped)" } else { "" },
             limit(self.limits.system_agent_runs_per_conversation.map(u64::from)),
             limit(self.limits.grounding_runs_per_person.map(u64::from)),
@@ -185,25 +263,70 @@ impl ResourcePool {
         self.stopped
     }
 
-    /// The provider that serves `feature`. Grounding uses the System agent's
-    /// provider unless the pool names its own.
-    pub fn provider(&self, feature: Feature) -> &PoolProvider {
-        match feature {
-            Feature::SystemAgent => &self.system_agent,
-            Feature::Grounding => self.grounding.as_ref().unwrap_or(&self.system_agent),
+    pub fn executor(&self) -> Executor {
+        match self.execution {
+            Execution::ControlPlane { .. } => Executor::ControlPlane,
+            Execution::PoolWorker { .. } => Executor::PoolWorker,
         }
     }
 
-    /// The runtime route stored on a queued run, so the runner selects this
-    /// pool's service credential and model.
+    /// The identity a pool worker must present, if this is a pool worker
+    /// pool that accepts one.
+    pub fn worker_identity(&self) -> Option<&WorkerIdentity> {
+        match &self.execution {
+            Execution::PoolWorker { identity, .. } => identity.as_ref(),
+            Execution::ControlPlane { .. } => None,
+        }
+    }
+
+    /// The provider that serves `feature` in the control plane. Grounding
+    /// uses the System agent's provider unless the pool names its own. A pool
+    /// worker pool has none: the server never holds its credential.
+    pub fn provider(&self, feature: Feature) -> Option<&PoolProvider> {
+        match &self.execution {
+            Execution::ControlPlane {
+                system_agent,
+                grounding,
+            } => Some(match feature {
+                Feature::SystemAgent => system_agent,
+                Feature::Grounding => grounding.as_ref().unwrap_or(system_agent),
+            }),
+            Execution::PoolWorker { .. } => None,
+        }
+    }
+
+    /// The estimated cost of one run of `feature`, for a spend ceiling.
+    pub fn estimated_cost_micros(&self, feature: Feature) -> u64 {
+        match &self.execution {
+            Execution::ControlPlane { .. } => self
+                .provider(feature)
+                .map_or(0, PoolProvider::estimated_cost_micros),
+            Execution::PoolWorker {
+                estimated_cost_micros,
+                ..
+            } => *estimated_cost_micros,
+        }
+    }
+
+    /// The runtime route stored on a queued run. A control plane run names
+    /// this pool's service credential and model, so the runner selects them;
+    /// a pool worker run names only the pool, whose worker picks its own.
     pub fn routing(&self, feature: Feature) -> serde_json::Value {
-        let auth = self.provider(feature).auth();
-        serde_json::json!({
-            "defaultModel": auth.model(),
-            "defaultAuthProvider": auth.provider(),
-            "defaultAuthChoice": auth.auth_choice(),
-            ROUTE_POOL_FIELD: self.id,
-        })
+        match self.provider(feature) {
+            Some(provider) => {
+                let auth = provider.auth();
+                serde_json::json!({
+                    "defaultModel": auth.model(),
+                    "defaultAuthProvider": auth.provider(),
+                    "defaultAuthChoice": auth.auth_choice(),
+                    ROUTE_POOL_FIELD: self.id,
+                })
+            }
+            None => serde_json::json!({
+                ROUTE_POOL_FIELD: self.id,
+                ROUTE_EXECUTOR_FIELD: Executor::PoolWorker.as_str(),
+            }),
+        }
     }
 }
 
@@ -213,6 +336,9 @@ pub struct ResourcePools {
     pools: Vec<ResourcePool>,
     default_index: usize,
     bindings: HashMap<String, usize>,
+    /// Organizations whose configuration disables them: no pool admits
+    /// their work.
+    blocked: HashSet<String>,
 }
 
 impl ResourcePools {
@@ -223,6 +349,7 @@ impl ResourcePools {
             pools: vec![pool],
             default_index: 0,
             bindings: HashMap::new(),
+            blocked: HashSet::new(),
         }
     }
 
@@ -266,7 +393,32 @@ impl ResourcePools {
             pools,
             default_index,
             bindings: bound,
+            blocked: HashSet::new(),
         })
+    }
+
+    /// Adds organization bindings from another source, such as the
+    /// organizations file. Fails when one names an unknown pool or contradicts
+    /// a binding already made.
+    pub fn with_bindings(
+        mut self,
+        bindings: impl IntoIterator<Item = (String, String)>,
+    ) -> Result<Self, ResourcePoolConfigError> {
+        for (organization_id, pool_id) in bindings {
+            let Some(position) = self.pools.iter().position(|pool| pool.id == pool_id) else {
+                return Err(ResourcePoolConfigError::new(format!(
+                    "organization binding names unknown pool \"{pool_id}\""
+                )));
+            };
+            if let Some(previous) = self.bindings.insert(organization_id.clone(), position) {
+                if previous != position {
+                    return Err(ResourcePoolConfigError::new(format!(
+                        "organization \"{organization_id}\" is bound to more than one pool"
+                    )));
+                }
+            }
+        }
+        Ok(self)
     }
 
     /// Loads pools from the file named by `KORDI_RESOURCE_POOLS_FILE`, or
@@ -282,6 +434,18 @@ impl ResourcePools {
             ENV_DEFAULT_POOL_ID,
             PoolProvider::new(auth.clone()),
         ))
+    }
+
+    /// Refuses all work of `organizations`, such as organizations the
+    /// organizations file disables.
+    pub fn with_blocked(mut self, organizations: impl IntoIterator<Item = String>) -> Self {
+        self.blocked.extend(organizations);
+        self
+    }
+
+    /// Whether any work of `organization_id` may be admitted.
+    pub fn admits(&self, organization_id: Option<&str>) -> bool {
+        organization_id.is_none_or(|id| !self.blocked.contains(id))
     }
 
     pub fn default_pool(&self) -> &ResourcePool {
@@ -317,31 +481,6 @@ impl ResourcePools {
             None => pool.id == self.default_pool().id,
         }
     }
-}
-
-/// Warns at startup about bound organization ids that do not exist, such as
-/// a typo or an organization from another deployment. They are kept: the
-/// organization may be created later.
-pub async fn warn_unknown_organizations(
-    db: &sqlx_postgres::PgPool,
-    pools: &ResourcePools,
-) -> Result<(), sqlx_core::Error> {
-    let bound: Vec<String> = pools.bound_organizations().map(str::to_string).collect();
-    if bound.is_empty() {
-        return Ok(());
-    }
-    let unknown: Vec<String> = sqlx_core::query_scalar::query_scalar(
-        "SELECT id FROM unnest($1::text[]) AS bound(id)
-         WHERE NOT EXISTS (SELECT 1 FROM cloud_organizations o WHERE o.organization_id = bound.id)
-         ORDER BY id",
-    )
-    .bind(&bound)
-    .fetch_all(db)
-    .await?;
-    for id in unknown {
-        eprintln!("[resource-pools] Bound organization {id} does not exist on this server");
-    }
-    Ok(())
 }
 
 #[cfg(test)]

@@ -18,6 +18,7 @@ import type {
   ParticipantSpaceViewModel,
 } from '@/kordi-app/types';
 import { openOrCreateCanonicalSessionFast } from '@/lib/desktop';
+import { rememberSessionOrganization } from '@/features/organizations/sessionOrganization';
 
 import { mergeOpenCanonicalSessionResult } from './canonicalSessionStateMutations';
 import {
@@ -143,6 +144,7 @@ export function useKordiParticipantSpaceContinuation({
           participantSpaceKind: space.kind,
         }),
       });
+      if (kind === 'direct-agent') rememberSessionOrganization(sessionId);
       const nextState = mergeOpenCanonicalSessionResult(
         canonicalState,
         openResult,

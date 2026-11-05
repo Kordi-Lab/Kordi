@@ -125,6 +125,7 @@ async fn legacy_support_migration_quarantines_only_private_backfill_rows() {
             shared_title: None,
             client_session_id: affected_session.clone(),
             member_account_ids: vec![support_owner.clone()],
+            organization_id: None,
         },
         Some(&support_owner),
     )
@@ -285,6 +286,7 @@ async fn invalid_support_migration_quarantines_groups_for_every_member() {
             shared_title: None,
             client_session_id: affected_session.clone(),
             member_account_ids: vec![support_owner.clone()],
+            organization_id: None,
         },
         Some(&support_owner),
     )

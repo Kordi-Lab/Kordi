@@ -100,7 +100,8 @@ pub(super) async fn evaluate(
     let mut unmatched_status = "matching";
     if !unmatched.is_empty() {
         let queued =
-            matching::queue_matches(pool, service, rate_limiter, &mine, &unmatched, None).await?;
+            matching::queue_matches(pool, service, rate_limiter, &mine, &unmatched, None, None)
+                .await?;
         if matches!(
             queued,
             Queued::Pending(Pending::Failed) | Queued::Limited(_)

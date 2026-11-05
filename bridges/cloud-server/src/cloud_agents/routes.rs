@@ -18,6 +18,7 @@ use crate::cloud_agents::store::{
     archive_agent_definition, create_agent_definition, list_agent_definitions,
     list_shared_agent_summaries, update_agent_definition, CloudAgentStoreError,
 };
+use crate::organizations::requests::{check_new_content, RequestOrganization};
 use crate::personal_agent::routes as personal;
 use crate::proactive::routes as proactive;
 use crate::server::ServerState;
@@ -90,6 +91,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
+            crate::organizations::requests::organization_scoped,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
             cloud_session_middleware,
         ))
         .with_state(state)
@@ -113,6 +118,11 @@ fn store_error_response(context: &str, error: CloudAgentStoreError) -> Response 
         }
         CloudAgentStoreError::InvalidSetting(code, message) => {
             error_response(code, &message, StatusCode::BAD_REQUEST)
+        }
+        CloudAgentStoreError::Database(err)
+            if crate::organizations::selection::is_member_owner_violation(&err) =>
+        {
+            organization_forbidden()
         }
         CloudAgentStoreError::Database(err) => {
             eprintln!("[cloud_agents] {context}: {err}");
@@ -170,8 +180,21 @@ async fn list_shared_agents(
 async fn create_agent(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    organization: Option<Extension<RequestOrganization>>,
     Json(mut input): Json<CreateCloudAgentRequest>,
 ) -> Response {
+    if let Err(response) = check_organization(
+        &state,
+        &session.account_id,
+        organization
+            .as_ref()
+            .map(|Extension(organization)| organization),
+        input.organization_id.as_deref(),
+    )
+    .await
+    {
+        return *response;
+    }
     let agent_id = format!("cloud_agent_{}", uuid::Uuid::new_v4().simple());
     if let Some(mutation) = input.avatar_mutation.as_mut() {
         if let Err(response) =
@@ -192,6 +215,38 @@ async fn create_agent(
     {
         Ok(agent) => (StatusCode::CREATED, Json(CloudAgentEnvelope { agent })).into_response(),
         Err(err) => store_error_response("create", err),
+    }
+}
+
+fn organization_forbidden() -> Response {
+    error_response(
+        "organization_forbidden",
+        "You are not a member of that organization.",
+        StatusCode::FORBIDDEN,
+    )
+}
+
+/// Refuses an organization the caller does not belong to before anything is
+/// written; the database refuses one too. The organization must also be the
+/// request's (organization-requests.md).
+async fn check_organization(
+    state: &ServerState,
+    account_id: &str,
+    organization: Option<&RequestOrganization>,
+    requested: Option<&str>,
+) -> Result<(), Box<Response>> {
+    use crate::organizations::selection::{for_new_content, SelectionError};
+    match for_new_content(state.db_pool(), account_id, requested).await {
+        Ok(_) => {
+            check_new_content(organization, state.db_pool(), "/v1/cloud/agents", requested).await;
+            Ok(())
+        }
+        Err(SelectionError::NotMember) => Err(Box::new(organization_forbidden())),
+        Err(SelectionError::Database(_)) => Err(Box::new(error_response(
+            "server_error",
+            "Could not check the organization.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ))),
     }
 }
 

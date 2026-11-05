@@ -195,6 +195,11 @@ spec:
               value: "https://kordi.ai"
             - name: KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST
               value: "http://127.0.0.1:,http://localhost:,https://kordi.ai,kordi://oauth/callback"
+            - name: KORDI_CLIENT_CALLBACK_SCHEME
+              # Release builds refuse to start without it. It must match the
+              # scheme the released desktop and iPhone apps register, and the
+              # redirect allowlist above.
+              value: "kordi"
             - name: KORDI_CLOUD_TRUSTED_PROXIES
               # List only proxies that overwrite X-Real-IP with the client
               # address. Follow the K3s README before adding the pod-network
@@ -207,21 +212,26 @@ spec:
                   key: KORDI_CHAT_SYNC_CURSOR_SECRET
             - name: KORDI_CHAT_REALTIME_ALLOWED_ORIGINS
               value: "https://kordi.ai,tauri://localhost,http://tauri.localhost,http://127.0.0.1:1420,http://127.0.0.1:1422,http://127.0.0.1:1482,http://127.0.0.1:1484,http://127.0.0.1:1486"
+            # Call media. Without the kordi-livekit Secret the server starts
+            # with calls off; a Secret missing one of these keys stops it.
             - name: KORDI_LIVEKIT_URL
               valueFrom:
                 secretKeyRef:
                   name: kordi-livekit
                   key: url
+                  optional: true
             - name: KORDI_LIVEKIT_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: kordi-livekit
                   key: api-key
+                  optional: true
             - name: KORDI_LIVEKIT_API_SECRET
               valueFrom:
                 secretKeyRef:
                   name: kordi-livekit
                   key: api-secret
+                  optional: true
             - name: KORDI_APNS_ENVIRONMENT
               valueFrom:
                 secretKeyRef:

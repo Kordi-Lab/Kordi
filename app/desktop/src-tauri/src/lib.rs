@@ -13,6 +13,7 @@ mod cloud_host_activity;
 mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_session;
+mod cloud_session_organization;
 mod cloud_session_refresh;
 mod digest_calendar;
 mod digest_calendar_sync;
@@ -433,6 +434,7 @@ pub fn run() {
             cloud_oauth_loopback::cloud_oauth_loopback_cancel,
             cloud_app_sign_in_loopback::cloud_app_sign_in_loopback_prepare,
             cloud_session_refresh::cloud_session_refresh,
+            cloud_session_organization::cloud_session_switch_organization,
             cloud_session::cloud_session_store,
             cloud_session::cloud_session_load,
             cloud_session::cloud_session_clear,

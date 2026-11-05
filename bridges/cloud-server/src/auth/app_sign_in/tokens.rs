@@ -114,19 +114,16 @@ async fn issue_pair(
     let access_token = tokens.access_token;
     let access_token_id = format!("cs_{}", uuid::Uuid::new_v4().simple());
     let access_expires_at = now + Duration::seconds(ACCESS_TOKEN_LIFETIME_SECS);
-    query(
-        "INSERT INTO cloud_refresh_tokens \
-         (token_id, account_id, device_id, token_hash, created_at, expires_at, app_sign_in_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    insert_access_token(
+        transaction,
+        &access_token_id,
+        sign_in_id,
+        account_id,
+        device_id,
+        &access_token,
+        now,
+        access_expires_at,
     )
-    .bind(&access_token_id)
-    .bind(account_id)
-    .bind(device_id)
-    .bind(hash_session_token(&access_token))
-    .bind(now.to_rfc3339())
-    .bind(access_expires_at.to_rfc3339())
-    .bind(sign_in_id)
-    .execute(&mut **transaction)
     .await?;
 
     let refresh_token = tokens.refresh_token;
@@ -152,6 +149,94 @@ async fn issue_pair(
         refresh_token,
         refresh_expires_at,
     })
+}
+
+/// Inserts an access token of `sign_in_id`. It takes the organization the
+/// sign-in last switched to, so a refresh keeps the app's organization.
+#[allow(clippy::too_many_arguments)]
+async fn insert_access_token(
+    transaction: &mut Transaction<'_, Postgres>,
+    access_token_id: &str,
+    sign_in_id: &str,
+    account_id: &str,
+    device_id: &str,
+    access_token: &str,
+    now: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+) -> Result<(), sqlx_core::Error> {
+    query(
+        "INSERT INTO cloud_refresh_tokens \
+         (token_id, account_id, device_id, token_hash, created_at, expires_at, app_sign_in_id, \
+          organization_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, \
+                 (SELECT organization_id FROM cloud_app_sign_ins WHERE sign_in_id = $7))",
+    )
+    .bind(access_token_id)
+    .bind(account_id)
+    .bind(device_id)
+    .bind(hash_session_token(access_token))
+    .bind(now.to_rfc3339())
+    .bind(expires_at.to_rfc3339())
+    .bind(sign_in_id)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
+/// An access token issued by an organization switch.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SwitchedAccessToken {
+    pub access_token: String,
+    pub access_token_id: String,
+    pub access_expires_at: DateTime<Utc>,
+}
+
+/// Records `organization_id` on a live sign-in and issues it a new access
+/// token there. The refresh token and the device stay as they are. Returns
+/// `None` when the sign-in is revoked or belongs to another account or
+/// device. The caller checks membership in the same transaction.
+pub async fn switch_sign_in_organization(
+    transaction: &mut Transaction<'_, Postgres>,
+    sign_in_id: &str,
+    account_id: &str,
+    device_id: &str,
+    organization_id: &str,
+) -> Result<Option<SwitchedAccessToken>, sqlx_core::Error> {
+    let switched = query(
+        "UPDATE cloud_app_sign_ins SET organization_id = $1 \
+         WHERE sign_in_id = $2 AND account_id = $3 AND device_id = $4 AND revoked_at IS NULL",
+    )
+    .bind(organization_id)
+    .bind(sign_in_id)
+    .bind(account_id)
+    .bind(device_id)
+    .execute(&mut **transaction)
+    .await?
+    .rows_affected()
+        > 0;
+    if !switched {
+        return Ok(None);
+    }
+    let now = Utc::now();
+    let access_token = random_token_plaintext();
+    let access_token_id = format!("cs_{}", uuid::Uuid::new_v4().simple());
+    let access_expires_at = now + Duration::seconds(ACCESS_TOKEN_LIFETIME_SECS);
+    insert_access_token(
+        transaction,
+        &access_token_id,
+        sign_in_id,
+        account_id,
+        device_id,
+        &access_token,
+        now,
+        access_expires_at,
+    )
+    .await?;
+    Ok(Some(SwitchedAccessToken {
+        access_token,
+        access_token_id,
+        access_expires_at,
+    }))
 }
 
 /// Revoke a sign-in and every access token it issued. Idempotent.

@@ -1,3 +1,4 @@
+use crate::cloud_session_organization::CloudBearerAuth;
 pub(crate) fn should_publish_offline_on_exit(exit_code: Option<i32>) -> bool {
     exit_code != Some(tauri::RESTART_EXIT_CODE)
 }
@@ -15,7 +16,7 @@ fn publish_offline(token: &str, base_url: &str) -> Result<(), String> {
         .build()
         .map_err(|err| err.to_string())?
         .post(offline_url(base_url))
-        .bearer_auth(token)
+        .cloud_bearer_auth(token)
         .send()
         .map_err(|err| err.to_string())?;
     if response.status().is_success() {

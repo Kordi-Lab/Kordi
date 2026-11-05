@@ -27,6 +27,7 @@ pub mod organizations;
 pub mod personal_agent;
 pub mod pg;
 pub mod plan_cards;
+pub mod pool_workers;
 pub mod presence;
 pub mod proactive;
 pub mod projects;

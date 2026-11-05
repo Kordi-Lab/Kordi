@@ -1,4 +1,16 @@
 use super::*;
+use crate::auth::identity_email::{
+    update_identity_email, write_security_event, StoredIdentityEmail,
+};
+
+/// A completed provider sign-in.
+pub(super) struct OAuthSignIn {
+    pub body: AuthResponse,
+    pub is_new_authorization: bool,
+    /// Whether the provider email counts as verified evidence for this
+    /// identity (see [`crate::auth::identity_email`]).
+    pub evidence_verified: bool,
+}
 
 #[cfg(test)]
 pub(super) async fn complete_oauth_login(
@@ -11,6 +23,7 @@ pub(super) async fn complete_oauth_login(
         .await
 }
 
+#[cfg(test)]
 pub(super) async fn complete_oauth_login_with_policy(
     pool: &PgPool,
     provider: OAuthProvider,
@@ -18,27 +31,58 @@ pub(super) async fn complete_oauth_login_with_policy(
     registration: &NormalizedDeviceRegistration,
     policy: &crate::auth::admission::AdmissionPolicy,
 ) -> Result<(AuthResponse, bool), OAuthLoginError> {
+    complete_oauth_sign_in(pool, provider, profile, registration, policy)
+        .await
+        .map(|done| (done.body, done.is_new_authorization))
+}
+
+type StoredIdentityRow = (String, Option<String>, bool, Option<String>);
+
+pub(super) async fn complete_oauth_sign_in(
+    pool: &PgPool,
+    provider: OAuthProvider,
+    profile: OAuthProfile,
+    registration: &NormalizedDeviceRegistration,
+    policy: &crate::auth::admission::AdmissionPolicy,
+) -> Result<OAuthSignIn, OAuthLoginError> {
     let now = Utc::now().to_rfc3339();
     let normalized_email = profile
         .email
         .as_deref()
         .and_then(|email| validate_email(email).ok());
-    policy
-        .admit_identity(pool, normalized_email.as_deref(), profile.email_verified)
-        .await
-        .map_err(OAuthLoginError::Admission)?;
-    let existing_identity: Option<(String,)> = query_as(
-        "SELECT account_id FROM cloud_account_identities WHERE provider = $1 AND provider_subject = $2",
+    let existing_identity: Option<StoredIdentityRow> = query_as(
+        "SELECT account_id, email, email_verified, matching_email \
+         FROM cloud_account_identities WHERE provider = $1 AND provider_subject = $2",
     )
     .bind(provider.id())
     .bind(&profile.provider_subject)
     .fetch_optional(pool)
     .await?;
+    let stored_email = existing_identity
+        .as_ref()
+        .map(|(_, email, verified, matching)| StoredIdentityEmail {
+            email: email.as_deref().map(crate::auth::identity_email::normalize),
+            email_verified: *verified,
+            matching_email: matching.clone(),
+        });
+    let email_update = update_identity_email(
+        stored_email.as_ref(),
+        normalized_email.as_deref(),
+        profile.email_verified,
+    );
+    let evidence_verified = email_update.evidence_verified;
+    policy
+        .admit_identity(pool, normalized_email.as_deref(), evidence_verified)
+        .await
+        .map_err(OAuthLoginError::Admission)?;
+    // Only a new identity may join an account by email, and only with an
+    // email its provider verified. A linked identity never moves.
     let linked_email_account = match (&existing_identity, normalized_email.as_deref()) {
         (None, Some(email)) => linkable_email_account(pool, email, profile.email_verified).await?,
         _ => None,
     };
     let links_by_email = linked_email_account.is_some();
+    let is_existing_identity = existing_identity.is_some();
     let account_id = existing_identity
         .map(|row| row.0)
         .or(linked_email_account)
@@ -83,18 +127,24 @@ pub(super) async fn complete_oauth_login_with_policy(
     .await?;
 
     let identity_id = format!("oauth_{}_{}", provider.id(), uuid::Uuid::new_v4().simple());
-    query(
+    // The update applies only to the account the identity already belongs
+    // to, so a concurrent first sign-in cannot move it.
+    let linked: Option<(String,)> = query_as(
         "INSERT INTO cloud_account_identities \
          (identity_id, account_id, provider, provider_subject, provider_username, \
-          email, email_verified, avatar_url, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) \
+          email, email_verified, avatar_url, created_at, updated_at, hosted_domain, \
+          matching_email) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10, $11) \
          ON CONFLICT (provider, provider_subject) DO UPDATE SET \
-           account_id = excluded.account_id, \
            provider_username = excluded.provider_username, \
            email = excluded.email, \
            email_verified = excluded.email_verified, \
            avatar_url = excluded.avatar_url, \
-           updated_at = excluded.updated_at",
+           updated_at = excluded.updated_at, \
+           hosted_domain = excluded.hosted_domain, \
+           matching_email = excluded.matching_email \
+         WHERE cloud_account_identities.account_id = excluded.account_id \
+         RETURNING account_id",
     )
     .bind(&identity_id)
     .bind(&account_id)
@@ -105,8 +155,18 @@ pub(super) async fn complete_oauth_login_with_policy(
     .bind(profile.email_verified)
     .bind(&canonical_avatar_url)
     .bind(&now)
-    .execute(&mut *tx)
+    .bind(profile.hosted_domain.as_deref())
+    .bind(email_update.matching_email.as_deref())
+    .fetch_optional(&mut *tx)
     .await?;
+    if linked.is_none() {
+        return Err(OAuthLoginError::Database(sqlx_core::Error::Protocol(
+            "The provider identity is linked to another account.".into(),
+        )));
+    }
+    if let Some(event) = email_update.event.filter(|_| is_existing_identity) {
+        write_security_event(&mut tx, &account_id, event, provider.id()).await?;
+    }
 
     if links_by_email {
         // The new identity joined an account that already proved this email.
@@ -123,7 +183,7 @@ pub(super) async fn complete_oauth_login_with_policy(
         .await?;
     }
 
-    if profile.email_verified {
+    if evidence_verified {
         if let Some(email) = normalized_email.as_deref() {
             mark_primary_email_verified(&mut tx, &account_id, email, &now).await?;
         }
@@ -170,8 +230,8 @@ pub(super) async fn complete_oauth_login_with_policy(
     let account = owner_account_response_row(pool, &account_id)
         .await?
         .ok_or(sqlx_core::Error::RowNotFound)?;
-    Ok((
-        AuthResponse {
+    Ok(OAuthSignIn {
+        body: AuthResponse {
             account,
             session: SessionResponse {
                 token: issued.plaintext_token,
@@ -180,7 +240,8 @@ pub(super) async fn complete_oauth_login_with_policy(
             },
         },
         is_new_authorization,
-    ))
+        evidence_verified,
+    })
 }
 
 #[cfg(test)]

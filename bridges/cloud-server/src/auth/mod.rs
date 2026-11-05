@@ -7,6 +7,7 @@ pub mod accounts;
 pub mod admission;
 pub mod app_sign_in;
 pub mod devices;
+pub(crate) mod identity_email;
 pub mod legacy_signup;
 pub(crate) mod oauth;
 pub mod password;

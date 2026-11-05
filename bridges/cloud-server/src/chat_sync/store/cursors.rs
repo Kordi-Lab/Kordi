@@ -364,6 +364,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
             .await?;
     let personal =
         super::personal_session::personal_agent_ids(&mut transaction, &conversation_ids).await?;
+    let teams = super::organization::labels(&mut transaction, &conversation_ids).await?;
     let session_ids = conversation_rows
         .iter()
         .map(|row| row.5.clone().unwrap_or_else(|| row.0.to_string()))
@@ -411,6 +412,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
                 group_avatar: row.15,
                 origin: super::grounding_origin::origin_for(&grounding, row.0),
                 personal_agent: super::personal_session::personal_agent_for(&personal, row.0),
+                organization: teams.get(&row.0).cloned(),
                 forked_from_session_id: row.8,
                 forked_from_message_id: row.9,
                 latest_message_sequence: row.10,
@@ -426,7 +428,6 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
             })
         })
         .collect::<Result<Vec<_>, StoreError>>()?;
-
     let latest_rows: Vec<MessageRow> = query_as(
         "SELECT message.message_id, message.client_message_id, message.conversation_id, \
                 message.conversation_sequence, message.sender_account_id, message.message_kind, message.content, \

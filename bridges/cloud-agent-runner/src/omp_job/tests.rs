@@ -82,6 +82,7 @@ fn auth_fixture(base_url: String) -> OpenAiProviderConfig {
         thinking: "default".into(),
         api_mode: OpenAiApiMode::ChatCompletions,
         account_id: None,
+        verbatim_model: false,
         headers: Default::default(),
     }
 }

@@ -6,15 +6,36 @@ pub(super) fn include_service_provider_auth(state: &ServerState, run: &mut Runne
     if run.provider_auth_available {
         return;
     }
-    run.provider_auth_available = service_provider_auths(state).iter().any(|service_auth| {
-        run.owner_account_id == service_auth.owner_account_id
-            && service_auth.covers_run(&run.run_id)
-            && run.runtime_route.default_auth_provider.as_deref() == Some(service_auth.provider)
-            && run.runtime_route.default_auth_choice.as_deref() == Some(service_auth.auth_choice)
-    });
+    let pools = pool_snapshot(state);
+    run.provider_auth_available =
+        service_provider_auths(state, pools.as_deref())
+            .iter()
+            .any(|service_auth| {
+                run.owner_account_id == service_auth.owner_account_id
+                    && service_auth.covers_run(&run.run_id)
+                    && run.runtime_route.default_auth_provider.as_deref()
+                        == Some(service_auth.provider)
+                    && run.runtime_route.default_auth_choice.as_deref()
+                        == Some(service_auth.auth_choice)
+            });
 }
 
-pub(crate) fn service_provider_auths(state: &ServerState) -> Vec<ServiceProviderAuth<'_>> {
+/// The resource pools now, for one request. Pools reload without a restart,
+/// so a request takes one snapshot and builds its credentials from it.
+pub(crate) fn pool_snapshot(
+    state: &ServerState,
+) -> Option<std::sync::Arc<crate::resource_pools::ResourcePools>> {
+    state
+        .system_agent()
+        .map(|system_agent| system_agent.config().resource_pools())
+}
+
+/// Service credentials the server hands to its own runners. `pools` is the
+/// snapshot from [`pool_snapshot`].
+pub(crate) fn service_provider_auths<'a>(
+    state: &'a ServerState,
+    pools: Option<&'a crate::resource_pools::ResourcePools>,
+) -> Vec<ServiceProviderAuth<'a>> {
     let mut auths = Vec::new();
     if let Some(support) = state.support() {
         let config = support.config();
@@ -31,12 +52,12 @@ pub(crate) fn service_provider_auths(state: &ServerState) -> Vec<ServiceProvider
             resource_pool: None,
         });
     }
-    if let Some(system_agent) = state.system_agent() {
+    if let (Some(system_agent), Some(pools)) = (state.system_agent(), pools) {
         let config = system_agent.config();
-        let pools = config.resource_pools();
         let default_pool = pools.default_pool().id();
         // Each pool hands out its own credentials. A stopped pool hands out
-        // none, so its queued runs fail instead of reaching a model.
+        // none, so its queued runs fail instead of reaching a model, and a
+        // pool worker pool has none to hand out.
         for pool in pools.pools().iter().filter(|pool| !pool.is_stopped()) {
             let features = [
                 (Feature::SystemAgent, crate::system_agent::RUN_PREFIX),
@@ -47,7 +68,9 @@ pub(crate) fn service_provider_auths(state: &ServerState) -> Vec<ServiceProvider
                 if feature == Feature::SystemAgent && !config.group_chat_enabled {
                     continue;
                 }
-                let provider = pool.provider(feature);
+                let Some(provider) = pool.provider(feature) else {
+                    continue;
+                };
                 let provider_auth = provider.auth();
                 auths.push(ServiceProviderAuth {
                     owner_account_id: &config.account_id,
@@ -86,7 +109,8 @@ mod tests {
                 .with_system_agent(crate::system_agent::SystemAgentService::new(config)),
         );
         assert!(crate::common_ground::available(&state));
-        let auths = service_provider_auths(&state);
+        let pools = pool_snapshot(&state);
+        let auths = service_provider_auths(&state, pools.as_deref());
         assert_eq!(auths.len(), 1);
         assert!(auths[0].covers_run("cg_card_synthetic"));
         assert!(!auths[0].covers_run("pip_synthetic"));
@@ -105,9 +129,9 @@ mod tests {
             .connect_lazy("postgres://127.0.0.1:1/test")
             .unwrap();
         let mut config = crate::system_agent::test_config("acct_pool_service");
-        config.resource_pools = std::sync::Arc::new(crate::resource_pools::tests::sample_pools(
-            Default::default(),
-        ));
+        config.resource_pools = crate::resource_pools::ResourcePoolRegistry::new(
+            crate::resource_pools::tests::sample_pools(Default::default()),
+        );
         let state = ServerState::new(pool, crate::events::EventBus::noop())
             .with_system_agent(crate::system_agent::SystemAgentService::new(config));
         let route = |provider: &str, pool: Option<&str>| {
@@ -120,8 +144,9 @@ mod tests {
             }
             route
         };
+        let pools = pool_snapshot(&state);
         let material = |run_id: &'static str, route: serde_json::Value| {
-            let auths = service_provider_auths(&state);
+            let auths = service_provider_auths(&state, pools.as_deref());
             async move {
                 crate::cloud_agent_runtime::provider_auth::service_provider_auth_for_run(
                     "acct_pool_service",

@@ -120,6 +120,7 @@ async fn scheduled_task_store_creates_lists_pauses_resumes_and_deletes() {
             },
             target_runtime: ScheduledTaskTargetRuntime::Cloud,
             tool_payload: serde_json::json!({ "tool": "agent.run", "sessionId": "session:standup" }),
+            organization_id: None,
         },
         Utc.with_ymd_and_hms(2026, 6, 8, 8, 0, 0).unwrap(),
     )
@@ -192,6 +193,7 @@ async fn scheduled_task_store_does_not_strand_new_once_tasks_at_or_before_creati
             },
             target_runtime: ScheduledTaskTargetRuntime::Cloud,
             tool_payload: serde_json::json!({ "sessionId": "session:scheduled:immediate" }),
+            organization_id: None,
         },
         now,
     )
@@ -386,6 +388,7 @@ async fn scheduled_task_run_history_lists_latest_runs_for_owned_task() {
             },
             target_runtime: ScheduledTaskTargetRuntime::Cloud,
             tool_payload: serde_json::json!({ "sessionId": "session:scheduled:history" }),
+            organization_id: None,
         },
         Utc.with_ymd_and_hms(2026, 6, 9, 12, 15, 0).unwrap(),
     )
@@ -404,7 +407,6 @@ async fn scheduled_task_run_history_lists_latest_runs_for_owned_task() {
     let runs = list_scheduled_task_runs(&pool, &account_id, &task.task_id, 5)
         .await
         .expect("list runs");
-
     assert_eq!(runs.len(), 1);
     assert_eq!(runs[0].run_id, run.run_id);
     assert_eq!(runs[0].task_id, task.task_id);
@@ -427,6 +429,7 @@ async fn run_now_and_due_claim_separate_cloud_and_local_required_runs() {
             },
             target_runtime: ScheduledTaskTargetRuntime::Cloud,
             tool_payload: serde_json::json!({ "sessionId": "session:scheduled:cloud-check" }),
+            organization_id: None,
         },
         Utc.with_ymd_and_hms(2026, 6, 8, 8, 0, 0).unwrap(),
     )
@@ -444,6 +447,7 @@ async fn run_now_and_due_claim_separate_cloud_and_local_required_runs() {
             },
             target_runtime: ScheduledTaskTargetRuntime::LocalRequired,
             tool_payload: serde_json::json!({ "requiresLocalMac": true }),
+            organization_id: None,
         },
         Utc.with_ymd_and_hms(2026, 6, 8, 8, 0, 0).unwrap(),
     )

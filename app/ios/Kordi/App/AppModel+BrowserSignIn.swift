@@ -103,6 +103,28 @@ extension AppModel {
         return existing?.token == token && existing?.isExpired == false ? existing?.expiresAt : nil
     }
 
+    /// Names the organization the launch token acts in on requests, before
+    /// the organization list loads, and returns it for the share extension.
+    func launchOrganization(token: String, accountId: String) async -> String? {
+        let organizationId = await browserSignIn.store.tokenOrganization(for: token)
+        await api.selectRequestOrganization(accountId: accountId, organizationId: organizationId)
+        return organizationId
+    }
+
+    /// The organization the share extension names for `accountId`.
+    func sharedOrganization(for accountId: String) -> String? {
+        guard let existing = try? shareCredentialStore.load(), existing.accountID == accountId else { return nil }
+        return existing.organizationID
+    }
+
+    /// Mirrors the session's organization into the share extension credential.
+    func saveShareOrganization(_ organizationId: String?, accountId: String) {
+        guard var existing = try? shareCredentialStore.load(), existing.accountID == accountId,
+              existing.organizationID != organizationId else { return }
+        existing.organizationID = organizationId
+        try? shareCredentialStore.save(existing)
+    }
+
     /// Removes the stored session after the server ended it, revoking a
     /// browser sign-in instead of only forgetting it.
     func discardStoredSession() async {

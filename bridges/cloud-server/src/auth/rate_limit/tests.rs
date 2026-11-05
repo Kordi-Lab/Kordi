@@ -259,6 +259,8 @@ async fn addresses_in_one_ipv6_64_share_ip_and_lockout_buckets() {
 #[test]
 fn production_limits_bound_distributed_guessing() {
     let config = CloudRateLimitConfig::production();
+    assert_eq!(config.per_ip_limit, 50);
+    assert_eq!(config.per_ip_window, Duration::from_secs(60));
     assert_eq!(config.per_email_failure_limit, 5);
     assert!(config.per_email_global_failure_limit <= 10);
     assert!(config.per_email_global_failure_limit > config.per_email_failure_limit);

@@ -59,6 +59,7 @@ use crate::avatars::{
 use crate::server::ServerState;
 
 mod account_email_handlers;
+mod account_security_handlers;
 mod app_invitation_handlers;
 mod app_sign_in_handlers;
 mod contact_acceptance;
@@ -126,6 +127,7 @@ pub(crate) use group_invitation_handlers::{
 pub use middleware::cloud_session_middleware;
 pub(crate) use session_forks::cloud_session_participants;
 pub use types::*;
+pub use web_session_handlers::{web_csrf_token, WEB_CSRF_HEADER, WEB_SESSION_COOKIE};
 
 pub fn routes(state: Arc<ServerState>) -> Router {
     routes_with_config(
@@ -334,14 +336,71 @@ pub fn routes_with_shared_rate_limiter(
         .merge(crate::auth::subsessions::routes())
         .merge(crate::organizations::routes())
         .route(
-            "/v1/cloud/attachments/initiate",
-            post(crate::attachments::routes::initiate),
-        )
-        .route(
             "/v1/cloud/avatar-assets",
             post(crate::avatars::assets::upload_avatar_asset)
                 .layer::<_, Infallible>(ConcurrencyLimitLayer::new(4))
                 .layer(DefaultBodyLimit::max(AVATAR_SOURCE_MAX_BYTES)),
+        )
+        .merge(attachment_routes(&state))
+        .route(
+            "/v1/cloud/expressive-media",
+            get(list_expressive_media).post(save_expressive_media),
+        )
+        .route(
+            "/v1/cloud/expressive-media/:media_id",
+            delete(delete_expressive_media),
+        )
+        .route(
+            "/v1/cloud/sessions/:source_session_id/forks",
+            get(list_cloud_session_forks).post(create_cloud_session_fork),
+        )
+        .route(
+            "/v1/cloud/memory",
+            get(list_memories)
+                .post(save_memory)
+                .delete(forget_all_memories),
+        )
+        .route(
+            "/v1/cloud/memory/settings",
+            get(get_memory_settings).put(update_memory_settings),
+        )
+        .route(
+            "/v1/cloud/memory/:memory_id",
+            axum::routing::patch(update_memory).delete(delete_memory),
+        )
+        .route(
+            "/v1/cloud/agent-runs/omp-state",
+            get(get_omp_state_count).delete(clear_omp_state),
+        )
+        .layer(Extension(app_clients.clone()))
+        .layer(Extension(rate_limiter.clone()))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            cloud_session_middleware,
+        ))
+        .with_state(state.clone());
+    // Account pages on the web call these with the session cookie.
+    let account = crate::organizations::admission::account_routes()
+        .merge(account_security_handlers::routes())
+        .merge(crate::organizations::token_exchange::routes())
+        .layer(Extension(app_clients))
+        .layer(Extension(rate_limiter.clone()))
+        .layer(Extension(hasher_config))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            web_session_handlers::cloud_or_web_session_middleware,
+        ))
+        .with_state(state);
+
+    public.merge(protected).merge(simulator).merge(account)
+}
+
+/// Attachment routes: organization-scoped content (organization-requests.md).
+fn attachment_routes(state: &Arc<ServerState>) -> Router<Arc<ServerState>> {
+    Router::new()
+        .route(
+            "/v1/cloud/attachments/initiate",
+            post(crate::attachments::routes::initiate),
         )
         .route(
             "/v1/cloud/attachments/:attachment_id/upload",
@@ -387,43 +446,8 @@ pub fn routes_with_shared_rate_limiter(
             "/v1/cloud/attachments/:attachment_id/preview-content",
             get(crate::attachments::routes::preview_content),
         )
-        .route(
-            "/v1/cloud/expressive-media",
-            get(list_expressive_media).post(save_expressive_media),
-        )
-        .route(
-            "/v1/cloud/expressive-media/:media_id",
-            delete(delete_expressive_media),
-        )
-        .route(
-            "/v1/cloud/sessions/:source_session_id/forks",
-            get(list_cloud_session_forks).post(create_cloud_session_fork),
-        )
-        .route(
-            "/v1/cloud/memory",
-            get(list_memories)
-                .post(save_memory)
-                .delete(forget_all_memories),
-        )
-        .route(
-            "/v1/cloud/memory/settings",
-            get(get_memory_settings).put(update_memory_settings),
-        )
-        .route(
-            "/v1/cloud/memory/:memory_id",
-            axum::routing::patch(update_memory).delete(delete_memory),
-        )
-        .route(
-            "/v1/cloud/agent-runs/omp-state",
-            get(get_omp_state_count).delete(clear_omp_state),
-        )
-        .layer(Extension(app_clients))
-        .layer(Extension(rate_limiter.clone()))
-        .layer(axum::middleware::from_fn_with_state(
+        .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
-            cloud_session_middleware,
+            crate::organizations::requests::organization_scoped,
         ))
-        .with_state(state);
-
-    public.merge(protected).merge(simulator)
 }

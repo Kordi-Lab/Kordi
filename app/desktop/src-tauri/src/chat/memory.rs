@@ -1,5 +1,6 @@
 //! Account memory on the Mac (#1710): the cloud remote for the `reflection`
 //! tool and the Memory settings commands.
+use crate::cloud_session_organization::CloudBearerAuth;
 use kordi_cli::memory_remote::{
     canonical_group_scope_id, forget_local_memories, group_session_part, label_from_message,
     remember_group_scope_alias, remember_scope_label, sync_memories_with_remote, MemoryRemote,
@@ -68,7 +69,7 @@ impl CloudMemoryRemote {
     ) -> Result<T, MemoryRemoteError> {
         let token = self.token().await?;
         let response = request
-            .bearer_auth(token)
+            .cloud_bearer_auth(token)
             .send()
             .await
             .map_err(|error| MemoryRemoteError::Unavailable(error.to_string()))?;

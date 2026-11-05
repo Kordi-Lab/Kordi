@@ -3,10 +3,8 @@ import {
   chatPerformancePayloadBytes,
   finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
-import {
-  desktopUpdaterController,
-  type DesktopUpdaterState,
-} from '@/features/updates/desktopUpdater';
+import { desktopUpdaterController, type DesktopUpdaterState } from '@/features/updates/desktopUpdater';
+import { rememberSessionOrganization } from '@/features/organizations/sessionOrganization';
 import type {
 AddCanonicalGroupMembersRequest,
 AddCanonicalSessionParticipantsRequest,
@@ -836,7 +834,9 @@ export async function createDesktopProject(name: string, parentDir?: string) {
 }
 
 export async function createDesktopChatSession(options?: { independent?: boolean; sourceSessionId?: string }) {
-  return invokeDesktop<DesktopChatState>('desktop_chat_new_session', options);
+  const state = await invokeDesktop<DesktopChatState>('desktop_chat_new_session', options);
+  if (state?.activeSessionId) rememberSessionOrganization(state.activeSessionId);
+  return state;
 }
 
 export async function createDesktopProjectSession(projectRoot: string, title?: string, workspace?: import('@/features/projects/gitWorkspace').ChatWorkspaceSelection) {

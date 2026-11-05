@@ -149,6 +149,7 @@ pub(in crate::common_ground) async fn queue_matches(
     viewer: &SharedCard,
     stale: &[SharedCard],
     room_id: Option<Uuid>,
+    organization_id: Option<&str>,
 ) -> sqlx_core::Result<Queued> {
     let mut tx = pool.begin().await?;
     query("SELECT pg_advisory_xact_lock(hashtext('common-ground-match:' || $1))")
@@ -180,6 +181,7 @@ pub(in crate::common_ground) async fn queue_matches(
         run_id: &run_id,
         requester: &viewer.account_id,
         conversation_id: None,
+        organization_id,
         prompt: prompt::match_prompt(viewer, batch),
         system_prompt: MATCH_SYSTEM,
     };
@@ -242,6 +244,7 @@ pub(super) async fn queue_themes(
     room_id: Uuid,
     requester: &str,
     members: &[SharedCard],
+    organization_id: Option<&str>,
 ) -> sqlx_core::Result<Queued> {
     let mut tx = pool.begin().await?;
     query("SELECT pg_advisory_xact_lock(hashtext('common-ground-room:' || $1))")
@@ -268,6 +271,7 @@ pub(super) async fn queue_themes(
         run_id: &run_id,
         requester,
         conversation_id: None,
+        organization_id,
         prompt: prompt::room_prompt(members),
         system_prompt: ROOM_SYSTEM,
     };

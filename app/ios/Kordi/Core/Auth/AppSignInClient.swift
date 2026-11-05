@@ -60,6 +60,11 @@ struct AppSignInCredential: Codable, Equatable, Sendable {
     var accessToken: String
     var refreshToken: String
     var expiresAt: Date
+    /// The device and browser sign-in the server issued these tokens for, when known.
+    var deviceId: String? = nil
+    var signInId: String? = nil
+    /// The organization the access token acts in; nil means the personal organization.
+    var organizationId: String? = nil
 
     func expires(within margin: TimeInterval, now: Date) -> Bool {
         expiresAt.timeIntervalSince(now) <= margin
@@ -201,9 +206,11 @@ struct AppSignInClient: Sendable {
         guard (200..<300).contains(status) else { throw Self.exchangeError(status: status, body: body) }
         guard let tokens = try? JSONDecoder().decode(TokenResponse.self, from: body),
               let account = tokens.account, !account.accountId.isEmpty,
-              let credential = tokens.credential(accountId: account.accountId, clientId: clientId, tokenEndpoint: tokenEndpoint, now: now) else {
+              var credential = tokens.credential(accountId: account.accountId, clientId: clientId, tokenEndpoint: tokenEndpoint, now: now) else {
             throw CloudAPIError(code: "browser_sign_in_failed", message: "Could not finish signing in. Try again.", statusCode: status)
         }
+        credential.deviceId = tokens.deviceId?.nonEmpty
+        credential.signInId = tokens.signInId?.nonEmpty
         return AppSignInGrant(account: account, credential: credential, deviceId: tokens.deviceId?.nonEmpty)
     }
 
@@ -227,12 +234,16 @@ struct AppSignInClient: Sendable {
             throw refused ? AppSignInRefreshError.rejected : AppSignInRefreshError.unavailable
         }
         guard let tokens = try? JSONDecoder().decode(TokenResponse.self, from: body),
-              let next = tokens.credential(
+              var next = tokens.credential(
                 accountId: credential.accountId,
                 clientId: credential.clientId,
                 tokenEndpoint: credential.tokenEndpoint,
                 now: now
               ) else { throw AppSignInRefreshError.unavailable }
+        // The server keeps the sign-in's organization across refreshes.
+        next.deviceId = tokens.deviceId?.nonEmpty ?? credential.deviceId
+        next.signInId = tokens.signInId?.nonEmpty ?? credential.signInId
+        next.organizationId = credential.organizationId
         return next
     }
 
@@ -294,6 +305,7 @@ private struct TokenResponse: Decodable {
     let expiresIn: Double?
     let refreshToken: String?
     let deviceId: String?
+    let signInId: String?
     let account: CloudAccount?
 
     private enum CodingKeys: String, CodingKey {
@@ -301,6 +313,7 @@ private struct TokenResponse: Decodable {
         case expiresIn = "expires_in"
         case refreshToken = "refresh_token"
         case deviceId = "device_id"
+        case signInId = "sign_in_id"
         case account
     }
 

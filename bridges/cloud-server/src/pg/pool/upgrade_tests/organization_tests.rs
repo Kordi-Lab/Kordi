@@ -137,3 +137,121 @@ async fn upgrade_from_161_adds_personal_organizations_and_ownership() {
         "a personal organization has only its owner"
     );
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_166_adds_organization_admission() {
+    let pool = fixture(166).await;
+    execute(&pool, "INSERT INTO cloud_organizations(organization_id,name,kind,created_by_account_id) VALUES('org_fixture_team','Team','team','fixture-owner')").await;
+    execute(&pool, "INSERT INTO cloud_organization_members(organization_id,account_id,role) VALUES('org_fixture_team','fixture-owner','owner'),('org_fixture_team','fixture-peer','member')").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+
+    // Existing members keep their roles and are not configured admins.
+    let members: Vec<(String, String, bool, Option<String>)> = query_as(
+        "SELECT account_id, role, configured_admin, configured_admin_email \
+         FROM cloud_organization_members WHERE organization_id = 'org_fixture_team' \
+         ORDER BY account_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        members,
+        vec![
+            ("fixture-owner".into(), "owner".into(), false, None),
+            ("fixture-peer".into(), "member".into(), false, None),
+        ]
+    );
+    let config_ids: Vec<(Option<String>,)> =
+        query_as("SELECT DISTINCT config_id FROM cloud_organizations")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(config_ids, vec![(None,)]);
+    // A configuration id belongs to a team organization only.
+    assert!(
+        query("UPDATE cloud_organizations SET config_id = 'example' WHERE kind = 'personal'")
+            .execute(&pool)
+            .await
+            .is_err()
+    );
+    query("UPDATE cloud_organizations SET config_id = 'example' WHERE organization_id = 'org_fixture_team'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    for table in [
+        "cloud_organization_admissions",
+        "cloud_organization_join_requests",
+        "cloud_organization_email_codes",
+    ] {
+        let (count,): (i64,) = query_as(&format!("SELECT count(*) FROM {table}"))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 0, "{table}");
+    }
+    let hosted: Vec<(Option<String>,)> =
+        query_as("SELECT hosted_domain FROM cloud_account_identities")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert!(hosted.iter().all(|(hd,)| hd.is_none()));
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_167_adds_organization_selection() {
+    let pool = fixture(167).await;
+    seed_owned_rows(&pool, "owner", "fixture-owner").await;
+    let before = organization_snapshot(&pool).await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+
+    assert_eq!(
+        misattributed(&pool)
+            .await
+            .iter()
+            .map(|(_, n)| n)
+            .sum::<i64>(),
+        0
+    );
+    let (rule, expiring, invitations): (i64, i64, i64) = query_as(
+        "SELECT (SELECT count(*) FROM cloud_organizations WHERE member_owned_content), \
+                (SELECT count(*) FROM cloud_organization_members WHERE expires_at IS NOT NULL), \
+                (SELECT count(*) FROM cloud_organization_invitations)",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!((rule, expiring, invitations), (0, 0, 0));
+    let mut after = organization_snapshot(&pool).await;
+    for organization in after["organizations"].as_array_mut().unwrap() {
+        organization
+            .as_object_mut()
+            .unwrap()
+            .remove("member_owned_content");
+    }
+    for member in after["members"].as_array_mut().unwrap() {
+        member.as_object_mut().unwrap().remove("expires_at");
+    }
+    assert_eq!(
+        after, before,
+        "existing organizations and members are unchanged"
+    );
+
+    // A run queued after the upgrade is still charged to the agent owner.
+    seed_owned_rows(&pool, "later", "fixture-peer").await;
+    assert_eq!(
+        misattributed(&pool)
+            .await
+            .iter()
+            .map(|(_, n)| n)
+            .sum::<i64>(),
+        0
+    );
+}

@@ -9,6 +9,7 @@ import {
   runScheduledTaskNow,
   type ScheduledTask,
   type ScheduledTaskRun,
+  type ScheduledTasksClientConfig,
 } from './scheduledTasksClient';
 import { cloudApiBaseUrl } from './authClient';
 import { loadSession } from './session';
@@ -25,10 +26,10 @@ export type UseScheduledTasksResult = {
   remove: (taskId: string) => Promise<void>;
 };
 
-async function withCloudSession<T>(operation: (config: { apiBase: string; token: string }) => Promise<T>): Promise<T | null> {
+async function withCloudSession<T>(operation: (config: ScheduledTasksClientConfig) => Promise<T>): Promise<T | null> {
   const session = await loadSession();
   if (!session?.token) return null;
-  return operation({ apiBase: cloudApiBaseUrl(), token: session.token });
+  return operation({ apiBase: cloudApiBaseUrl(), token: session.token, accountId: session.accountId });
 }
 
 export function useScheduledTasks({ enabled = true, pollMs = 10_000 }: { enabled?: boolean; pollMs?: number } = {}): UseScheduledTasksResult {

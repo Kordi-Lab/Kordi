@@ -1,12 +1,16 @@
 use super::*;
+use crate::organizations::admission::hooks::record_sign_in;
+use crate::organizations::admission::{SignInEvidence, SignInMethod};
 
 #[cfg(test)]
 mod account_linking_tests;
 mod completion;
 mod email_linking;
 #[cfg(test)]
+mod verified_email_tests;
+#[cfg(test)]
 use completion::complete_oauth_login;
-use completion::complete_oauth_login_with_policy;
+use completion::{complete_oauth_sign_in, OAuthSignIn};
 use email_linking::{
     existing_email_account_message, linkable_email_account, mark_primary_email_verified,
     OAuthLoginError, OAUTH_EMAIL_REQUIRES_SIGN_IN,
@@ -321,18 +325,21 @@ pub(super) async fn oauth_callback(
         Err(message) => return redirect_with_oauth_error(&redirect_after, &message),
     };
     let http = reqwest::Client::new();
-    let access_token = match exchange_oauth_code(&http, &config, code, code_verifier.as_deref())
-        .await
-    {
-        Ok(token) => token,
+    let tokens = match exchange_oauth_code(&http, &config, code, code_verifier.as_deref()).await {
+        Ok(tokens) => tokens,
         Err(_) => {
             return redirect_with_oauth_error(&redirect_after, "Could not exchange OAuth code.");
         }
     };
-    let profile = match fetch_oauth_profile(&http, provider, &access_token).await {
-        Ok(profile) if !profile.provider_subject.trim().is_empty() => profile,
+    let profile = match fetch_oauth_profile(&http, &config, &tokens).await {
+        Ok(Some(profile)) if !profile.provider_subject.trim().is_empty() => profile,
         _ => return redirect_with_oauth_error(&redirect_after, "Could not load OAuth profile."),
     };
+    let evidence_email = profile
+        .email
+        .as_deref()
+        .and_then(|e| validate_email(e).ok());
+    let evidence_hd = profile.hosted_domain.clone();
     let registration = if let (Some(public_key), Some(key_algorithm)) =
         (device_public_key, device_key_algorithm)
     {
@@ -349,16 +356,24 @@ pub(super) async fn oauth_callback(
         legacy_device_registration(&format!("oauth-{}-device", provider.id()))
     };
 
-    match complete_oauth_login_with_policy(
-        pool,
-        provider,
-        profile,
-        &registration,
-        state.admission(),
-    )
-    .await
-    {
-        Ok((body, is_new_authorization)) => {
+    match complete_oauth_sign_in(pool, provider, profile, &registration, state.admission()).await {
+        Ok(OAuthSignIn {
+            body,
+            is_new_authorization,
+            evidence_verified,
+        }) => {
+            let method = match provider {
+                OAuthProvider::Google => SignInMethod::Google,
+                OAuthProvider::Github => SignInMethod::Github,
+            };
+            let evidence = SignInEvidence {
+                method,
+                email: evidence_email.as_deref(),
+                email_verified: evidence_verified,
+                hosted_domain: evidence_hd.as_deref(),
+            };
+            let admission = state.organization_admission();
+            record_sign_in(pool, admission, &body.account.account_id, evidence).await;
             if is_new_authorization {
                 state
                     .events()

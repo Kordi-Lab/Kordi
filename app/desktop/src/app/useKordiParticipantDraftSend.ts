@@ -8,6 +8,7 @@ import type { CanonicalSessionState } from '@/kordi-app/types';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { openOrCreateCanonicalSessionFast } from '@/lib/desktop';
+import { rememberSessionOrganization } from '@/features/organizations/sessionOrganization';
 
 import { mergeOpenCanonicalSessionResult } from './canonicalSessionStateMutations';
 import type { ParticipantSpaceDraft } from './useKordiParticipantSpaceContinuation';
@@ -96,6 +97,7 @@ export function useKordiParticipantDraftSend({
           participantIdentityIds: draft.participantIdentityIds,
           metadata: draft.conversation.metadata,
         });
+        rememberSessionOrganization(sessionId);
         setCanonicalState(
           mergeOpenCanonicalSessionResult(canonicalState, openResult),
         );

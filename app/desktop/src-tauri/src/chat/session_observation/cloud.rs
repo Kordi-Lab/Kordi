@@ -1,4 +1,5 @@
 //! Scoped cloud history is authoritative; never fall back to a stale local projection.
+use crate::cloud_session_organization::CloudBearerAuth;
 use kordi_cli::desktop_runtime::DesktopCloudExecutionLease;
 use kordi_core::error::{KordiError, KordiResult};
 use kordi_tools::{ReadSessionRequest, SessionObservationRuntime};
@@ -30,7 +31,7 @@ impl CloudObservation {
         let mut response = self
             .client
             .post(&self.endpoint)
-            .bearer_auth(token)
+            .cloud_bearer_auth(token)
             .json(&{
                 let mut body = self.authorization.clone();
                 body["tool"] = json!(tool);

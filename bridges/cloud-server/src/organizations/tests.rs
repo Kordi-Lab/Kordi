@@ -1,6 +1,6 @@
 //! Database tests for organizations, through the public routes. They use the
 //! Common ground fixture and its skip rule. Team organizations have no create
-//! route yet, so tests insert them directly.
+//! route yet, so tests insert them directly. Members join by invitation.
 
 use serde_json::{json, Value};
 use sqlx_core::query::query;
@@ -10,7 +10,13 @@ use uuid::Uuid;
 
 use crate::common_ground::tests::db_fixture::{account, app, pool, send, signed_in};
 
+mod configured;
+mod eligibility;
+mod membership;
 mod ownership;
+mod requests;
+mod selection;
+mod spaces;
 
 const ORGS: &str = "/v1/cloud/organizations";
 
@@ -62,7 +68,27 @@ fn member_ids(body: &Value) -> Vec<(String, String)> {
         .collect()
 }
 
-async fn add(
+/// A session token for an account made with `account`.
+async fn token_for(pool: &PgPool, account_id: &str) -> String {
+    let device_id = format!("dev_{account_id}");
+    query(
+        "INSERT INTO cloud_devices (device_id, account_id, device_name, device_public_key, \
+         created_at, last_seen_at) VALUES ($1, $2, 'Test device', $3, now()::text, now()::text) \
+         ON CONFLICT (device_id) DO NOTHING",
+    )
+    .bind(&device_id)
+    .bind(account_id)
+    .bind(format!("legacy:{device_id}"))
+    .execute(pool)
+    .await
+    .unwrap();
+    crate::auth::session::issue_session(pool, account_id, &device_id, 30)
+        .await
+        .unwrap()
+        .plaintext_token
+}
+
+async fn invite(
     app: &axum::Router,
     token: &str,
     organization: &str,
@@ -72,11 +98,32 @@ async fn add(
     send(
         app,
         "POST",
-        &format!("{ORGS}/{organization}/members"),
+        &format!("{ORGS}/{organization}/invitations"),
         token,
         Some(json!({"accountId": account_id, "role": role})),
     )
     .await
+}
+
+/// Invites `account_id` and, when that succeeds, accepts as the invitee.
+/// Returns the invitation answer.
+async fn add(
+    app: &axum::Router,
+    pool: &PgPool,
+    token: &str,
+    organization: &str,
+    account_id: &str,
+    role: &str,
+) -> (u16, Value) {
+    let (status, body) = invite(app, token, organization, account_id, role).await;
+    if status == 201 {
+        let id = body["invitation"]["invitationId"].as_str().unwrap();
+        let invitee = token_for(pool, account_id).await;
+        let path = format!("/v1/cloud/organization-invitations/{id}/accept");
+        let (accepted, answer) = send(app, "POST", &path, &invitee, None).await;
+        assert_eq!(accepted, 200, "{answer}");
+    }
+    (status, body)
 }
 
 async fn set_role(
@@ -146,7 +193,7 @@ async fn a_personal_organization_never_gains_members_or_loses_its_owner() {
     let priya = account(&pool, "org_personal_peer").await;
     let personal = personal_organization(&pool, &alex).await;
 
-    let (status, body) = add(&app, &token, &personal, &priya, "member").await;
+    let (status, body) = add(&app, &pool, &token, &personal, &priya, "member").await;
     assert_eq!(
         (status, body["errorCode"].as_str()),
         (409, Some("personal_organization"))
@@ -198,7 +245,7 @@ async fn non_members_cannot_see_or_change_an_organization() {
                 "{path}"
             );
         }
-        let (status, _) = add(&app, &sam_token, id, &sam, "owner").await;
+        let (status, _) = add(&app, &pool, &sam_token, id, &sam, "owner").await;
         assert_eq!(status, 404, "a non-member cannot add itself to {id}");
         let (status, _) = set_role(&app, &sam_token, id, &alex, "member").await;
         assert_eq!(status, 404);
@@ -220,7 +267,7 @@ async fn members_cannot_change_members() {
     let sam = account(&pool, "org_member_other").await;
     let organization = team(&pool, &alex).await;
     assert_eq!(
-        add(&app, &alex_token, &organization, &priya, "member")
+        add(&app, &pool, &alex_token, &organization, &priya, "member")
             .await
             .0,
         201
@@ -237,7 +284,7 @@ async fn members_cannot_change_members() {
     assert_eq!(status, 200, "a member can read the member list");
     assert_eq!(member_ids(&body).len(), 2);
     let forbidden = Some("organization_forbidden");
-    let (status, body) = add(&app, &priya_token, &organization, &sam, "member").await;
+    let (status, body) = add(&app, &pool, &priya_token, &organization, &sam, "member").await;
     assert_eq!((status, body["errorCode"].as_str()), (403, forbidden));
     let (status, body) = set_role(&app, &priya_token, &organization, &priya, "admin").await;
     assert_eq!(
@@ -258,20 +305,18 @@ async fn owners_and_admins_manage_members_within_the_rules() {
     let dana = account(&pool, "org_rules_member").await;
     let organization = team(&pool, &alex).await;
 
-    let (status, body) = add(&app, &alex_token, &organization, &chen, "admin").await;
+    let (status, body) = add(&app, &pool, &alex_token, &organization, &chen, "admin").await;
     assert_eq!(status, 201, "{body}");
-    assert_eq!(body["member"]["role"], "admin");
-    let (status, body) = add(&app, &alex_token, &organization, &chen, "member").await;
-    assert_eq!(
-        (status, body["errorCode"].as_str()),
-        (409, Some("already_member"))
-    );
-    let (status, body) = add(&app, &alex_token, &organization, "acct_missing", "member").await;
-    assert_eq!(
-        (status, body["errorCode"].as_str()),
-        (404, Some("account_not_found"))
-    );
-    let (status, body) = add(&app, &alex_token, &organization, &dana, "superuser").await;
+    assert_eq!(body["invitation"]["role"], "admin");
+    // A member and a missing account get the same answer.
+    for id in [chen.as_str(), "acct_missing"] {
+        let (status, body) = add(&app, &pool, &alex_token, &organization, id, "member").await;
+        assert_eq!(
+            (status, body["errorCode"].as_str()),
+            (404, Some("invitee_unavailable"))
+        );
+    }
+    let (status, body) = add(&app, &pool, &alex_token, &organization, &dana, "superuser").await;
     assert_eq!(
         (status, body["errorCode"].as_str()),
         (400, Some("invalid_role"))
@@ -279,7 +324,7 @@ async fn owners_and_admins_manage_members_within_the_rules() {
 
     // An admin manages non-owners only.
     assert_eq!(
-        add(&app, &chen_token, &organization, &dana, "member")
+        add(&app, &pool, &chen_token, &organization, &dana, "member")
             .await
             .0,
         201
@@ -349,11 +394,15 @@ async fn ids_from_another_organization_are_not_found() {
     let first = team(&pool, &alex).await;
     let second = team(&pool, &chen).await;
     assert_eq!(
-        add(&app, &alex_token, &first, &priya, "member").await.0,
+        add(&app, &pool, &alex_token, &first, &priya, "member")
+            .await
+            .0,
         201
     );
     assert_eq!(
-        add(&app, &chen_token, &second, &dana, "member").await.0,
+        add(&app, &pool, &chen_token, &second, &dana, "member")
+            .await
+            .0,
         201
     );
 
@@ -369,7 +418,7 @@ async fn ids_from_another_organization_are_not_found() {
         (status, body["errorCode"].as_str()),
         (404, Some("organization_not_found"))
     );
-    let (status, _) = add(&app, &chen_token, &first, &dana, "member").await;
+    let (status, _) = add(&app, &pool, &chen_token, &first, &dana, "member").await;
     assert_eq!(status, 404);
 
     let (rows,): (i64,) =

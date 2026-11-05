@@ -42,6 +42,7 @@ async fn group_invitation_updates_canonical_membership_and_never_creates_contact
             shared_title: Some("Product Team".to_string()),
             client_session_id: group_id.clone(),
             member_account_ids: vec![member_id.clone()],
+            organization_id: None,
         },
     )
     .await

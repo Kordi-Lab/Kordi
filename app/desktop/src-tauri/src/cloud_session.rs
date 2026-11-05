@@ -29,31 +29,25 @@ fn scoped_service(base: &str) -> String {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CloudSessionEntry {
     pub token: String,
-    #[serde(rename = "accountId")]
     pub account_id: String,
-    #[serde(rename = "expiresAt")]
     pub expires_at: String,
-    #[serde(rename = "deviceId", default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_id: Option<String>,
     /// Browser sign-in only: the rotating refresh token, the app's client ID
     /// and the token endpoint of the server that issued them.
-    #[serde(
-        rename = "refreshToken",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refresh_token: Option<String>,
-    #[serde(rename = "clientId", default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
-    #[serde(
-        rename = "tokenEndpoint",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_endpoint: Option<String>,
+    /// The organization the access token acts in, once a switch recorded it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organization_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -284,6 +278,7 @@ pub fn cloud_session_store(
         refresh_token,
         client_id,
         token_endpoint,
+        organization_id: None,
     })?;
     if let Err(err) = crate::cloud_host_activity::start() {
         eprintln!("[kordi] Unable to keep Cloud agent host active: {err}");
@@ -294,6 +289,7 @@ pub fn cloud_session_store(
 /// Writes the session without the side effects of a new sign-in.
 pub(crate) fn store_session_entry(entry: &CloudSessionEntry) -> Result<(), String> {
     let json = serde_json::to_string(entry).map_err(|err| err.to_string())?;
+    crate::cloud_session_organization::remember_token_organization(entry);
     secret_store(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, &json)
 }
 
@@ -304,10 +300,7 @@ pub(crate) fn store_session_for_test(account_id: &str) -> Result<(), String> {
         token: "kordi_s_synthetic".into(),
         account_id: account_id.into(),
         expires_at: "2099-01-01T00:00:00Z".into(),
-        device_id: None,
-        refresh_token: None,
-        client_id: None,
-        token_endpoint: None,
+        ..Default::default()
     })
 }
 
@@ -317,6 +310,7 @@ pub fn cloud_session_load() -> Result<Option<CloudSessionEntry>, String> {
         Some(value) => {
             let parsed: CloudSessionEntry = serde_json::from_str(&value)
                 .map_err(|err| format!("keychain_payload_invalid: {err}"))?;
+            crate::cloud_session_organization::remember_token_organization(&parsed);
             Ok(Some(parsed))
         }
         None => Ok(None),
