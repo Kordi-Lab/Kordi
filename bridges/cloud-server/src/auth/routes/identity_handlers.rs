@@ -7,8 +7,10 @@ mod account_linking_tests;
 mod completion;
 mod email_linking;
 #[cfg(test)]
+mod verified_email_tests;
+#[cfg(test)]
 use completion::complete_oauth_login;
-use completion::complete_oauth_login_with_policy;
+use completion::{complete_oauth_sign_in, OAuthSignIn};
 use email_linking::{
     existing_email_account_message, linkable_email_account, mark_primary_email_verified,
     OAuthLoginError, OAUTH_EMAIL_REQUIRES_SIGN_IN,
@@ -337,7 +339,7 @@ pub(super) async fn oauth_callback(
         .email
         .as_deref()
         .and_then(|e| validate_email(e).ok());
-    let (evidence_verified, evidence_hd) = (profile.email_verified, profile.hosted_domain.clone());
+    let evidence_hd = profile.hosted_domain.clone();
     let registration = if let (Some(public_key), Some(key_algorithm)) =
         (device_public_key, device_key_algorithm)
     {
@@ -354,16 +356,12 @@ pub(super) async fn oauth_callback(
         legacy_device_registration(&format!("oauth-{}-device", provider.id()))
     };
 
-    match complete_oauth_login_with_policy(
-        pool,
-        provider,
-        profile,
-        &registration,
-        state.admission(),
-    )
-    .await
-    {
-        Ok((body, is_new_authorization)) => {
+    match complete_oauth_sign_in(pool, provider, profile, &registration, state.admission()).await {
+        Ok(OAuthSignIn {
+            body,
+            is_new_authorization,
+            evidence_verified,
+        }) => {
             let method = match provider {
                 OAuthProvider::Google => SignInMethod::Google,
                 OAuthProvider::Github => SignInMethod::Github,

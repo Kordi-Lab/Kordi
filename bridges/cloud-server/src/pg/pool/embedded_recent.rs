@@ -435,4 +435,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "account security email codes",
         "0170_account_security_codes.sql"
     ),
+    migration!(
+        173,
+        "identity matching email",
+        "0173_identity_matching_email.sql"
+    ),
 ];

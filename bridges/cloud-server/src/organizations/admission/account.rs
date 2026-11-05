@@ -403,6 +403,12 @@ async fn consume(
         req.verification_code.trim(),
     )
     .await;
+    if consumed.is_ok() {
+        // A provider identity that reports this address may match by it again.
+        crate::auth::identity_email::reverify_identity_emails(&mut tx, account_id, &email)
+            .await
+            .map_err(|_| server_error())?;
+    }
     tx.commit().await.map_err(|_| server_error())?;
     consumed.map_err(code_error)?;
     Ok(email)

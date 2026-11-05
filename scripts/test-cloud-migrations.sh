@@ -89,6 +89,7 @@ tests=(
   organization_tests::upgrade_from_167_adds_organization_selection
   resource_pool_tests::upgrade_from_168_adds_pool_worker_runs
   account_email_tests::upgrade_from_169_adds_account_security_codes
+  identity_email_tests::upgrade_from_167_backfills_identity_matching_email
 )
 index=0
 for test_name in "${tests[@]}"; do
