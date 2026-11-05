@@ -125,6 +125,7 @@ impl SystemAgentProviderAuth {
             "apiKey": self.credential.bearer_token().await?,
             "baseUrl": self.base_url,
             "model": self.model,
+            "verbatimModel": true,
         }))
     }
 

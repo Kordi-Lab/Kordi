@@ -84,7 +84,7 @@ export KORDI_SYSTEM_AGENT_OPENAI_MODEL=anthropic/claude-sonnet-4.5
 export KORDI_SYSTEM_AGENT_OPENAI_API_KEY=...   # from your shell or secret store, never a file in the repository
 ```
 
-The base URL must be `https`, and the runner refuses local or private-network endpoints. Reports name the provider as `openai` with the gateway's host. The System agent route strips a leading `openai/` from the model ID, as it does in production, so a gateway model such as `openai/gpt-5.1` is requested as `gpt-5.1`; models under other vendor prefixes are sent unchanged.
+The base URL must be `https`, and the runner refuses local or private-network endpoints. Reports name the provider as `openai` with the gateway's host. The model ID reaches the gateway exactly as configured, as it does in production, so a gateway model such as `openai/gpt-5.1` keeps its prefix. A leading `openai/` is dropped only when the base URL is the OpenAI API itself.
 
 ## Metrics
 

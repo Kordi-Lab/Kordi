@@ -82,6 +82,7 @@ Required production server environment:
 ```bash
 KORDI_CLOUD_PUBLIC_BASE_URL=https://kordi.ai
 KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,https://kordi.ai,kordi://oauth/callback
+KORDI_CLIENT_CALLBACK_SCHEME=kordi
 KORDI_CHAT_SYNC_CURSOR_SECRET=<from kordi-chat-sync>
 KORDI_CHAT_REALTIME_ALLOWED_ORIGINS=https://kordi.ai,tauri://localhost,http://tauri.localhost,http://127.0.0.1:1420,http://127.0.0.1:1422,http://127.0.0.1:1482,http://127.0.0.1:1484,http://127.0.0.1:1486
 KORDI_OAUTH_GOOGLE_CLIENT_ID=...
@@ -92,6 +93,32 @@ KORDI_CLOUD_TRUSTED_PROXIES=127.0.0.1/32,::1/128
 ```
 
 For test/self-hosted Cloud servers, use that server's public HTTPS origin for `KORDI_CLOUD_PUBLIC_BASE_URL` and provider callback URLs.
+
+### Settings release builds require
+
+Release images have no built-in identity, model, or endpoint defaults. Debug
+builds fill some of these in, so a setting a local run never needed can leave a
+release pod in a crash loop. Set these explicitly:
+
+| Setting | Needed when | Notes |
+| --- | --- | --- |
+| `KORDI_CLOUD_PUBLIC_BASE_URL` | Always | HTTPS origin, checked before the server starts. |
+| `KORDI_CLIENT_CALLBACK_SCHEME` | Always | Lowercase letters, digits, and `-`, checked before the server starts. It must match the scheme the released desktop and iPhone apps register (`kordi` for the product apps) and the redirect allowlist. The k3s manifest sets it. |
+| `KORDI_SYSTEM_AGENT_OWNER_EMAIL` | System agent on | An email address for the System agent's account. |
+| `KORDI_SYSTEM_AGENT_AGENT_NAME`, `KORDI_SYSTEM_AGENT_AGENT_SUBTITLE` | System agent on | The name and subtitle people see. |
+| `KORDI_SYSTEM_AGENT_PERSONA` | System agent on | 1 to 12000 bytes. Only this name is read; there is no `KORDI_PIP_` fallback. |
+| `KORDI_SYSTEM_AGENT_OPENAI_MODEL` or `KORDI_SERVICE_MODEL_MODEL` | System agent on, OpenAI-compatible provider | Sent verbatim to a non-OpenAI endpoint, for example `openai/<model>` on a router. A leading `openai/` is dropped only for the OpenAI API. |
+| `KORDI_SYSTEM_AGENT_OPENAI_BASE_URL` or `KORDI_SERVICE_MODEL_BASE_URL` | System agent on, OpenAI-compatible provider | Without it the agent runner falls back to the OpenAI API and the server's own model calls fail. |
+| `KORDI_SYSTEM_AGENT_VERTEX_MODEL` and the `KORDI_SERVICE_VERTEX_*` settings | System agent on, `vertex-ai` provider | Required in every build. |
+| `KORDI_SUPPORT_AGENT_NAME`, `KORDI_SUPPORT_AGENT_SUBTITLE`, `KORDI_SUPPORT_PERSONA` | `KORDI_SUPPORT_ENABLED=true` | Besides `KORDI_SUPPORT_OWNER_EMAIL` and the key, which every build requires. |
+| `KORDI_SUPPORT_OPENAI_MODEL`, `KORDI_SUPPORT_OPENAI_BASE_URL` (or the `KORDI_SERVICE_MODEL_*` pair) | `KORDI_SUPPORT_ENABLED=true`, OpenAI-compatible provider | Same model and endpoint rules as the System agent. |
+| `KORDI_CLOUD_SANDBOX_BACKEND` (`k8s` or `fly`), `KORDI_CLOUD_SANDBOX_NAMESPACE`, `KORDI_CLOUD_SANDBOX_IMAGE` | Agent runner | Release runners refuse `local` and an empty backend. The runner manifest sets them. |
+
+The System agent is on once a key (`KORDI_SYSTEM_AGENT_OPENAI_API_KEY` or
+`KORDI_SERVICE_MODEL_API_KEY`) or `KORDI_SYSTEM_AGENT_PROVIDER=vertex-ai` is
+configured, unless `KORDI_SYSTEM_AGENT_ENABLED=false`. The older `KORDI_PIP_*`
+names are still read for every System agent setting except the persona.
+Missing or invalid values stop the server at startup with the setting's name.
 
 `deploy-cloud-server.sh` also builds the MinIO server and client images from
 source on the host and imports them into k3s containerd before it applies
@@ -109,22 +136,49 @@ List only proxies that overwrite `X-Real-IP` with the client address. Never
 add pod or service ranges that other workloads can originate from. Pods see
 host Caddy as the node's pod-network gateway (`10.42.0.1` with the default K3s
 pod CIDR). `bridges/cloud-server/deploy/Caddyfile.snippet` already forwards
-the client address: its global options trust the Google Front End ranges plus
-`KORDI_EDGE_LB_ADDRESS` on the `:8080` origin with strict `X-Forwarded-For`
-parsing, and both proxied routes send `header_up X-Real-IP {client_ip}`. Before
-adding the gateway, roll that configuration out on the product host:
+the client address: on the `:8080` origin its global options trust only the
+edge proxy ranges in `KORDI_TRUSTED_PROXIES` (plus `KORDI_EDGE_LB_ADDRESS`),
+read the client from the header named in `KORDI_CLIENT_IP_HEADER` with strict
+parsing, and both proxied routes send `header_up X-Real-IP {client_ip}`.
+
+| Caddy environment | Default | Meaning |
+| --- | --- | --- |
+| `KORDI_TRUSTED_PROXIES` | The original load balancer's ranges | Space-separated CIDR ranges of the proxy in front of `:8080`. A proxy that reaches Caddy through a local connector uses `127.0.0.1/32 ::1/128`. |
+| `KORDI_CLIENT_IP_HEADER` | `X-Forwarded-For` | The header that proxy writes the client address to. |
+| `KORDI_EDGE_LB_ADDRESS` | Empty | One more trusted proxy address, added to the list. |
+
+Set them in the Caddy service environment (for example a `systemctl edit
+caddy` drop-in with `EnvironmentFile=-/etc/caddy/kordi-edge.env`) and keep the
+values in operator configuration; never commit them. Trust only the proxy
+that overwrites the header: any other peer allowed here can name an arbitrary
+client and bypass per-address sign-in limits.
+
+Leave a setting unset, not empty, to keep its default. An empty
+`KORDI_TRUSTED_PROXIES=` still passes `caddy validate`, but it trusts no proxy,
+so every client shares the proxy's address. After each reload, confirm that
+the running `:8080` server has trusted ranges:
+
+```bash
+curl -fsS http://localhost:2019/config/apps/http/servers | python3 -c '
+import json, sys
+edge = [s for s in json.load(sys.stdin).values() if ":8080" in s.get("listen", [])]
+assert edge and edge[0].get("trusted_proxies", {}).get("ranges"), "no trusted proxy ranges on :8080"
+print("trusted proxy ranges:", " ".join(edge[0]["trusted_proxies"]["ranges"]))'
+```
+
+Before adding the gateway, roll that configuration out on the product host:
 
 1. Confirm `caddy version` reports 2.7.0 or newer. `{client_ip}` and
    `trusted_proxies_strict` are unknown to older releases, and the Ubuntu
    24.04 package is 2.6.2; install Caddy from its official package repository
    first if the host still runs the distribution package. `caddy validate`
    fails closed on an older binary.
-2. If a proxy other than the Google Front Ends fronts `:8080`, put its address
-   in `KORDI_EDGE_LB_ADDRESS` in the Caddy service environment (for example a
-   `systemctl edit caddy` drop-in with `EnvironmentFile=-/etc/caddy/kordi-edge.env`).
-   Keep that value in operator configuration; do not commit it.
+2. If a different proxy fronts `:8080`, set `KORDI_TRUSTED_PROXIES` and, when
+   it writes the client address to another header, `KORDI_CLIENT_IP_HEADER`
+   in the Caddy service environment as described above.
 3. Install the snippet as described in the cutover procedure, run
-   `sudo caddy validate --config /etc/caddy/Caddyfile`, and reload Caddy.
+   `sudo caddy validate --config /etc/caddy/Caddyfile`, reload Caddy, and run
+   the trusted-range check above.
 4. Confirm that new `auth.login.*` audit rows record distinct client
    addresses rather than proxy or load balancer addresses.
 5. Add `10.42.0.1/32` to `KORDI_CLOUD_TRUSTED_PROXIES` in the deployment
@@ -298,6 +352,17 @@ of truth for development tunnels, product ports, readiness checks, iOS
 background ringing, and the required two-account acceptance test.
 
 Production calls use the single-node LiveKit deployment in `manifests/livekit.yaml`.
+
+`deploy-cloud-server.sh` applies that deployment and requires the
+`kordi-livekit` Secret unless `KORDI_CLUSTER_LIVEKIT=false` is set on the
+operator workstation. With `false` it skips the Secret check and
+`livekit.yaml`, and scales an existing in-cluster media server to zero. The
+Cloud server's call settings come from the same Secret and are optional: leave
+the Secret absent to run with calls off, or keep it with a `url` that points at
+a separate media host. A Secret missing one of `url`, `api-key`, or
+`api-secret` stops the server at startup. Before building, the deploy refuses
+a Secret whose `url` is empty or on the public origin's host, because that
+would advertise the in-cluster server it is about to stop.
 Create one API key and a secret of at least 32 random bytes, then store the
 client URL and the LiveKit `key: secret` pair without printing either value:
 

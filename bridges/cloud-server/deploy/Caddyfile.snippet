@@ -5,19 +5,32 @@
 #
 # The loopback-only Kubernetes NodePort follows ready Service endpoints without
 # a long-running kubectl transport process or an embedded cluster IP. Port 8080
-# is the private load-balancer origin and must accept traffic only from Google
-# Front End proxy ranges.
+# is the private origin for the edge proxy in front of this host and must
+# accept traffic only from that proxy.
 #
 # Sign-in rate limits, login lockouts, and audit records key on the client
-# address that this file forwards in X-Real-IP. Only the load balancer may
-# name the client, so the :8080 server trusts the Google Front End ranges plus
-# the operator-supplied KORDI_EDGE_LB_ADDRESS (set in the caddy service
-# environment, never committed) and parses X-Forwarded-For strictly. Every
-# other peer is treated as the client itself. This needs Caddy 2.7 or newer.
+# address that this file forwards in X-Real-IP. Only the edge proxy may name
+# the client, so the :8080 server trusts only the operator's proxy ranges and
+# parses the client-IP header strictly. Every other peer is treated as the
+# client itself. This needs Caddy 2.7 or newer.
+#
+# Set these in the caddy service environment, never in this file:
+#   KORDI_TRUSTED_PROXIES   Space-separated CIDR ranges of the edge proxy.
+#                           Defaults to the ranges of the original load
+#                           balancer. A proxy that connects through a local
+#                           connector uses 127.0.0.1/32 ::1/128.
+#   KORDI_CLIENT_IP_HEADER  The header that proxy writes the client address
+#                           to. Defaults to X-Forwarded-For.
+#   KORDI_EDGE_LB_ADDRESS   Optional extra proxy address, added to the list.
+#
+# Leave a setting unset, never empty, to use its default. An empty
+# KORDI_TRUSTED_PROXIES still validates but trusts no proxy, so every client
+# shares the proxy's address in rate limits and lockouts.
 
 {
 	servers :8080 {
-		trusted_proxies static 130.211.0.0/22 35.191.0.0/16 {$KORDI_EDGE_LB_ADDRESS}
+		trusted_proxies static {$KORDI_TRUSTED_PROXIES:130.211.0.0/22 35.191.0.0/16} {$KORDI_EDGE_LB_ADDRESS}
+		client_ip_headers {$KORDI_CLIENT_IP_HEADER:X-Forwarded-For}
 		trusted_proxies_strict
 	}
 }
