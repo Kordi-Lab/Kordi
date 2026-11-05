@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "defaultPool": "shared",
+  "pools": [
+    {
+      "id": "shared",
+      "executor": "control_plane",
+      "systemAgent": {
+        "provider": "openrouter",
+        "baseUrl": "https://gateway.example.test/api/v1",
+        "model": "vendor/example-model",
+        "apiKeyEnv": "KORDI_POOL_SHARED_API_KEY",
+        "estimatedCostMicrosPerRun": 1500
+      },
+      "limits": {
+        "systemAgentRunsPerConversationPerDay": 50,
+        "groundingRunsPerPersonPerDay": "unlimited",
+        "poolRunsPerDay": 5000,
+        "poolSpendMicrosPerDay": 25000000
+      },
+      "stopped": false
+    },
+    {
+      "id": "sponsor-example",
+      "executor": "pool_worker",
+      "worker": {
+        "identityEnv": "KORDI_POOL_SPONSOR_EXAMPLE_WORKER_IDENTITY"
+      },
+      "estimatedCostMicrosPerRun": 4000,
+      "limits": {
+        "systemAgentRunsPerConversationPerDay": "unlimited",
+        "groundingRunsPerPersonPerDay": "unlimited",
+        "poolRunsPerDay": "unlimited",
+        "poolSpendMicrosPerDay": "unlimited"
+      },
+      "stopped": false
+    }
+  ]
+}

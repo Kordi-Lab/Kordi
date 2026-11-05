@@ -171,11 +171,12 @@ pub(crate) async fn context_route(
     if !super::super::routes::runner_authorized_for_scheduled_tasks(&headers) {
         return super::runner_unauthorized();
     }
+    let pools = super::super::routes::service_auth::pool_snapshot(&state);
     match context(
         state.db_pool(),
         &run_id,
         input,
-        &super::super::routes::service_auth::service_provider_auths(&state),
+        &super::super::routes::service_auth::service_provider_auths(&state, pools.as_deref()),
     )
     .await
     {

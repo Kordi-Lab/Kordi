@@ -1,16 +1,19 @@
-//! The resource pool file: parsing and startup validation.
+//! The resource pool file: parsing and validation.
 //!
 //! The file is JSON (format in `docs/development/resource-pools.md`). Every
-//! field is checked before the server starts, and errors name the pool and
-//! field but never a secret value. API keys are read from a named environment
-//! variable or a file, never from the pool file itself.
+//! field is checked before the server starts or a reload is applied, and
+//! errors name the pool and field but never a secret value. API keys are read
+//! from a named environment variable or a file, never from the pool file
+//! itself. Format 1 pools always execute in the control plane; format 2 adds
+//! an `executor` per pool, and a `pool_worker` pool carries no provider at
+//! all, only the identity its worker presents.
 
 use std::collections::BTreeMap;
 use std::{env, fmt, fs};
 
 use serde::Deserialize;
 
-use super::{Feature, PoolLimits, PoolProvider, ResourcePool, ResourcePools};
+use super::{Feature, PoolLimits, PoolProvider, ResourcePool, ResourcePools, WorkerIdentity};
 use crate::service_model_config::validate_base_url;
 use crate::system_agent::SystemAgentProviderAuth;
 
@@ -72,9 +75,19 @@ struct PoolFile {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct PoolEntry {
     id: String,
-    system_agent: ProviderEntry,
+    /// Format 2 only: `control_plane` or `pool_worker`.
+    #[serde(default)]
+    executor: Option<String>,
+    #[serde(default)]
+    system_agent: Option<ProviderEntry>,
     #[serde(default)]
     grounding: Option<ProviderEntry>,
+    /// Format 2 `pool_worker` pools only.
+    #[serde(default)]
+    worker: Option<WorkerEntry>,
+    /// Format 2 `pool_worker` pools only: one run's estimated cost.
+    #[serde(default)]
+    estimated_cost_micros_per_run: Option<u64>,
     #[serde(default)]
     limits: LimitsEntry,
     #[serde(default)]
@@ -98,6 +111,17 @@ struct ProviderEntry {
     headers: BTreeMap<String, String>,
     #[serde(default)]
     estimated_cost_micros_per_run: u64,
+}
+
+/// How a pool worker proves who it is: an identity inline, or the name of an
+/// environment variable that holds it as JSON.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct WorkerEntry {
+    #[serde(default)]
+    identity_env: Option<String>,
+    #[serde(default)]
+    identity: Option<serde_json::Value>,
 }
 
 /// Daily limits. Each is a whole number, or `"unlimited"`; `null` and an
@@ -137,12 +161,16 @@ where
     }
 }
 
-pub(super) fn from_file_env() -> Result<Option<ResourcePools>, ResourcePoolConfigError> {
-    let path = env::var(RESOURCE_POOLS_FILE_ENV)
+pub(super) fn path_from_env() -> Option<String> {
+    env::var(RESOURCE_POOLS_FILE_ENV)
         .ok()
         .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-    path.map(|path| load_file(&path, |key| env::var(key).ok()))
+        .filter(|value| !value.is_empty())
+}
+
+pub(super) fn from_file_env() -> Result<Option<ResourcePools>, ResourcePoolConfigError> {
+    path_from_env()
+        .map(|path| load_file(&path, |key| env::var(key).ok()))
         .transpose()
 }
 
@@ -184,9 +212,9 @@ pub(super) fn parse(
             format!("resource pool file is invalid: {detail}")
         })
     })?;
-    if file.version != 1 {
+    if !(1..=2).contains(&file.version) {
         return Err(ResourcePoolConfigError::new(
-            "resource pool file version must be 1; this server does not read newer formats",
+            "resource pool file version must be 1 or 2; this server does not read newer formats",
         ));
     }
     if file.pools.is_empty() {
@@ -199,42 +227,158 @@ pub(super) fn parse(
     for entry in file.pools {
         validate_id("pool id", &entry.id)?;
         let at = |field: &str| format!("pool \"{}\" {field}", entry.id);
-        let system_agent = provider(&entry.system_agent, &at("systemAgent"), &mut get)?;
-        let mut pool = ResourcePool::new(entry.id.clone(), system_agent)
-            .with_limits(PoolLimits {
-                system_agent_runs_per_conversation: entry
-                    .limits
-                    .system_agent_runs_per_conversation_per_day,
-                grounding_runs_per_person: entry.limits.grounding_runs_per_person_per_day,
-                pool_runs: entry.limits.pool_runs_per_day,
-                pool_spend_micros: entry.limits.pool_spend_micros_per_day,
-            })
-            .stopped(entry.stopped);
-        if let Some(grounding) = &entry.grounding {
-            pool = pool.with_grounding(provider(grounding, &at("grounding"), &mut get)?);
+        let pool = match executor(&entry, file.version, &at)? {
+            super::Executor::ControlPlane => control_plane_pool(&entry, &at, &mut get)?,
+            super::Executor::PoolWorker => worker_pool(&entry, &at, &mut get)?,
         }
-        // A spend ceiling counts estimated costs, so every provider of the
+        .with_limits(PoolLimits {
+            system_agent_runs_per_conversation: entry
+                .limits
+                .system_agent_runs_per_conversation_per_day,
+            grounding_runs_per_person: entry.limits.grounding_runs_per_person_per_day,
+            pool_runs: entry.limits.pool_runs_per_day,
+            pool_spend_micros: entry.limits.pool_spend_micros_per_day,
+        })
+        .stopped(entry.stopped);
+        // A spend ceiling counts estimated costs, so every feature of the
         // pool needs one; a zero estimate would never reach the ceiling.
         let unpriced = [Feature::SystemAgent, Feature::Grounding]
             .into_iter()
-            .any(|feature| pool.provider(feature).estimated_cost_micros() == 0);
+            .any(|feature| pool.estimated_cost_micros(feature) == 0);
         if pool.limits().pool_spend_micros.is_some() && unpriced {
             return Err(ResourcePoolConfigError::new(at(
                 "poolSpendMicrosPerDay needs estimatedCostMicrosPerRun above 0 on every provider",
             )));
         }
-        for organization_id in entry.organizations {
-            validate_id(&at("organization id"), &organization_id)?;
+        for organization_id in &entry.organizations {
+            validate_id(&at("organization id"), organization_id)?;
             if !organization_id.starts_with(ORGANIZATION_PREFIX) {
                 return Err(ResourcePoolConfigError::new(at(&format!(
                     "organization ids must start with {ORGANIZATION_PREFIX}"
                 ))));
             }
-            bindings.push((organization_id, entry.id.clone()));
+            bindings.push((organization_id.clone(), entry.id.clone()));
         }
         pools.push(pool);
     }
-    ResourcePools::new(pools, file.default_pool.trim(), bindings)
+    let default_pool = file.default_pool.trim();
+    // The System agent's own definition takes its model from the default
+    // pool, so the default pool always executes in the control plane.
+    if pools
+        .iter()
+        .any(|pool| pool.id() == default_pool && pool.executor() != super::Executor::ControlPlane)
+    {
+        return Err(ResourcePoolConfigError::new(format!(
+            "defaultPool \"{default_pool}\" must have executor control_plane"
+        )));
+    }
+    ResourcePools::new(pools, default_pool, bindings)
+}
+
+fn executor(
+    entry: &PoolEntry,
+    version: u32,
+    at: &impl Fn(&str) -> String,
+) -> Result<super::Executor, ResourcePoolConfigError> {
+    let fail = |detail: &str| Err(ResourcePoolConfigError::new(at(detail)));
+    if version == 1 {
+        if entry.executor.is_some()
+            || entry.worker.is_some()
+            || entry.estimated_cost_micros_per_run.is_some()
+        {
+            return fail(
+                "uses executor, worker or estimatedCostMicrosPerRun, which need version 2",
+            );
+        }
+        return Ok(super::Executor::ControlPlane);
+    }
+    match entry.executor.as_deref().map(str::trim) {
+        Some("control_plane") => Ok(super::Executor::ControlPlane),
+        Some("pool_worker") => Ok(super::Executor::PoolWorker),
+        Some(_) => fail("executor must be control_plane or pool_worker"),
+        None => fail("executor is required in version 2"),
+    }
+}
+
+fn control_plane_pool(
+    entry: &PoolEntry,
+    at: &impl Fn(&str) -> String,
+    get: &mut impl FnMut(&str) -> Option<String>,
+) -> Result<ResourcePool, ResourcePoolConfigError> {
+    if entry.worker.is_some() || entry.estimated_cost_micros_per_run.is_some() {
+        return Err(ResourcePoolConfigError::new(at(
+            "worker and estimatedCostMicrosPerRun are only used with executor pool_worker",
+        )));
+    }
+    let Some(system_agent) = &entry.system_agent else {
+        return Err(ResourcePoolConfigError::new(at("systemAgent is required")));
+    };
+    let mut pool = ResourcePool::new(
+        entry.id.clone(),
+        provider(system_agent, &at("systemAgent"), get)?,
+    );
+    if let Some(grounding) = &entry.grounding {
+        pool = pool.with_grounding(provider(grounding, &at("grounding"), get)?);
+    }
+    Ok(pool)
+}
+
+/// A pool worker pool holds no provider and no key: its worker has its own.
+fn worker_pool(
+    entry: &PoolEntry,
+    at: &impl Fn(&str) -> String,
+    get: &mut impl FnMut(&str) -> Option<String>,
+) -> Result<ResourcePool, ResourcePoolConfigError> {
+    if entry.system_agent.is_some() || entry.grounding.is_some() {
+        return Err(ResourcePoolConfigError::new(at(
+            "with executor pool_worker may not name systemAgent or grounding providers: its worker holds its own",
+        )));
+    }
+    let Some(worker) = &entry.worker else {
+        return Err(ResourcePoolConfigError::new(at(
+            "worker is required with executor pool_worker",
+        )));
+    };
+    let identity = match (&worker.identity_env, &worker.identity) {
+        (Some(name), None) => {
+            let name = name.trim();
+            if !is_variable_name(name) {
+                return Err(ResourcePoolConfigError::new(at(
+                    "worker.identityEnv must name an environment variable",
+                )));
+            }
+            // An empty or unset variable accepts no worker: clearing it is
+            // the quick way to revoke a worker.
+            get(name)
+                .filter(|value| !value.trim().is_empty())
+                .map(|value| {
+                    WorkerIdentity::from_text(&value, &at(&format!("worker identity {name}")))
+                })
+                .transpose()?
+        }
+        (None, Some(value)) => Some(WorkerIdentity::from_json(
+            value.clone(),
+            &at("worker.identity"),
+        )?),
+        _ => {
+            return Err(ResourcePoolConfigError::new(at(
+                "worker needs exactly one of identityEnv or identity",
+            )))
+        }
+    };
+    Ok(ResourcePool::pool_worker(
+        entry.id.clone(),
+        identity,
+        entry.estimated_cost_micros_per_run.unwrap_or(0),
+    ))
+}
+
+fn is_variable_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 128
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
 }
 
 fn validate_id(what: &str, id: &str) -> Result<(), ResourcePoolConfigError> {
@@ -284,11 +428,7 @@ fn provider(
             let name = name.trim();
             // A value that does not look like a variable name might be a
             // pasted key, so it is never echoed.
-            let variable_name = name.len() <= 128
-                && name
-                    .bytes()
-                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_');
-            if name.is_empty() || !variable_name {
+            if !is_variable_name(name) {
                 return Err(invalid("apiKeyEnv must name an environment variable"));
             }
             get(name)
@@ -348,3 +488,7 @@ fn provider(
 #[cfg(test)]
 #[path = "config_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "config_v2_tests.rs"]
+mod v2_tests;

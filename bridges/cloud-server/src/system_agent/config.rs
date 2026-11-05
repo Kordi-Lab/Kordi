@@ -8,7 +8,9 @@
 use std::sync::Arc;
 use std::{env, fmt};
 
-use crate::resource_pools::{Feature, ResourcePoolConfigError, ResourcePools};
+use crate::resource_pools::{
+    Feature, ResourcePoolConfigError, ResourcePoolRegistry, ResourcePools,
+};
 
 use crate::service_model::{vertex_configuration, ServiceCredential};
 use crate::service_model_config::{shared_setting, validate_base_url};
@@ -147,7 +149,7 @@ pub struct PendingSystemAgentConfig {
     pub provider_auth: SystemAgentProviderAuth,
     /// The pools that serve System agent and Grounding runs. The default
     /// pool's System agent provider is `provider_auth`.
-    pub resource_pools: Arc<ResourcePools>,
+    pub resource_pools: ResourcePoolRegistry,
 }
 
 #[derive(Debug, Clone)]
@@ -160,7 +162,7 @@ pub struct SystemAgentConfig {
     pub name: String,
     pub subtitle: String,
     pub(super) provider_auth: SystemAgentProviderAuth,
-    pub(crate) resource_pools: Arc<ResourcePools>,
+    pub(crate) resource_pools: ResourcePoolRegistry,
 }
 
 #[derive(Debug)]
@@ -241,7 +243,12 @@ impl PendingSystemAgentConfig {
     pub fn from_env() -> Result<Option<Self>, SystemAgentConfigError> {
         let pools =
             ResourcePools::from_file_env().map_err(SystemAgentConfigError::ResourcePools)?;
-        let config = Self::from_lookup_with_pools(|key| env::var(key).ok(), pools)?;
+        let mut config = Self::from_lookup_with_pools(|key| env::var(key).ok(), pools)?;
+        if let Some(config) = &mut config {
+            // Reloads read the same files again (see `resource_pools::registry`).
+            config.resource_pools =
+                ResourcePoolRegistry::from_env_sources((*config.resource_pools.current()).clone());
+        }
         if let Some(config) = &config {
             if config.name.trim().is_empty() || config.subtitle.trim().is_empty() {
                 return Err(SystemAgentConfigError::Invalid(
@@ -278,9 +285,14 @@ impl PendingSystemAgentConfig {
             return Ok(None);
         }
         let provider_auth = if let Some(pools) = &pools {
+            // The pool file guarantees the default pool executes in the
+            // control plane, so it has a System agent provider.
             pools
                 .default_pool()
                 .provider(Feature::SystemAgent)
+                .ok_or(SystemAgentConfigError::Invalid(
+                    "the default resource pool must execute in the control plane",
+                ))?
                 .auth()
                 .clone()
         } else {
@@ -319,8 +331,9 @@ impl PendingSystemAgentConfig {
                 )),
             }
         };
-        let resource_pools =
-            Arc::new(pools.unwrap_or_else(|| ResourcePools::from_system_agent(&provider_auth)));
+        let resource_pools = ResourcePoolRegistry::new(
+            pools.unwrap_or_else(|| ResourcePools::from_system_agent(&provider_auth)),
+        );
         let owner_email =
             required_or_default(&mut get, "OWNER_EMAIL", DEFAULT_SYSTEM_AGENT_OWNER_EMAIL);
         if !owner_email.contains('@') {
@@ -358,7 +371,14 @@ impl SystemAgentConfig {
         &self.provider_auth
     }
 
-    pub fn resource_pools(&self) -> &ResourcePools {
+    /// The pool set now. Keep the snapshot for one decision only: pools
+    /// reload without a restart.
+    pub fn resource_pools(&self) -> Arc<ResourcePools> {
+        self.resource_pools.current()
+    }
+
+    /// The live registry, for reloads.
+    pub fn resource_pool_registry(&self) -> &ResourcePoolRegistry {
         &self.resource_pools
     }
 
@@ -387,7 +407,7 @@ pub(crate) fn test_config(account_id: &str) -> SystemAgentConfig {
         agent_id: format!("system-agent-{account_id}"),
         name: DEFAULT_SYSTEM_AGENT_NAME.to_string(),
         subtitle: DEFAULT_SYSTEM_AGENT_SUBTITLE.to_string(),
-        resource_pools: Arc::new(ResourcePools::from_system_agent(&provider_auth)),
+        resource_pools: ResourcePoolRegistry::new(ResourcePools::from_system_agent(&provider_auth)),
         provider_auth,
     }
 }

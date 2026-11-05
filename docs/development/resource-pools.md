@@ -5,7 +5,7 @@ model work: which provider serves it, and how much of it may run. Pools follow
 [organizations](organizations.md), not accounts, so two organizations of the
 same person can use different pools.
 
-Today pools meter the work the server pays for with its own key:
+Pools meter server-paid model work:
 
 - **System agent** passes in group conversations, counted per conversation.
 - **Grounding** runs (card builds, matching, room themes, group intros and
@@ -15,11 +15,25 @@ All other model runs (members' agents, Digest, Proactive, the personal agent,
 scheduled tasks, document agents) use the owner's own saved provider account
 and are not metered by pools.
 
+A pool runs its work in one of two places, its **executor**:
+
+- `control_plane`: the server's own runners call the pool's provider with a
+  key the server holds (every format 1 pool).
+- `pool_worker`: the pool's own worker, in the sponsor's cloud project, claims
+  the pool's runs and calls its own provider with its own credential. The
+  control plane never holds that credential. See [Pool workers](#pool-workers).
+
 ## Configuration
 
-Pools are read once at startup. Set `KORDI_RESOURCE_POOLS_FILE` to the path of
-a JSON pool file; [resource-pools.example.json](resource-pools.example.json)
-is a complete example with synthetic values.
+Set `KORDI_RESOURCE_POOLS_FILE` to the path of a JSON pool file.
+[resource-pools.example.json](resource-pools.example.json) (format 1) and
+[resource-pools.v2.example.json](resource-pools.v2.example.json) (format 2)
+are complete examples with synthetic values. Organization bindings may also
+come from the organizations file (`KORDI_ORGANIZATIONS_FILE`); see
+[Bindings from the organizations file](#bindings-from-the-organizations-file).
+
+Both files are read at startup and again without a restart; see
+[Reloading](#reloading).
 
 Without `KORDI_RESOURCE_POOLS_FILE` the server behaves as before: it builds
 one pool named `default` from the System agent's provider settings
@@ -55,7 +69,7 @@ off.
 
 | Field | Meaning |
 | --- | --- |
-| `version` | Must be `1`. A server refuses a file with a version it does not know. |
+| `version` | `1` or `2`. A server refuses a file with a version it does not know. |
 | `defaultPool` | The pool for every organization that no pool lists. |
 | `pools[].id` | 1 to 64 letters, digits, `.`, `_` or `-`; unique. Stored on each run, so keep it stable. |
 | `pools[].systemAgent` | The provider for System agent passes. Required. |
@@ -93,15 +107,82 @@ clear. `0` refuses every run:
 
 ### Format versions
 
-This page describes format 1. Deployment configs are written against it, so
-its field names stay stable; a change that existing files would not parse the
-same way gets a new version number instead. A planned format 2 adds a pool
-`executor` (`control_plane` or `pool_worker`) that chooses where a pool's runs
-execute; format 1 files will keep loading unchanged.
+The tables above describe format 1. Deployment configs are written against
+it, so its field names stay stable; a change that existing files would not
+parse the same way gets a new version number instead. Format 1 files load
+unchanged on servers that read format 2.
+
+Format 2 (`"version": 2`) adds, per pool:
+
+| Field | Meaning |
+| --- | --- |
+| `executor` | Required: `control_plane` or `pool_worker`. |
+| `worker.identityEnv` | `pool_worker` only: the name of an environment variable that holds the accepted worker identity as JSON (below). Exactly one of `identityEnv` and `identity`. An unset or empty variable accepts no worker, which is the quick way to revoke one (a restart reads environment changes). |
+| `worker.identity` | `pool_worker` only: the identity inline, which a reload picks up. |
+| `estimatedCostMicrosPerRun` | `pool_worker` only: one run's estimated cost for either feature. Required above 0 with `poolSpendMicrosPerDay`. |
+
+A `control_plane` pool is written as in format 1. A `pool_worker` pool has no
+`systemAgent` or `grounding` provider and no key: the server refuses one that
+names them. `limits`, `stopped` and `organizations` mean the same for both.
+The `defaultPool` must be a `control_plane` pool, because the System agent's
+own definition takes its model from it.
+
+A worker identity names who may act as the pool's worker, not a secret:
+
+```json
+{
+  "issuer": "https://issuer.example.test",
+  "audience": "https://control-plane.example.test",
+  "subject": "123456789",
+  "email": "worker@sponsor-project.example.test",
+  "jwksUri": "https://issuer.example.test/keys"
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `issuer` | The exact `iss` of the worker's identity token. |
+| `audience` | Must appear in the token's `aud`; the worker asks for a token for this audience. |
+| `subject` | The exact `sub`, such as a service account's unique id. |
+| `email` | The exact `email`, which must be verified (`email_verified`). At least one of `subject` and `email`. |
+| `jwksUri` | Optional. The issuer's signing keys; default: `jwks_uri` from `<issuer>/.well-known/openid-configuration` (then `issuer` must be https). |
+| `jwks` | Optional inline JWK set, for an issuer that publishes no keys. |
+
+### Bindings from the organizations file
+
+When `KORDI_ORGANIZATIONS_FILE` is set, pools also read these fields of it,
+and ignore every other field:
+
+| Field | Meaning |
+| --- | --- |
+| `organizations[].id` | The organization's configuration id. |
+| `organizations[].pool` | The pool it is bound to, or `null` for the default pool. |
+| `organizations[].state` | `disabled` binds nothing. |
+| `personalOrganizations.pool` | Must equal `defaultPool` when set. |
+
+A configuration id binds once the organization exists on this server
+(`cloud_organizations.config_id`, created by admission from configuration).
+Until then it is not bound, and the server checks again about once a minute.
+A binding that names an unknown pool, or contradicts an `organizations` entry
+of the pool file, makes the configuration invalid.
+
+### Reloading
+
+The server reads both files again on `SIGHUP` and within about five seconds of
+either file changing. A reload validates everything a startup does (keys,
+identities, bindings) and swaps the new configuration in only when all of it
+is valid. An invalid file is logged once with the reason, and the previous
+configuration stays in force. Each run is admitted against one consistent
+snapshot, so a reload never changes a pool halfway through an admission.
+
+The emergency stop therefore takes effect within seconds: write
+`"stopped": true` and the next admission, credential fetch, worker lease and
+worker call see it. Environment variables (API keys, `worker.identityEnv`
+values) are read from the server's environment, which only a restart changes.
 
 ### Validation
 
-The server refuses to start when the file is missing, larger than 256 KiB,
+The server refuses to start (and a reload is rejected) when the file is missing, larger than 256 KiB,
 not valid JSON, has an unknown field, names an unknown default pool, repeats a
 pool id, binds an organization twice or without the `org_` prefix, sets a
 spend ceiling without cost estimates, or has an invalid provider, URL, model,
@@ -122,7 +203,77 @@ The pool id is stored on the run (`runtime_route_json.resourcePool`) together
 with the provider and model, and the run's `organization_id` is set to the
 organization that was charged. When a runner fetches the run's credential, the
 server returns the key, base URL, model and headers of that pool only. Runs
-queued before pools existed have no pool id and belong to the default pool.
+queued before pools existed have no pool id and belong to the default pool. A
+pool worker run's route names only the pool and `"poolExecutor":
+"pool_worker"`; its worker picks its own provider and model.
+
+## Pool workers
+
+Runs of a `pool_worker` pool are queued as usual, admitted against the pool's
+limits, and tagged with the pool id (`cloud_pool_worker_runs`). The control
+plane's runners never lease a tagged run, and no credential is ever handed out
+for it. The pool's worker leases it instead.
+
+The worker is the cloud agent runner started with `KORDI_POOL_WORKER_POOL_ID`
+set. It authenticates every request with a short-lived workload identity
+token from its own cloud (for example a service account identity token from
+the metadata server for the audience in `KORDI_POOL_WORKER_AUDIENCE`). The
+server verifies the token against the pool's worker identity: RS256 or ES256
+signature from the issuer's keys, issuer, audience, subject or verified email,
+expiry, and a lifetime of at most a day. A token for another pool, a forged
+or expired token, or a pool that executes in the control plane is refused.
+
+Endpoints (all `POST`, `Authorization: Bearer <identity token>`, JSON bodies
+with `poolId` and `workerId`):
+
+| Path | Purpose |
+| --- | --- |
+| `/v1/cloud/pool-workers/lease` | Leases the pool's oldest run. Returns `{"run": null}` or `{"run": {runId, feature, leaseToken, systemPrompt, prompt, thinking, leaseSeconds}}`. |
+| `/v1/cloud/pool-workers/runs/{runId}/heartbeat` | With `leaseToken`: renews the lease; `{"cancelRequested": bool}`. |
+| `/v1/cloud/pool-workers/runs/{runId}/plan-card` | With `leaseToken` and `request`: one plan card tool call of a System agent run, applied by the server. |
+| `/v1/cloud/pool-workers/runs/{runId}/complete` | With `leaseToken` and `responseText` (at most 1 MiB): the server validates the reply and writes it into the conversation. |
+| `/v1/cloud/pool-workers/runs/{runId}/fail` | With `leaseToken` and `errorCode` (`[a-z0-9_]`, at most 64). |
+
+Errors use `{"errorCode", "message"}`: `pool_worker_unauthorized` (401),
+`pool_not_found` (404), `run_not_found` (404, no live lease for this worker),
+`pool_stopped` (503).
+
+A lease carries only the model input of one run: no member, conversation or
+organization ids and no credential. Each lease issues a new one-time lease
+token, stored only as its SHA-256 hash, which every later call for the run
+must present together with the pool and worker id; a run taken over after its
+lease expired is closed to the earlier worker. When a run is leased, its
+organization must still resolve to the worker's pool; a run whose
+organization was rebound fails (`pool_binding_changed`) instead.
+
+Runs that cannot finish fail, so a conversation or member is never left
+waiting: runs of a stopped pool (`pool_stopped`; a held lease can no longer
+complete), runs of a pool that no longer has a worker, runs no worker leased
+within ten minutes (`pool_worker_unavailable`), and leases that lapsed ten
+minutes ago (`lease_expired`). A run that fails before any worker leased it
+gives its count back to the pool's limits.
+
+### Worker settings
+
+| Name | Meaning |
+| --- | --- |
+| `KORDI_POOL_WORKER_POOL_ID` | The pool id. Setting it starts the runner in pool worker mode. |
+| `KORDI_POOL_WORKER_CONTROL_PLANE_URL` | The control plane's base URL (https; http only on loopback). |
+| `KORDI_POOL_WORKER_AUDIENCE` | The audience of the identity token, matching the pool's `identity.audience`. |
+| `KORDI_POOL_WORKER_PROVIDER` | `openai`, `openai-compatible`, `openrouter` or `vertex-ai`. |
+| `KORDI_POOL_WORKER_MODEL` | The model id. |
+| `KORDI_POOL_WORKER_BASE_URL` | The https endpoint of an API key provider. Empty for `vertex-ai`. |
+| `KORDI_POOL_WORKER_MODEL_SECRET` | API key providers: a Secret Manager version (`projects/<p>/secrets/<s>/versions/<v>`) read with the worker identity. Empty for `vertex-ai`. |
+| `KORDI_POOL_WORKER_VERTEX_PROJECT`, `KORDI_POOL_WORKER_VERTEX_LOCATION` | `vertex-ai` only: called through Vertex AI's OpenAI-compatible endpoint with the worker identity's access token. |
+| `KORDI_POOL_WORKER_ID` | Optional worker id; default `pool-worker-<random>`. |
+| `KORDI_POOL_WORKER_IDENTITY_TOKEN_FILE` | Optional: read the identity token from this file (a projected token) instead of the metadata server. |
+| `KORDI_POOL_WORKER_API_KEY_FILE` | Optional: the API key from a file instead of Secret Manager. |
+| `KORDI_POOL_WORKER_CONCURRENCY` | Optional, 1-4, default 2. |
+| `KORDI_POOL_WORKER_POLL_MS` | Optional, at least 250, default 2000. |
+
+The worker runs the System agent with the Rust engine and only the plan card
+tool, and Grounding as one completion without tools. It never logs prompts,
+replies, keys or tokens.
 
 ## Limits and silence
 
@@ -168,15 +319,19 @@ worker.
 
 Migration 0166 adds `cloud_resource_pool_usage`
 (one counter per pool, UTC day, feature and scope) and
-`cloud_resource_pool_reservations` (one row per admitted run).
+`cloud_resource_pool_reservations` (one row per admitted run). Migration 0167
+adds `cloud_pool_worker_runs` (the pool tag of each pool worker run, and the
+worker and lease token hash of its current lease).
 
 ## Tests
 
-Unit tests cover file parsing and validation, pool resolution, the per-pool
-credential a runner receives, and (in the runner) the request shape sent to an
-OpenAI-compatible endpoint. Database tests are ignored by default and need a
+Unit tests cover file parsing and validation (formats 1 and 2), pool
+resolution, the per-pool credential a runner receives, identity token checks,
+reloading (a valid change swaps in, an invalid one is rejected, the stop
+switch), and (in the runner) the request shape sent to an OpenAI-compatible
+endpoint and the pool worker's client, credentials and run loop. Database tests are ignored by default and need a
 task-owned PostgreSQL in `DATABASE_URL`:
 
 ```bash
-DATABASE_URL=postgres://... cargo test -p kordi-cloud-server --lib -- resource_pools system_agent::pool_tests common_ground::runs --include-ignored --test-threads=1
+DATABASE_URL=postgres://... cargo test -p kordi-cloud-server --lib -- resource_pools system_agent::pool_tests common_ground::runs pool_workers --include-ignored --test-threads=1
 ```

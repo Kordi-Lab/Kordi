@@ -19,11 +19,11 @@ use crate::resource_pools::usage::{self, Admission};
 use crate::resource_pools::{Feature, ResourcePool};
 
 /// The pool that serves a conversation and the organization it belongs to.
-pub(super) async fn pool_for<'a>(
+pub(super) async fn pool_for(
     tx: &mut Transaction<'_, Postgres>,
-    config: &'a SystemAgentConfig,
+    config: &SystemAgentConfig,
     candidate: &Candidate,
-) -> Result<(&'a ResourcePool, Option<String>), sqlx_core::Error> {
+) -> Result<(ResourcePool, Option<String>), sqlx_core::Error> {
     let organization_id: Option<String> = query_scalar(
         "SELECT organization_id FROM cloud_chat_conversations WHERE conversation_id = $1",
     )
@@ -31,7 +31,10 @@ pub(super) async fn pool_for<'a>(
     .fetch_optional(&mut **tx)
     .await?
     .flatten();
-    let pool = config.resource_pools().resolve(organization_id.as_deref());
+    let pool = config
+        .resource_pools()
+        .resolve(organization_id.as_deref())
+        .clone();
     Ok((pool, organization_id))
 }
 

@@ -140,6 +140,9 @@ const ELIGIBLE: &str = concat!(
     // Memory imports and Factory tests stay on the Mac that started them.
     "AND NOT starts_with(candidate.run_id, 'import_') ",
     "AND NOT starts_with(candidate.run_id, 'factory_') ",
+    // Runs of a pool worker pool wait for that pool's own worker
+    // (`crate::pool_workers`); the control plane never runs them.
+    "AND NOT EXISTS(SELECT 1 FROM cloud_pool_worker_runs w WHERE w.run_id=candidate.run_id) ",
     "AND (candidate.desktop_preferred_until IS NULL OR candidate.desktop_preferred_until <= now()) ",
     "AND ($2::text IS NULL OR candidate.run_id=$2) ",
     "AND (NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat q WHERE q.run_id=candidate.run_id) OR ( ",

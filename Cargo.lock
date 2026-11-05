@@ -3797,6 +3797,7 @@ dependencies = [
  "regex",
  "reqwest 0.12.28",
  "resvg",
+ "ring",
  "rustls 0.23.38",
  "rusty-s3",
  "semver",

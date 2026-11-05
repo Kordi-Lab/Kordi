@@ -1,8 +1,6 @@
 //! Grounding runs and resource pools against a real database. Ignored by
 //! default; run them with a task-owned PostgreSQL in `DATABASE_URL`.
 
-use std::sync::Arc;
-
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
@@ -94,7 +92,7 @@ async fn grounding_runs_follow_the_organization_pool_and_its_person_limit() {
     )
     .unwrap();
     let mut config = crate::system_agent::test_config(&service);
-    config.resource_pools = Arc::new(pools);
+    config.resource_pools = crate::resource_pools::ResourcePoolRegistry::new(pools);
 
     let (first, queued) = queue(&pool, &config, &person, None).await;
     assert!(queued);
@@ -135,4 +133,60 @@ async fn grounding_runs_follow_the_organization_pool_and_its_person_limit() {
     );
     tx.commit().await.unwrap();
     assert!(queue(&pool, &config, &person, None).await.1);
+}
+
+#[tokio::test]
+#[ignore = "requires a task-owned PostgreSQL database in DATABASE_URL"]
+async fn grounding_runs_of_a_worker_pool_are_tagged_for_its_worker() {
+    let pool = test_db().await;
+    let suffix = Uuid::new_v4().simple().to_string();
+    let (service, person) = (format!("service-{suffix}"), format!("person-{suffix}"));
+    for account in [&service, &person] {
+        seed_account(&pool, account).await;
+    }
+    let (personal,): (String,) =
+        query_as("SELECT organization_id FROM cloud_organizations WHERE personal_account_id = $1")
+            .bind(&person)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let (shared_id, worker_id) = (format!("shared-{suffix}"), format!("worker-{suffix}"));
+    let pools = ResourcePools::new(
+        vec![
+            ResourcePool::new(shared_id.clone(), test_provider("shared-model")),
+            ResourcePool::pool_worker(worker_id.clone(), None, 0),
+        ],
+        &shared_id,
+        [(personal.clone(), worker_id.clone())],
+    )
+    .unwrap();
+    let mut config = crate::system_agent::test_config(&service);
+    config.resource_pools = crate::resource_pools::ResourcePoolRegistry::new(pools);
+
+    let (run_id, queued) = queue(&pool, &config, &person, None).await;
+    assert!(queued);
+    let (tag, feature): (String, String) =
+        query_as("SELECT pool_id, feature FROM cloud_pool_worker_runs WHERE run_id = $1")
+            .bind(&run_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((tag, feature.as_str()), (worker_id.clone(), "grounding"));
+    let (route_pool, executor): (Option<String>, Option<String>) = query_as(
+        "SELECT runtime_route_json->>'resourcePool', runtime_route_json->>'poolExecutor'
+         FROM cloud_agent_fallback_runs WHERE run_id = $1",
+    )
+    .bind(&run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(route_pool.as_deref(), Some(worker_id.as_str()));
+    assert_eq!(executor.as_deref(), Some("pool_worker"));
+    // The control plane's runners never lease it.
+    assert!(
+        crate::cloud_agent_runtime::runs::lease_canary_run(&pool, "control-runner", &run_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }

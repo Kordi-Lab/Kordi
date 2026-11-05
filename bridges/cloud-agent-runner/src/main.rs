@@ -11,6 +11,11 @@ async fn main() -> Result<()> {
         .with_max_level(tracing::Level::INFO)
         .init();
 
+    // A pool id selects pool worker mode, which needs no runner token.
+    if std::env::var("KORDI_POOL_WORKER_POOL_ID").is_ok_and(|value| !value.trim().is_empty()) {
+        return kordi_cloud_agent_runner::pool_worker::run_from_env().await;
+    }
+
     let base_url =
         std::env::var("KORDI_CLOUD_API_BASE").context("KORDI_CLOUD_API_BASE is required")?;
     let runner_token = std::env::var("KORDI_CLOUD_RUNNER_TOKEN")

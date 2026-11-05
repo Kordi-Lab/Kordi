@@ -67,6 +67,6 @@ mod context_boundary_tests;
 #[cfg(test)]
 mod membership_tests;
 #[cfg(test)]
-mod pool_tests;
+pub(crate) mod pool_tests;
 #[cfg(test)]
 mod sweep_tests;

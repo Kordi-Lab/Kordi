@@ -36,6 +36,13 @@ pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
                     eprintln!("[system-agent] Resource pool settlement failed: {error}");
                 }
             }
+            // Pool worker runs that can no longer finish end within seconds
+            // while a pool has a worker, else about once a minute.
+            if ticks.is_multiple_of(STALE_CHECK_EVERY_TICKS)
+                || crate::pool_workers::any_worker_pool(&state)
+            {
+                crate::pool_workers::expire_runs(&state).await;
+            }
             if ticks.is_multiple_of(PRUNE_EVERY_TICKS) {
                 if let Err(error) = crate::resource_pools::usage::prune(state.db_pool()).await {
                     eprintln!("[system-agent] Resource pool usage pruning failed: {error}");

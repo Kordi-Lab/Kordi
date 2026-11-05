@@ -8,6 +8,7 @@ pub mod memory;
 pub mod model_loop;
 mod omp_job;
 pub mod omp_pool;
+pub mod pool_worker;
 pub mod prompt;
 pub mod runtime;
 pub mod sandbox_client;
