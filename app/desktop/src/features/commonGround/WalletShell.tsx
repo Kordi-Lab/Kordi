@@ -65,16 +65,14 @@ export function WalletShell({ state, store, owner, title, onBack, chip, actions,
   const cards = state.profilesOn ? deckCards(state, owner) : [];
   const page = state.stack[state.stack.length - 1]?.name ?? 'home';
   const onCard = page === 'card';
+  // A built card opens its page; any other card opens Home, where Build shows in place.
   const select = (id: string) => {
     if (id === 'suggested') return;
-    const target = state.profiles.find((item) => item.profileId === id);
+    const built = cards.find((card) => card.id === id)?.face.status === 'built';
     if (id !== state.profileId) void store.selectProfile(id);
     if (page === 'nearby') store.home({ reload: false });
-    else if (onCard && !target?.hasCard) store.back();
-  };
-  const openCard = (id: string) => {
-    if (id !== state.profileId) void store.selectProfile(id);
-    if (!onCard) store.open({ name: 'card' });
+    if (built && (page === 'nearby' || !onCard)) store.open({ name: 'card' });
+    else if (!built && onCard) store.back();
   };
   return (
     <div className="cg-wallet">
@@ -95,7 +93,6 @@ export function WalletShell({ state, store, owner, title, onBack, chip, actions,
             selected={state.profiles.length ? state.profileId : 'suggested'}
             canAdd={state.profiles.length < MAX_PROFILES}
             onSelect={select}
-            onOpen={openCard}
             onNew={() => setCreating(true)}
           />
         ) : null}
