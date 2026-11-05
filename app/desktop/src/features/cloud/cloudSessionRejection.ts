@@ -47,3 +47,8 @@ export function endRejectedCloudSession(token: string): Promise<boolean> {
   ending = { token, promise };
   return promise;
 }
+
+/** Ends the session `token` named when `error` says the server rejected it; other errors are ignored. */
+export function endCloudSessionIfRejected(token: string, error: unknown): void {
+  if (token && isCloudSessionRejected(error)) void endRejectedCloudSession(token).catch(() => undefined);
+}

@@ -25,10 +25,8 @@ import { revokeAppSignIn, type AppSignInResult } from './appSignIn/appSignInClie
 import { useCloudBrowserSignInSession, useCloudSessionKeepAlive, type CloudBrowserSignInSession } from './appSignIn/cloudBrowserSignInSession';
 import { carryCloudAccountEmailVerification, cloudAccountsEqual } from './cloudAccountState';
 import { cloudFetchImpl } from './cloudTransport';
-import { endRejectedCloudSession, isCloudSessionRejected } from './cloudSessionRejection';
-import {
-  isCloudOAuthCancelled,
-} from './cloudOAuthCancellation';
+import { endCloudSessionIfRejected } from './cloudSessionRejection';
+import { isCloudOAuthCancelled } from './cloudOAuthCancellation';
 import { startCloudOAuthSignIn } from './cloudOAuthSignIn';
 import {
   useCloudAccountEmailVerification,
@@ -188,20 +186,15 @@ export function useCloudSession({
     let cancelled = false;
 
     const refreshAccount = async () => {
-      const attempt = { token: '' };
+      let token = '';
       try {
         const stored = await loadSession();
         if (!stored?.token || cancelled) return;
-        attempt.token = stored.token;
-        const next = await authClient.me(stored.token);
+        const next = await authClient.me((token = stored.token));
         if (!cancelled && next.accountId === account.accountId) setAuthenticated(next);
       } catch (caught) {
-        // Profile sync is best-effort so temporary network errors do not kick
-        // users out. A session the server rejects (expired, revoked, or a reset
-        // server) ends once and shows sign-in instead of failing every check.
-        if (!cancelled && attempt.token && isCloudSessionRejected(caught)) {
-          void endRejectedCloudSession(attempt.token).catch(() => undefined);
-        }
+        // Best-effort: network errors keep the session; a rejected one ends once and shows sign-in.
+        if (!cancelled) endCloudSessionIfRejected(token, caught);
       }
     };
 
