@@ -187,6 +187,7 @@ export function MainComposer({
       ) : (
         <ChatWorkspaceControls key={conversation.id} conversation={conversation} disabled={display.activeLiveTurnIsRunning} />
       )}
+      {display.notice}
       <ComposerDropSurface disabled={editingMessage} saveDesktopAttachments={(files) => (
         videoReviews.stage(saveDesktopAttachments(files))
       )}>
