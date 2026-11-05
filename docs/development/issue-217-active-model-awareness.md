@@ -1,6 +1,6 @@
 # Issue #217: Active model awareness in the system prompt
 
-- Issue: [Add active model awareness to the system prompt](https://github.com/Kordi-Lab/Kordi/issues/217)
+- Issue: [Add active model awareness to the system prompt](https://github.com/Kordi-AI/Kordi/issues/217)
 - Status: implemented with automated request-capture and serialization tests. No live provider smoke test has been performed.
 
 ## Problem
@@ -130,7 +130,7 @@ Before broadening the coverage claim, audit direct HTTP request builders and ext
 
 No new model picker, database field, capability registry, automatic tool gating, or per-model behavior is needed. The metadata fallback must not weaken existing errors for missing or invalid runnable models.
 
-The issue's comment references [#106](https://github.com/Kordi-Lab/Kordi/issues/106), which concerns broader participant identity context. Preserve existing identity instructions, but keep this change focused on active model metadata rather than taking on that larger redesign.
+The issue's comment references [#106](https://github.com/Kordi-AI/Kordi/issues/106), which concerns broader participant identity context. Preserve existing identity instructions, but keep this change focused on active model metadata rather than taking on that larger redesign.
 
 ## Validation plan
 

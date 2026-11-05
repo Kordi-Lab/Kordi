@@ -11,8 +11,8 @@ as one runtime or product.
 | `bridges/cloud-server` | Hosted authentication, collaboration, sync, updates, and runner coordination | Kordi Cloud service maintainers | Core Cloud service. Keep independently buildable and deployed. |
 | `bridges/cloud-agent-runner` | Hosted model loop, tools, sandbox policy, and artifact execution | Kordi Cloud service maintainers | Core Cloud service. Keep independently buildable and deployed. |
 | `bridges/cloud-temporal-bridge` | NATS-to-Temporal workflow adapter | Kordi Cloud infrastructure maintainers | Keep in place until its deployment owner and live usage are verified; rename separately if warranted. |
-| `bridges/cli` | Standalone local/P2P daemon and self-hosted coordination client | Kordi-Lab repository maintainers, pending a dedicated standalone-product owner | Retained as an explicit standalone surface. It is not built, bundled, launched, or supported by Kordi Desktop. |
-| `bridges/registry` | Standalone TypeScript node/project registry | Kordi-Lab repository maintainers, pending an external-deployment audit | Archive candidate. Do not remove until external deployments are checked. |
+| `bridges/cli` | Standalone local/P2P daemon and self-hosted coordination client | Kordi-AI repository maintainers, pending a dedicated standalone-product owner | Retained as an explicit standalone surface. It is not built, bundled, launched, or supported by Kordi Desktop. |
+| `bridges/registry` | Standalone TypeScript node/project registry | Kordi-AI repository maintainers, pending an external-deployment audit | Archive candidate. Do not remove until external deployments are checked. |
 | `bridges/skills/bridges` | Instructions for runtimes using the standalone CLI | Same owner and lifecycle as `bridges/cli` | Retained for the standalone surface only; not a Desktop dependency. |
 
 No removal or support promise for the standalone network is implied by this
