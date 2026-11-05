@@ -59,6 +59,15 @@ if [[ "$healthy" != "true" ]]; then
   exit 1
 fi
 
+# Bucket creation, multipart upload, presigned download, and private access,
+# checked with the stack's mc image in a temporary bucket that is then removed.
+if ! "${compose[@]}" run --rm --no-deps -T --entrypoint /bin/sh \
+  -e S3_ENDPOINT=http://minio:9000 minio-init -s <"$repo_root/deploy/minio/object-store-smoke.sh"; then
+  echo "[kordi-debug] Object storage smoke check failed" >&2
+  "${compose[@]}" logs --tail=120 minio >&2
+  exit 1
+fi
+
 for provider in GITHUB GOOGLE; do
   provider_command="$(printf '%s' "$provider" | tr '[:upper:]' '[:lower:]')"
   if grep -Eq "^KORDI_OAUTH_${provider}_CLIENT_ID=.+" "$env_file" \

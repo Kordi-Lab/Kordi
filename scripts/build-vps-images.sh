@@ -20,17 +20,25 @@ for service in cloud-server cloud-agent-runner omp-route-worker; do
     --tag "docker.io/library/kordi-$service:$sha" \
     --output "type=oci,dest=$output/$service.oci.tar" --file "$dockerfile" .
 done
+# MinIO no longer publishes its release images; build the pinned releases from
+# source. minio.yaml references these tags with imagePullPolicy: Never.
+docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
+  --tag docker.io/library/kordi-minio:RELEASE.2024-12-18T13-15-44Z \
+  --output "type=oci,dest=$output/minio.oci.tar" --file deploy/minio/Dockerfile.server deploy/minio
+docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
+  --tag docker.io/library/kordi-minio-mc:RELEASE.2024-11-21T17-21-54Z \
+  --output "type=oci,dest=$output/minio-mc.oci.tar" --file deploy/minio/Dockerfile.client deploy/minio
 python3 - "$output" "$sha" <<'PY'
 import hashlib, json, pathlib, sys
 root, sha = pathlib.Path(sys.argv[1]), sys.argv[2]
 images = {service: f"docker.io/library/kordi-{service}:{sha}"
           for service in ("cloud-server", "cloud-agent-runner", "omp-route-worker")}
 checksums = {}
-for service in images:
+for service in (*images, "minio", "minio-mc"):
     path = root / f"{service}.oci.tar"
     with path.open("rb") as stream:
         checksums[path.name] = hashlib.file_digest(stream, "sha256").hexdigest()
 (root / "images.json").write_text(json.dumps(images, indent=2) + "\n")
 (root / "SHA256SUMS").write_text("".join(f"{digest}  {name}\n" for name, digest in checksums.items()))
 PY
-echo 'Built Linux amd64 image archives, images.json, and SHA256SUMS.'
+echo 'Built Linux amd64 application and MinIO image archives, images.json, and SHA256SUMS.'

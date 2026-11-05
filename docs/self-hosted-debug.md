@@ -70,12 +70,13 @@ pnpm install --frozen-lockfile
 pnpm debug:cloud:up
 ```
 
-The first backend build compiles the Rust server and can take several minutes. The helper:
+The first backend build compiles the Rust server and MinIO and can take several minutes. MinIO is built from source because its release images are no longer published; see [MinIO images built from source](../deploy/minio/README.md). The helper:
 
 1. Generates random local credentials in `deploy/dev/.env` if the file does not exist.
-2. Builds the server from the current checkout.
+2. Builds the server and the MinIO images from the current checkout.
 3. Starts the dependency containers.
 4. Waits for the API health check.
+5. Checks object storage: bucket creation, a multipart upload, a presigned download, and private access, in a temporary bucket that it removes.
 
 Expected health endpoint:
 

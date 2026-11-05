@@ -52,6 +52,12 @@ normal offline check until the reviewed data is regenerated.
   Before building a Temporal image from its smaller context, run
   `node scripts/licenses.mjs stage bridges/cloud-temporal-bridge/licenses`.
   The legacy bridge-only Docker build similarly needs `bridges/licenses`.
+- MinIO service images: `deploy/minio` builds MinIO and mc (AGPL-3.0-or-later)
+  from the commits pinned by each Dockerfile's `*_MODULE` argument. The images
+  carry the upstream `LICENSE`, `NOTICE` and `CREDITS` under
+  `/usr/share/licenses`. `pnpm licenses:refresh` records the exact source
+  commits as `container` entries, and the catalog goes stale when a Dockerfile
+  changes. AGPL is accepted only for these separate images.
 
 `node scripts/licenses.mjs verify <extracted-license-directory>` checks every
 required file against the reviewed source data. Verify extracted signed app,
