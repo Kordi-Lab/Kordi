@@ -182,7 +182,8 @@ const nextConfig = {
     },
     windows: (baseConfig.app?.windows ?? []).map((window, index) => (
       index === 0
-        ? { ...window, title }
+        // Preview pages do not run the sign-in gate that shows the hidden window.
+        ? { ...window, title, ...(process.env.KORDI_DEV_PREVIEW_PATH ? { visible: true } : {}) }
         : window
     )),
   },

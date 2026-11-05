@@ -122,12 +122,55 @@ function listenForAuthWindowCrop() {
   })).catch(() => { authWindowCropListening = false; });
 }
 
+// The main window starts hidden (tauri.conf.json), so its bare frame never
+// shows before the first screen paints. A reload (account switch, update
+// relaunch, a dock click during load) may find it on screen already, so the
+// page asks the native window instead of assuming. `null` means not known yet.
+let mainWindowShown: boolean | null = null;
+let mainWindowShownProbe: Promise<boolean> | undefined;
+
+/** Whether the main window is known to be on screen; always true outside the native shell. */
+export function isMainWindowShown() {
+  return mainWindowShown === true || !isTauriRuntime();
+}
+
+/** Reads whether the main window is on screen, asking the native window once. */
+export function readMainWindowShown(): Promise<boolean> {
+  if (!isTauriRuntime()) return Promise.resolve(true);
+  if (mainWindowShown !== null) return Promise.resolve(mainWindowShown);
+  mainWindowShownProbe ??= import('@tauri-apps/api/window')
+    .then(({ getCurrentWindow }) => getCurrentWindow().isVisible())
+    // Unknown: take the hidden path; showing the window again is harmless.
+    .catch(() => false)
+    .then(visible => (mainWindowShown ??= visible));
+  return mainWindowShownProbe;
+}
+
+export async function showMainWindow() {
+  await readMainWindowShown();
+  if (isMainWindowShown()) return;
+  mainWindowShown = true;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('desktop_reveal_main_window');
+  } catch {
+    // The native side shows the window on its own after a delay.
+  }
+}
+
+/** `null` makes the next read ask the native window. */
+export function __setMainWindowShownForTests(shown: boolean | null) {
+  mainWindowShown = shown;
+  mainWindowShownProbe = undefined;
+}
+
 const resizeNativeWindow = createWindowSizeCoordinator(async (surface: CloudGateSurface | 'main') => {
   listenForAuthWindowCrop();
   const { invoke } = await import('@tauri-apps/api/core');
   const crop = await invoke<AuthWindowCrop | undefined>('desktop_set_auth_window_surface', {
     surface,
-    animate: !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+    // A hidden window takes its first size at once.
+    animate: isMainWindowShown() && !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
   });
   applyAuthWindowCrop(crop);
 });
