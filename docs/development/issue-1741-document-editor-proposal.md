@@ -1,6 +1,6 @@
 # Issue 1741: document editor proposal
 
-Status: proposal, 2026-10-12, after the live test of the shared-document reader on the Mac. Tracks [#1741](https://github.com/Kordi-Lab/Kordi/issues/1741).
+Status: proposal, 2026-10-12, after the live test of the shared-document reader on the Mac. Tracks [#1741](https://github.com/Kordi-AI/Kordi/issues/1741).
 
 ## What the live test showed
 

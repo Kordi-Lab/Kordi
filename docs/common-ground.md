@@ -2,7 +2,7 @@
 
 Common ground helps people at an event find who to talk to. Your agent writes an interest card from sources you choose. People meet by **tapping phones** (one to one) or by entering the same **4-digit room code** (a whole room at once), and the agent shows what they share and what each can offer the other.
 
-This document is the UX and UI design for iOS and macOS. It is tracked in [#1847](https://github.com/Kordi-Lab/Kordi/issues/1847). The interactive design preview is in `docs/design-previews/common-ground/`. The algorithm and its evaluation are in `experiments/common-ground-lab/`.
+This document is the UX and UI design for iOS and macOS. It is tracked in [#1847](https://github.com/Kordi-AI/Kordi/issues/1847). The interactive design preview is in `docs/design-previews/common-ground/`. The algorithm and its evaluation are in `experiments/common-ground-lab/`.
 
 ## Principles
 
