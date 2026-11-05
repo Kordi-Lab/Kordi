@@ -236,6 +236,19 @@ test('isolated desktop profiles initialize native Cloud account storage', () => 
       /https:\/\/kordi\.ai/i,
       'isolated dev profiles must not retain a production updater endpoint',
     );
+    assert.equal(generatedConfig.app.windows[0].visible, false, 'the sign-in gate shows the main window after its first paint');
+
+    const preview = spawnSync(
+      process.execPath,
+      [scriptPath, '--dry-run', '--profile', profile, '--port', port],
+      { cwd: repoRoot, env: { ...env, KORDI_DEV_PREVIEW_PATH: '/tests/visual/browserSignIn.html' }, encoding: 'utf8' },
+    );
+    assert.equal(preview.status, 0, preview.stderr);
+    assert.equal(
+      JSON.parse(readFileSync(generatedConfigPath, 'utf8')).app.windows[0].visible,
+      true,
+      'preview pages do not run the gate, so their window starts visible',
+    );
 
     const rejected = spawnSync(
       process.execPath,
