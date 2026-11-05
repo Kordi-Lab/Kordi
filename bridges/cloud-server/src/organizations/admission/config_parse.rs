@@ -18,6 +18,12 @@ pub(super) fn organization(
     let display_name = text(&org.display_name, 120, &format!("{at}.displayName"))?;
     let pool = optional_id(org.pool, &format!("{at}.pool"))?;
     let target_pool = optional_id(org.target_pool, &format!("{at}.targetPool"))?;
+    let covers_members_personal_work = org.covers_members_personal_work.unwrap_or(false);
+    if covers_members_personal_work && pool.is_none() {
+        return Err(format!(
+            "{at}.coversMembersPersonalWork needs a pool; the default pool already serves personal work"
+        ));
+    }
     let admission = org.admission;
     if admission.claimed_domains.len() > MAX_DOMAINS {
         return Err(format!(
@@ -68,6 +74,7 @@ pub(super) fn organization(
         state: org.state,
         pool,
         target_pool,
+        covers_members_personal_work,
         claim: DomainClaim {
             domains: admission.claimed_domains,
             domain_match: admission.domain_match,

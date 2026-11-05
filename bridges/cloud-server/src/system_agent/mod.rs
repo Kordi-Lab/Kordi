@@ -65,6 +65,8 @@ mod card_update_tests;
 #[cfg(test)]
 mod context_boundary_tests;
 #[cfg(test)]
+mod coverage_tests;
+#[cfg(test)]
 mod membership_tests;
 #[cfg(test)]
 pub(crate) mod pool_tests;

@@ -9,7 +9,7 @@ use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
 use crate::resource_pools::usage::{self, Settlement};
-use crate::resource_pools::Feature;
+use crate::resource_pools::{coverage, Feature};
 
 /// Every Common ground run id starts with this.
 pub const RUN_PREFIX: &str = "cg_";
@@ -68,7 +68,10 @@ pub(super) async fn insert(
     if !pools.admits(organization_id.as_deref()) {
         return Ok(false);
     }
-    let pool = pools.resolve(organization_id.as_deref());
+    // A member's personal work may be covered by an organization's pool.
+    let sightings = service.resource_pool_registry().worker_sightings();
+    let pool = coverage::route(tx, &pools, sightings, organization_id.as_deref()).await?;
+    let pool = &pool;
     let admission = usage::reserve(
         tx,
         &usage::Request {

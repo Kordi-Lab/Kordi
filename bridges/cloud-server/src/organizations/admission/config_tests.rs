@@ -218,3 +218,20 @@ fn subdomain_claims_on_public_suffixes_warn() {
     assert!(admission.warnings[0].contains("ac.test"));
     assert!(parse(&sample_file("x"), "[]").unwrap().warnings.is_empty());
 }
+
+#[test]
+fn covering_members_personal_work_is_optional_and_needs_a_pool() {
+    let admission = parse(&sample_file("example-team"), "[]").unwrap();
+    assert!(!admission.organizations[0].covers_members_personal_work);
+    let covering = super::super::test_support::organization(|org| {
+        org["coversMembersPersonalWork"] = json!(true);
+    });
+    assert!(covering.covers_members_personal_work);
+    rejects(
+        |file| {
+            file["organizations"][0]["coversMembersPersonalWork"] = json!(true);
+            file["organizations"][0]["pool"] = json!(null);
+        },
+        "coversMembersPersonalWork needs a pool",
+    );
+}

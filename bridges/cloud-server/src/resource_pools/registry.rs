@@ -48,6 +48,8 @@ struct Inner {
     /// The pools built from environment settings, used when there is no pool
     /// file.
     base: Option<ResourcePools>,
+    /// When each pool's worker last asked for a run; kept across reloads.
+    sightings: super::coverage::WorkerSightings,
     state: Mutex<ReloadState>,
 }
 
@@ -108,6 +110,7 @@ impl ResourcePoolRegistry {
                 pool_file,
                 organizations_file,
                 base,
+                sightings: Default::default(),
                 state: Mutex::new(ReloadState {
                     fingerprint,
                     ..ReloadState::default()
@@ -123,6 +126,11 @@ impl ResourcePoolRegistry {
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
+    }
+
+    /// When pool workers were last seen, for routing covered work.
+    pub fn worker_sightings(&self) -> &super::coverage::WorkerSightings {
+        &self.inner.sightings
     }
 
     /// Swaps in `pools` directly, as a reload would.
@@ -205,7 +213,16 @@ impl ResourcePoolRegistry {
             }
         };
         let (bindings, blocked, unresolved) = apply_found(&configured, &found);
-        let pools = Arc::new(pools.with_bindings(bindings)?.with_blocked(blocked));
+        let covering = configured
+            .covering
+            .iter()
+            .filter_map(|config_id| found.iter().find(|(id, _)| id == config_id))
+            .map(|(_, organization_id)| organization_id.clone());
+        let pools = pools
+            .with_bindings(bindings)?
+            .with_blocked(blocked)
+            .with_covering(covering);
+        let pools = Arc::new(pools);
         *self
             .inner
             .current

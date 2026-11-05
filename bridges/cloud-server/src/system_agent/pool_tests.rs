@@ -82,7 +82,10 @@ pub(crate) async fn sweep(pool: &PgPool, config: &super::SystemAgentConfig) -> u
 }
 
 /// (run id, pool in its route, organization) of each System agent run.
-async fn runs_in(pool: &PgPool, chat: Uuid) -> Vec<(String, Option<String>, Option<String>)> {
+pub(crate) async fn runs_in(
+    pool: &PgPool,
+    chat: Uuid,
+) -> Vec<(String, Option<String>, Option<String>)> {
     query_as(
         "SELECT run.run_id, run.runtime_route_json->>'resourcePool', run.organization_id
          FROM cloud_agent_fallback_runs run

@@ -3,7 +3,8 @@
 //! The organizations file (`KORDI_ORGANIZATIONS_FILE`) configures team
 //! organizations by a configuration id, and names the pool each one is bound
 //! to. Admission owns the rest of that file; pools read only
-//! `organizations[].id`, `organizations[].pool`, `organizations[].state` and
+//! `organizations[].id`, `organizations[].pool`, `organizations[].state`,
+//! `organizations[].coversMembersPersonalWork` and
 //! `personalOrganizations.pool`, and ignore every other field, so the file can
 //! grow without breaking pools. A configuration id becomes an organization id
 //! once the organization exists on this server
@@ -29,6 +30,9 @@ pub struct ConfiguredBindings {
     pub personal_pool: Option<String>,
     /// Configuration ids of disabled organizations: their work is refused.
     pub disabled: Vec<String>,
+    /// Configuration ids of bound organizations whose pool also serves their
+    /// members' personal work (see [`super::coverage`]).
+    pub covering: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -53,6 +57,8 @@ struct OrganizationEntry {
     state: Option<String>,
     #[serde(default)]
     pool: Option<String>,
+    #[serde(default, rename = "coversMembersPersonalWork")]
+    covers_members_personal_work: Option<bool>,
 }
 
 pub(super) fn path_from_env() -> Option<String> {
@@ -116,6 +122,13 @@ pub(super) fn parse(text: &str) -> Result<ConfiguredBindings, ResourcePoolConfig
             bindings
                 .organizations
                 .push((id.to_string(), pool.trim().to_string()));
+            if entry.covers_members_personal_work == Some(true) {
+                bindings.covering.push(id.to_string());
+            }
+        } else if entry.covers_members_personal_work == Some(true) {
+            return Err(ResourcePoolConfigError::new(format!(
+                "organization \"{id}\" sets coversMembersPersonalWork without a pool"
+            )));
         }
     }
     Ok(bindings)

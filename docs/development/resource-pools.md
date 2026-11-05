@@ -158,6 +158,7 @@ and ignore every other field:
 | `organizations[].id` | The organization's configuration id. |
 | `organizations[].pool` | The pool it is bound to, or `null` for the default pool. |
 | `organizations[].state` | `disabled`: the organization's System agent and Grounding work is refused. |
+| `organizations[].coversMembersPersonalWork` | Optional, default `false`. `true`: the organization's pool also serves its members' personal work; see [Members' personal work](#members-personal-work). Needs a `pool`. |
 | `personalOrganizations.pool` | Must equal `defaultPool` when set. |
 
 A configuration id binds once the organization exists on this server
@@ -206,6 +207,59 @@ echoed. The startup log lists each pool's id and limits only.
   organization, since there is no organization selection yet.
 - An organization no pool lists, and a record without an organization, use
   the default pool.
+- Work charged to a personal organization may instead use the pool of an
+  organization that covers its owner; see
+  [Members' personal work](#members-personal-work).
+
+### Members' personal work
+
+An organization of the organizations file that sets
+`"coversMembersPersonalWork": true`, is bound to a pool, and is not
+`disabled` lets that pool also pay for and run its members' personal work:
+
+- A System agent pass in a conversation whose organization is a personal
+  organization uses the covering pool when the conversation's owner (the
+  account the personal organization belongs to) is a current member of the
+  covering organization. Other participants' memberships do not count.
+- A Grounding run charged to the requester's personal organization (every
+  run without a conversation or a named team, and a group intro in a
+  personal conversation, whose owner decides) uses the covering pool on the
+  same rule.
+- A current member is one whose membership has no `expires_at` or one in the
+  future, as for every other membership check. A lapsed or removed
+  membership stops coverage at once.
+- When the owner belongs to several covering organizations, the one they
+  joined first (`joined_at`, then organization id) serves.
+- A personal organization that a pool file binds explicitly keeps that
+  binding.
+
+Members are never left without replies: a covering pool that cannot take a
+run now is skipped for the next covering organization, then the default
+pool. A pool cannot take a run when it is `stopped`, or when it is a
+`pool_worker` pool whose worker has not asked for a run (a lease request)
+within the last two minutes. The server notes each authenticated lease
+request in memory; after a restart a pool worker pool counts as unseen until
+its worker's next lease request, which a running worker makes every poll
+interval. Work in the covering organization's own conversations has no such
+fallback, as before.
+
+A covered run counts against the covering pool's limits
+(`systemAgentRunsPerConversationPerDay` per conversation,
+`groundingRunsPerPersonPerDay` per member, and the pool-wide limits). A
+used-up limit is not a reason to fall back: the System agent stays silent
+and Grounding answers as for any exhausted pool. The run's `organization_id`
+and its reservation's `organization_id` remain the personal organization;
+the reservation's `pool_id`, the run's `resourcePool` and the usage counters
+name the covering pool, so usage per pool includes covered runs. The server
+has no usage screen per organization yet.
+
+When the covering pool's worker leases a covered run, the run's owner must
+still be covered by that pool; otherwise the run fails with
+`pool_binding_changed`, as for a rebound organization. The flag is read on
+every reload, so turning it off takes effect within seconds; runs already
+queued for the covering pool's worker then fail at lease time.
+
+### Run routes
 
 The pool id is stored on the run (`runtime_route_json.resourcePool`) together
 with the provider and model, and the run's `organization_id` is set to the
@@ -259,8 +313,8 @@ issues a new one-time lease token, stored only as its SHA-256 hash, which
 every later call for the run must present together with the pool and worker
 id. Completing or failing the run spends the token, so a replayed call and a
 run taken over after its lease expired are refused. When a run is leased,
-its organization must still resolve to the worker's pool and must not be
-disabled; otherwise it fails (`pool_binding_changed`,
+its organization must still resolve to the worker's pool (directly, or by
+covering its owner) and must not be disabled; otherwise it fails (`pool_binding_changed`,
 `organization_disabled`) instead.
 
 Runs that cannot finish fail, so a conversation or member is never left
@@ -352,10 +406,11 @@ once the run ends).
 Unit tests cover file parsing and validation (formats 1 and 2), pool
 resolution, the per-pool credential a runner receives, identity token checks,
 reloading (a valid change swaps in, an invalid one is rejected, the stop
-switch), and (in the runner) the request shape sent to an OpenAI-compatible
+switch, the covering flag), coverage of members' personal work (membership
+and expiry, availability fallback, the first joined organization), and (in the runner) the request shape sent to an OpenAI-compatible
 endpoint and the pool worker's client, credentials and run loop. Database tests are ignored by default and need a
 task-owned PostgreSQL in `DATABASE_URL`:
 
 ```bash
-DATABASE_URL=postgres://... cargo test -p kordi-cloud-server --lib -- resource_pools system_agent::pool_tests common_ground::runs pool_workers --include-ignored --test-threads=1
+DATABASE_URL=postgres://... cargo test -p kordi-cloud-server --lib -- resource_pools system_agent::pool_tests system_agent::coverage_tests common_ground::runs pool_workers --include-ignored --test-threads=1
 ```

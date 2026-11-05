@@ -104,6 +104,8 @@ struct OrganizationFile {
     state: OrganizationState,
     pool: Option<String>,
     target_pool: Option<String>,
+    /// Optional; defaults to false. Read by resource pools.
+    covers_members_personal_work: Option<bool>,
     admission: AdmissionFile,
     membership: MembershipPolicy,
     admins_env: Option<String>,
@@ -201,6 +203,9 @@ pub struct ConfiguredOrganization {
     pub state: OrganizationState,
     pub pool: Option<String>,
     pub target_pool: Option<String>,
+    /// The pool also serves members' personal System agent and Grounding
+    /// work (`resource_pools::coverage`).
+    pub covers_members_personal_work: bool,
     pub claim: DomainClaim,
     pub auto_join_methods: Vec<SignInMethod>,
     pub reverify_interval_months: Option<u32>,

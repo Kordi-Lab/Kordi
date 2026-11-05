@@ -374,3 +374,48 @@ fn two_pools_cannot_accept_the_same_worker() {
         "{error}"
     );
 }
+
+#[tokio::test]
+async fn covering_follows_the_organizations_file_across_reloads() {
+    let file = TempFile::new("pools.json");
+    file.write(&pool_file(false, "model").to_string());
+    let organizations = TempFile::new("organizations.json");
+    let write = |covers: Value| {
+        organizations.write(
+            &json!({"organizations": [
+                {"id": "team-a", "state": "active", "pool": "partner", "coversMembersPersonalWork": covers},
+                {"id": "team-b", "state": "disabled", "pool": "partner", "coversMembersPersonalWork": true}
+            ]})
+            .to_string(),
+        )
+    };
+    write(json!(true));
+    let registry = registry_for(&file, Some(&organizations));
+    registry.lock_state().found = vec![
+        ("team-a".to_string(), "org_team_a".to_string()),
+        ("team-b".to_string(), "org_team_b".to_string()),
+    ];
+    registry.worker_sightings().note("partner");
+    let pools = registry.reload_with(&offline_db(), env).await.unwrap();
+    // A disabled organization covers nobody.
+    assert_eq!(
+        pools.covering_organizations(),
+        vec!["org_team_a".to_string()]
+    );
+    write(json!(false));
+    let pools = registry.reload_with(&offline_db(), env).await.unwrap();
+    assert!(pools.covering_organizations().is_empty());
+    assert!(
+        registry
+            .worker_sightings()
+            .seen_within("partner", super::super::coverage::WORKER_SEEN_WINDOW),
+        "worker sightings survive a reload"
+    );
+    // Covering needs a pool to cover with.
+    let error = organizations::parse(
+        &json!({"organizations": [{"id": "team-c", "pool": null, "coversMembersPersonalWork": true}]})
+            .to_string(),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("without a pool"), "{error}");
+}

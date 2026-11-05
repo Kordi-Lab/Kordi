@@ -2,6 +2,12 @@ use std::collections::BTreeMap;
 
 use super::*;
 
+pub(crate) fn test_provider(model: &str) -> PoolProvider {
+    PoolProvider::new(
+        SystemAgentProviderAuth::openai_api_key("synthetic-key", model).expect("synthetic key"),
+    )
+}
+
 /// A default pool through a gateway with attribution headers, a pool bound to
 /// one organization, and a stopped pool bound to another.
 pub(crate) fn sample_pools(limits: PoolLimits) -> ResourcePools {

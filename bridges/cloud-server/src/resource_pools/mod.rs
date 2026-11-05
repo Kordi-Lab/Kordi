@@ -22,6 +22,7 @@ use std::fmt;
 use crate::system_agent::SystemAgentProviderAuth;
 
 mod config;
+pub mod coverage;
 mod organizations;
 pub mod registry;
 pub mod usage;
@@ -339,6 +340,8 @@ pub struct ResourcePools {
     /// Organizations whose configuration disables them: no pool admits
     /// their work.
     blocked: HashSet<String>,
+    /// Organizations whose pool also covers members' personal work.
+    covering: HashSet<String>,
 }
 
 impl ResourcePools {
@@ -350,6 +353,7 @@ impl ResourcePools {
             default_index: 0,
             bindings: HashMap::new(),
             blocked: HashSet::new(),
+            covering: HashSet::new(),
         }
     }
 
@@ -394,6 +398,7 @@ impl ResourcePools {
             default_index,
             bindings: bound,
             blocked: HashSet::new(),
+            covering: HashSet::new(),
         })
     }
 
@@ -484,11 +489,6 @@ impl ResourcePools {
 }
 
 #[cfg(test)]
-pub(crate) fn test_provider(model: &str) -> PoolProvider {
-    PoolProvider::new(
-        SystemAgentProviderAuth::openai_api_key("synthetic-key", model).expect("synthetic key"),
-    )
-}
-
-#[cfg(test)]
 pub(crate) mod tests;
+#[cfg(test)]
+pub(crate) use tests::test_provider;

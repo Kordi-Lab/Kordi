@@ -1,7 +1,8 @@
 //! Resource pool admission for System agent passes.
 //!
 //! A pass is admitted against the pool of the conversation's organization
-//! before its run is queued. When the pool's daily limit is used up, or its
+//! (or, in a personal conversation, the pool of an organization that covers
+//! its owner; see `resource_pools::coverage`) before its run is queued. When the pool's daily limit is used up, or its
 //! emergency stop is on, the System agent stays silent: nothing is queued,
 //! the messages and due reminders it would have answered are marked as seen,
 //! and nothing is replayed when the next day starts.
@@ -16,7 +17,7 @@ use super::cards::mark_card_seen;
 use super::config::SystemAgentConfig;
 use super::input::Candidate;
 use crate::resource_pools::usage::{self, Admission};
-use crate::resource_pools::{Feature, ResourcePool};
+use crate::resource_pools::{coverage, Feature, ResourcePool};
 
 /// The pool that serves a conversation, the organization it belongs to, and
 /// whether that organization's work may run at all (a disabled organization's
@@ -34,7 +35,8 @@ pub(super) async fn pool_for(
     .await?
     .flatten();
     let pools = config.resource_pools();
-    let pool = pools.resolve(organization_id.as_deref()).clone();
+    let sightings = config.resource_pool_registry().worker_sightings();
+    let pool = coverage::route(tx, &pools, sightings, organization_id.as_deref()).await?;
     let admits = pools.admits(organization_id.as_deref());
     Ok((pool, organization_id, admits))
 }

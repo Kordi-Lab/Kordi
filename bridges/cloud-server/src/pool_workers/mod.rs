@@ -244,6 +244,11 @@ async fn lease(
         Ok(auth) => auth,
         Err(response) => return *response,
     };
+    // The worker is running: covered members' work may route to its pool.
+    if let Some(system_agent) = state.system_agent() {
+        let registry = system_agent.config().resource_pool_registry();
+        registry.worker_sightings().note(auth.pool.id());
+    }
     if auth.pool.is_stopped() {
         return pool_stopped();
     }

@@ -25,6 +25,7 @@ limit falls back to a bounded server default, never to unlimited.
 | `displayName` | Organization name, at most 120 characters; updated on every start. |
 | `state` | `disabled`: no domain claim, no auto-join, no join requests. `interim` and `active`: admission works. |
 | `pool`, `targetPool` | Pool bindings, carried for pool work. Admission does not read them, and does not enforce that work bound to a missing pool is rejected: that belongs to the resource pool and pool worker changes. |
+| `coversMembersPersonalWork` | Optional, default `false`. `true` lets the organization's pool also serve its members' personal System agent and Grounding work; it needs a `pool`. See [Members' personal work](resource-pools.md#members-personal-work). |
 | `admission.claimedDomains` | Lowercase domains, at most 20. |
 | `admission.domainMatch` | `exact` (the domain only) or `subdomains` (the domain and its subdomains; lookalike domains never match). |
 | `admission.requireGoogleHostedDomain` | Google sign-in also needs the ID token's `hd` in a claimed domain. |

@@ -20,7 +20,7 @@ use sqlx_core::query_scalar::query_scalar;
 use sqlx_core::transaction::Transaction;
 use sqlx_postgres::{PgPool, Postgres};
 
-use crate::resource_pools::{Executor, Feature, ResourcePool, ResourcePools};
+use crate::resource_pools::{coverage, Executor, Feature, ResourcePool, ResourcePools};
 
 /// A lease lasts this long unless the worker renews it.
 pub const LEASE_SECONDS: i64 = 120;
@@ -84,8 +84,9 @@ pub struct LeasedRun {
 type Candidate = (String, String, Option<String>);
 
 /// Leases the oldest run of `pool_id` for `worker_id`. A run whose
-/// organization is no longer bound to this pool (the bindings changed after
-/// it was queued, or its tag is wrong), or whose organization is disabled,
+/// organization is no longer served by this pool (the bindings or the
+/// owner's covering membership changed after it was queued, or its tag is
+/// wrong), or whose organization is disabled,
 /// fails instead of reaching this worker.
 pub async fn lease(
     db: &PgPool,
@@ -121,7 +122,7 @@ pub async fn lease(
         let organization = organization_id.as_deref();
         let refusal = if !pools.admits(organization) {
             Some("organization_disabled")
-        } else if pools.resolve(organization).id() != pool_id {
+        } else if !coverage::serves(&mut tx, pools, organization, pool_id).await? {
             Some("pool_binding_changed")
         } else {
             None

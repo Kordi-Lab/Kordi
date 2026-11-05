@@ -264,3 +264,43 @@ async fn grounding_runs_of_a_worker_pool_are_tagged_for_its_worker() {
             .unwrap();
     assert_eq!(status, "failed");
 }
+
+#[tokio::test]
+#[ignore = "requires a task-owned PostgreSQL database in DATABASE_URL"]
+async fn a_covered_members_grounding_runs_use_the_sponsor_pool() {
+    use crate::resource_pools::coverage::tests::{join, personal_organization, sponsored};
+    let pool = test_db().await;
+    let suffix = Uuid::new_v4().simple().to_string();
+    let [service, owner, member, outsider] =
+        ["service", "owner", "member", "outsider"].map(|name| format!("{name}-{suffix}"));
+    for account in [&service, &owner, &member, &outsider] {
+        seed_account(&pool, account).await;
+    }
+    let sponsor = crate::system_agent::pool_tests::team(&pool, &owner).await;
+    join(&pool, &sponsor, &member, None).await;
+    let sponsor_pool = format!("sponsor-{suffix}");
+    let pools = sponsored(
+        &sponsor,
+        ResourcePool::new(sponsor_pool.clone(), test_provider("sponsor-model")),
+        true,
+    );
+    let mut config = crate::system_agent::test_config(&service);
+    config.resource_pools = crate::resource_pools::ResourcePoolRegistry::new(pools);
+
+    let personal = personal_organization(&pool, &member).await;
+    // Background work names no organization; a request may name the
+    // personal one.
+    for named in [None, Some(personal.as_str())] {
+        let (run, queued) = queue_in(&pool, &config, &member, None, named).await;
+        assert!(queued);
+        let (route_pool, model, organization) = route_of(&pool, &run).await.unwrap();
+        assert_eq!(
+            (route_pool.as_str(), model.as_str()),
+            (sponsor_pool.as_str(), "sponsor-model")
+        );
+        assert_eq!(organization.as_deref(), Some(personal.as_str()));
+    }
+    let (run, queued) = queue(&pool, &config, &outsider, None).await;
+    assert!(queued);
+    assert_eq!(route_of(&pool, &run).await.unwrap().0, "shared");
+}
