@@ -18,16 +18,19 @@ const GATE_DRAG_STYLE = {
   WebkitAppRegion: 'drag',
 } as const;
 
+// Keys that move focus or press the focused control.
+const KEYBOARD_FOCUS_KEYS = new Set(['Tab', 'Enter', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+
 /**
- * Whether the person is moving focus with the keyboard. Opening the window
- * focuses the first button without any key press; WebKit treats that focus
- * as visible, so rings wait for Tab and hide again on a click.
+ * Whether the person is using the keyboard. Opening the window focuses the
+ * first button without any key press; WebKit treats that focus as visible,
+ * so rings wait for a navigation key and hide again on a click.
  */
 function useKeyboardFocus() {
   const [keyboard, setKeyboard] = useState(false);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Tab') setKeyboard(true);
+      if (KEYBOARD_FOCUS_KEYS.has(event.key)) setKeyboard(true);
     };
     const onPointerDown = () => setKeyboard(false);
     document.addEventListener('keydown', onKeyDown, true);

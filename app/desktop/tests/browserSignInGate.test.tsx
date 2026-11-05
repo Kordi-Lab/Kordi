@@ -239,3 +239,21 @@ test('the gate reports whether browser sign-in or the in-app form is showing', a
     assert.equal(reports.at(-1), false, 'the in-app form takes its own window size');
   });
 });
+
+test('focus rings follow the keyboard, not the opening focus or a click', async () => {
+  await withDom(async (root) => {
+    const fake = fakeSession();
+    await render(root, fake.session);
+    await settle();
+    const frame = () => document.querySelector('.app-cloud-browser-signin')?.hasAttribute('data-keyboard-focus');
+    assert.equal(frame(), false, 'opening the window draws no ring');
+    for (const key of ['Tab', 'Enter', ' ', 'ArrowDown']) {
+      await act(async () => { document.dispatchEvent(new window.KeyboardEvent('keydown', { key })); });
+      assert.equal(frame(), true, `${JSON.stringify(key)} shows the ring`);
+      await act(async () => { document.dispatchEvent(new window.Event('pointerdown')); });
+      assert.equal(frame(), false, 'a click hides the ring');
+    }
+    await act(async () => { document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'a' })); });
+    assert.equal(frame(), false, 'typing does not show the ring');
+  });
+});
