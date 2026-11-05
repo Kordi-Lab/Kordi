@@ -31,7 +31,7 @@ use crate::server::ServerState;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct OpenRequest {
+pub(super) struct OpenRequest {
     request_id: String,
     status: String,
     created_at: String,
@@ -118,19 +118,30 @@ async fn load_facts(
     Ok((facts, join_request))
 }
 
+/// The caller's current facts. A membership past its verification ends
+/// before it is shown; reads write only then, and the hourly sweep handles
+/// everyone else.
+pub(super) async fn current_facts(
+    pool: &PgPool,
+    org: &ConfiguredOrganization,
+    account_id: &str,
+    now: DateTime<Utc>,
+) -> Result<(CallerFacts, Option<OpenRequest>), sqlx_core::Error> {
+    let (facts, join_request) = load_facts(pool, org, account_id).await?;
+    if !is_due(org, &facts, now) {
+        return Ok((facts, join_request));
+    }
+    expire_due(pool, org, Some(account_id)).await?;
+    load_facts(pool, org, account_id).await
+}
+
 async fn configured_view<'a>(
     pool: &PgPool,
     org: &'a ConfiguredOrganization,
     account_id: &str,
 ) -> Result<ConfiguredView<'a>, sqlx_core::Error> {
     let now = Utc::now();
-    let (mut facts, mut join_request) = load_facts(pool, org, account_id).await?;
-    // A membership past its verification ends before it is shown; reads
-    // write only then, and the hourly sweep handles everyone else.
-    if is_due(org, &facts, now) {
-        expire_due(pool, org, Some(account_id)).await?;
-        (facts, join_request) = load_facts(pool, org, account_id).await?;
-    }
+    let (facts, join_request) = current_facts(pool, org, account_id, now).await?;
     let caller = caller_state(org, &facts, now);
     Ok(ConfiguredView {
         id: &org.id,

@@ -1,0 +1,39 @@
+/* "Find your organization": the join dialog opened after sign-in and from Settings › Account. */
+.org-join-dialog { width: min(400px, calc(100vw - 32px)); max-width: none; padding: 18px; border-radius: 14px; color: var(--app-transient-text); }
+.org-join-heading { display: flex; align-items: center; gap: 10px; }
+.org-join-heading h2 { flex: 1; margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+.org-join-heading h2:focus-visible { outline: none; }
+.org-join-heading button { display: grid; place-items: center; padding: 5px; border-radius: 6px; color: var(--app-transient-muted-text); }
+.org-join-heading button:hover { background: var(--app-transient-hover-bg); color: var(--app-transient-text); }
+.org-join-line { margin: 6px 0 0; font-size: 12px; line-height: 18px; color: var(--app-transient-muted-text); }
+
+.org-join-search { display: flex; align-items: center; gap: 6px; margin-top: 14px; padding: 8px 10px; border: 1px solid var(--app-transient-border); border-radius: 8px; color: var(--app-transient-muted-text); }
+.org-join-search:focus-within, .org-join-input:focus { border-color: color-mix(in oklab, var(--app-transient-focus-ring) 58%, var(--app-transient-border)); }
+.org-join-search input { width: 100%; min-width: 0; border: 0; outline: none; background: transparent; font-size: 12px; color: var(--app-transient-text); }
+.org-join-search input::placeholder, .org-join-input::placeholder { color: var(--app-transient-subtle-text); }
+.org-join-search input:focus-visible, .org-join-input:focus-visible { outline: none; }
+
+.org-join-list { display: flex; flex-direction: column; gap: 2px; max-height: 336px; margin: 10px -6px 0; padding: 0; overflow-y: auto; list-style: none; }
+.org-join-list[hidden], .org-join-item[hidden] { display: none; }
+.org-join-item { padding: 8px 6px; border-radius: 8px; }
+.org-join-row { display: flex; align-items: center; gap: 10px; }
+.org-join-avatar { display: grid; flex: 0 0 auto; place-items: center; width: 32px; height: 32px; border-radius: 999px; background: var(--app-transient-icon-bg); color: var(--app-transient-text); font-size: 13px; font-weight: 600; }
+.org-join-text { flex: 1; min-width: 0; }
+.org-join-text strong { display: block; overflow: hidden; font-size: 13px; line-height: 18px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.org-join-text small { display: block; font-size: 11px; line-height: 16px; color: var(--app-transient-muted-text); }
+
+.org-join-action { flex: 0 0 auto; height: 28px; padding: 0 12px; border: 1px solid transparent; border-radius: 8px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.org-join-action:disabled { cursor: default; opacity: 0.6; }
+.org-join-action-join { background: var(--app-transient-text); color: var(--app-transient-surface-fallback); }
+.org-join-action-join:hover:not(:disabled) { background: color-mix(in oklab, var(--app-transient-text) 88%, var(--app-transient-surface-fallback)); }
+.org-join-action-request { border-color: var(--app-transient-border); background: transparent; color: var(--app-transient-text); }
+.org-join-action-request:hover:not(:disabled) { background: var(--app-transient-hover-bg); }
+.org-join-action-done, .org-join-action-done:disabled { padding: 0 4px; background: transparent; color: var(--app-transient-subtle-text); opacity: 1; }
+.org-join-action:focus-visible { outline: 2px solid var(--app-transient-focus-ring); outline-offset: 2px; }
+
+/* Inline inputs under a row: an email code, or the required join-request fields. */
+.org-join-form { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin: 8px 0 0 42px; }
+.org-join-input { flex: 1 1 100%; min-width: 0; height: 28px; padding: 0 10px; border: 1px solid var(--app-transient-border); border-radius: 8px; outline: none; background: transparent; font-size: 12px; color: var(--app-transient-text); }
+.org-join-error { margin: 6px 0 0 42px; font-size: 11px; line-height: 16px; color: var(--app-danger-text, #e5484d); }
+
+.org-join-empty { margin: 10px 0 2px; font-size: 12px; line-height: 18px; color: var(--app-transient-muted-text); }

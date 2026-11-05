@@ -19,6 +19,7 @@ use crate::server::ServerState;
 mod admins;
 mod guards;
 mod join_requests;
+mod joinable;
 mod reverify;
 mod web_session;
 
