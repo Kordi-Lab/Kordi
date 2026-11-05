@@ -112,6 +112,7 @@ struct KordiApp: App {
         WindowGroup {
             RootView(hasTopAccessory: showsPreviewThemeControls || callCoordinator.isMinimized)
                 .kordiLinkHandling(openConnectors: openConnectorsSettings) // Connectors and shared document links
+                .groupInviteHandling()
                 .environmentObject(model)
                 .environmentObject(callCoordinator)
                 .environmentObject(notificationCoordinator)
