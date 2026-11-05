@@ -46,8 +46,8 @@ async fn upgrade_from_112_adds_account_email_codes() {
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_165_adds_account_security_codes() {
-    let pool = fixture(165).await;
+async fn upgrade_from_166_adds_account_security_codes() {
+    let pool = fixture(166).await;
     execute(&pool, "UPDATE cloud_accounts SET primary_email = 'owner@example.test' WHERE account_id = 'fixture-owner'").await;
     let before: Vec<(Value,)> =
         query_as("SELECT to_jsonb(a) FROM cloud_accounts a ORDER BY account_id")

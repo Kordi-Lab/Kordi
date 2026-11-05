@@ -49,9 +49,12 @@ struct CommonGroundNearbyDeviceState: Codable, Equatable {
 /// The session token for background posts, read from the Keychain the app
 /// signs in with. The item is readable after the first unlock since the
 /// phone started, so a post that iOS runs before that finds no token and is
-/// skipped.
+/// skipped. A browser sign-in token may have expired while the app was
+/// suspended, so it is refreshed first through the app's shared refresher.
 enum CommonGroundNearbyCredentials {
-    static func token(store: KeychainSessionStore = KeychainSessionStore()) -> String? {
+    @MainActor
+    static func token(api: CloudAPIClient, store: KeychainSessionStore = KeychainSessionStore()) async -> String? {
+        _ = await AppSignInSessionStore.shared(keychain: store, api: api).refresh(ifExpiringWithin: 60)
         guard let token = (try? store.loadToken()) ?? nil, !token.isEmpty else { return nil }
         return token
     }

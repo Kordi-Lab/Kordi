@@ -414,7 +414,7 @@ actor CloudAPIClient {
         )
     }
 
-    private func deviceRegistration() async throws -> CloudDeviceRegistration {
+    func deviceRegistration() async throws -> CloudDeviceRegistration {
         let publicKey = try deviceIdentityStore.loadOrCreateDevicePublicKey()
             .base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")

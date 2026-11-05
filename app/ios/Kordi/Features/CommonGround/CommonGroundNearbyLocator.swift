@@ -269,8 +269,6 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
     private func post(_ location: CLLocation) async -> Bool {
         guard !posting, state?.enabled == true else { return false }
         if let retryAfter, retryAfter > Date() { return false }
-        // Signed out, or iOS ran the app before the first unlock: skip this one.
-        guard let token = CommonGroundNearbyCredentials.token() else { return false }
         posting = true
         let generation = locationGeneration
         let accountId = state?.accountId
@@ -279,6 +277,9 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
             posting = false
             endBackgroundTime(time)
         }
+        // Signed out, or iOS ran the app before the first unlock: skip this one.
+        guard let token = await CommonGroundNearbyCredentials.token(api: api),
+              state?.enabled == true, locationGeneration == generation else { return false }
         let fix = CommonGroundNearbyFix(
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude,
@@ -336,9 +337,9 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
     }
 
     private func deleteLocation() async {
-        guard let token = CommonGroundNearbyCredentials.token() else { return }
         let time = beginBackgroundTime()
         defer { endBackgroundTime(time) }
+        guard let token = await CommonGroundNearbyCredentials.token(api: api) else { return }
         try? await api.deleteCommonGroundNearbyLocation(token: token)
     }
 
