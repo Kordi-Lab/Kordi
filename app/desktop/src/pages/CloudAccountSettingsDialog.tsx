@@ -20,6 +20,7 @@ import {
 import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
 import { CloudConnectorsHttpClient } from '@/features/cloud/cloudConnectorsClient';
 import { CloudDevicesPanel } from '@/features/cloud/CloudDevicesPanel';
+import { CloudUsagePanel } from '@/features/cloud/CloudUsagePanel';
 import { NotificationSettingsPanel } from '@/features/notifications/NotificationSettingsPanel';
 import { ConnectorsSettingsPanel } from '@/features/connectors/ConnectorsSettingsPanel';
 import type { ConnectorsClient } from '@/features/connectors/connectorsClient';
@@ -262,6 +263,7 @@ export function CloudAccountSettingsDialog({
   );
 
   const devicesPanel = <CloudDevicesPanel key={account.accountId} accountId={account.accountId} />;
+  const usagePanel = <CloudUsagePanel key={account.accountId} accountId={account.accountId} />;
 
   const connectorsPanel = connectorsClient ? (
     <ConnectorsSettingsPanel
@@ -319,7 +321,7 @@ export function CloudAccountSettingsDialog({
           </div>
           <ScrollArea className="min-h-0 flex-1">
             <div className="px-8 pb-8 pt-2">
-              {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'connectors' ? connectorsPanel : visibleTab === 'memory' ? memoryPanel : appearancePanel}
+              {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'connectors' ? connectorsPanel : visibleTab === 'memory' ? memoryPanel : visibleTab === 'usage' ? usagePanel : appearancePanel}
             </div>
           </ScrollArea>
         </div>

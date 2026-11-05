@@ -224,13 +224,21 @@ async fn enqueue(
     let (resource_pool, organization_id, admits) =
         limits::pool_for(&mut tx, config, candidate).await?;
     let organization_id = organization_id.as_deref();
-    if !admits
-        || !limits::admit(&mut tx, &resource_pool, organization_id, &run_id, candidate)
-            .await?
-            .admitted()
-    {
+    // A disabled organization's work never runs; that is not a limit, so
+    // nothing is recorded for Settings.
+    let admission = if admits {
+        Some(limits::admit(&mut tx, &resource_pool, organization_id, &run_id, candidate).await?)
+    } else {
+        None
+    };
+    if !admission.is_some_and(|admission| admission.admitted()) {
         tx.rollback().await?;
-        limits::stay_silent(pool, candidate, &input).await?;
+        let refused = admission.map(|admission| limits::Refused {
+            resource_pool: &resource_pool,
+            organization_id,
+            admission,
+        });
+        limits::stay_silent(pool, candidate, &input, refused.as_ref()).await?;
         return Ok(false);
     }
     let now = Utc::now().to_rfc3339();

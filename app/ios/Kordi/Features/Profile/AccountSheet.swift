@@ -8,6 +8,7 @@ enum AccountSettingsRoute: String, Hashable {
     case notifications
     case connectors
     case memory
+    case usage
     case appearance
     case licenses
 }
@@ -103,6 +104,12 @@ struct AccountSheet: View {
                     SettingsDivider()
                 }
 
+                SettingsSectionTitle("Usage")
+                settingsLink(.usage) {
+                    CompactSettingsLabel(title: "Usage", systemImage: "gauge.with.dots.needle.33percent")
+                }
+                SettingsDivider()
+
                 SettingsSectionTitle("Appearance")
                 settingsLink(.appearance) {
                     CompactSettingsLabel(title: "Appearance", systemImage: "paintbrush")
@@ -168,6 +175,8 @@ struct AccountSheet: View {
                 }
             case .memory:
                 MemorySettingsView(appModel: model)
+            case .usage:
+                UsageSettingsView(appModel: model)
             case .appearance:
                 AppearanceSettingsView()
             case .licenses:

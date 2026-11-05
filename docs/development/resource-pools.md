@@ -317,7 +317,10 @@ built without a pool file) is admitted without any write.
 When the System agent is refused, it stays silent: no message, nothing
 queued, and nothing replayed later. The conversation's message cursor moves
 past the new messages, due reminders are marked as fired, and every card the
-pass was woken for is marked as seen, exactly as if the pass had run and chosen to say nothing. A
+pass was woken for is marked as seen, exactly as if the pass had run and chosen to say nothing.
+The first refusal of a window is recorded for Settings (see
+[Usage and limits](#usage-and-limits)); nothing is posted into the
+conversation. A
 refused Grounding request gets the usual "Grounding isn't available" answer
 (card builds), the matching budget answer with the time until the next UTC
 day (matching and room themes), or nothing at all (group intros, nearby
@@ -338,6 +341,58 @@ Usage older than 90 days is pruned about once an hour. Settlement, pruning
 and pool worker run expiry run in their own background task, so they also
 run when the System agent's group chat is off.
 
+## Usage and limits
+
+Every limit a person can hit is visible in Settings: how much is used, when
+it resets and why nothing more is admitted. Conversations stay clean: a limit
+never adds a message, error, banner or toast to a chat, and the composer and
+send flow are not blocked. The server builds one snapshot shape from the
+counters above (`resource_pools::snapshot`), and clients show it as-is:
+
+```json
+{
+  "limitId": "pool.runs",
+  "scope": "pool",
+  "used": 150,
+  "limit": 200,
+  "usedPercent": 75,
+  "window": "day",
+  "resetsAt": "2030-01-03T00:00:00Z",
+  "reached": "none"
+}
+```
+
+- `limitId` is `conversation.system_agent_runs`, `account.grounding_runs`,
+  `pool.runs`, `pool.spend`, or `pool.stopped` (a stopped pool without
+  limits). Unlimited limits have no snapshot.
+- `scope` is `pool`, `conversation` or `account`; `window` is always `day`,
+  and `resetsAt` is the next UTC midnight.
+- `usedPercent` is rounded down and capped at 100.
+- `reached` is `none`, `daily_limit`, `spend_limit` (the next run's estimated
+  cost no longer fits) or `stopped` (the pool's stop switch is on).
+- `used` and `limit` (runs, or millionths for spend) are sent only to owners
+  and admins of the organization. Members see percentages, reasons and reset
+  times only.
+- The per-conversation limit shows the caller's busiest conversation of the
+  organization today, named by `conversationId`.
+- `pausedSince` is set on a reached limit once it refused the System agent in
+  this window.
+
+Routes, behind the cloud session:
+
+- `GET /v1/cloud/account/usage`: every organization of the signed-in account
+  (personal first) with its `name`, `kind`, the caller's `role` and its
+  snapshots: the pool's caps, the per-conversation cap, and in the personal
+  organization the caller's Grounding cap.
+- `GET /v1/cloud/organizations/{id}/usage`: the same for one organization;
+  404 outside it.
+
+When the System agent is refused, the first refusal of each window is kept in
+`cloud_usage_pauses` per pool and conversation, with the limit and reason, so
+Settings can say "Paused since 14:20, resets 00:00 UTC". Clients color a bar
+amber at 75% and red at 90% or when reached; that is the only warning. There
+are no notices, emails or push notifications for limits.
+
 ## Storage
 
 Migration 0166 adds `cloud_resource_pool_usage`
@@ -345,7 +400,8 @@ Migration 0166 adds `cloud_resource_pool_usage`
 `cloud_resource_pool_reservations` (one row per admitted run). Migration 0169
 adds `cloud_pool_worker_runs` (the pool tag of each pool worker run, and the
 worker, lease token hash and lease count of its current lease, deleted
-once the run ends).
+once the run ends). Migration 0174 adds `cloud_usage_pauses` (the first
+refusal per pool, conversation and day), pruned with usage.
 
 ## Tests
 
@@ -357,5 +413,5 @@ endpoint and the pool worker's client, credentials and run loop. Database tests 
 task-owned PostgreSQL in `DATABASE_URL`:
 
 ```bash
-DATABASE_URL=postgres://... cargo test -p kordi-cloud-server --lib -- resource_pools system_agent::pool_tests common_ground::runs pool_workers --include-ignored --test-threads=1
+DATABASE_URL=postgres://... cargo test -p kordi-cloud-server --lib -- resource_pools system_agent::pool_tests system_agent::usage_pause_tests common_ground::runs pool_workers --include-ignored --test-threads=1
 ```

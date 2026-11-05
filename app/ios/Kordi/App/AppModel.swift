@@ -1190,6 +1190,10 @@ final class AppModel: ObservableObject {
         if previewMode { return PreviewMemoryService() }
         return CloudMemoryService(api: api) { [weak self] in self?.token }
     }
+    func makeUsageService() -> any UsageService {
+        if previewMode { return PreviewUsageService() }
+        return CloudUsageService(api: api) { [weak self] in self?.token }
+    }
     func makeDocumentService() -> any DocumentService { previewMode ? PreviewDocumentService() : CloudDocumentService(api: api) { [weak self] in self?.token } }
 
     func markDeviceReviewSeen() { deviceReviewRequired = false }
