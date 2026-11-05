@@ -164,7 +164,6 @@
 /* Browser sign-in welcome screen (CloudBrowserSignInPage). */
 .app-cloud-browser-signin {
   --app-kordi-bird: #f4ede1;
-  --app-kordi-bird-cut: #0d0f13;
 }
 
 /* The frame covers exactly the visible window: while the gate is up the web
@@ -237,19 +236,20 @@
   margin-top: 28px;
 }
 
-/* The bird's wing gap is cut out of the body, so it shows the window behind. */
+/* The bird's wing gap is a hole in the body, so it shows the window behind.
+ * The cutout bird stays still; its wing is already tilted in the path. */
+.app-kordi-flying-bird-cutout .app-kordi-flying-bird-body,
+.app-kordi-flying-bird-cutout .app-kordi-flying-bird-wing {
+  animation: none;
+  transform: none;
+}
+
 .app-kordi-flying-bird-cutout .app-kordi-flying-bird-wing {
   stroke: none;
 }
 
-.app-kordi-flying-bird-cutout .app-kordi-flying-bird-wing-cut {
-  fill: #000;
-  stroke: #000;
-}
-
 .kordi-app.theme-light .app-cloud-browser-signin {
   --app-kordi-bird: #1f1a17;
-  --app-kordi-bird-cut: rgb(241 245 249);
 }
 
 /* Frosted window: no veil, so text carries its own contrast. */
@@ -291,15 +291,6 @@
 .app-cloud-signin-mark .app-cloud-browser-signin-bird {
   width: 30px;
   height: 30px;
-}
-
-.app-cloud-browser-signin .app-kordi-flying-bird-body {
-  animation: none;
-}
-
-.app-cloud-browser-signin .app-kordi-flying-bird-wing {
-  animation: none;
-  transform: rotate(-24deg);
 }
 
 .app-cloud-welcome-secondary {
