@@ -66,9 +66,11 @@ export function ChatCompanionLayout({ containerRef, layout, view, accountId, com
               {companionPane}
             </div>
           </Activity>
-          <Activity mode={layout.isPresent && view === 'document' ? 'visible' : 'hidden'}>
+          {/* Activity disconnects effects and destroys Tiptap editors. Keep document sessions
+              mounted while hidden so drafts, undo history, and collaboration survive. */}
+          <div className="app-companion-tab-content" hidden={!layout.isPresent || view !== 'document'}>
             {documentPane}
-          </Activity>
+          </div>
           {(['digest', 'calendar'] as const).filter(tool => openedViews ? openedViews.includes(tool) : view === tool).map(tool => {
             const ids = companionDocumentTabIds(companionViewTabId(tool));
             return <Activity key={tool} mode={layout.isPresent && view === tool ? 'visible' : 'hidden'}>

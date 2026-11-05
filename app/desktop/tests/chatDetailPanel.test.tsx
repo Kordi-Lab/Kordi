@@ -616,7 +616,7 @@ test('chat detail task panel waits for the authoritative thread index before dec
   assert.doesNotMatch(markup, /No planning or execution task activity in this session yet/);
 });
 
-test('chat detail participant presence renders as compact status lights without visible status text', () => {
+test('chat detail participant presence remains accessible without avatar status dots', () => {
   const markup = renderInfoPanel({
     canonicalParticipants: [
       {
@@ -638,8 +638,8 @@ test('chat detail participant presence renders as compact status lights without 
     ],
   });
 
-  assert.match(markup, /data-presence-status="online"/);
-  assert.match(markup, /aria-label="Status: online"/);
+  assert.doesNotMatch(markup, /data-presence-status=/);
+  assert.match(markup, /aria-description="Status: online"/);
   assert.doesNotMatch(markup, />online<\//);
   assert.doesNotMatch(markup, /app-badge-neutral[^>]*>online/);
 });

@@ -332,6 +332,7 @@ pub fn routes_with_shared_rate_limiter(
         )
         .merge(crate::auth::session_activity::routes())
         .merge(crate::auth::subsessions::routes())
+        .merge(crate::organizations::routes())
         .route(
             "/v1/cloud/attachments/initiate",
             post(crate::attachments::routes::initiate),
