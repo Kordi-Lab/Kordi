@@ -43,3 +43,37 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(logIn).toBeVisible();
   });
 }
+
+// Opening the window focuses the first button without a key press. That
+// focus draws no ring; Tab does, in a neutral color rather than the accent.
+for (const theme of ['light', 'dark'] as const) {
+  test(`the welcome window shows a focus ring only for keyboard navigation in ${theme} mode`, async ({ page }) => {
+    await page.setViewportSize({ width: 760, height: 760 });
+    await page.goto(`/tests/visual/browserSignIn.html?theme=${theme}`);
+    const logIn = page.getByRole('button', { name: 'Log in', exact: true });
+    await expect(logIn).toBeVisible();
+    const ring = (button: typeof logIn) => button.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { visible: element.matches(':focus-visible'), style: style.outlineStyle, color: style.outlineColor };
+    });
+
+    await logIn.evaluate((element) => (element as HTMLElement).focus());
+    const opened = await ring(logIn);
+    expect(opened.visible, 'the browser would draw a ring for this focus').toBe(true);
+    expect(opened.style).toBe('none');
+
+    // WebKit only tabs to buttons when the system setting allows it, so move
+    // focus directly after the key press.
+    await page.keyboard.press('Tab');
+    const signUp = page.getByRole('button', { name: 'Sign up', exact: true });
+    await signUp.evaluate((element) => (element as HTMLElement).focus());
+    const tabbed = await ring(signUp);
+    expect(tabbed.style).toBe('solid');
+    const [red, green, blue] = (tabbed.color.match(/[\d.]+/g) ?? []).map(Number);
+    expect(Math.max(red, green, blue) - Math.min(red, green, blue), `neutral ring, got ${tabbed.color}`).toBeLessThanOrEqual(30);
+
+    await page.mouse.click(5, 5);
+    await signUp.evaluate((element) => (element as HTMLElement).focus());
+    expect((await ring(signUp)).style, 'a click ends keyboard navigation').toBe('none');
+  });
+}
