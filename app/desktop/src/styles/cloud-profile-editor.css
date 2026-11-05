@@ -66,8 +66,10 @@
 }
 
 /* Locked Kordi ID: plain muted text with the editable geometry. The transient
- * surface gives disabled controls a filled background, so reset it here. */
-.app-cloud-account-profile .app-cloud-profile-input:disabled {
+ * surface gives disabled controls a filled background, so reset it here. A click
+ * on the read-only field opens a dialog with the next change date. */
+.app-cloud-account-profile .app-cloud-profile-input:disabled,
+.app-cloud-account-profile input.app-cloud-profile-input[readonly] {
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -77,7 +79,8 @@
   opacity: 1;
 }
 
-.app-cloud-account-profile .app-cloud-profile-input:disabled::placeholder {
+.app-cloud-account-profile .app-cloud-profile-input:disabled::placeholder,
+.app-cloud-account-profile input.app-cloud-profile-input[readonly]::placeholder {
   color: var(--app-transient-muted-text);
   -webkit-text-fill-color: var(--app-transient-muted-text);
 }
@@ -144,11 +147,4 @@
   font-size: 12px;
   line-height: 18px;
   color: var(--app-transient-danger-text);
-}
-
-.app-cloud-profile-row-note {
-  margin-top: 2px;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--app-transient-muted-text);
 }
