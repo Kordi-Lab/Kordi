@@ -2,8 +2,8 @@ use serde_json::json;
 
 use super::{
     github_profile_from_values, is_allowed_oauth_redirect_with_config,
-    oauth_credentials_are_complete, oauth_error_redirect_url, oauth_not_configured_message,
-    public_base_url, OAuthProvider,
+    is_allowed_sign_in_redirect_with_config, oauth_credentials_are_complete,
+    oauth_error_redirect_url, oauth_not_configured_message, public_base_url, OAuthProvider,
 };
 
 #[test]
@@ -129,4 +129,39 @@ fn oauth_error_redirect_keeps_message_and_adds_optional_code() {
          Sign%20in%20with%20your%20email%20%26%20password.\
          &kordi_cloud_oauth_error_code=oauth_email_requires_sign_in"
     );
+}
+
+#[test]
+fn sign_in_returns_on_the_public_origin_only_reach_the_web_completion() {
+    let base = "https://cloud.example.test";
+    let allowed = |target: &str| is_allowed_sign_in_redirect_with_config(target, None, base);
+    assert!(allowed(
+        "https://cloud.example.test/v1/cloud/auth/web/oauth/complete?returnTo=%2Fsign-in%2Fapp"
+    ));
+    for target in [
+        "https://cloud.example.test/",
+        "https://cloud.example.test/sign-in/app",
+        "https://cloud.example.test/v1/cloud/auth/web/oauth/complete/extra",
+        "https://evil.example.test/v1/cloud/auth/web/oauth/complete",
+    ] {
+        assert!(!allowed(target), "{target}");
+    }
+    // The completion endpoint on another origin, or with another path, is
+    // not this server's web hand-off.
+    assert!(!allowed(
+        "http://cloud.example.test/v1/cloud/auth/web/oauth/complete"
+    ));
+    // App targets are unchanged.
+    assert!(allowed("http://127.0.0.1:53682/oauth/callback"));
+    assert!(is_allowed_sign_in_redirect_with_config(
+        "kordi-test://oauth/callback",
+        Some("kordi-test://oauth/callback"),
+        base
+    ));
+    // Connector returns still accept any public-origin page.
+    assert!(is_allowed_oauth_redirect_with_config(
+        "https://cloud.example.test/settings",
+        None,
+        base
+    ));
 }

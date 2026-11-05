@@ -381,6 +381,18 @@ async fn revoke_devices(
     {
         return device_server_error("Could not revoke device sessions.");
     }
+    // Browser sign-ins end with the device and stay ended if the same
+    // device key signs in again.
+    if crate::auth::app_sign_in::tokens::revoke_device_sign_ins(
+        &mut transaction,
+        &session.account_id,
+        &affected_ids,
+    )
+    .await
+    .is_err()
+    {
+        return device_server_error("Could not revoke device sign-ins.");
+    }
     for (device_id, display_name) in &affected {
         if append_device_sync_event(
             &mut transaction,

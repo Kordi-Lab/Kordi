@@ -32,9 +32,9 @@ use crate::auth::devices::{
 };
 use crate::auth::oauth::{
     clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,
-    exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect, oauth_config,
+    exchange_oauth_code, fetch_oauth_profile, is_allowed_sign_in_redirect, oauth_config,
     oauth_provider_is_configured, pkce_challenge, random_url_token, redirect_with_oauth_error,
-    redirect_with_oauth_error_code, OAuthProfile, OAuthProvider,
+    redirect_with_oauth_error_code, targets_public_server, OAuthProfile, OAuthProvider,
 };
 use crate::auth::password::{
     hash_password, validate_email, validate_password_strength, verify_password, EmailFormatError,
@@ -60,6 +60,7 @@ use crate::server::ServerState;
 
 mod account_email_handlers;
 mod app_invitation_handlers;
+mod app_sign_in_handlers;
 mod contact_acceptance;
 mod contact_handlers;
 mod contact_profile;
@@ -88,8 +89,10 @@ mod signup_email_handlers;
 mod simulator_accounts;
 mod support;
 mod types;
+mod web_session_handlers;
 
 use app_invitation_handlers::*;
+use app_sign_in_handlers::*;
 use contact_acceptance::*;
 use contact_handlers::*;
 use contact_profile::get_contact_profile;
@@ -112,6 +115,7 @@ use session_pins::*;
 use session_visibility::*;
 use support::*;
 use types::ErrorBody;
+use web_session_handlers::*;
 
 pub(crate) use contact_acceptance::{direct_person_session_id, open_direct_conversation};
 pub(crate) use contact_send::{send_request, ContactOutcome};
@@ -147,6 +151,7 @@ pub fn routes_with_shared_rate_limiter(
 ) -> Router {
     let simulator = simulator_accounts::routes(&state, hasher_config, rate_limiter.clone());
     let hasher_config = Arc::new(hasher_config);
+    let app_clients = Arc::new(crate::auth::app_sign_in::AppClientRegistry::from_env());
 
     let public = Router::new()
         .route("/v1/cloud/auth/capabilities", get(auth_capabilities))
@@ -171,6 +176,26 @@ pub fn routes_with_shared_rate_limiter(
             "/v1/cloud/auth/oauth/:provider/callback",
             get(oauth_callback),
         )
+        .route(
+            "/v1/cloud/auth/app/authorize",
+            get(app_authorize_start).post(app_authorize),
+        )
+        .route(
+            "/v1/cloud/auth/app/authorize/display-code",
+            post(app_authorize_display_code),
+        )
+        .route("/v1/cloud/auth/app/token", post(app_token))
+        .route("/v1/cloud/auth/web/login", post(web_login))
+        .route("/v1/cloud/auth/web/signup", post(web_signup))
+        .route("/v1/cloud/auth/web/session", get(web_session_status))
+        .route("/v1/cloud/auth/web/logout", post(web_logout))
+        .route(
+            "/v1/cloud/auth/web/oauth/:provider/start",
+            get(web_oauth_start),
+        )
+        .route(WEB_OAUTH_COMPLETE_PATH, get(web_oauth_complete))
+        .route("/v1/cloud/auth/app/revoke", post(revoke_app_token))
+        .layer(Extension(app_clients.clone()))
         .layer(Extension(rate_limiter.clone()))
         .layer(Extension(hasher_config.clone()))
         .with_state(state.clone());
@@ -186,6 +211,11 @@ pub fn routes_with_shared_rate_limiter(
             post(account_email_handlers::verify_account_email_code),
         )
         .route("/v1/cloud/auth/logout", post(logout))
+        .route("/v1/cloud/auth/app/sign-ins", get(list_app_sign_ins))
+        .route(
+            "/v1/cloud/auth/app/sign-ins/:sign_in_id",
+            delete(revoke_app_sign_in),
+        )
         .route("/v1/cloud/auth/devices", get(list_devices))
         .route(
             "/v1/cloud/auth/devices/current",
@@ -387,6 +417,7 @@ pub fn routes_with_shared_rate_limiter(
             "/v1/cloud/agent-runs/omp-state",
             get(get_omp_state_count).delete(clear_omp_state),
         )
+        .layer(Extension(app_clients))
         .layer(Extension(rate_limiter.clone()))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),

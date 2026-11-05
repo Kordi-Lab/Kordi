@@ -56,7 +56,7 @@ impl From<sqlx_core::Error> for SessionError {
     }
 }
 
-fn random_token_plaintext() -> String {
+pub(crate) fn random_token_plaintext() -> String {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);
     format!("{}{}", SESSION_TOKEN_PREFIX, URL_SAFE_NO_PAD.encode(bytes))
@@ -155,7 +155,8 @@ pub async fn revoke_session(pool: &PgPool, token_id: &str) -> Result<(), Session
     Ok(())
 }
 
-/// Slide a session's `expires_at` forward by `lifetime_days`.
+/// Slide a session's `expires_at` forward by `lifetime_days`. Access tokens
+/// from a browser sign-in keep their fixed expiry; the app refreshes them.
 pub async fn bump_expiry(
     pool: &PgPool,
     token_id: &str,
@@ -166,6 +167,7 @@ pub async fn bump_expiry(
         "UPDATE cloud_refresh_tokens token SET expires_at = $1 \
          FROM cloud_devices device \
          WHERE token.token_id = $2 AND token.revoked_at IS NULL \
+           AND token.app_sign_in_id IS NULL \
            AND device.device_id = token.device_id AND device.account_id = token.account_id \
            AND device.revoked_at IS NULL",
     )
