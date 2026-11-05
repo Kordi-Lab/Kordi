@@ -73,6 +73,7 @@ impl Drop for TempFile {
 
 fn offline_db() -> sqlx_postgres::PgPool {
     sqlx_postgres::PgPoolOptions::new()
+        .acquire_timeout(std::time::Duration::from_millis(300))
         .connect_lazy("postgres://127.0.0.1:1/unused")
         .unwrap()
 }
@@ -249,16 +250,31 @@ async fn configured_organizations_bind_once_they_exist() {
     let db = crate::resource_pools::usage::tests::test_db().await;
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let config_id = format!("team-{}", &suffix[..12]);
+    let disabled_id = format!("off-{}", &suffix[..12]);
     let file = TempFile::new("pools.json");
     file.write(&pool_file(false, "model").to_string());
     let organizations = TempFile::new("organizations.json");
     organizations.write(
-        &json!({"organizations": [{"id": config_id, "state": "active", "pool": "partner"}]})
-            .to_string(),
+        &json!({"organizations": [
+            {"id": config_id, "state": "active", "pool": "partner"},
+            {"id": disabled_id, "state": "disabled", "pool": null}
+        ]})
+        .to_string(),
     );
     let registry = registry_for(&file, Some(&organizations));
-    // Admission from configuration adds this column; a server without it
-    // binds nothing yet.
+    // Admission from configuration adds this column. Without it the
+    // bindings cannot be honoured, so the configuration is refused.
+    let has_column: bool = sqlx_core::query_scalar::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'cloud_organizations' AND column_name = 'config_id')",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    if !has_column {
+        let error = registry.reload_with(&db, env).await.unwrap_err();
+        assert!(error.to_string().contains("config_id"), "{error}");
+    }
     sqlx_core::query::query(
         "ALTER TABLE cloud_organizations ADD COLUMN IF NOT EXISTS config_id TEXT",
     )
@@ -275,20 +291,86 @@ async fn configured_organizations_bind_once_they_exist() {
 
     let owner = format!("owner-{suffix}");
     crate::plan_cards::tests::seed_account(&db, &owner).await;
-    sqlx_core::query::query(
-        "INSERT INTO cloud_organizations (organization_id, name, kind, created_by_account_id, config_id) \
-         VALUES ($1, 'Example team', 'team', $2, $3)",
-    )
-    .bind(&organization_id)
-    .bind(&owner)
-    .bind(&config_id)
-    .execute(&db)
-    .await
-    .unwrap();
+    let disabled_organization = format!("org_test_off_{suffix}");
+    for (organization, configured) in [
+        (&organization_id, &config_id),
+        (&disabled_organization, &disabled_id),
+    ] {
+        sqlx_core::query::query(
+            "INSERT INTO cloud_organizations (organization_id, name, kind, created_by_account_id, config_id) \
+             VALUES ($1, 'Example team', 'team', $2, $3)",
+        )
+        .bind(organization)
+        .bind(&owner)
+        .bind(configured)
+        .execute(&db)
+        .await
+        .unwrap();
+    }
     registry.reload_with(&db, env).await.unwrap();
-    assert_eq!(
-        registry.current().resolve(Some(&organization_id)).id(),
-        "partner"
+    let pools = registry.current();
+    assert_eq!(pools.resolve(Some(&organization_id)).id(), "partner");
+    assert!(pools.admits(Some(&organization_id)));
+    assert!(
+        !pools.admits(Some(&disabled_organization)),
+        "disabled work is refused"
     );
     assert_eq!(registry.lock_state().unresolved, 0);
+}
+
+#[tokio::test]
+async fn a_lookup_outage_still_applies_a_stop_and_keeps_bindings() {
+    let file = TempFile::new("pools.json");
+    file.write(&pool_file(false, "model").to_string());
+    let organizations = TempFile::new("organizations.json");
+    organizations.write(
+        &json!({"organizations": [{"id": "team-a", "state": "active", "pool": "partner"}]})
+            .to_string(),
+    );
+    let registry = registry_for(&file, Some(&organizations));
+    // Bindings found before the database went away.
+    registry.lock_state().found = vec![("team-a".to_string(), "org_team_a".to_string())];
+    file.write(&pool_file(true, "model").to_string());
+    // The database cannot be reached: the stop applies anyway, the earlier
+    // binding stays, and the lookup is retried on the next check.
+    let pools = registry.reload_with(&offline_db(), env).await.unwrap();
+    assert!(pools.by_id("partner").unwrap().is_stopped());
+    assert_eq!(pools.resolve(Some("org_team_a")).id(), "partner");
+    assert!(registry.lock_state().lookup_failed);
+    assert!(
+        registry.due(false, 1),
+        "a failed lookup is retried on every check"
+    );
+}
+
+#[tokio::test]
+async fn a_half_written_file_is_read_again_once_complete() {
+    let file = TempFile::new("pools.json");
+    file.write(&pool_file(false, "model").to_string());
+    let registry = registry_for(&file, None);
+    let full = pool_file(true, "model").to_string();
+    file.write(&full[..full.len() / 2]);
+    assert!(registry.reload_with(&offline_db(), env).await.is_err());
+    // The broken state counts as seen, so it is reported once.
+    assert!(!registry.due(false, 1));
+    assert!(!registry.current().by_id("partner").unwrap().is_stopped());
+    file.write(&full);
+    assert!(registry.due(false, 1), "the finished write is noticed");
+    registry.reload_with(&offline_db(), env).await.unwrap();
+    assert!(registry.current().by_id("partner").unwrap().is_stopped());
+}
+
+#[test]
+fn two_pools_cannot_accept_the_same_worker() {
+    let mut value = pool_file(false, "model");
+    let mut twin = value["pools"][1].clone();
+    twin["id"] = json!("twin");
+    value["pools"].as_array_mut().unwrap().push(twin);
+    let error = config::parse(&value.to_string(), env).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("accept the same worker identity"),
+        "{error}"
+    );
 }

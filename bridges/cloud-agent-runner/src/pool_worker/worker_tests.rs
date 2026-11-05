@@ -373,3 +373,38 @@ async fn heartbeat_cancel_or_lost_lease_abandons_the_run() {
         assert_eq!(*beats.lock().unwrap(), 2);
     }
 }
+
+#[tokio::test]
+async fn a_refused_result_fails_the_run_but_a_lost_lease_does_not() {
+    for (status, fails) in [(400, true), (404, false), (409, false), (503, false)] {
+        let lease = lease_body("grounding", "Synthetic grounding prompt.");
+        let provider = ScriptedProvider::new(vec![Ok(ModelProviderResponse::FinalText(
+            "{\"cards\":[]}".into(),
+        ))]);
+        let h = harness(
+            move |request| {
+                if request.path.ends_with("/lease") {
+                    (200, lease.clone())
+                } else if request.path.ends_with("/complete") {
+                    (
+                        status,
+                        json!({"errorCode": "refused", "message": "Refused."}).to_string(),
+                    )
+                } else {
+                    ok()
+                }
+            },
+            provider,
+        )
+        .await;
+        let LeaseOutcome::Run(lease) = h.worker.lease().await else {
+            panic!("expected a run");
+        };
+        assert_eq!(h.worker.process(lease).await, RunOutcome::Failed);
+        let requests = h.server.recorded();
+        let failed = requests
+            .iter()
+            .any(|request| request.path.ends_with("/runs/cg_synthetic/fail"));
+        assert_eq!(failed, fails, "status {status}");
+    }
+}

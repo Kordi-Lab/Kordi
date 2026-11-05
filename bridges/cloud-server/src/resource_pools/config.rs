@@ -261,6 +261,7 @@ pub(super) fn parse(
         }
         pools.push(pool);
     }
+    reject_shared_identities(&pools)?;
     let default_pool = file.default_pool.trim();
     // The System agent's own definition takes its model from the default
     // pool, so the default pool always executes in the control plane.
@@ -273,112 +274,6 @@ pub(super) fn parse(
         )));
     }
     ResourcePools::new(pools, default_pool, bindings)
-}
-
-fn executor(
-    entry: &PoolEntry,
-    version: u32,
-    at: &impl Fn(&str) -> String,
-) -> Result<super::Executor, ResourcePoolConfigError> {
-    let fail = |detail: &str| Err(ResourcePoolConfigError::new(at(detail)));
-    if version == 1 {
-        if entry.executor.is_some()
-            || entry.worker.is_some()
-            || entry.estimated_cost_micros_per_run.is_some()
-        {
-            return fail(
-                "uses executor, worker or estimatedCostMicrosPerRun, which need version 2",
-            );
-        }
-        return Ok(super::Executor::ControlPlane);
-    }
-    match entry.executor.as_deref().map(str::trim) {
-        Some("control_plane") => Ok(super::Executor::ControlPlane),
-        Some("pool_worker") => Ok(super::Executor::PoolWorker),
-        Some(_) => fail("executor must be control_plane or pool_worker"),
-        None => fail("executor is required in version 2"),
-    }
-}
-
-fn control_plane_pool(
-    entry: &PoolEntry,
-    at: &impl Fn(&str) -> String,
-    get: &mut impl FnMut(&str) -> Option<String>,
-) -> Result<ResourcePool, ResourcePoolConfigError> {
-    if entry.worker.is_some() || entry.estimated_cost_micros_per_run.is_some() {
-        return Err(ResourcePoolConfigError::new(at(
-            "worker and estimatedCostMicrosPerRun are only used with executor pool_worker",
-        )));
-    }
-    let Some(system_agent) = &entry.system_agent else {
-        return Err(ResourcePoolConfigError::new(at("systemAgent is required")));
-    };
-    let mut pool = ResourcePool::new(
-        entry.id.clone(),
-        provider(system_agent, &at("systemAgent"), get)?,
-    );
-    if let Some(grounding) = &entry.grounding {
-        pool = pool.with_grounding(provider(grounding, &at("grounding"), get)?);
-    }
-    Ok(pool)
-}
-
-/// A pool worker pool holds no provider and no key: its worker has its own.
-fn worker_pool(
-    entry: &PoolEntry,
-    at: &impl Fn(&str) -> String,
-    get: &mut impl FnMut(&str) -> Option<String>,
-) -> Result<ResourcePool, ResourcePoolConfigError> {
-    if entry.system_agent.is_some() || entry.grounding.is_some() {
-        return Err(ResourcePoolConfigError::new(at(
-            "with executor pool_worker may not name systemAgent or grounding providers: its worker holds its own",
-        )));
-    }
-    let Some(worker) = &entry.worker else {
-        return Err(ResourcePoolConfigError::new(at(
-            "worker is required with executor pool_worker",
-        )));
-    };
-    let identity = match (&worker.identity_env, &worker.identity) {
-        (Some(name), None) => {
-            let name = name.trim();
-            if !is_variable_name(name) {
-                return Err(ResourcePoolConfigError::new(at(
-                    "worker.identityEnv must name an environment variable",
-                )));
-            }
-            // An empty or unset variable accepts no worker: clearing it is
-            // the quick way to revoke a worker.
-            get(name)
-                .filter(|value| !value.trim().is_empty())
-                .map(|value| {
-                    WorkerIdentity::from_text(&value, &at(&format!("worker identity {name}")))
-                })
-                .transpose()?
-        }
-        (None, Some(value)) => Some(WorkerIdentity::from_json(
-            value.clone(),
-            &at("worker.identity"),
-        )?),
-        _ => {
-            return Err(ResourcePoolConfigError::new(at(
-                "worker needs exactly one of identityEnv or identity",
-            )))
-        }
-    };
-    Ok(ResourcePool::pool_worker(
-        entry.id.clone(),
-        identity,
-        entry.estimated_cost_micros_per_run.unwrap_or(0),
-    ))
-}
-
-fn is_variable_name(name: &str) -> bool {
-    !name.is_empty()
-        && name.len() <= 128
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
 }
 
 fn validate_id(what: &str, id: &str) -> Result<(), ResourcePoolConfigError> {
@@ -484,6 +379,12 @@ fn provider(
         .with_headers(headers)
         .with_estimated_cost_micros(entry.estimated_cost_micros_per_run))
 }
+
+#[path = "config_executor.rs"]
+mod executor;
+use executor::{
+    control_plane_pool, executor, is_variable_name, reject_shared_identities, worker_pool,
+};
 
 #[cfg(test)]
 #[path = "config_tests.rs"]

@@ -35,7 +35,8 @@ pub(super) struct NewRun<'a> {
 
 /// Queues a run in `tx` once the resource pool of its organization admits it,
 /// counted for the requester. Returns false, queueing nothing and leaving
-/// `tx` as it was, when the pool's daily limit is used up or it is stopped.
+/// `tx` as it was, when the pool's daily limit is used up, the pool is
+/// stopped, or the organization is disabled.
 pub(super) async fn insert(
     tx: &mut Transaction<'_, Postgres>,
     service: &crate::system_agent::SystemAgentConfig,
@@ -58,6 +59,10 @@ pub(super) async fn insert(
             .await?,
         };
     let pools = service.resource_pools();
+    // A disabled organization's work is refused outright.
+    if !pools.admits(organization_id.as_deref()) {
+        return Ok(false);
+    }
     let pool = pools.resolve(organization_id.as_deref());
     let admission = usage::reserve(
         tx,

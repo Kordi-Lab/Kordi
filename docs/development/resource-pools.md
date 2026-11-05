@@ -117,8 +117,8 @@ Format 2 (`"version": 2`) adds, per pool:
 | Field | Meaning |
 | --- | --- |
 | `executor` | Required: `control_plane` or `pool_worker`. |
-| `worker.identityEnv` | `pool_worker` only: the name of an environment variable that holds the accepted worker identity as JSON (below). Exactly one of `identityEnv` and `identity`. An unset or empty variable accepts no worker, which is the quick way to revoke one (a restart reads environment changes). |
-| `worker.identity` | `pool_worker` only: the identity inline, which a reload picks up. |
+| `worker.identityEnv` | `pool_worker` only: the name of an environment variable that holds the accepted worker identity as JSON (below). Exactly one of `identityEnv` and `identity`. An unset or empty variable accepts no worker. The variable is read at startup, so changing it needs a restart; to revoke a worker without one, use an inline `identity` and remove it, or stop the pool. |
+| `worker.identity` | `pool_worker` only: the identity inline, which a reload picks up. Two pools may not accept the same identity. |
 | `estimatedCostMicrosPerRun` | `pool_worker` only: one run's estimated cost for either feature. Required above 0 with `poolSpendMicrosPerDay`. |
 
 A `control_plane` pool is written as in format 1. A `pool_worker` pool has no
@@ -157,14 +157,17 @@ and ignore every other field:
 | --- | --- |
 | `organizations[].id` | The organization's configuration id. |
 | `organizations[].pool` | The pool it is bound to, or `null` for the default pool. |
-| `organizations[].state` | `disabled` binds nothing. |
+| `organizations[].state` | `disabled`: the organization's System agent and Grounding work is refused. |
 | `personalOrganizations.pool` | Must equal `defaultPool` when set. |
 
 A configuration id binds once the organization exists on this server
 (`cloud_organizations.config_id`, created by admission from configuration).
-Until then it is not bound, and the server checks again about once a minute.
-A binding that names an unknown pool, or contradicts an `organizations` entry
-of the pool file, makes the configuration invalid.
+An organization that does not exist yet has no work to route; the server
+checks again about once a minute. A binding that names an unknown pool, or
+contradicts an `organizations` entry of the pool file, makes the
+configuration invalid, and so does a file that binds organizations on a
+database without configured organizations: bindings are never silently
+dropped to the default pool.
 
 ### Reloading
 
@@ -172,8 +175,13 @@ The server reads both files again on `SIGHUP` and within about five seconds of
 either file changing. A reload validates everything a startup does (keys,
 identities, bindings) and swaps the new configuration in only when all of it
 is valid. An invalid file is logged once with the reason, and the previous
-configuration stays in force. Each run is admitted against one consistent
-snapshot, so a reload never changes a pool halfway through an admission.
+configuration stays in force. A file counts as seen in the state it had
+before it was read, so a file read while still being written is read again
+once the write finishes. If the database cannot be reached to look up
+configured organizations, the files still apply (a stop is never held back)
+with the bindings found last time, and the lookup is retried every few
+seconds. Each run is admitted against one consistent snapshot, so a reload
+never changes a pool halfway through an admission.
 
 The emergency stop therefore takes effect within seconds: write
 `"stopped": true` and the next admission, credential fetch, worker lease and
@@ -220,8 +228,12 @@ token from its own cloud (for example a service account identity token from
 the metadata server for the audience in `KORDI_POOL_WORKER_AUDIENCE`). The
 server verifies the token against the pool's worker identity: RS256 or ES256
 signature from the issuer's keys, issuer, audience, subject or verified email,
-expiry, and a lifetime of at most a day. A token for another pool, a forged
-or expired token, or a pool that executes in the control plane is refused.
+expiry, and a lifetime of at most two hours. A token for another pool, a
+forged or expired token, an unknown pool and a pool that executes in the
+control plane are refused alike (401), so pool ids cannot be probed. Each
+pool's endpoints accept at most 600 requests a minute (429 beyond that).
+Issuer keys are cached for an hour, refetched at most once a minute for an
+unknown key id, and a failed fetch is remembered for half a minute.
 
 Endpoints (all `POST`, `Authorization: Bearer <identity token>`, JSON bodies
 with `poolId` and `workerId`):
@@ -231,27 +243,37 @@ with `poolId` and `workerId`):
 | `/v1/cloud/pool-workers/lease` | Leases the pool's oldest run. Returns `{"run": null}` or `{"run": {runId, feature, leaseToken, systemPrompt, prompt, thinking, leaseSeconds}}`. |
 | `/v1/cloud/pool-workers/runs/{runId}/heartbeat` | With `leaseToken`: renews the lease; `{"cancelRequested": bool}`. |
 | `/v1/cloud/pool-workers/runs/{runId}/plan-card` | With `leaseToken` and `request`: one plan card tool call of a System agent run, applied by the server. |
-| `/v1/cloud/pool-workers/runs/{runId}/complete` | With `leaseToken` and `responseText` (at most 1 MiB): the server validates the reply and writes it into the conversation. |
-| `/v1/cloud/pool-workers/runs/{runId}/fail` | With `leaseToken` and `errorCode` (`[a-z0-9_]`, at most 64). |
+| `/v1/cloud/pool-workers/runs/{runId}/complete` | With `leaseToken` and `responseText` (at most 1 MiB): the server validates the reply and writes it into the conversation. Spends the lease token. 409 `run_not_completed` when the feature no longer takes the result (the run is then failed); 400 for a missing or oversized reply, which leaves the lease so the worker can fail the run. |
+| `/v1/cloud/pool-workers/runs/{runId}/fail` | With `leaseToken` and `errorCode` (`[a-z0-9_]`, at most 64). Spends the lease token. |
 
 Errors use `{"errorCode", "message"}`: `pool_worker_unauthorized` (401),
-`pool_not_found` (404), `run_not_found` (404, no live lease for this worker),
-`pool_stopped` (503).
+`run_not_found` (404, no live lease for this worker), `run_not_completed`
+(409), `rate_limited` (429), `pool_stopped` (503).
 
-A lease carries only the model input of one run: no member, conversation or
-organization ids and no credential. Each lease issues a new one-time lease
-token, stored only as its SHA-256 hash, which every later call for the run
-must present together with the pool and worker id; a run taken over after its
-lease expired is closed to the earlier worker. When a run is leased, its
-organization must still resolve to the worker's pool; a run whose
-organization was rebound fails (`pool_binding_changed`) instead.
+A lease carries the model input of one run and no credential. The lease
+fields name no account, conversation or organization, but the input itself
+is what the model needs: a System agent run's conversation snapshot includes
+the participants' account ids, message senders and the open plan card, and a
+Grounding prompt holds the redacted evidence or shared cards. Each lease
+issues a new one-time lease token, stored only as its SHA-256 hash, which
+every later call for the run must present together with the pool and worker
+id. Completing or failing the run spends the token, so a replayed call and a
+run taken over after its lease expired are refused. When a run is leased,
+its organization must still resolve to the worker's pool and must not be
+disabled; otherwise it fails (`pool_binding_changed`,
+`organization_disabled`) instead.
 
 Runs that cannot finish fail, so a conversation or member is never left
-waiting: runs of a stopped pool (`pool_stopped`; a held lease can no longer
-complete), runs of a pool that no longer has a worker, runs no worker leased
-within ten minutes (`pool_worker_unavailable`), and leases that lapsed ten
-minutes ago (`lease_expired`). A run that fails before any worker leased it
-gives its count back to the pool's limits.
+waiting and a run that keeps failing on a worker cannot be retried without
+end: cancelled runs (`cancelled`), runs of a stopped pool (`pool_stopped`; a
+held lease can no longer complete), runs of a pool that no longer has a
+worker and runs no worker leased within ten minutes
+(`pool_worker_unavailable`), runs still unfinished thirty minutes after they
+were queued (`pool_worker_deadline`), runs whose third lease lapsed
+(`lease_limit`), and leases that lapsed ten minutes ago (`lease_expired`). A
+run that fails before any worker leased it gives its count back to the
+pool's limits. The worker fails a run itself when the control plane refuses
+its result. Once a run has ended its tag is deleted.
 
 ### Worker settings
 
@@ -265,7 +287,7 @@ gives its count back to the pool's limits.
 | `KORDI_POOL_WORKER_BASE_URL` | The https endpoint of an API key provider. Empty for `vertex-ai`. |
 | `KORDI_POOL_WORKER_MODEL_SECRET` | API key providers: a Secret Manager version (`projects/<p>/secrets/<s>/versions/<v>`) read with the worker identity. Empty for `vertex-ai`. |
 | `KORDI_POOL_WORKER_VERTEX_PROJECT`, `KORDI_POOL_WORKER_VERTEX_LOCATION` | `vertex-ai` only: called through Vertex AI's OpenAI-compatible endpoint with the worker identity's access token. |
-| `KORDI_POOL_WORKER_ID` | Optional worker id; default `pool-worker-<random>`. |
+| `KORDI_POOL_WORKER_ID` | Optional worker id, 1-64 letters, digits, `.`, `_` or `-`; default `pool-worker-<random>`. |
 | `KORDI_POOL_WORKER_IDENTITY_TOKEN_FILE` | Optional: read the identity token from this file (a projected token) instead of the metadata server. |
 | `KORDI_POOL_WORKER_API_KEY_FILE` | Optional: the API key from a file instead of Secret Manager. |
 | `KORDI_POOL_WORKER_CONCURRENCY` | Optional, 1-4, default 2. |
@@ -310,10 +332,11 @@ once):
 - A run that failed or was cancelled before any runner claimed it is
   released, and its count is given back.
 - A run that ends by another path (a stop, an expiry, a deleted account) is
-  settled by the System agent worker within about a minute, by the same rule.
+  settled within about a minute, by the same rule.
 
-Usage older than 90 days is pruned about once an hour by the System agent
-worker.
+Usage older than 90 days is pruned about once an hour. Settlement, pruning
+and pool worker run expiry run in their own background task, so they also
+run when the System agent's group chat is off.
 
 ## Storage
 
@@ -321,7 +344,8 @@ Migration 0166 adds `cloud_resource_pool_usage`
 (one counter per pool, UTC day, feature and scope) and
 `cloud_resource_pool_reservations` (one row per admitted run). Migration 0169
 adds `cloud_pool_worker_runs` (the pool tag of each pool worker run, and the
-worker and lease token hash of its current lease).
+worker, lease token hash and lease count of its current lease, deleted
+once the run ends).
 
 ## Tests
 

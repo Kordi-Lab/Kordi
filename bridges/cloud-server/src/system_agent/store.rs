@@ -221,11 +221,13 @@ async fn enqueue(
         return Ok(false);
     }
     // The conversation's resource pool admits the pass, or it stays silent.
-    let (resource_pool, organization_id) = limits::pool_for(&mut tx, config, candidate).await?;
+    let (resource_pool, organization_id, admits) =
+        limits::pool_for(&mut tx, config, candidate).await?;
     let organization_id = organization_id.as_deref();
-    if !limits::admit(&mut tx, &resource_pool, organization_id, &run_id, candidate)
-        .await?
-        .admitted()
+    if !admits
+        || !limits::admit(&mut tx, &resource_pool, organization_id, &run_id, candidate)
+            .await?
+            .admitted()
     {
         tx.rollback().await?;
         limits::stay_silent(pool, candidate, &input).await?;

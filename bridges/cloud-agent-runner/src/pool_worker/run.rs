@@ -114,6 +114,16 @@ fn abandons(error: &PoolWorkerError) -> bool {
     )
 }
 
+/// Whether the control plane refused a completion's content while the lease
+/// is still held: a 4xx other than a lost lease, conflict or rate limit.
+fn refused_result(error: &PoolWorkerError) -> bool {
+    matches!(
+        error,
+        PoolWorkerError::Status { status, .. }
+            if (400..500).contains(status) && !matches!(status, 401 | 404 | 409 | 429)
+    )
+}
+
 /// Runs one lease to completion, failure or abandonment.
 pub(super) async fn process<P: CloudModelProvider + Sync>(
     worker: &PoolWorker<P>,
@@ -161,6 +171,18 @@ pub(super) async fn process<P: CloudModelProvider + Sync>(
             Ok(()) => RunOutcome::Completed,
             Err(error) => {
                 tracing::warn!(run_id = %lease.run_id, error = %error, "pool run completion was not accepted");
+                // A refused result (a malformed or oversized reply) still
+                // holds the lease: end the run instead of leaving it to be
+                // leased again. A lost lease or a stopped pool has nothing
+                // left to end.
+                if refused_result(&error) {
+                    if let Err(error) = plane
+                        .fail(&lease.run_id, &lease.lease_token, FAILURE_CODE)
+                        .await
+                    {
+                        tracing::warn!(run_id = %lease.run_id, error = %error, "pool run failure was not recorded");
+                    }
+                }
                 RunOutcome::Failed
             }
         },

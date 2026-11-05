@@ -21,6 +21,7 @@ pub(super) fn spawn_background_workers(
     crate::scheduled_tasks::worker::spawn_scheduled_task_worker(state.clone());
     crate::digest::spawn(state.clone());
     crate::system_agent::spawn(state.clone());
+    crate::pool_workers::spawn_maintenance(state.clone());
     crate::proactive::spawn(state.clone());
     crate::personal_agent::spawn(state.clone());
     crate::common_ground::spawn_nearby(state.clone(), rate_limiter.clone());
