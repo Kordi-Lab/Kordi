@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::common_ground::tests::db_fixture::{account, app, pool, send, signed_in};
 
 mod ownership;
+mod settings;
 
 const ORGS: &str = "/v1/cloud/organizations";
 

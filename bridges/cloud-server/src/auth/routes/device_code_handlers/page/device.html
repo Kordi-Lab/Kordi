@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Connect a device · Kordi</title>
+<link rel="stylesheet" href="/device/device.css">
+<script src="/device/device.js" defer></script>
+</head>
+<body>
+<main class="device" aria-live="polite">
+  <p class="brand">kordi</p>
+
+  <section data-view="loading">
+    <h1>Connect a device</h1>
+    <p class="line">Loading…</p>
+  </section>
+
+  <section data-view="signin" hidden>
+    <h1>Connect a device</h1>
+    <p class="line">Sign in to approve a device.</p>
+    <div class="actions stack">
+      <a class="btn secondary" href="/v1/cloud/auth/web/oauth/google/start?returnTo=%2Fdevice">
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.3c0-.8-.1-1.5-.2-2.3H12v4.3h5.9a5 5 0 0 1-2.2 3.3v2.7h3.5c2.1-1.9 3.3-4.7 3.3-8z"/><path fill="#34A853" d="M12 23c3 0 5.5-1 7.2-2.7l-3.5-2.7c-1 .7-2.2 1-3.7 1-2.9 0-5.3-1.9-6.2-4.5H2.2v2.8A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.8 14.1a6.6 6.6 0 0 1 0-4.2V7.1H2.2a11 11 0 0 0 0 9.8l3.6-2.8z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3 .6 4.2 1.6l3.1-3.1A11 11 0 0 0 2.2 7.1l3.6 2.8C6.7 7.3 9.1 5.4 12 5.4z"/></svg>
+        Continue with Google
+      </a>
+      <a class="btn secondary" href="/v1/cloud/auth/web/oauth/github/start?returnTo=%2Fdevice">
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.4 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.7.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5z"/></svg>
+        Continue with GitHub
+      </a>
+      <a class="link" href="/login?returnTo=%2Fdevice">Use email instead</a>
+    </div>
+  </section>
+
+  <section data-view="code" hidden>
+    <h1>Connect a device</h1>
+    <p class="line">Enter the code shown on your device.</p>
+    <form class="form" data-form="code" novalidate>
+      <label class="sr-only" for="user-code">Code</label>
+      <input id="user-code" name="userCode" class="code-input" autocomplete="one-time-code"
+             autocapitalize="characters" spellcheck="false" inputmode="text" maxlength="9"
+             placeholder="XXXX-XXXX" required>
+      <button class="btn" type="submit">Continue</button>
+    </form>
+  </section>
+
+  <section data-view="review" hidden>
+    <h1>Sign in on this device?</h1>
+    <p class="warning" role="note">Only continue if you started this sign-in yourself. Never enter a code someone sent you.</p>
+    <dl class="details">
+      <div><dt>Device</dt><dd data-field="device"></dd></div>
+      <div><dt>App</dt><dd data-field="app"></dd></div>
+      <div><dt>System</dt><dd data-field="system"></dd></div>
+      <div><dt>Location</dt><dd data-field="location"></dd></div>
+      <div><dt>Requested</dt><dd data-field="requested"></dd></div>
+    </dl>
+    <div class="actions">
+      <button class="btn" type="button" data-action="approve">Approve</button>
+      <button class="btn secondary" type="button" data-action="deny">Deny</button>
+    </div>
+  </section>
+
+  <section data-view="approved" hidden>
+    <h1>Device signed in</h1>
+    <p class="line">You can close this page. Revoke the device anytime in Settings.</p>
+  </section>
+
+  <section data-view="denied" hidden>
+    <h1>Sign-in denied</h1>
+    <p class="line">The device was not signed in.</p>
+  </section>
+
+  <p class="error" role="alert" data-error hidden></p>
+</main>
+</body>
+</html>

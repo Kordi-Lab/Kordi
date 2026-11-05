@@ -67,6 +67,7 @@ mod contact_profile;
 mod contact_removal;
 mod contact_request_handlers;
 mod contact_send;
+mod device_code_handlers;
 mod device_handlers;
 mod device_operation_support;
 mod device_query_handlers;
@@ -195,6 +196,30 @@ pub fn routes_with_shared_rate_limiter(
         )
         .route(WEB_OAUTH_COMPLETE_PATH, get(web_oauth_complete))
         .route("/v1/cloud/auth/app/revoke", post(revoke_app_token))
+        .route(
+            "/v1/cloud/auth/device/code",
+            post(device_code_handlers::device_code_request),
+        )
+        .route(
+            "/v1/cloud/auth/device/token",
+            post(device_code_handlers::device_token),
+        )
+        .route(
+            "/v1/cloud/auth/device/lookup",
+            post(device_code_handlers::device_lookup),
+        )
+        .route(
+            "/v1/cloud/auth/device/decision",
+            post(device_code_handlers::device_decision),
+        )
+        .route(
+            crate::auth::device_code::VERIFICATION_PATH,
+            get(device_code_handlers::device_page),
+        )
+        .route(
+            "/device/:asset",
+            get(device_code_handlers::device_page_asset),
+        )
         .layer(Extension(app_clients.clone()))
         .layer(Extension(rate_limiter.clone()))
         .layer(Extension(hasher_config.clone()))

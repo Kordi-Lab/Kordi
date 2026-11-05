@@ -60,6 +60,10 @@ export type CloudAuthErrorCode =
   | 'sign_in_code_invalid'
   | 'browser_sign_in_failed'
   | 'browser_sign_in_timed_out'
+  // Device code sign-in (RFC 8628).
+  | 'device_code_unavailable'
+  | 'device_code_denied'
+  | 'device_code_expired'
   | 'unknown';
 
 export class CloudAuthError extends Error {

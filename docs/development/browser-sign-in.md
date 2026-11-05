@@ -7,6 +7,8 @@ code, and the app exchanges it for tokens. Tokens never appear in a URL.
 
 This document describes the cloud server side and the contract for the web
 sign-in pages. The app screens and the pages themselves are separate steps.
+Hosts without a usable browser use
+[device code sign-in](device-code-sign-in.md) instead.
 
 ## Flow
 
@@ -116,7 +118,9 @@ accepts the same URI with any explicit port, so the desktop app can listen
 on an ephemeral port. `localhost` is not accepted.
 
 `KORDI_AUTH_APP_CLIENTS` replaces the built-in list with a JSON array of
-`{"clientId", "name", "redirectUris"}` objects. Redirect URIs must be
+`{"clientId", "name", "redirectUris", "deviceCode"}` objects. `deviceCode`
+(default `false`; `true` for the built-in desktop clients) allows
+[device code sign-in](device-code-sign-in.md). Redirect URIs must be
 `https`, loopback `http`, or a custom scheme; schemes the browser handles
 itself (`javascript`, `data`, `file`, `blob`, `vbscript`, `about`,
 `filesystem`, `view-source`) are refused. An invalid value disables browser

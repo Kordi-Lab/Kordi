@@ -6,11 +6,13 @@ use crate::auth::app_sign_in::codes::{is_s256_challenge, issue_code};
 use crate::auth::app_sign_in::{AppClientRegistry, AuthorizationGrant, CodeDelivery};
 use crate::auth::rate_limit::AccountActionLimit;
 
+mod sign_in_start;
 mod sign_ins;
 mod token;
 
+pub(super) use sign_in_start::{begin_sign_in, finish_sign_in};
 pub(super) use sign_ins::{list_app_sign_ins, revoke_app_sign_in};
-pub(super) use token::{app_token, revoke_app_token};
+pub(super) use token::{app_token, invalid_grant, revoke_app_token, server_error};
 
 /// Server configuration for the web page that signs the user in and then
 /// calls the authorization endpoint. Defaults to `/sign-in/app` on the

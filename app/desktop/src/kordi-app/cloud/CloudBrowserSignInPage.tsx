@@ -7,7 +7,8 @@ import { KordiFlyingBird } from '@/features/cloud/KordiFlyingBird';
 import { loginHeading, loginSubtitle } from './cloudLoginMessages';
 
 // Signed-out screens for browser sign-in: the welcome screen, then a wait
-// screen while the user logs in or signs up in the system browser.
+// screen while the user logs in or signs up in the system browser. When the
+// browser cannot be opened, the wait screen offers sign-in with a code.
 
 // The frame fills the visible window, so no crop offset applies inside it.
 const GATE_DRAG_STYLE = {
@@ -96,6 +97,11 @@ function PasteCodeForm({ signIn }: { signIn: BrowserSignInState }) {
   );
 }
 
+function waitingTitle(signIn: BrowserSignInState): string {
+  if (signIn.phase === 'finishing') return 'Signing in…';
+  return signIn.browserUnavailable ? 'Could not open your browser' : 'Continue in your browser';
+}
+
 function WaitingScreen({ signIn }: { signIn: BrowserSignInState }) {
   const [pasteOpen, setPasteOpen] = useState(false);
   const finishing = signIn.phase === 'finishing';
@@ -111,7 +117,7 @@ function WaitingScreen({ signIn }: { signIn: BrowserSignInState }) {
         <span className="app-cloud-signin-ring" />
         <span className="app-cloud-signin-mark"><KordiFlyingBird className="app-cloud-browser-signin-bird" cutout /></span>
       </div>
-      <p ref={titleRef} tabIndex={-1} className="app-cloud-browser-signin-title">{finishing ? 'Signing in…' : 'Continue in your browser'}</p>
+      <p ref={titleRef} tabIndex={-1} className="app-cloud-browser-signin-title">{waitingTitle(signIn)}</p>
       <div className="app-cloud-signin-actions">
         <button type="button" className="app-cloud-signin-action" onClick={signIn.reopenBrowser} disabled={finishing}>
           Open browser again
@@ -125,16 +131,56 @@ function WaitingScreen({ signIn }: { signIn: BrowserSignInState }) {
       {pasteOpen || finishing ? null : (
         <div className="app-cloud-browser-signin-foot">
           <button type="button" className="app-cloud-welcome-link" onClick={() => setPasteOpen(true)}>Paste code</button>
+          {signIn.browserUnavailable ? (
+            <button type="button" className="app-cloud-welcome-link" onClick={() => void signIn.startCodeSignIn()}>
+              Sign in with a code
+            </button>
+          ) : null}
         </div>
       )}
     </div>
   );
 }
 
+/** `https://kordi.ai/device` as `kordi.ai/device`. */
+function displayUri(uri: string): string {
+  return uri.replace(/^https?:\/\//, '').replace(/\/$/, '');
+}
+
+function DeviceCodeScreen({ signIn }: { signIn: BrowserSignInState }) {
+  const titleRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    titleRef.current?.focus({ preventScroll: true });
+  }, []);
+  const code = signIn.deviceCode;
+  if (!code) return null;
+  return (
+    <div className="app-cloud-browser-signin-content" data-browser-sign-in="code" aria-live="polite">
+      <p ref={titleRef} tabIndex={-1} className="app-cloud-browser-signin-title">Sign in with a code</p>
+      <p className="app-cloud-device-code-line">
+        On another device, open <span className="app-cloud-device-code-uri">{displayUri(code.verificationUri)}</span> and enter
+      </p>
+      <p className="app-cloud-device-code" aria-label={`Code ${code.userCode}`}>{code.userCode}</p>
+      <p className="app-cloud-device-code-warning">Never share this code.</p>
+      <div className="app-cloud-signin-actions">
+        <button type="button" className="app-cloud-signin-action app-cloud-signin-action-quiet" onClick={signIn.cancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SignInScreen({ signIn }: { signIn: BrowserSignInState }) {
+  if (signIn.phase === 'welcome') return <WelcomeScreen signIn={signIn} />;
+  if (signIn.phase === 'code') return <DeviceCodeScreen signIn={signIn} />;
+  return <WaitingScreen signIn={signIn} />;
+}
+
 export function CloudBrowserSignInPage({ signIn }: { signIn: BrowserSignInState }) {
   return (
     <GateFrame>
-      {signIn.phase === 'welcome' ? <WelcomeScreen signIn={signIn} /> : <WaitingScreen signIn={signIn} />}
+      <SignInScreen signIn={signIn} />
     </GateFrame>
   );
 }

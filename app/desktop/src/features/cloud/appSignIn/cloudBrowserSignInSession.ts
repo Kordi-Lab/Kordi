@@ -4,10 +4,11 @@ import { cloudApiBaseUrl } from '../cloudApiEnvironment';
 import { cloudFetchImpl } from '../cloudTransport';
 import { loadSession } from '../session';
 import { appSignInClientId, type AppSignInResult } from './appSignInClient';
-import { nativeBrowserSignInDriver, type BrowserSignInConfig } from './browserSignIn';
+import { nativeBrowserSignInDriver } from './browserSignIn';
+import type { DeviceCodeSignInConfig } from './deviceCodeSignIn';
 
 export type CloudBrowserSignInSession = {
-  config: BrowserSignInConfig;
+  config: DeviceCodeSignInConfig;
   complete: (result: AppSignInResult) => Promise<void>;
 };
 

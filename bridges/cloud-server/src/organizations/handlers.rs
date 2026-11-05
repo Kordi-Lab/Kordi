@@ -177,7 +177,7 @@ fn parse_role(value: &str) -> Result<OrganizationRole, ApiError> {
 
 /// Locks the organization and returns its kind and the caller's role.
 /// Organizations the caller does not belong to are not found.
-async fn lock_for_change(
+pub(super) async fn lock_for_change(
     tx: &mut Tx<'_>,
     organization_id: &str,
     actor_account_id: &str,

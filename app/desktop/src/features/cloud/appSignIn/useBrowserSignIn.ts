@@ -5,10 +5,13 @@ import type { AppSignInResult, BrowserSignInIntent } from './appSignInClient';
 import {
   BrowserSignInAttempt,
   isBrowserSignInCancelled,
-  type BrowserSignInConfig,
 } from './browserSignIn';
+import { DeviceCodeAttempt, type DeviceCodeSignInConfig } from './deviceCodeSignIn';
 
-export type BrowserSignInPhase = 'welcome' | 'waiting' | 'finishing';
+/** `code`: showing a device code while the app polls (the browser could not open). */
+export type BrowserSignInPhase = 'welcome' | 'waiting' | 'code' | 'finishing';
+
+export type DeviceCodeDisplay = { userCode: string; verificationUri: string; expiresAt: number };
 
 export type BrowserSignInState = {
   phase: BrowserSignInPhase;
@@ -17,7 +20,12 @@ export type BrowserSignInState = {
   /** Shown under the paste-code field. */
   codeError: string | null;
   submittingCode: boolean;
+  /** The system browser could not be opened; offer sign-in with a code. */
+  browserUnavailable: boolean;
+  /** The code to show while `phase` is `code`. */
+  deviceCode: DeviceCodeDisplay | null;
   start: (intent: BrowserSignInIntent) => Promise<void>;
+  startCodeSignIn: () => Promise<void>;
   reopenBrowser: () => void;
   cancel: () => void;
   submitCode: (code: string) => Promise<void>;
@@ -35,17 +43,19 @@ export function useBrowserSignIn({
   config,
   onSignedIn,
 }: {
-  config: BrowserSignInConfig;
+  config: DeviceCodeSignInConfig;
   onSignedIn: (result: AppSignInResult) => Promise<void>;
 }): BrowserSignInState {
   const [phase, setPhase] = useState<BrowserSignInPhase>('welcome');
   const [error, setError] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [submittingCode, setSubmittingCode] = useState(false);
-  const attemptRef = useRef<BrowserSignInAttempt | null>(null);
+  const [browserUnavailable, setBrowserUnavailable] = useState(false);
+  const [deviceCode, setDeviceCode] = useState<DeviceCodeDisplay | null>(null);
+  const attemptRef = useRef<BrowserSignInAttempt | DeviceCodeAttempt | null>(null);
   const startingRef = useRef(false);
   // The redirect and a pasted code can both resolve one attempt; finish once.
-  const finishingRef = useRef<BrowserSignInAttempt | null>(null);
+  const finishingRef = useRef<BrowserSignInAttempt | DeviceCodeAttempt | null>(null);
 
   useEffect(() => () => {
     attemptRef.current?.cancel();
@@ -56,12 +66,13 @@ export function useBrowserSignIn({
     attemptRef.current?.cancel();
     attemptRef.current = null;
     setPhase('welcome');
+    setDeviceCode(null);
     setCodeError(null);
     setSubmittingCode(false);
     setError(message);
   }, []);
 
-  const finish = useCallback(async (attempt: BrowserSignInAttempt, result: AppSignInResult) => {
+  const finish = useCallback(async (attempt: BrowserSignInAttempt | DeviceCodeAttempt, result: AppSignInResult) => {
     if (attemptRef.current !== attempt || finishingRef.current === attempt) return;
     finishingRef.current = attempt;
     setPhase('finishing');
@@ -80,6 +91,7 @@ export function useBrowserSignIn({
     startingRef.current = true;
     setError(null);
     setCodeError(null);
+    setBrowserUnavailable(false);
     let attempt: BrowserSignInAttempt;
     try {
       attempt = await BrowserSignInAttempt.start(config, intent);
@@ -91,7 +103,9 @@ export function useBrowserSignIn({
     startingRef.current = false;
     attemptRef.current = attempt;
     setPhase('waiting');
-    void attempt.openBrowser().catch(() => undefined);
+    void attempt.openBrowser().catch(() => {
+      if (attemptRef.current === attempt) setBrowserUnavailable(true);
+    });
     attempt.waitForBrowser().then(
       (result) => finish(attempt, result),
       (caught: unknown) => {
@@ -102,14 +116,49 @@ export function useBrowserSignIn({
   }, [config, finish, returnToWelcome]);
 
   const reopenBrowser = useCallback(() => {
-    void attemptRef.current?.openBrowser().catch(() => undefined);
+    const attempt = attemptRef.current;
+    if (!(attempt instanceof BrowserSignInAttempt)) return;
+    void attempt.openBrowser().then(
+      () => setBrowserUnavailable(false),
+      () => setBrowserUnavailable(true),
+    );
   }, []);
+
+  const startCodeSignIn = useCallback(async () => {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    attemptRef.current?.cancel();
+    attemptRef.current = null;
+    setError(null);
+    setCodeError(null);
+    let attempt: DeviceCodeAttempt;
+    try {
+      attempt = await DeviceCodeAttempt.start(config);
+    } catch (caught) {
+      startingRef.current = false;
+      // A server without device codes keeps the browser flow.
+      returnToWelcome(browserSignInErrorMessage(caught));
+      return;
+    }
+    startingRef.current = false;
+    attemptRef.current = attempt;
+    const { userCode, verificationUri, expiresAt } = attempt.prompt;
+    setDeviceCode({ userCode, verificationUri, expiresAt });
+    setPhase('code');
+    attempt.wait().then(
+      (result) => finish(attempt, result),
+      (caught: unknown) => {
+        if (attemptRef.current !== attempt || isBrowserSignInCancelled(caught)) return;
+        returnToWelcome(browserSignInErrorMessage(caught));
+      },
+    );
+  }, [config, finish, returnToWelcome]);
 
   const cancel = useCallback(() => returnToWelcome(null), [returnToWelcome]);
 
   const submitCode = useCallback(async (code: string) => {
     const attempt = attemptRef.current;
-    if (!attempt) return;
+    if (!(attempt instanceof BrowserSignInAttempt)) return;
     setCodeError(null);
     setSubmittingCode(true);
     try {
@@ -124,5 +173,17 @@ export function useBrowserSignIn({
     }
   }, [finish]);
 
-  return { phase, error, codeError, submittingCode, start, reopenBrowser, cancel, submitCode };
+  return {
+    phase,
+    error,
+    codeError,
+    submittingCode,
+    browserUnavailable,
+    deviceCode,
+    start,
+    startCodeSignIn,
+    reopenBrowser,
+    cancel,
+    submitCode,
+  };
 }

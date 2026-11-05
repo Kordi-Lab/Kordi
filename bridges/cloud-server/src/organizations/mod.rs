@@ -20,10 +20,12 @@ use crate::server::ServerState;
 
 mod handlers;
 mod policy;
+mod settings;
 #[cfg(test)]
 mod tests;
 
 pub use policy::{MembershipChange, OrganizationRole, PolicyError};
+pub use settings::device_code_sign_in_blocked_by;
 
 pub fn routes() -> Router<Arc<ServerState>> {
     Router::new()
@@ -39,6 +41,10 @@ pub fn routes() -> Router<Arc<ServerState>> {
         .route(
             "/v1/cloud/organizations/:organization_id/members/:account_id",
             axum::routing::patch(handlers::update_member).delete(handlers::remove_member),
+        )
+        .route(
+            "/v1/cloud/organizations/:organization_id/settings",
+            get(settings::get_settings).patch(settings::update_settings),
         )
 }
 

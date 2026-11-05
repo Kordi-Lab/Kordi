@@ -9,6 +9,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 
+mod device_code;
 mod hardening;
 mod prompt;
 mod refresh_grace;

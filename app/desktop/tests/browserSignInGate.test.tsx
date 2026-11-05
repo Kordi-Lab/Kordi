@@ -21,9 +21,12 @@ function json(status: number, body: unknown) {
 
 let baseUrlCounter = 0;
 
-function fakeSession({ probeStatus = 400, probeError = 'invalid_redirect_uri', tokenStatus = 200 } = {}) {
+function fakeSession({
+  probeStatus = 400, probeError = 'invalid_redirect_uri', tokenStatus = 200, openFails = false, deviceCodeStatus = 200,
+} = {}) {
   const events: string[] = [];
   let probes = 0;
+  let devicePolls = 0;
   const completed: AppSignInResult[] = [];
   let state = '';
   let returnFromBrowser: (query: string) => void = () => {};
@@ -35,7 +38,10 @@ function fakeSession({ probeStatus = 400, probeError = 'invalid_redirect_uri', t
     },
     wait: () => new Promise((resolve, reject) => { returnFromBrowser = resolve; rejectWait = reject; }),
     cancel: async () => { events.push('cancel'); rejectWait(new Error('Browser sign-in was canceled.')); },
-    openUrl: async (url) => { events.push(`open ${new URL(url).pathname}`); },
+    openUrl: async (url) => {
+      events.push(`open ${new URL(url).pathname}`);
+      if (openFails) throw new Error('No browser');
+    },
   };
   // Each case gets its own origin so the gate's availability cache stays per case.
   baseUrlCounter += 1;
@@ -46,11 +52,25 @@ function fakeSession({ probeStatus = 400, probeError = 'invalid_redirect_uri', t
       probes += 1;
       return json(probeStatus, { error: probeError });
     }
+    if (url.endsWith('/device/code')) {
+      events.push('device code');
+      return deviceCodeStatus === 200
+        ? json(200, { device_code: 'kordi_dc_synthetic', user_code: 'CDFG-HJKM', verification_uri: `${baseUrl}/device`, expires_in: 900, interval: 5 })
+        : json(deviceCodeStatus, {});
+    }
+    if (url.endsWith('/device/token')) {
+      devicePolls += 1;
+      return devicePolls < 2 ? json(400, { error: 'authorization_pending' }) : json(200, TOKEN_BODY);
+    }
     if (url.endsWith('/token')) return tokenStatus === 200 ? json(200, TOKEN_BODY) : json(tokenStatus, { error: 'invalid_grant' });
     return json(404, {});
   }) as typeof fetch;
   const session: CloudBrowserSignInSession = {
-    config: { baseUrl, clientId: 'kordi-desktop', fetchImpl, driver, deviceRegistration: async () => { throw new Error('none'); } },
+    config: {
+      baseUrl, clientId: 'kordi-desktop', fetchImpl, driver,
+      deviceRegistration: async () => { throw new Error('none'); },
+      sleep: async () => {},
+    },
     complete: async (result) => { completed.push(result); },
   };
   return {
@@ -237,5 +257,71 @@ test('the gate reports whether browser sign-in or the in-app form is showing', a
     await settle();
     assert.ok(document.querySelector('input[type="email"]'));
     assert.equal(reports.at(-1), false, 'the in-app form takes its own window size');
+  });
+});
+
+test('when the browser cannot open, a code signs this Mac in', async () => {
+  await withDom(async (root) => {
+    const fake = fakeSession({ openFails: true });
+    await render(root, fake.session);
+    await settle();
+    await act(async () => { button('Log in').click(); });
+    await settle();
+    assert.match(text(), /Could not open your browser/);
+    await act(async () => { button('Sign in with a code').click(); });
+    await settle();
+    assert.ok(fake.events.includes('device code'));
+    assert.ok(fake.events.includes('cancel'), 'the browser attempt stops listening');
+    assert.equal(fake.completed.length, 1, `page: ${text()}`);
+    assert.equal(fake.completed[0]?.refresh.tokenEndpoint, `${fake.baseUrl}/v1/cloud/auth/app/token`);
+  });
+});
+
+test('the code screen shows the code and the approval page', async () => {
+  await withDom(async (root) => {
+    const fake = fakeSession({ openFails: true });
+    // Hold the poll so the code screen stays up.
+    fake.session.config.sleep = () => new Promise(() => {});
+    await render(root, fake.session);
+    await settle();
+    await act(async () => { button('Log in').click(); });
+    await settle();
+    await act(async () => { button('Sign in with a code').click(); });
+    await settle();
+    assert.match(text(), /Sign in with a code/);
+    assert.match(text(), /CDFG-HJKM/);
+    assert.match(text(), /app\d+\.example\.test\/device/);
+    assert.match(text(), /Never share this code/);
+    await act(async () => { button('Cancel').click(); });
+    await settle();
+    assert.match(text(), /Welcome to Kordi/);
+  });
+});
+
+test('a server without device codes returns to browser sign-in', async () => {
+  await withDom(async (root) => {
+    const fake = fakeSession({ openFails: true, deviceCodeStatus: 404 });
+    await render(root, fake.session);
+    await settle();
+    await act(async () => { button('Log in').click(); });
+    await settle();
+    await act(async () => { button('Sign in with a code').click(); });
+    await settle();
+    assert.equal(
+      document.querySelector('[role="alert"]')?.textContent,
+      'Sign-in with a code is not available on this server.',
+    );
+    button('Log in');
+  });
+});
+
+test('sign in with a code stays hidden while the browser opens', async () => {
+  await withDom(async (root) => {
+    const fake = fakeSession();
+    await render(root, fake.session);
+    await settle();
+    await act(async () => { button('Log in').click(); });
+    await settle();
+    assert.doesNotMatch(text(), /Sign in with a code/);
   });
 });
