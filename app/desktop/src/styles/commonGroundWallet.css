@@ -32,7 +32,6 @@
 .cg-wallet-col { max-width: 540px; }
 .cg-wallet-col.is-push { max-width: 820px; animation: cg-push 240ms ease-out; }
 @keyframes cg-push { from { opacity: 0; transform: translateX(18px); } }
-.is-first-run .cg-wallet-main { display: flex; align-items: center; justify-content: center; }
 
 /* Panels and rows. */
 .cg-panel { position: relative; border: 1px solid var(--cg-line); border-radius: 10px; background: var(--cg-card); }

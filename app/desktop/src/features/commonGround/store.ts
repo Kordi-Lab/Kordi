@@ -267,6 +267,9 @@ export class CommonGroundStore {
       this.set({ notice: 'Could not build your card. Try again.' });
     } else if (owner.card && this.top().name === 'build') {
       this.home();
+    } else if (owner.card && this.top().name === 'home') {
+      // Built in place on Home: the rooms and recent people it skipped while empty.
+      void this.loadActivity();
     }
   }
 

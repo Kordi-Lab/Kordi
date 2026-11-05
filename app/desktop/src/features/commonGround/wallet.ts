@@ -3,7 +3,7 @@
 
 import { profileDesign } from './cardDesign';
 import type { CgCardFace, CgCardOwner } from './ProfileCard';
-import type { CgState } from './store';
+import { currentProfile, hasAnyCard, type CgState } from './store';
 import type { CgProfile, CgProfileKind } from './types';
 
 /** A profile as a card: built, not built yet, or building while it is the current one. */
@@ -96,4 +96,15 @@ export function shortDay(iso: string | null | undefined, now = new Date()): stri
   if (Number.isNaN(day.getTime())) return '';
   const text = day.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   return day.getFullYear() === now.getFullYear() ? text : `${text} ${day.getFullYear()}`;
+}
+
+/** Keyed by card, so switching cards (or the list arriving) opens Build with that card's picks. */
+export function buildScreenKey(state: CgState): string {
+  return `${state.profileId ?? ''}:${currentProfile(state) ? 'loaded' : ''}`;
+}
+
+/** True when the selected card has nothing built yet, so Home shows Build in its place. */
+export function selectedCardUnbuilt(state: CgState): boolean {
+  if (!hasAnyCard(state)) return true;
+  return ownerIsCurrent(state) ? !state.owner?.card : currentProfile(state)?.hasCard === false;
 }

@@ -17,7 +17,8 @@ import '../../src/index.css';
 
 // Login-free preview of Common ground in the real Contacts page. A fetch stub answers the
 // `/v1/cloud/common-ground` routes from fixtures, with three profiles (`commonGroundVersion` 3).
-// Query: ?screen=home|build|card|look|lobby|results|match|meet|pair|pair-off, ?theme=light|dark, ?status=matching|matching-empty (results).
+// Query: ?screen=home|unbuilt|build|card|look|lobby|results|match|meet|pair|pair-off, ?theme=light|dark, ?status=matching|matching-empty (results).
+// "unbuilt" is Home with the Health card selected, which has no card yet, so Build opens in place.
 // "look" is the card page with the background and icon popover open; "pair" is Home with the
 // Pair popover open, and "pair-off" the same with sharing off.
 const params = new URLSearchParams(location.search);
@@ -171,7 +172,7 @@ function Preview({ store }: { store: CommonGroundStore }) {
 
 void saveSession({ token: 'preview', accountId: fx.self.accountId, expiresAt: '2099-01-01T00:00:00Z' }).then(() => {
   // The build screen previews the Health profile, which has no card yet.
-  if (screen === 'build') localStorage.setItem(profileStorageKey(fx.self.accountId), 'cgp_health');
+  if (screen === 'build' || screen === 'unbuilt') localStorage.setItem(profileStorageKey(fx.self.accountId), 'cgp_health');
   const store = new CommonGroundStore(createCommonGroundClient(), { profiles: true, memory: localProfileMemory(fx.self.accountId) });
   for (const next of STACKS[screen] ?? []) store.open(next);
   createRoot(document.getElementById('root')!).render(<StrictMode><Preview store={store} /></StrictMode>);
