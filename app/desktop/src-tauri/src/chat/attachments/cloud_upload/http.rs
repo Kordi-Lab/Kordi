@@ -1,3 +1,4 @@
+use crate::cloud_session_organization::CloudBearerAuth;
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -84,7 +85,7 @@ pub(super) async fn load_server_status(
         .get(format!(
             "{base_url}/v1/cloud/attachments/{attachment_id}/multipart"
         ))
-        .bearer_auth(token)
+        .cloud_bearer_auth(token)
         .send();
     let response = tokio::select! {
         _ = cancel.cancelled() => return Err("Upload cancelled.".to_string()),
@@ -114,7 +115,7 @@ pub(super) async fn initiate_upload(
         .post(format!(
             "{base_url}/v1/cloud/attachments/multipart/initiate"
         ))
-        .bearer_auth(token)
+        .cloud_bearer_auth(token)
         .json(&serde_json::json!({
             "sizeBytes": size_bytes,
             "contentType": content_type,
@@ -157,7 +158,7 @@ pub(super) async fn upload_part(
             .put(format!(
                 "{base_url}/v1/cloud/attachments/{attachment_id}/parts/{part_number}"
             ))
-            .bearer_auth(&token)
+            .cloud_bearer_auth(&token)
             .body(bytes.clone())
             .send();
         let response = tokio::select! {
@@ -199,7 +200,7 @@ pub(super) async fn complete_upload(
         .post(format!(
             "{base_url}/v1/cloud/attachments/{attachment_id}/multipart"
         ))
-        .bearer_auth(token)
+        .cloud_bearer_auth(token)
         .json(&serde_json::json!({ "sha256Hex": sha256_hex }))
         .send();
     let response = tokio::select! {
@@ -220,7 +221,7 @@ pub(super) async fn cancel_server_upload(base_url: &str, token: &str, attachment
         .delete(format!(
             "{base_url}/v1/cloud/attachments/{attachment_id}/multipart"
         ))
-        .bearer_auth(token)
+        .cloud_bearer_auth(token)
         .send()
         .await;
 }

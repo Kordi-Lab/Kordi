@@ -27,8 +27,12 @@ pub(super) struct NewRun<'a> {
     /// The member the run works for.
     pub requester: &'a str,
     /// The conversation the run works in, if any. Its organization picks the
-    /// resource pool; otherwise the requester's personal organization does.
+    /// resource pool.
     pub conversation_id: Option<Uuid>,
+    /// The checked organization of the request that started the run
+    /// (organization-requests.md). Without a conversation it picks the pool;
+    /// background work names none and uses the requester's personal one.
+    pub organization_id: Option<&'a str>,
     pub prompt: String,
     pub system_prompt: &'a str,
 }
@@ -42,15 +46,16 @@ pub(super) async fn insert(
     run: NewRun<'_>,
 ) -> sqlx_core::Result<bool> {
     let organization_id: Option<String> =
-        match run.conversation_id {
-            Some(conversation_id) => query_scalar(
+        match (run.conversation_id, run.organization_id) {
+            (Some(conversation_id), _) => query_scalar(
                 "SELECT organization_id FROM cloud_chat_conversations WHERE conversation_id = $1",
             )
             .bind(conversation_id)
             .fetch_optional(&mut **tx)
             .await?
             .flatten(),
-            None => query_scalar(
+            (None, Some(organization_id)) => Some(organization_id.to_string()),
+            (None, None) => query_scalar(
                 "SELECT organization_id FROM cloud_organizations WHERE personal_account_id = $1",
             )
             .bind(run.requester)

@@ -19,6 +19,16 @@ async fn queue(
     person: &str,
     conversation_id: Option<Uuid>,
 ) -> (String, bool) {
+    queue_in(pool, config, person, conversation_id, None).await
+}
+
+async fn queue_in(
+    pool: &PgPool,
+    config: &crate::system_agent::SystemAgentConfig,
+    person: &str,
+    conversation_id: Option<Uuid>,
+    organization_id: Option<&str>,
+) -> (String, bool) {
     let run_id = format!("cg_card_{}", Uuid::new_v4().simple());
     let mut tx = pool.begin().await.unwrap();
     let queued = insert(
@@ -28,6 +38,7 @@ async fn queue(
             run_id: &run_id,
             requester: person,
             conversation_id,
+            organization_id,
             prompt: "Synthetic evidence.".to_string(),
             system_prompt: "Synthetic instructions.",
         },
@@ -133,6 +144,15 @@ async fn grounding_runs_follow_the_organization_pool_and_its_person_limit() {
     let (route_pool, model, organization) = route_of(&pool, &team_run).await.unwrap();
     assert_eq!(route_pool, partner_id);
     assert_eq!(model, "partner-grounding-model");
+    assert_eq!(organization.as_deref(), Some(team.as_str()));
+
+    // Without a conversation, a request acting in the team uses the team's
+    // pool too: the checked request organization picks it, not a content
+    // lookup.
+    let (request_run, queued) = queue_in(&pool, &config, &person, None, Some(&team)).await;
+    assert!(queued);
+    let (route_pool, _, organization) = route_of(&pool, &request_run).await.unwrap();
+    assert_eq!(route_pool, partner_id);
     assert_eq!(organization.as_deref(), Some(team.as_str()));
 
     // A run that fails before any runner claims it gives its run back.

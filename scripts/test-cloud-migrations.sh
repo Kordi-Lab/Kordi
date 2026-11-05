@@ -87,6 +87,7 @@ tests=(
   resource_pool_tests::upgrade_from_165_adds_resource_pool_usage
   organization_tests::upgrade_from_166_adds_organization_admission
   organization_tests::upgrade_from_167_adds_organization_selection
+  organization_claim_tests::upgrade_from_170_adds_organization_claims
 )
 index=0
 for test_name in "${tests[@]}"; do

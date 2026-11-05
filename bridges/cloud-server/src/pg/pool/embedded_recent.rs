@@ -429,4 +429,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "organization selection",
         "0168_organization_selection.sql"
     ),
+    migration!(
+        171,
+        "organization claims on sessions",
+        "0171_organization_claims.sql"
+    ),
 ];

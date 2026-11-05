@@ -113,6 +113,9 @@ struct ShareExtensionAPIClient {
         request.httpBody = bodyData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(credential.token)", forHTTPHeaderField: "Authorization")
+        if let organizationID = credential.organizationID {
+            request.setValue(organizationID, forHTTPHeaderField: "Kordi-Organization")
+        }
         if bodyData != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         do {
             let (data, response) = try await session.data(for: request)

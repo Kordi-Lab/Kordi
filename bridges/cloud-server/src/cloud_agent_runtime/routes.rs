@@ -68,6 +68,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .merge(desktop_routes::routes())
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
+            crate::organizations::requests::organization_scoped,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
             cloud_session_middleware,
         ))
         .with_state(state.clone());

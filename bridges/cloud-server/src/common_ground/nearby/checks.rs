@@ -147,6 +147,7 @@ pub(super) async fn queue(
         run_id: &run_id,
         requester: &need.account_id,
         conversation_id: None,
+        organization_id: None,
         prompt: check_prompt(&need.text, &refs),
         system_prompt: CHECK_SYSTEM,
     };

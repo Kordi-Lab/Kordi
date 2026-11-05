@@ -253,6 +253,8 @@ struct ShareExtensionCredential: Codable, Equatable, Sendable {
     let token: String
     let accountID: String
     let expiresAt: String?
+    /// Sent as `Kordi-Organization`; nil sends no header.
+    var organizationID: String? = nil
 
     var isExpired: Bool {
         guard let expiresAt else { return false }

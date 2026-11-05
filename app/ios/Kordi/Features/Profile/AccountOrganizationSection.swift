@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Draws the divider under the account header, then the organization switcher
-/// when the account belongs to a team. Choosing an organization only changes
-/// where new conversations go; the account and local data stay as they are.
+/// when the account belongs to a team. Choosing an organization switches the
+/// session token to it; the account and local data stay as they are.
 struct AccountOrganizationSection: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var store = OrganizationSelectionStore.shared

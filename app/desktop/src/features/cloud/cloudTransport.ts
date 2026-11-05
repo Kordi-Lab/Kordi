@@ -11,6 +11,7 @@
 //
 // Browser previews use platform fetch. Tests that emulate the native shell
 // must supply the HTTP plugin commands or inject a client's fetchImpl.
+import { withOrganizationHeader } from './cloudOrganizationFetch';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const LOCAL_TUNNEL_REQUEST_TIMEOUT_MS = 45_000;
@@ -32,7 +33,14 @@ function isNativeDesktopShell(): boolean {
     && typeof (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== 'undefined';
 }
 
+// Requests made with a session also name the selected organization and
+// recover once from `409 organization_mismatch`; see cloudOrganizationFetch.
 export function cloudFetchImpl(): typeof fetch {
+  return withOrganizationHeader(baseCloudFetchImpl());
+}
+
+/** Cloud fetch without the organization header, for organization state and token exchange requests. */
+export function baseCloudFetchImpl(): typeof fetch {
   if (!isNativeDesktopShell()) {
     return globalThis.fetch.bind(globalThis);
   }

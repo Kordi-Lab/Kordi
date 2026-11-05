@@ -77,6 +77,8 @@ hands over all of them. A direct chat stays with its two people. Conversation sn
 when a team owns the conversation and nothing for a personal one, so clients
 can label team groups. Clients keep the selected organization per account on
 the device; switching never changes the account, its sign-in, or local data.
+The access token carries the selected organization, and every request names
+it in a header ([organization on every request](organization-requests.md)).
 
 Runs are charged to an organization when they are queued and checked again
 when they are leased or start. A team pays only for work one of its members

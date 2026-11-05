@@ -218,6 +218,10 @@ pub async fn cloud_or_web_session_middleware(
     };
     match session {
         Ok(session) => {
+            use crate::organizations::requests::{load_for_session, RequestOrganization};
+            if let Ok(Some(claim)) = load_for_session(state.db_pool(), &session.token_id).await {
+                RequestOrganization::attach(&mut req, &session.account_id, &claim, &headers);
+            }
             req.extensions_mut().insert(session);
             super::app_sign_in_handlers::no_store(next.run(req).await)
         }

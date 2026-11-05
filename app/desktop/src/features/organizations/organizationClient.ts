@@ -1,5 +1,5 @@
 import { cloudApiBaseUrl } from '@/features/cloud/cloudApiEnvironment';
-import { cloudFetchImpl, defaultCloudRequestTimeoutMs } from '@/features/cloud/cloudTransport';
+import { baseCloudFetchImpl, defaultCloudRequestTimeoutMs } from '@/features/cloud/cloudTransport';
 
 export type CloudOrganizationKind = 'personal' | 'team';
 export type CloudOrganizationRole = 'owner' | 'admin' | 'member';
@@ -63,7 +63,9 @@ export async function fetchCloudOrganizations(
   options: CloudOrganizationClientOptions = {},
 ): Promise<CloudOrganization[]> {
   const baseUrl = options.baseUrl ?? cloudApiBaseUrl();
-  const fetchImpl = options.fetchImpl ?? cloudFetchImpl();
+  // An account route: sent without the organization header, so recovering
+  // from an organization mismatch can always read the current list.
+  const fetchImpl = options.fetchImpl ?? baseCloudFetchImpl();
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),

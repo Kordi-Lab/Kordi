@@ -23,7 +23,9 @@ use tokio::sync::Mutex;
 
 use crate::cloud_session::{cloud_session_load, store_session_entry, CloudSessionEntry};
 
-static REFRESH_LOCK: Mutex<()> = Mutex::const_new(());
+/// Serializes refreshes and organization switches, which both spend the
+/// stored session's credentials over the network.
+pub(crate) static REFRESH_LOCK: Mutex<()> = Mutex::const_new(());
 const REFRESH_TIMEOUT: Duration = Duration::from_secs(20);
 /// Native callers refresh an access token this close to its expiry, so a
 /// token they read stays valid for the request or turn that uses it.
@@ -122,7 +124,7 @@ pub(crate) fn store_session_if_unchanged(
     }
 }
 
-async fn load_stored_session() -> Result<Option<CloudSessionEntry>, String> {
+pub(crate) async fn load_stored_session() -> Result<Option<CloudSessionEntry>, String> {
     tokio::task::spawn_blocking(cloud_session_load)
         .await
         .map_err(|error| error.to_string())?
@@ -207,9 +209,11 @@ pub(crate) fn refreshed_entry(
 /// Refresh tokens go only to HTTPS, or to plain HTTP on loopback for local
 /// development backends.
 pub(crate) fn is_allowed_token_endpoint(endpoint: &str) -> bool {
-    if !endpoint.ends_with("/v1/cloud/auth/app/token") {
-        return false;
-    }
+    endpoint.ends_with("/v1/cloud/auth/app/token") && is_https_or_loopback(endpoint)
+}
+
+/// HTTPS, or plain HTTP on loopback for local development backends.
+pub(crate) fn is_https_or_loopback(endpoint: &str) -> bool {
     if let Some(rest) = endpoint.strip_prefix("https://") {
         return !rest.starts_with('/') && !rest.contains('@');
     }
@@ -237,6 +241,7 @@ mod tests {
             refresh_token: Some("kordi_rt_old".into()),
             client_id: Some("kordi-desktop".into()),
             token_endpoint: Some("https://app.example.test/v1/cloud/auth/app/token".into()),
+            organization_id: Some("org_team".into()),
         }
     }
 
@@ -253,6 +258,8 @@ mod tests {
         assert_eq!(next.account_id, "acct_synthetic");
         assert_eq!(next.device_id.as_deref(), Some("dev_synthetic"));
         assert_eq!(next.client_id.as_deref(), Some("kordi-desktop"));
+        // The server keeps the organization on refresh.
+        assert_eq!(next.organization_id.as_deref(), Some("org_team"));
     }
 
     #[test]
