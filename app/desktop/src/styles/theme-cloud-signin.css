@@ -303,6 +303,24 @@
   border-color: var(--app-cloud-login-border);
 }
 
+/* Dark mirrors light's ink button: a light fill with dark text, never the
+ * theme accent. Sign up keeps a visible fill and edge on the dark surface. */
+.kordi-app.theme-dark .app-cloud-browser-signin .app-cloud-login-submit {
+  background: oklch(0.95 0.012 82);
+  color: oklch(0.2 0.02 125);
+  border-color: transparent;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.35);
+}
+
+.kordi-app.theme-dark .app-cloud-browser-signin .app-cloud-welcome-secondary {
+  border-color: rgb(255 255 255 / 0.16);
+  background: rgb(255 255 255 / 0.10);
+}
+
+.kordi-app.theme-dark .app-cloud-browser-signin .app-cloud-welcome-secondary:hover {
+  border-color: rgb(255 255 255 / 0.26);
+}
+
 .app-cloud-login-submit:focus-visible,
 .app-cloud-welcome-secondary:focus-visible,
 .app-cloud-welcome-link:focus-visible {
