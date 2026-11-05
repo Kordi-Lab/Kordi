@@ -110,11 +110,6 @@
 .cg-tile-foot > span { display: inline-flex; align-items: center; gap: 6px; }
 :is(.cg-tile-owner, .cg-tile-focus, .cg-tile-foot) { transition: opacity 200ms ease-out; }
 .cg-card.is-tile:not(.is-on) :is(.cg-tile-owner, .cg-tile-focus, .cg-tile-foot) { opacity: 0; }
-.cg-tile-open {
-  height: 22px; padding: 0 9px; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--c2) 70%, var(--fg) 30%);
-  color: var(--fg); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; opacity: 0; transition: opacity 200ms ease-out;
-}
-.cg-card.is-tile.is-on:is(:hover, :focus-within) .cg-tile-open { opacity: 1; }
 .cg-spin { display: inline-block; width: 11px; height: 11px; flex: none; border: 1.5px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; border-radius: 50%; animation: cg-spin 0.8s linear infinite; }
 @keyframes cg-spin { to { transform: rotate(360deg); } }
 
@@ -147,6 +142,6 @@
 .cg-card.is-large.has-handle .cg-large-topics { right: 156px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .cg-card.is-tile, :is(.cg-tile-owner, .cg-tile-focus, .cg-tile-foot), .cg-tile-open { transition: none; }
+  .cg-card.is-tile, :is(.cg-tile-owner, .cg-tile-focus, .cg-tile-foot) { transition: none; }
   .cg-spin { animation-duration: 2.4s; }
 }

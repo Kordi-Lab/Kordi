@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { StrictMode, useLayoutEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 

@@ -119,6 +119,7 @@
       </section>
     </main>
     <script type="module">
+      import '/tests/visual/previewChatTheme.ts';
       const theme = new URLSearchParams(window.location.search).get('theme') === 'light' ? 'light' : 'dark';
       document.documentElement.style.colorScheme = theme;
       document.querySelector('[data-quiet-gallery]')?.classList.add(`theme-${theme}`);

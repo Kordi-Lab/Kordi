@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import DigestPage from '../../src/features/digest/DigestPage';

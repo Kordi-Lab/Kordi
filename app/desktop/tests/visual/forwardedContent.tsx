@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { VirtualTranscript } from '../../src/features/chat/VirtualTranscript';

@@ -6,6 +6,7 @@
 //     normal: Save resolves after 400 ms and the sample account takes the draft.
 //     locked: the Kordi ID changes again one year from now.
 //     taken:  Save fails with kordi_id_taken, as the real client reports it.
+import './previewChatTheme';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 

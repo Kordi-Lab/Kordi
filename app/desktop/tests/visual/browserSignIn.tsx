@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { createRoot } from 'react-dom/client';
 import { KordiAppRoot } from '../../src/KordiApp';
 import type { BrowserSignInDriver } from '../../src/features/cloud/appSignIn/browserSignIn';

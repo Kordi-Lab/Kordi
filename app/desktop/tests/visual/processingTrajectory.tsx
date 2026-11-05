@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { directReplyHandoffMessages } from './directReplyHandoff';
 import { CompanionDocumentPane } from '../../src/pages/chatsPage.companionDocument';
 import { useCompanionDocument, useCompanionDocumentRequests } from '../../src/features/documents/useCompanionDocument';

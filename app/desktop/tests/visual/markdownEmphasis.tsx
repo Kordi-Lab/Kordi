@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { createRoot } from 'react-dom/client';
 import { MarkdownContent } from '../../src/kordi-app/components/markdown';
 import { HumanMessageMarkdown } from '../../src/kordi-app/components/humanMessageMarkdown';

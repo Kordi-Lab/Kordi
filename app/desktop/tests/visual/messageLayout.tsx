@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { setMessageLayout } from '../../src/app/messageLayoutPreference';
 import { useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
