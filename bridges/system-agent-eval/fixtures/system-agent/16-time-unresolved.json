@@ -1,0 +1,36 @@
+{
+  "kind": "systemAgent",
+  "id": "time-unresolved",
+  "description": "A plan names a day and 'morning' but no time; the card must not guess one.",
+  "title": "Coffee",
+  "members": [
+    {"key": "theo", "name": "Theo Park"},
+    {"key": "riya", "name": "Riya Shah"}
+  ],
+  "turns": [
+    {
+      "messages": [
+        {"from": "theo", "text": "Coffee at Bean Lab on {{d+3:long}}, sometime in the morning?", "minutesAgo": 3},
+        {"from": "riya", "text": "sure!", "minutesAgo": 2}
+      ],
+      "expect": {
+        "reply": "message",
+        "allowedActions": ["propose", "rsvp"],
+        "requiredActions": ["propose"],
+        "card": {
+          "state": ["awaiting_confirmation", "polling"],
+          "startAt": null,
+          "locationIncludes": ["bean"]
+        }
+      },
+      "stub": [
+        {"toolCalls": [{
+          "action": "propose", "conversationId": "$conversationId", "title": "Coffee at Bean Lab",
+          "state": "awaitingConfirmation", "location": "Bean Lab", "unresolvedFields": ["time"],
+          "participants": "$participants:theo", "sourceMessageIds": "$newMessageIds"
+        }]},
+        {"final": {"message": "I started a card for coffee. What time in the morning works?", "hooksHandled": []}}
+      ]
+    }
+  ]
+}

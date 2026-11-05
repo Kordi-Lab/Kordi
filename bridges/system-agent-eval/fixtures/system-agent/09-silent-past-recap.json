@@ -1,0 +1,26 @@
+{
+  "kind": "systemAgent",
+  "id": "silent-past-recap",
+  "description": "Members talk about a dinner that already happened; nothing to plan.",
+  "title": "Dinner crew",
+  "members": [
+    {"key": "maya", "name": "Maya Chen"},
+    {"key": "jordan", "name": "Jordan Lee"}
+  ],
+  "turns": [
+    {
+      "messages": [
+        {"from": "maya", "text": "That dinner last Friday was so good, thanks for organizing!", "minutesAgo": 3},
+        {"from": "jordan", "text": "haha yes, the tiramisu was unreal", "minutesAgo": 2}
+      ],
+      "expect": {
+        "reply": "silent",
+        "allowedActions": [],
+        "card": {"status": "none"}
+      },
+      "stub": [
+        {"final": {"message": null, "hooksHandled": []}}
+      ]
+    }
+  ]
+}
