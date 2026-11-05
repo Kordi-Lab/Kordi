@@ -11,6 +11,7 @@ import { cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { canonicalAvatarImageSource } from '@/features/cloud/canonicalAvatar';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { memoryClientForEnvironment, memorySectionAvailable } from '@/features/memory/memoryClient';
+import { OrganizationJoinHost } from '@/features/organizations/OrganizationJoinHost';
 import { OrganizationSwitcherRows } from '@/features/organizations/OrganizationSwitcher';
 import { useAccountOrganizations } from '@/features/organizations/useOrganizations';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
@@ -332,6 +333,7 @@ export function SidebarProfileControl({
         ) : null}
       </button>
 
+      <OrganizationJoinHost accountId={cloudAccount?.accountId} />
       {cloudSettings && cloudAccount && onUpdateCloudProfile ? (
         <CloudAccountSettingsDialog
           {...cloudSettings}

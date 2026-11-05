@@ -78,6 +78,7 @@
 @import "./features/projects/agentProjectSidebar.css";
 @import "./features/projects/projectImport.css";
 @import './features/memory/memoryOrganizer.css';
+@import './features/organizations/organizationJoin.css';
 @import './features/personalAgent/personalAgent.css';
 @import './styles/message-event-sources.css';
 
