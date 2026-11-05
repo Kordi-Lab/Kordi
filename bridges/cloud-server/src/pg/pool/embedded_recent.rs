@@ -445,4 +445,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "identity matching email",
         "0173_identity_matching_email.sql"
     ),
+    migration!(177, "nearby organization", "0177_nearby_organization.sql"),
 ];
