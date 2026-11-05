@@ -186,7 +186,7 @@ pub(super) fn parse(
     })?;
     if file.version != 1 {
         return Err(ResourcePoolConfigError::new(
-            "resource pool file version must be 1",
+            "resource pool file version must be 1; this server does not read newer formats",
         ));
     }
     if file.pools.is_empty() {

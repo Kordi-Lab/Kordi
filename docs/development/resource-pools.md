@@ -55,7 +55,7 @@ off.
 
 | Field | Meaning |
 | --- | --- |
-| `version` | Must be `1`. |
+| `version` | Must be `1`. A server refuses a file with a version it does not know. |
 | `defaultPool` | The pool for every organization that no pool lists. |
 | `pools[].id` | 1 to 64 letters, digits, `.`, `_` or `-`; unique. Stored on each run, so keep it stable. |
 | `pools[].systemAgent` | The provider for System agent passes. Required. |
@@ -90,6 +90,14 @@ clear. `0` refuses every run:
 | `groundingRunsPerPersonPerDay` | person (the member the run works for) |
 | `poolRunsPerDay` | the whole pool, both features |
 | `poolSpendMicrosPerDay` | the whole pool, by `estimatedCostMicrosPerRun` |
+
+### Format versions
+
+This page describes format 1. Deployment configs are written against it, so
+its field names stay stable; a change that existing files would not parse the
+same way gets a new version number instead. A planned format 2 adds a pool
+`executor` (`control_plane` or `pool_worker`) that chooses where a pool's runs
+execute; format 1 files will keep loading unchanged.
 
 ### Validation
 
@@ -158,7 +166,7 @@ worker.
 
 ## Storage
 
-Migration 0165 (renumber when rebasing) adds `cloud_resource_pool_usage`
+Migration 0166 adds `cloud_resource_pool_usage`
 (one counter per pool, UTC day, feature and scope) and
 `cloud_resource_pool_reservations` (one row per admitted run).
 
