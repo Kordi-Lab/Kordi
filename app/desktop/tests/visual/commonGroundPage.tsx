@@ -21,6 +21,7 @@ import '../../src/index.css';
 // "unbuilt" is Home with the Health card selected, which has no card yet, so Build opens in place.
 // "look" is the card page with the background and icon popover open; "pair" is Home with the
 // Pair popover open, and "pair-off" the same with sharing off.
+// ?noPrompt makes Allow end without a macOS prompt; ?buildEmpty makes Build find nothing in the sources.
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
 const screen = params.get('screen') ?? 'home';
@@ -75,6 +76,9 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (at < 0) return realFetch(input, init);
   const [path, query = ''] = url.slice(at + marker.length).split('?');
   const reply = ROUTES[`${init?.method ?? 'GET'} ${path}`];
+  if (params.has('buildEmpty') && path === 'card/build') {
+    return new Response(JSON.stringify({ errorCode: 'common_ground_no_sources', message: 'Choose at least one source.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+  }
   if (screen === 'pair-off' && path === 'pairings/code') {
     return new Response(JSON.stringify({ errorCode: 'common_ground_sharing_off', message: 'Turn on sharing to meet people.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
   }
@@ -118,7 +122,7 @@ const host: CgHost = {
   agentFiles: async () => fx.agentFiles,
   device: {
     status: async () => ({ calendar: 'granted', reminders: 'not_determined' }),
-    request: async () => ({ calendar: 'granted', reminders: 'granted' }),
+    request: async () => (params.has('noPrompt') ? { calendar: 'granted', reminders: 'not_determined' } : { calendar: 'granted', reminders: 'granted' }),
     titles: async () => Array.from({ length: 24 }, (_, index) => ({ title: `Event ${index + 1}`, date: '2026-10-01' })),
   },
   openUrl: () => undefined,
