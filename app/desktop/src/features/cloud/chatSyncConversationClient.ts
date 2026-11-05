@@ -13,7 +13,7 @@ import {
 import { ChatSyncState } from './chatSyncState';
 import type { ChatSyncConversationInput, ChatSyncConversation, ChatSyncMessage, ChatSyncPreferences } from './chatSyncTypes';
 import { isRetryableCloudDeliveryError } from './cloudAuthError';
-import { chatSyncOrganizationField } from '@/features/organizations/organizationStore';
+import { createInSessionOrganization } from '@/features/organizations/organizationForbidden';
 import { completeChatSyncOutbox, dueChatSyncOutbox, enqueueChatSyncOutbox, failChatSyncOutbox } from '@/lib/desktopChatSync';
 
 export class ChatSyncConversationClient {
@@ -67,7 +67,8 @@ export class ChatSyncConversationClient {
       this.state.rememberConversation(updated.conversation);
       return updated.conversation;
     }
-    const create = (path: string) => this.state.send<{ conversation: ChatSyncConversation }>(
+    // Channels inherit their group space's organization.
+    const create = (path: string, organization: { organization_id?: string } = {}) => this.state.send<{ conversation: ChatSyncConversation }>(
       path,
       {
         method: 'POST',
@@ -84,20 +85,20 @@ export class ChatSyncConversationClient {
           shared_title: input.sharedTitle?.trim() || null,
           client_session_id: sessionId,
           member_account_ids: memberAccountIds,
-          // Channels inherit their group space's organization.
-          ...(path === '/v2/chat/conversations' && !input.personalOrganization
-            ? chatSyncOrganizationField(kind, accountId) : {}),
+          ...organization,
         }),
       },
       'Could not open the reliable chat conversation.',
     );
+    const createConversation = () => createInSessionOrganization({ kind, accountId, sessionId, errorStatus: this.state.errorStatus },
+      (organization) => create('/v2/chat/conversations', organization));
     const response = input.sourceGroupSpaceId
       ? await create(`/v2/chat/group-spaces/${encodeURIComponent(input.sourceGroupSpaceId)}/channels`).catch((error: unknown) => {
         // Older servers lack the scoped route. A real authorization denial never falls back.
         if (this.state.errorStatus(error) !== 404) throw error;
-        return create('/v2/chat/conversations');
+        return createConversation();
       })
-      : await create('/v2/chat/conversations');
+      : await createConversation();
     if (!response?.conversation) throw new Error('Empty response from chat sync server.');
     this.state.rememberConversation(response.conversation);
     return response.conversation;

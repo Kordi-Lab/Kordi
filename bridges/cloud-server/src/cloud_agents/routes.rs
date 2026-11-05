@@ -114,6 +114,11 @@ fn store_error_response(context: &str, error: CloudAgentStoreError) -> Response 
         CloudAgentStoreError::InvalidSetting(code, message) => {
             error_response(code, &message, StatusCode::BAD_REQUEST)
         }
+        CloudAgentStoreError::Database(err)
+            if crate::organizations::selection::is_member_owner_violation(&err) =>
+        {
+            organization_forbidden()
+        }
         CloudAgentStoreError::Database(err) => {
             eprintln!("[cloud_agents] {context}: {err}");
             error_response(
@@ -204,6 +209,14 @@ async fn create_agent(
     }
 }
 
+fn organization_forbidden() -> Response {
+    error_response(
+        "organization_forbidden",
+        "You are not a member of that organization.",
+        StatusCode::FORBIDDEN,
+    )
+}
+
 /// Refuses an organization the caller does not belong to before anything is
 /// written; the database refuses one too.
 async fn check_organization(
@@ -214,11 +227,7 @@ async fn check_organization(
     use crate::organizations::selection::{for_new_content, SelectionError};
     match for_new_content(state.db_pool(), account_id, requested).await {
         Ok(_) => Ok(()),
-        Err(SelectionError::NotMember) => Err(error_response(
-            "organization_forbidden",
-            "You are not a member of that organization.",
-            StatusCode::FORBIDDEN,
-        )),
+        Err(SelectionError::NotMember) => Err(organization_forbidden()),
         Err(SelectionError::Database(_)) => Err(error_response(
             "server_error",
             "Could not check the organization.",

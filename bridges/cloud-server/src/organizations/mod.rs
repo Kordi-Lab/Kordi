@@ -5,7 +5,7 @@
 //! Database triggers create each account's personal organization
 //! (migration 0162), stamp new owned records with it (0163), refuse an
 //! organization the content owner does not belong to, and apply the
-//! member-owned-content rule (0166). This module serves reads, invitations,
+//! member-owned-content rule (0168). This module serves reads, invitations,
 //! leaving, settings, content transfers, and the owner/admin membership
 //! changes. Every handler runs behind the cloud session middleware, and an
 //! organization the caller does not belong to answers 404, as if it did not

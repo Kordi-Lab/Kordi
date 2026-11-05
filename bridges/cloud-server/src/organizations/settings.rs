@@ -2,7 +2,7 @@
 //!
 //! `memberOwnedContent` is the owner-eligibility rule: content in the team
 //! must be owned by a member. Turning it on moves content whose owner is not
-//! a member to that owner's personal organization right away; the 0166
+//! a member to that owner's personal organization right away; the 0168
 //! triggers keep applying it when members leave, are removed, or expire.
 
 use std::sync::Arc;

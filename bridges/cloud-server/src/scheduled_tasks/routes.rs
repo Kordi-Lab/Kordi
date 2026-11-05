@@ -202,6 +202,14 @@ async fn create_task(
     .await
     {
         Ok(task) => Json(ScheduledTaskEnvelope { task }).into_response(),
+        // Membership ended between the check and the insert.
+        Err(err) if crate::organizations::selection::is_member_owner_violation(&err) => {
+            error_response(
+                "organization_forbidden",
+                "You are not a member of that organization.",
+                StatusCode::FORBIDDEN,
+            )
+        }
         Err(err) => {
             eprintln!("[scheduled_tasks] create: {err}");
             error_response(

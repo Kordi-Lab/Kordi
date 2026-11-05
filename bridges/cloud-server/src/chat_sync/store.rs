@@ -70,6 +70,10 @@ impl std::error::Error for StoreError {}
 
 impl From<sqlx_core::Error> for StoreError {
     fn from(error: sqlx_core::Error) -> Self {
+        // The organization a conversation names stopped admitting its owner.
+        if crate::organizations::selection::is_member_owner_violation(&error) {
+            return Self::Forbidden;
+        }
         Self::Database(error)
     }
 }

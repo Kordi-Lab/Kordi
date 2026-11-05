@@ -14,6 +14,7 @@ import type { CanonicalAvatarMutation } from './canonicalAvatar';
 import { avatarDataUrlBlob } from './canonicalAvatar';
 import { cloudFetchImpl } from './cloudTransport';
 import { organizationIdField } from '@/features/organizations/organizationStore';
+import { refreshAfterOrganizationForbidden } from '@/features/organizations/organizationForbidden';
 
 export type CloudAgentAccessScope = 'private' | 'participant_conversations';
 export type CloudAgentStatus = 'active' | 'archived';
@@ -146,20 +147,25 @@ export class CloudAgentsClient {
       .filter((agent): agent is SharedCloudAgentSummary => Boolean(agent));
   }
 
-  async createCloudAgent(token: string, input: CreateCloudAgentInput): Promise<CloudAgentDefinition> {
+  /** `accountId` is the signed-in account; without it the Agent is created in the personal organization. */
+  async createCloudAgent(token: string, input: CreateCloudAgentInput, accountId?: string | null): Promise<CloudAgentDefinition> {
     const pendingAvatar = input.avatarMutation?.action === 'upload'
       && input.avatarMutation.uploadedAsset?.startsWith('data:image/')
       ? input.avatarMutation
       : null;
+    const organization = organizationIdField(accountId);
     const body = await this.send<CloudAgentEnvelope>('/v1/cloud/agents', {
       method: 'POST',
       headers: this.authHeaders(token),
       body: JSON.stringify({
         ...cloudAgentRequestBody(input),
-        ...organizationIdField(),
+        ...organization,
         ...(pendingAvatar ? { avatarMutation: undefined } : {}),
       }),
-    }, 'Could not create Agent.');
+    }, 'Could not create Agent.').catch((error: unknown) => {
+      refreshAfterOrganizationForbidden(accountId, organization.organizationId, (error as { status?: number })?.status);
+      throw error;
+    });
     const agent = normalizeCloudAgentDefinition(body.agent);
     if (!agent) throw new CloudAuthError('unknown', 'Agent response was invalid.', 0);
     if (pendingAvatar?.uploadedAsset) {

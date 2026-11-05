@@ -4,7 +4,7 @@
 //! A writer that names nothing leaves the column empty and the database
 //! fills in the owner's personal organization (migration 0163). A named
 //! organization must be one the owner belongs to; the check here gives a
-//! clean error, and the trigger from migration 0166 refuses any writer that
+//! clean error, and the trigger from migration 0168 refuses any writer that
 //! skips it.
 
 use sqlx_core::executor::Executor;
@@ -65,7 +65,7 @@ where
     }
 }
 
-/// Whether `error` is the 0166 trigger refusing an organization the content
+/// Whether `error` is the 0168 trigger refusing an organization the content
 /// owner does not belong to.
 pub fn is_member_owner_violation(error: &sqlx_core::Error) -> bool {
     error.as_database_error().is_some_and(|database_error| {
@@ -74,7 +74,7 @@ pub fn is_member_owner_violation(error: &sqlx_core::Error) -> bool {
     })
 }
 
-/// Ends memberships whose time is up. Deleting each row runs the 0166
+/// Ends memberships whose time is up. Deleting each row runs the 0168
 /// trigger, which moves content the owner-eligibility rule no longer allows
 /// and gives a team without an owner a new one. Owners never expire.
 pub async fn expire_memberships(pool: &PgPool) -> sqlx_core::Result<u64> {

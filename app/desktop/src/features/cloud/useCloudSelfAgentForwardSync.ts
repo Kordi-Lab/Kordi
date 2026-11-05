@@ -269,8 +269,6 @@ export function useCloudSelfAgentForwardSync({
               kind: 'ai',
               memberAccountIds: [account.accountId],
               sharedTitle: plan.title,
-              // Recovered sessions predate the organization choice.
-              personalOrganization: true,
             })
           )),
         );

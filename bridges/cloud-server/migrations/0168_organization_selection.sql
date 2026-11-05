@@ -5,12 +5,15 @@
 --    A BEFORE INSERT/UPDATE trigger on each owned table refuses any other,
 --    so every writer, including older replicas, keeps the rule.
 -- 2. Members join a team by accepting an invitation; a membership may expire.
---    A team never loses its last owner: when one disappears through a
---    cascade, the longest-standing admin, or else member, becomes the owner.
+--    A team that had an owner keeps one: when its last owner disappears
+--    through a cascade, its longest-standing lasting admin becomes the
+--    owner. Teams from the admission file (0167) have admins only and are
+--    left alone.
 -- 3. A team may require that its content is owned by a member. Then content
 --    whose owner leaves, is removed, expires, or hands ownership to someone
 --    outside the team moves to the owner's personal organization. Runs are
---    stamped when queued and re-checked when they start.
+--    stamped when queued and re-checked when they start; a team pays only
+--    for work its members own or request.
 SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE cloud_organizations
@@ -96,6 +99,16 @@ RETURNS TEXT LANGUAGE sql STABLE AS $$
     END;
 $$;
 
+-- The group a conversation belongs to: its group space, or for the first
+-- conversation of a group, its own session (as channel creation finds it).
+CREATE OR REPLACE FUNCTION cloud_conversation_space(
+    p_group_space_id TEXT, p_legacy_session_id TEXT, p_conversation UUID
+) RETURNS TEXT LANGUAGE sql IMMUTABLE AS $$
+    SELECT COALESCE(p_group_space_id, regexp_replace(
+        COALESCE(p_legacy_session_id, p_conversation::text), '^(group:)+', ''
+    ));
+$$;
+
 -- Refuses an organization the content owner does not belong to, whenever a
 -- writer names or changes it.
 CREATE OR REPLACE FUNCTION cloud_guard_content_organization()
@@ -112,13 +125,19 @@ BEGIN
         END IF;
     END IF;
     IF TG_TABLE_NAME = 'cloud_chat_conversations' THEN
-        -- A new channel joins the organization of its group.
-        IF TG_OP = 'INSERT' AND NEW.group_space_id IS NOT NULL AND EXISTS (
+        -- A new channel joins the organization of its group: the creator is
+        -- an active member of a group conversation of the same space there.
+        IF TG_OP = 'INSERT' AND NEW.kind = 'group' AND NEW.group_space_id IS NOT NULL
+           AND NEW.group_space_id IS DISTINCT FROM NEW.legacy_session_id
+           AND EXISTS (
             SELECT 1 FROM cloud_chat_conversations s
+            JOIN cloud_chat_conversation_members m
+              ON m.conversation_id = s.conversation_id
+             AND m.account_id = NEW.created_by_account_id
+             AND m.membership_state = 'active'
             WHERE s.organization_id = NEW.organization_id AND s.kind = 'group'
-              AND COALESCE(s.group_space_id, regexp_replace(
-                  COALESCE(s.legacy_session_id, s.conversation_id::text), '^(group:)+', ''
-              )) = NEW.group_space_id
+              AND cloud_conversation_space(s.group_space_id, s.legacy_session_id, s.conversation_id)
+                  = NEW.group_space_id
         ) THEN
             RETURN NEW;
         END IF;
@@ -257,8 +276,12 @@ END;
 $$;
 
 -- After a member leaves, is removed, expires, or loses the owner role:
--- move content the rule no longer allows, and give an ownerless team a new
--- owner. Skipped while the account itself is being deleted.
+-- move content the rule no longer allows (skipped while the account itself
+-- is being deleted), and when a team's last owner went, make its
+-- longest-standing lasting admin the owner. The organization row is locked
+-- first, so this waits for an owner leaving at the same time and then sees
+-- the owners that are really left. Teams from the admission file have no
+-- owners by design and get none.
 CREATE OR REPLACE FUNCTION cloud_after_organization_member_change()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -268,22 +291,30 @@ BEGIN
        AND EXISTS (SELECT 1 FROM cloud_accounts WHERE account_id = OLD.account_id) THEN
         PERFORM cloud_reassign_ineligible_content(OLD.organization_id, OLD.account_id);
     END IF;
-    IF EXISTS (
-        SELECT 1 FROM cloud_organizations
-        WHERE organization_id = OLD.organization_id AND kind = 'team'
-    ) AND NOT EXISTS (
+    IF OLD.role <> 'owner' THEN
+        RETURN NULL;
+    END IF;
+    IF TG_OP = 'UPDATE' THEN
+        IF NEW.role = 'owner' THEN
+            RETURN NULL;
+        END IF;
+    END IF;
+    PERFORM 1 FROM cloud_organizations
+    WHERE organization_id = OLD.organization_id AND kind = 'team' AND config_id IS NULL
+    FOR UPDATE;
+    IF NOT FOUND OR EXISTS (
         SELECT 1 FROM cloud_organization_members
         WHERE organization_id = OLD.organization_id AND role = 'owner'
     ) THEN
-        SELECT account_id INTO successor FROM cloud_organization_members
-        WHERE organization_id = OLD.organization_id
-          AND (expires_at IS NULL OR expires_at > now())
-        ORDER BY (role = 'admin') DESC, joined_at, account_id
-        LIMIT 1;
-        IF successor IS NOT NULL THEN
-            UPDATE cloud_organization_members SET role = 'owner', expires_at = NULL
-            WHERE organization_id = OLD.organization_id AND account_id = successor;
-        END IF;
+        RETURN NULL;
+    END IF;
+    SELECT account_id INTO successor FROM cloud_organization_members
+    WHERE organization_id = OLD.organization_id AND role = 'admin' AND expires_at IS NULL
+    ORDER BY joined_at, account_id
+    LIMIT 1;
+    IF successor IS NOT NULL THEN
+        UPDATE cloud_organization_members SET role = 'owner'
+        WHERE organization_id = OLD.organization_id AND account_id = successor;
     END IF;
     RETURN NULL;
 END;
@@ -294,42 +325,63 @@ CREATE TRIGGER cloud_organization_members_after_change
 AFTER DELETE OR UPDATE OF role ON cloud_organization_members
 FOR EACH ROW EXECUTE FUNCTION cloud_after_organization_member_change();
 
--- The organization a run is charged to. A run in a team conversation goes to
--- that team while the conversation qualifies; other runs keep a personal
--- organization a writer named, or else go to the agent owner's personal
--- organization. A run outside any conversation keeps a named team it
--- qualifies for.
+-- The organization a run is charged to. A team pays only for work one of its
+-- members owns, or requests from a server-run agent.
+--
+-- 1. A run with a resource pool reservation keeps the organization it was
+--    admitted against, so reservation and run always agree.
+-- 2. A named personal organization stays when it belongs to the run's owner
+--    or requester.
+-- 3. A run in a conversation: the writer naming the conversation's own
+--    organization (a server-run agent working there) keeps it, a team one
+--    only while the conversation qualifies; a team conversation that
+--    qualifies also pays when the run's owner is a member. Otherwise the
+--    owner's personal organization.
+-- 4. A run outside any conversation keeps a named team when its owner or
+--    requester is a member. Otherwise the owner's personal organization.
 CREATE OR REPLACE FUNCTION cloud_run_organization(
-    p_session TEXT, p_owner TEXT, p_named TEXT
+    p_run TEXT, p_session TEXT, p_owner TEXT, p_requester TEXT, p_named TEXT
 ) RETURNS TEXT LANGUAGE plpgsql STABLE AS $$
 DECLARE
     conversation_org TEXT;
     conversation_kind TEXT;
     conversation_owner TEXT;
 BEGIN
-    IF p_named IS NOT NULL AND EXISTS (
-        SELECT 1 FROM cloud_organizations
-        WHERE organization_id = p_named AND kind = 'personal'
-    ) THEN
-        RETURN p_named;
+    IF p_named IS NOT NULL THEN
+        IF EXISTS (
+            SELECT 1 FROM cloud_resource_pool_reservations
+            WHERE run_id = p_run AND organization_id = p_named
+        ) THEN
+            RETURN p_named;
+        END IF;
+        IF EXISTS (
+            SELECT 1 FROM cloud_organizations
+            WHERE organization_id = p_named AND kind = 'personal'
+              AND personal_account_id IN (p_owner, p_requester)
+        ) THEN
+            RETURN p_named;
+        END IF;
     END IF;
     SELECT c.organization_id, o.kind, cloud_conversation_owner(c.conversation_id)
     INTO conversation_org, conversation_kind, conversation_owner
     FROM cloud_chat_conversations c
     LEFT JOIN cloud_organizations o ON o.organization_id = c.organization_id
     WHERE c.legacy_session_id = p_session
-    ORDER BY c.created_at
     LIMIT 1;
     IF FOUND THEN
-        IF conversation_kind = 'team'
-           AND cloud_qualified_organization(conversation_org, conversation_owner)
-               = conversation_org THEN
+        IF (conversation_kind = 'personal' AND p_named = conversation_org)
+           OR (conversation_kind = 'team'
+               AND cloud_qualified_organization(conversation_org, conversation_owner)
+                   = conversation_org
+               AND (p_named = conversation_org
+                    OR cloud_is_organization_member(conversation_org, p_owner))) THEN
             RETURN conversation_org;
         END IF;
         RETURN cloud_personal_organization(p_owner);
     END IF;
     IF p_named IS NOT NULL
-       AND cloud_is_organization_member(p_named, p_owner) THEN
+       AND (cloud_is_organization_member(p_named, p_owner)
+            OR cloud_is_organization_member(p_named, p_requester)) THEN
         RETURN p_named;
     END IF;
     RETURN cloud_personal_organization(p_owner);
@@ -340,18 +392,25 @@ CREATE OR REPLACE FUNCTION cloud_stamp_agent_run_organization()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     NEW.organization_id := cloud_run_organization(
-        NEW.session_id, NEW.owner_account_id, NEW.organization_id
+        NEW.run_id, NEW.session_id, NEW.owner_account_id, NEW.requester_account_id,
+        NEW.organization_id
     );
     RETURN NEW;
 END;
 $$;
 
+-- A scheduled task run is charged to its task's team while the task owner
+-- is a member there and the task qualifies; otherwise to the owner.
 CREATE OR REPLACE FUNCTION cloud_stamp_task_run_organization()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     NEW.organization_id := COALESCE(
-        (SELECT cloud_qualified_organization(t.organization_id, t.owner_account_id)
-         FROM scheduled_tool_tasks t WHERE t.task_id = NEW.task_id),
+        (SELECT t.organization_id
+         FROM scheduled_tool_tasks t
+         JOIN cloud_organizations o ON o.organization_id = t.organization_id
+         WHERE t.task_id = NEW.task_id
+           AND (o.kind = 'personal'
+                OR cloud_is_organization_member(t.organization_id, t.owner_account_id))),
         cloud_personal_organization(NEW.owner_account_id)
     );
     RETURN NEW;

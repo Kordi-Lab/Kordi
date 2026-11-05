@@ -75,7 +75,7 @@ pub(super) async fn conversation_org(pool: &PgPool, id: Uuid) -> String {
     .await
 }
 
-async fn queue_run(pool: &PgPool, session: &str, agent_owner: &str) -> String {
+pub(super) async fn queue_run(pool: &PgPool, session: &str, agent_owner: &str) -> String {
     let run_id = format!("run_elig_{}", Uuid::new_v4().simple());
     query(
         "INSERT INTO cloud_agent_fallback_runs (run_id, idempotency_key, request_message_id, \
@@ -228,6 +228,8 @@ async fn runs_are_checked_when_queued_and_when_they_start() {
     let dana = account(&pool, "elig_run_agent").await;
     let organization = team(&pool, &alex).await;
     add(&app, &pool, &alex_token, &organization, &priya, "member").await;
+    add(&app, &pool, &alex_token, &organization, &dana, "member").await;
+    let sam = account(&pool, "elig_run_outsider").await;
     require_member_owners(&app, &alex_token, &organization).await;
     query(
         "UPDATE cloud_organization_members SET expires_at = now() + interval '1 hour' \
@@ -238,7 +240,7 @@ async fn runs_are_checked_when_queued_and_when_they_start() {
     .execute(&pool)
     .await
     .unwrap();
-    let (conversation, session) = group(&pool, &organization, &priya, &[&dana]).await;
+    let (conversation, session) = group(&pool, &organization, &priya, &[&dana, &sam]).await;
     let task_id = format!("task_elig_{}", Uuid::new_v4().simple());
     query(
         "INSERT INTO scheduled_tool_tasks (task_id, owner_account_id, created_by_account_id, \
@@ -266,13 +268,18 @@ async fn runs_are_checked_when_queued_and_when_they_start() {
     .await
     .unwrap();
 
-    // While Priya is a member, a run in her team group, even by Dana's
-    // agent, is charged to the team.
+    // While Priya is a member, a run of a member's agent in her team group
+    // is charged to the team; an outsider's agent pays for itself.
     let early = queue_run(&pool, &session, &dana).await;
     let runs = "cloud_agent_fallback_runs";
     assert_eq!(
         organization_of(&pool, runs, "run_id", &early).await,
         organization
+    );
+    let outside = queue_run(&pool, &session, &sam).await;
+    assert_eq!(
+        organization_of(&pool, runs, "run_id", &outside).await,
+        personal_organization(&pool, &sam).await
     );
     let task_runs = "scheduled_tool_task_runs";
     assert_eq!(

@@ -165,7 +165,7 @@ export function useCloudAgentCatalog({
     if (!session?.token) {
       throw new Error('Sign in to Cloud before creating an agent.');
     }
-    const agent = await client.createCloudAgent(session.token, input);
+    const agent = await client.createCloudAgent(session.token, input, session.accountId);
     commitDefinitions({
       ...definitionsByIdRef.current,
       [agent.agentId]: agent,

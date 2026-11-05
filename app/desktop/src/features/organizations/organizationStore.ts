@@ -19,7 +19,7 @@ export function organizationSelectionKey(accountId: string): string {
   return `kordi.organization.selected.${accountId.trim()}`;
 }
 
-function defaultStorage(): OrganizationStorage | null {
+export function defaultStorage(): OrganizationStorage | null {
   try {
     return typeof globalThis.localStorage === 'undefined' ? null : globalThis.localStorage;
   } catch {
@@ -122,17 +122,8 @@ export function organizationIdForNewContent(accountId?: string | null): string |
   return selected?.kind === 'team' ? selected.organizationId : null;
 }
 
-/** `organization_id` for a new group or AI conversation; direct chats never carry one. */
-export function chatSyncOrganizationField(
-  kind: string,
-  accountId?: string | null,
-): { organization_id?: string } {
-  const organizationId = kind === 'direct' ? null : organizationIdForNewContent(accountId);
-  return organizationId ? { organization_id: organizationId } : {};
-}
-
-/** `organizationId` for a new Agent or scheduled task. */
-export function organizationIdField(accountId?: string | null): { organizationId?: string } {
-  const organizationId = organizationIdForNewContent(accountId);
+/** `organizationId` for a new Agent or scheduled task; nothing without the signed-in account. */
+export function organizationIdField(accountId: string | null | undefined): { organizationId?: string } {
+  const organizationId = accountId?.trim() ? organizationIdForNewContent(accountId) : null;
   return organizationId ? { organizationId } : {};
 }

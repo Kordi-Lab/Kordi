@@ -12,7 +12,6 @@ import { canonicalAvatarImageSource } from '@/features/cloud/canonicalAvatar';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { memoryClientForEnvironment, memorySectionAvailable } from '@/features/memory/memoryClient';
 import { OrganizationSwitcherRows } from '@/features/organizations/OrganizationSwitcher';
-import { selectOrganization } from '@/features/organizations/organizationStore';
 import { useAccountOrganizations } from '@/features/organizations/useOrganizations';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { cn } from '@/lib/utils';
@@ -393,10 +392,7 @@ export function SidebarProfileControl({
                 />
               ) : null}
             </div>
-            <OrganizationSwitcherRows
-              {...accountOrganizations}
-              onSelect={(organizationId) => selectOrganization(cloudAccount.accountId, organizationId)}
-            />
+            <OrganizationSwitcherRows {...accountOrganizations} />
             <div className="app-transient-divider mt-2 grid gap-1 border-t pt-2">
               {onCreateAppInvite ? (
                 <CloudAppInviteCopyRow onCreateInvite={onCreateAppInvite} />

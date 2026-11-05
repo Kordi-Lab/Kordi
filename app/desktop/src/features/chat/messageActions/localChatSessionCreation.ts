@@ -1,7 +1,14 @@
 import type { Dispatch, SetStateAction } from 'react';
-import type { CanonicalSessionCatalog, CanonicalSessionState } from '@/kordi-app/types';
+import type { CanonicalSessionCatalog, CanonicalSessionState, OpenCanonicalSessionRequest } from '@/kordi-app/types';
 import { createDesktopChatSession, fetchCanonicalSessionCatalog, openOrCreateCanonicalSessionFast } from '@/lib/desktop';
 import { ownedAgentIdentityId } from './agentMessageLifecycle';
+import { rememberSessionOrganization } from '@/features/organizations/sessionOrganization';
+
+/** A session created by a first send records the selected organization; returns the request. */
+export function withSessionOrganization(request: OpenCanonicalSessionRequest): OpenCanonicalSessionRequest {
+  rememberSessionOrganization(request.id);
+  return request;
+}
 
 /** Publish the newly materialized chat to the send/forward state together. */
 export async function materializeLocalChatSession(

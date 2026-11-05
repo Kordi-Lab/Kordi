@@ -63,6 +63,15 @@ async fn team(pool: &PgPool, owner: &str) -> String {
     .execute(pool)
     .await
     .unwrap();
+    query(
+        "INSERT INTO cloud_organization_members (organization_id, account_id, role) \
+         VALUES ($1, $2, 'owner')",
+    )
+    .bind(&id)
+    .bind(owner)
+    .execute(pool)
+    .await
+    .unwrap();
     id
 }
 

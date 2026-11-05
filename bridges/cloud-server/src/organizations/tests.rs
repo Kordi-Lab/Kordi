@@ -10,10 +10,12 @@ use uuid::Uuid;
 
 use crate::common_ground::tests::db_fixture::{account, app, pool, send, signed_in};
 
+mod configured;
 mod eligibility;
 mod membership;
 mod ownership;
 mod selection;
+mod spaces;
 
 const ORGS: &str = "/v1/cloud/organizations";
 

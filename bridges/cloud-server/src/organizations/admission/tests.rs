@@ -129,6 +129,28 @@ pub(super) async fn harness_on(
 }
 
 #[tokio::test]
+async fn sync_sets_the_owner_eligibility_rule_from_the_file() {
+    let Some(pool) = pool().await else { return };
+    let id = format!("t-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]);
+    for required in [true, false] {
+        let mut file = sample_file(&id);
+        file["organizations"][0]["membership"]["requireMemberOwner"] = required.into();
+        parse(&file, "[]")
+            .unwrap()
+            .sync_configured(&pool)
+            .await
+            .unwrap();
+        let (rule,): (bool,) =
+            query_as("SELECT member_owned_content FROM cloud_organizations WHERE config_id = $1")
+                .bind(&id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(rule, required);
+    }
+}
+
+#[tokio::test]
 async fn sync_is_idempotent_and_keeps_configured_admins_in_step() {
     let Some(pool) = pool().await else { return };
     let (admin, _) = signed_in(&pool, "adm_sync").await;

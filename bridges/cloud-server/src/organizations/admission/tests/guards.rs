@@ -34,7 +34,11 @@ async fn the_members_api_cannot_bypass_admission() {
     let members = format!("/v1/cloud/organizations/{}/members", h.organization_id());
 
     let add = json!({"accountId": outsider, "role": "admin"});
-    let (status, body) = send(&h.app, "POST", &members, &admin_token, Some(add)).await;
+    let invitations = format!(
+        "/v1/cloud/organizations/{}/invitations",
+        h.organization_id()
+    );
+    let (status, body) = send(&h.app, "POST", &invitations, &admin_token, Some(add)).await;
     assert_eq!(
         (status, body["errorCode"].as_str()),
         (409, Some("configured_organization"))

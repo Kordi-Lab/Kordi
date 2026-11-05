@@ -30,18 +30,29 @@ impl OrganizationAdmission {
     /// configured admins in step.
     pub async fn sync_configured(mut self, pool: &PgPool) -> Result<Self, sqlx_core::Error> {
         for org in &mut self.organizations {
+            let rule = org.membership.require_member_owner;
             let (organization_id,): (String,) = query_as(
-                "INSERT INTO cloud_organizations (organization_id, name, kind, config_id) \
-                 VALUES ($1, $2, 'team', $3) \
+                "INSERT INTO cloud_organizations \
+                     (organization_id, name, kind, config_id, member_owned_content) \
+                 VALUES ($1, $2, 'team', $3, $4) \
                  ON CONFLICT (config_id) WHERE config_id IS NOT NULL \
-                 DO UPDATE SET name = EXCLUDED.name \
+                 DO UPDATE SET name = EXCLUDED.name, \
+                     member_owned_content = EXCLUDED.member_owned_content \
                  RETURNING organization_id",
             )
             .bind(format!("org_{}", uuid::Uuid::new_v4().simple()))
             .bind(&org.display_name)
             .bind(&org.id)
+            .bind(rule)
             .fetch_one(pool)
             .await?;
+            if rule {
+                // The owner-eligibility rule (migration 0168) applies at once.
+                query("SELECT cloud_reassign_ineligible_content($1, NULL)")
+                    .bind(&organization_id)
+                    .execute(pool)
+                    .await?;
+            }
             org.organization_id = organization_id;
             sync_admins(pool, org).await?;
         }

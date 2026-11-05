@@ -37,7 +37,8 @@ limit falls back to a bounded server default, never to unlimited.
 | `admission.joinRequests.fields[]` | Up to 10 fields: `key` (letters, digits, underscores), `label`, `required` (`null` = not required), `maxLength` (1-4000, `null` = 1000). |
 | `admission.joinRequests.retentionDays` | 1-365; requests and their field values are deleted this long after submission. Required while enabled; `null` while disabled purges after 30 days. |
 | `admission.joinRequests.approvedMembershipExpiry` | `"set_by_approver"` or `null` (undecided): the approver may give `expiresAt`, otherwise the membership ends after `reverifyIntervalMonths`, and without an interval `expiresAt` is required. A number (1-3650) sets that many days. Approved memberships always end. |
-| `membership.requireMemberOwner`, `outsidersAllowed`, `workEndBoundSeconds` | Carried for ownership and pool work; admission does not enforce them. |
+| `membership.requireMemberOwner` | Sets the organization's owner-eligibility rule (`memberOwnedContent`, see [organizations](organizations.md)). |
+| `outsidersAllowed`, `workEndBoundSeconds` | Carried for pool work; admission does not enforce them. |
 | `adminsEnv` | Name of an environment variable holding a JSON array of admins: account ids (`acct_…`, the stronger option) or emails. Required for `interim` and `active`; the value is never logged. |
 | `entryPage.title`, `summary`, `joinLabel`, `notOpenText` | Copy for the account page. |
 

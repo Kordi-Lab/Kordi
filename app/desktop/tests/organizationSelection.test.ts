@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 
-import { CloudAuthClient } from '../src/features/cloud/authClient';
 import { CloudAgentsClient } from '../src/features/cloud/cloudAgentsClient';
 import type { ChatSyncConversation } from '../src/features/cloud/chatSyncTypes';
 import { createScheduledTask } from '../src/features/cloud/scheduledTasksClient';
@@ -29,7 +28,7 @@ import {
   refreshOrganizations,
   resetOrganizationRefreshForTests,
 } from '../src/features/organizations/useOrganizations';
-import { conversation, message } from './helpers/chatSyncCanonicalFixtures';
+import { conversation } from './helpers/chatSyncCanonicalFixtures';
 
 const personal: CloudOrganization = {
   organizationId: 'org_personal_a', name: 'Personal', kind: 'personal', role: 'owner', memberCount: 1,
@@ -153,75 +152,11 @@ test('refresh failures are silent and keep the personal organization', async () 
   assert.deepEqual(getOrganizationState().organizations, []);
 });
 
-function capturingChatClient(created: ChatSyncConversation) {
-  const bodies: Array<{ url: string; body: Record<string, unknown> }> = [];
-  const client = new CloudAuthClient({ baseUrl: 'https://cloud.example.test', fetchImpl: async (input, init) => {
-    const url = String(input);
-    if (url.endsWith('/v2/chat/conversations')) {
-      bodies.push({ url, body: JSON.parse(String(init?.body)) as Record<string, unknown> });
-      return new Response(JSON.stringify({ conversation: created }), { status: 201 });
-    }
-    if (url.endsWith('/messages')) {
-      return new Response(JSON.stringify({ message: { ...message, conversation_id: created.id } }), { status: 201 });
-    }
-    throw new Error(`Unexpected request ${url}`);
-  } });
-  return { client, bodies };
-}
-
 function selectTeam(accountId = 'acct_a') {
   const storage = memoryStorage();
   setAccountOrganizations(accountId, [personal, team], storage);
   selectOrganization(accountId, team.organizationId, storage);
 }
-
-test('new group and AI conversations carry the selected team organization', async () => {
-  selectTeam();
-  const group = { ...conversation, kind: 'group' as const, legacy_session_id: 'session:group:org-new' };
-  const groupClient = capturingChatClient(group);
-  await groupClient.client.sendMessage('synthetic-session', 'acct_b', 'Hello team', {
-    accountId: 'acct_a', sessionId: group.legacy_session_id, conversationKind: 'group',
-    memberAccountIds: ['acct_a', 'acct_b'], sharedTitle: 'Synthetic group',
-  });
-  assert.equal(groupClient.bodies[0]?.body.organization_id, team.organizationId);
-
-  const ai = { ...conversation, kind: 'ai' as const, legacy_session_id: 'session:ai:org-new' };
-  const aiClient = capturingChatClient(ai);
-  await aiClient.client.ensureChatConversation('synthetic-session', {
-    accountId: 'acct_a', peerAccountId: 'acct_a', sessionId: ai.legacy_session_id, kind: 'ai', memberAccountIds: ['acct_a'],
-  });
-  assert.equal(aiClient.bodies[0]?.body.organization_id, team.organizationId);
-});
-
-test('direct chats, the personal organization and other accounts omit organization_id', async () => {
-  selectTeam();
-  const direct = capturingChatClient(conversation);
-  await direct.client.ensureChatConversation('synthetic-session', {
-    accountId: 'acct_a', peerAccountId: 'acct_b', kind: 'direct',
-  });
-  assert.equal('organization_id' in (direct.bodies[0]?.body ?? {}), false);
-
-  const ai = { ...conversation, kind: 'ai' as const, legacy_session_id: 'session:ai:other-account' };
-  const otherAccount = capturingChatClient(ai);
-  await otherAccount.client.ensureChatConversation('synthetic-session', {
-    accountId: 'acct_c', peerAccountId: 'acct_c', sessionId: ai.legacy_session_id, kind: 'ai', memberAccountIds: ['acct_c'],
-  });
-  assert.equal('organization_id' in (otherAccount.bodies[0]?.body ?? {}), false);
-
-  const recovered = capturingChatClient({ ...ai, legacy_session_id: 'session:ai:recovered' });
-  await recovered.client.ensureChatConversation('synthetic-session', {
-    accountId: 'acct_a', peerAccountId: 'acct_a', sessionId: 'session:ai:recovered', kind: 'ai',
-    memberAccountIds: ['acct_a'], personalOrganization: true,
-  });
-  assert.equal('organization_id' in (recovered.bodies[0]?.body ?? {}), false);
-
-  selectOrganization('acct_a', personal.organizationId, memoryStorage());
-  const personalAi = capturingChatClient({ ...ai, legacy_session_id: 'session:ai:personal' });
-  await personalAi.client.ensureChatConversation('synthetic-session', {
-    accountId: 'acct_a', peerAccountId: 'acct_a', sessionId: 'session:ai:personal', kind: 'ai', memberAccountIds: ['acct_a'],
-  });
-  assert.equal('organization_id' in (personalAi.bodies[0]?.body ?? {}), false);
-});
 
 test('new Agents and scheduled tasks carry organizationId only for a team selection', async () => {
   const bodies: Record<string, unknown>[] = [];
@@ -238,15 +173,17 @@ test('new Agents and scheduled tasks carry organizationId only for a team select
     title: 'Daily note', prompt: 'Summarize.', schedule: { kind: 'once' as const, at: '2026-12-01T00:00:00Z' },
     targetRuntime: 'cloud' as const,
   };
-  const config = { apiBase: 'https://cloud.example.test', token: 'synthetic-session', fetcher: fetchImpl as typeof fetch };
+  const config = {
+    apiBase: 'https://cloud.example.test', token: 'synthetic-session', accountId: 'acct_a', fetcher: fetchImpl as typeof fetch,
+  };
 
-  await assert.rejects(agents.createCloudAgent('synthetic-session', input));
+  await assert.rejects(agents.createCloudAgent('synthetic-session', input, 'acct_a'));
   await createScheduledTask(config, task);
   assert.equal('organizationId' in bodies[0]!, false);
   assert.equal('organizationId' in bodies[1]!, false);
 
   selectTeam();
-  await assert.rejects(agents.createCloudAgent('synthetic-session', input));
+  await assert.rejects(agents.createCloudAgent('synthetic-session', input, 'acct_a'));
   await createScheduledTask(config, task);
   assert.equal(bodies[2]?.organizationId, team.organizationId);
   assert.equal(bodies[3]?.organizationId, team.organizationId);

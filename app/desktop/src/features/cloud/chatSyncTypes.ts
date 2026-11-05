@@ -124,7 +124,5 @@ export type ChatSyncConversationInput = {
   accountId?: string | null;
   replaceMembers?: boolean;
   sourceGroupSpaceId?: string;
-  /** Keep a new conversation in the personal organization, whatever is selected. */
-  personalOrganization?: boolean;
 };
 export type CloudThreadRead = { root_message_id: string; root_client_message_id: string; last_read_sequence: number };

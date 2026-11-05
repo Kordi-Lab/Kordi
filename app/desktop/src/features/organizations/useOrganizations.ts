@@ -1,10 +1,11 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
 import { loadSession, type StoredSession } from '@/features/cloud/session';
 import { fetchCloudOrganizations, type CloudOrganization } from './organizationClient';
 import {
   getOrganizationState,
   resetOrganizationAccount,
+  selectOrganization,
   setAccountOrganizations,
   subscribeOrganizationState,
   type OrganizationState,
@@ -71,9 +72,14 @@ const EMPTY_ORGANIZATIONS: CloudOrganization[] = [];
 export function useAccountOrganizations(
   accountId: string | null | undefined,
   menuOpen: boolean,
-): Pick<OrganizationState, 'organizations' | 'selectedOrganizationId'> {
+): Pick<OrganizationState, 'organizations' | 'selectedOrganizationId'> & {
+  onSelect: (organizationId: string) => void;
+} {
   const normalized = accountId?.trim() || null;
   const state = useSyncExternalStore(subscribeOrganizationState, getOrganizationState, getOrganizationState);
+  const onSelect = useCallback((organizationId: string) => {
+    if (normalized) selectOrganization(normalized, organizationId);
+  }, [normalized]);
 
   useEffect(() => {
     resetOrganizationAccount(normalized);
@@ -85,6 +91,6 @@ export function useAccountOrganizations(
   }, [normalized, menuOpen]);
 
   return state.accountId === normalized && normalized
-    ? state
-    : { organizations: EMPTY_ORGANIZATIONS, selectedOrganizationId: null };
+    ? { organizations: state.organizations, selectedOrganizationId: state.selectedOrganizationId, onSelect }
+    : { organizations: EMPTY_ORGANIZATIONS, selectedOrganizationId: null, onSelect };
 }
