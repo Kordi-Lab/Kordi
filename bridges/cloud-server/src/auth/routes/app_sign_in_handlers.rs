@@ -104,6 +104,10 @@ pub(super) struct AppAuthorizationParams {
     /// ("Continue as ...") during this request (RFC 8252, section 8.6).
     #[serde(default, skip_serializing)]
     pub approved: Option<bool>,
+    /// OpenID Connect `prompt`. Only `create` (open the page on account
+    /// creation) is forwarded to the sign-in page; other values are dropped.
+    #[serde(default, skip_serializing)]
+    pub prompt: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -129,6 +133,11 @@ pub(super) enum AuthorizationRejection {
 }
 
 impl AppAuthorizationParams {
+    /// The `prompt` value forwarded to the sign-in page, if supported.
+    pub(super) fn sign_in_page_prompt(&self) -> Option<&'static str> {
+        (self.prompt.as_deref() == Some("create")).then_some("create")
+    }
+
     pub(super) fn validate(
         &self,
         registry: &AppClientRegistry,
@@ -230,7 +239,7 @@ pub(super) async fn app_authorize_start(
 ) -> Response {
     match params.validate(&registry) {
         Ok(valid) => {
-            let query = [
+            let mut query = vec![
                 ("response_type", "code"),
                 ("client_id", valid.grant.client_id.as_str()),
                 ("redirect_uri", valid.grant.redirect_uri.as_str()),
@@ -238,6 +247,9 @@ pub(super) async fn app_authorize_start(
                 ("code_challenge_method", "S256"),
                 ("state", valid.state.as_str()),
             ];
+            if let Some(prompt) = params.sign_in_page_prompt() {
+                query.push(("prompt", prompt));
+            }
             no_store(
                 Redirect::to(&redirect_uri_with(&app_sign_in_page_url(), &query)).into_response(),
             )

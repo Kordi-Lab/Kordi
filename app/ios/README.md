@@ -8,8 +8,8 @@ The phone is a collaboration client, not an agent runtime. Agent requests execut
 
 ## Current capabilities
 
-- Email/password sign-in and account creation
-- Google and GitHub sign-in with `ASWebAuthenticationSession`
+- Log in and Sign up through the browser with `ASWebAuthenticationSession`, PKCE, and refreshable tokens in the Keychain
+- Email/password, Google, and GitHub sign-in in the app when the server has no browser sign-in
 - Contact requests, direct chats, group spaces, and group sessions
 - Agent-session timelines, forks, Cloud-or-Mac routing, and model selection
 - Message history, unread counts, delivery/read state, Markdown, replies, forwarding, pinning, and message details
