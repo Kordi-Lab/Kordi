@@ -1,4 +1,5 @@
 //! Complete the hosted test before its passing report can be persisted.
+use crate::cloud_session_organization::CloudBearerAuth;
 use kordi_cli::desktop_runtime::DesktopCloudExecutionLease;
 
 const LEASE_LOST: &str =
@@ -35,7 +36,7 @@ async fn complete_at(
         .build()
         .map_err(|_| LEASE_LOST)?
         .post(endpoint)
-        .bearer_auth(token)
+        .cloud_bearer_auth(token)
         .json(&serde_json::json!({"claimId": lease.claim_id}))
         .send()
         .await

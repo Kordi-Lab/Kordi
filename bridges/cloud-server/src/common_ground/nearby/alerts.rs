@@ -108,7 +108,8 @@ async fn recipient(
         }
         if !missing.is_empty() {
             let pip = ctx.service;
-            matching::queue_matches(pool, pip, ctx.rate_limiter, &mine, &missing, None).await?;
+            matching::queue_matches(pool, pip, ctx.rate_limiter, &mine, &missing, None, None)
+                .await?;
         }
     }
     Ok(())

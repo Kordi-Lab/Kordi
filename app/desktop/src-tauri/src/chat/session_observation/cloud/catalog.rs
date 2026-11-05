@@ -1,5 +1,6 @@
 //! Owner-local discovery uses the authorized sync catalog, not hydrated transcripts.
 use super::*;
+use crate::cloud_session_organization::CloudBearerAuth;
 use kordi_tools::{SearchSessionsRequest, SessionObservationSearchResult};
 
 pub(in crate::chat::session_observation) struct OwnerCatalog {
@@ -71,7 +72,7 @@ impl OwnerCatalog {
                 "{}/v2/chat/sync/bootstrap",
                 self.base.trim_end_matches('/')
             ))
-            .bearer_auth(self.token().await?)
+            .cloud_bearer_auth(self.token().await?)
             .send()
             .await
             .map_err(|_| unavailable())?;

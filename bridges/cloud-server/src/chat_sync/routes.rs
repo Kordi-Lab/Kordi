@@ -33,6 +33,7 @@ mod channels;
 mod group_envelope;
 mod http;
 mod message_mutations;
+mod organization_check;
 mod reaction;
 mod thread_reads;
 
@@ -108,6 +109,10 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
         .layer(Extension(Arc::new(runtime)))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
+            organization_check::scoped,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
             cloud_session_middleware,
         ))
         .with_state(state)
@@ -116,8 +121,10 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
 async fn create_conversation(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    organization: Option<Extension<crate::organizations::requests::RequestOrganization>>,
     Json(request): Json<CreateConversationRequest>,
 ) -> Response {
+    organization_check::creation(&state, organization, &request).await;
     let trusted_support_owner = state.support().and_then(|support| {
         let config = support.config();
         let expected_session_id = format!(

@@ -14,6 +14,7 @@ use serde_json::json;
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
 use crate::cloud_agent_runtime::routes::runner_authorized_for_scheduled_tasks;
+use crate::organizations::requests::{check_new_content, RequestOrganization};
 use crate::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskResponse, ScheduledTaskRunResponse,
     ScheduledTaskTargetRuntime,
@@ -90,6 +91,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
+            crate::organizations::requests::organization_scoped,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
             cloud_session_middleware,
         ))
         .with_state(state.clone());
@@ -158,6 +163,7 @@ async fn create_task(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
+    organization: Option<Extension<RequestOrganization>>,
     Json(input): Json<CreateScheduledTaskRequest>,
 ) -> Response {
     if !input.is_well_formed() {
@@ -170,7 +176,13 @@ async fn create_task(
     use crate::organizations::selection::{for_new_content, SelectionError};
     let requested = input.organization_id.as_deref();
     match for_new_content(state.db_pool(), &session.account_id, requested).await {
-        Ok(_) => {}
+        Ok(_) => {
+            let organization = organization
+                .as_ref()
+                .map(|Extension(organization)| organization);
+            let route = "/v1/cloud/scheduled-tasks";
+            check_new_content(organization, state.db_pool(), route, requested).await;
+        }
         Err(SelectionError::NotMember) => {
             return error_response(
                 "organization_forbidden",

@@ -101,3 +101,116 @@ extension CloudAPIClient {
         return selection.organizationId
     }
 }
+
+/// Answer of `POST /v1/cloud/auth/organization-token`. The refresh token is
+/// never part of it.
+struct CloudOrganizationTokenResponse: Decodable, Equatable, Sendable {
+    var accessToken: String? = nil
+    var expiresIn: Double? = nil
+    let accountId: String
+    var deviceId: String? = nil
+    var signInId: String? = nil
+    let organizationId: String
+
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case expiresIn = "expires_in"
+        case accountId = "account_id"
+        case deviceId = "device_id"
+        case signInId = "sign_in_id"
+        case organizationId = "organization_id"
+    }
+}
+
+private struct CloudOrganizationTokenRequest: Encodable {
+    let organizationId: String
+
+    enum CodingKeys: String, CodingKey {
+        case organizationId = "organization_id"
+    }
+}
+
+/// The organization authenticated requests name, and who brings the session
+/// back in line when the server answers `409 organization_mismatch`.
+struct CloudRequestOrganizationContext {
+    /// Returns the token to retry with, or nil to give up.
+    typealias MismatchHandler = @Sendable (_ organizationId: String?, _ token: String) async -> String?
+
+    var selection: (accountId: String, organizationId: String)?
+    var mismatchHandler: MismatchHandler?
+}
+
+extension CloudAPIClient {
+    static let organizationHeader = "Kordi-Organization"
+    /// Account routes that must work while the header is stale: the
+    /// organization list, the token switch, and sign-out.
+    static let organizationNeutralPaths = [
+        "/v1/cloud/organizations", "/v1/cloud/auth/organization-token", "/v1/cloud/auth/logout",
+    ]
+
+    func exchangeOrganizationToken(token: String, organizationId: String) async throws -> CloudOrganizationTokenResponse {
+        try await send(
+            path: "/v1/cloud/auth/organization-token",
+            method: "POST",
+            token: token,
+            body: CloudOrganizationTokenRequest(organizationId: organizationId),
+            fallback: "Could not switch organization."
+        )
+    }
+
+    /// Sets the organization authenticated requests of `accountId` name; nil sends none.
+    func selectRequestOrganization(accountId: String, organizationId: String?) {
+        organizationContext.selection = organizationId.nonEmpty.map { (accountId: accountId, organizationId: $0) }
+    }
+
+    func setOrganizationMismatchHandler(_ handler: CloudRequestOrganizationContext.MismatchHandler?) {
+        organizationContext.mismatchHandler = handler
+    }
+
+    /// Names the selected organization on a request made with a session,
+    /// only while the selection belongs to the active account.
+    func applyOrganizationHeader(to request: inout URLRequest) {
+        request.setValue(nil, forHTTPHeaderField: Self.organizationHeader)
+        guard request.value(forHTTPHeaderField: "Authorization") != nil,
+              !Self.isOrganizationNeutral(request),
+              let selection = organizationContext.selection,
+              selection.accountId == activeAccountId else { return }
+        request.setValue(selection.organizationId, forHTTPHeaderField: Self.organizationHeader)
+    }
+
+    /// Sends `request` and validates the answer. On `409 organization_mismatch`
+    /// the organization state catches up and the request is retried once.
+    func validatedData(for request: URLRequest, fallback: String) async throws -> Data {
+        let (data, response) = try await transportData(for: request, fallback: fallback)
+        do {
+            try validate(response: response, data: data, fallback: fallback)
+            return data
+        } catch let error as CloudAPIError {
+            guard let retry = await organizationRetry(of: request, after: error, body: data) else { throw error }
+            let (data, response) = try await transportData(for: retry, fallback: fallback)
+            try validate(response: response, data: data, fallback: fallback)
+            return data
+        }
+    }
+
+    private func organizationRetry(of request: URLRequest, after error: CloudAPIError, body: Data) async -> URLRequest? {
+        guard error.statusCode == 409, error.code == "organization_mismatch",
+              !Self.isOrganizationNeutral(request),
+              let handler = organizationContext.mismatchHandler,
+              let authorization = request.value(forHTTPHeaderField: "Authorization"),
+              authorization.hasPrefix("Bearer ") else { return nil }
+        let object = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+        guard let token = await handler(object?["organizationId"] as? String, String(authorization.dropFirst("Bearer ".count))) else {
+            return nil
+        }
+        var retry = request
+        retry.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        applyOrganizationHeader(to: &retry)
+        return retry
+    }
+
+    private static func isOrganizationNeutral(_ request: URLRequest) -> Bool {
+        let path = request.url?.path ?? ""
+        return organizationNeutralPaths.contains { path.hasSuffix($0) }
+    }
+}

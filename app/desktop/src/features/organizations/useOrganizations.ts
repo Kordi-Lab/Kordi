@@ -5,11 +5,11 @@ import { fetchCloudOrganizations, type CloudOrganization } from './organizationC
 import {
   getOrganizationState,
   resetOrganizationAccount,
-  selectOrganization,
   setAccountOrganizations,
   subscribeOrganizationState,
   type OrganizationState,
 } from './organizationStore';
+import { alignSessionOrganization, switchOrganization } from './organizationSwitch';
 
 /** Opening the account menu refreshes at most this often. */
 const ORGANIZATION_REFRESH_INTERVAL_MS = 30_000;
@@ -18,12 +18,15 @@ export type OrganizationRefreshDeps = {
   loadSession: () => Promise<StoredSession | null>;
   fetchOrganizations: (token: string) => Promise<CloudOrganization[]>;
   now: () => number;
+  /** Brings the session's token to the selected organization after the list loads. */
+  alignSession?: (accountId: string) => Promise<void>;
 };
 
 const defaultDeps: OrganizationRefreshDeps = {
   loadSession,
   fetchOrganizations: (token) => fetchCloudOrganizations(token),
   now: () => Date.now(),
+  alignSession: (accountId) => alignSessionOrganization(accountId),
 };
 
 let inFlight: { accountId: string; promise: Promise<void> } | null = null;
@@ -51,6 +54,7 @@ export function refreshOrganizations(
       const organizations = await deps.fetchOrganizations(session.token);
       setAccountOrganizations(normalized, organizations);
       lastRefresh = { accountId: normalized, at: deps.now() };
+      await deps.alignSession?.(normalized);
     } catch {
       // Older servers and offline starts keep the personal organization.
     }
@@ -78,7 +82,7 @@ export function useAccountOrganizations(
   const normalized = accountId?.trim() || null;
   const state = useSyncExternalStore(subscribeOrganizationState, getOrganizationState, getOrganizationState);
   const onSelect = useCallback((organizationId: string) => {
-    if (normalized) selectOrganization(normalized, organizationId);
+    if (normalized) void switchOrganization(normalized, organizationId);
   }, [normalized]);
 
   useEffect(() => {

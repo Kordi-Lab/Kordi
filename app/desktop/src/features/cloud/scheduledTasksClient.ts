@@ -1,5 +1,6 @@
 import { organizationIdField } from '@/features/organizations/organizationStore';
 import { refreshAfterOrganizationForbidden } from '@/features/organizations/organizationForbidden';
+import { withOrganizationHeader } from './cloudOrganizationFetch';
 
 export type ScheduledTaskSchedule =
   | { kind: 'once'; at: string }
@@ -55,7 +56,7 @@ export type ScheduledTasksClientConfig = {
 };
 
 async function requestJson<T>(config: ScheduledTasksClientConfig, path: string, init: RequestInit = {}): Promise<T> {
-  const fetcher = config.fetcher ?? fetch;
+  const fetcher = config.fetcher ?? withOrganizationHeader((input, init) => fetch(input, init));
   const response = await fetcher(`${config.apiBase}${path}`, {
     ...init,
     headers: {

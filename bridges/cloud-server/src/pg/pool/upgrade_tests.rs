@@ -16,6 +16,7 @@ mod document_share_tests;
 mod email_verification_tests;
 mod identity_email_tests;
 mod memory_tests;
+mod organization_claim_tests;
 mod organization_tests;
 mod personal_agent_tests;
 mod pin_stack_tests;

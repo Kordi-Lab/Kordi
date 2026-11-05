@@ -117,6 +117,7 @@ pub(super) async fn queue(
         run_id: &run_id,
         requester: intro.creator,
         conversation_id: Some(intro.conversation_id),
+        organization_id: None,
         prompt: intro_prompt(intro.name, intro.topic, &people),
         system_prompt: INTRO_SYSTEM,
     };

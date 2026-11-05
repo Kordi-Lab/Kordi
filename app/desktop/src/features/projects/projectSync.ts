@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { cloudApiBaseUrl } from '@/features/cloud/cloudApiEnvironment';
+import { withOrganizationHeader } from '@/features/cloud/cloudOrganizationFetch';
 import { loadSession } from '@/features/cloud/session';
 import { fetchDesktopChatState, invokeDesktop, createDesktopProjectSession, moveDesktopChatSessionToProject } from '@/lib/desktop';
 import { adoptedProjectSessionIds } from './adoptedProjectSessions';
@@ -53,7 +54,7 @@ async function publishCatalog(token: string) {
   }
 }
 export async function projectCatalogRequest<T>(token: string, path: string, method = 'GET', body?: unknown): Promise<T> {
-  const response = await fetch(`${cloudApiBaseUrl()}/v1/cloud/projects${path}`, {
+  const response = await withOrganizationHeader((input, init) => fetch(input, init))(`${cloudApiBaseUrl()}/v1/cloud/projects${path}`, {
     method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15000),
   });

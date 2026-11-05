@@ -325,7 +325,7 @@ final class AppModel: ObservableObject {
     private let oauth: CloudOAuthSession
     let keychain: KeychainSessionStore
     let browserSignIn: AppSignInController
-    private let shareCredentialStore: ShareExtensionCredentialStore
+    let shareCredentialStore: ShareExtensionCredentialStore
     private let cache: LocalMessageStore?
     private let wireCache: CloudWireCache
     private let sessionRuntimeRouteStore: SessionRuntimeRouteStore
@@ -478,11 +478,11 @@ final class AppModel: ObservableObject {
                 return
             }
             let restoredAccount = try await api.me(token: savedToken)
-            let existingShareCredential = try? shareCredentialStore.load()
             try? shareCredentialStore.save(ShareExtensionCredential(
                 token: savedToken,
                 accountID: restoredAccount.accountId,
-                expiresAt: await shareExpiry(forLaunchToken: savedToken, existing: existingShareCredential)
+                expiresAt: await shareExpiry(forLaunchToken: savedToken, existing: try? shareCredentialStore.load()),
+                organizationID: await launchOrganization(token: savedToken, accountId: restoredAccount.accountId)
             ))
             token = savedToken
             account = restoredAccount.preservingEmailVerification(from: account)
@@ -8118,7 +8118,7 @@ final class AppModel: ObservableObject {
     /// Realtime keeps the token it connected with, so it reconnects.
     func applyRefreshedSession(token next: String, expiresAt: String, accountId: String) {
         guard phase == .signedIn, account?.accountId == accountId, token != next else { return }
-        try? shareCredentialStore.save(ShareExtensionCredential(token: next, accountID: accountId, expiresAt: expiresAt))
+        try? shareCredentialStore.save(ShareExtensionCredential(token: next, accountID: accountId, expiresAt: expiresAt, organizationID: sharedOrganization(for: accountId)))
         token = next
         presencePublisher.start(token: next)
         cloudRealtimeTask?.cancel()

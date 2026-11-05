@@ -1,3 +1,4 @@
+use crate::cloud_session_organization::CloudBearerAuth;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 
@@ -295,7 +296,7 @@ async fn resolve_with_lease(
         .map_err(|_| UNAVAILABLE)?;
     let mut response = client
         .post(endpoint)
-        .bearer_auth(session.token)
+        .cloud_bearer_auth(session.token)
         .json(&json!({ "claimId": lease.claim_id }))
         .send()
         .await
