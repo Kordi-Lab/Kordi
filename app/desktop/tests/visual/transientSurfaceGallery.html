@@ -140,6 +140,7 @@
       </div>
     </main>
     <script type="module">
+      import '/tests/visual/previewChatTheme.ts';
       const theme = new URLSearchParams(window.location.search).get('theme') === 'light' ? 'light' : 'dark';
       document.body.classList.add(`theme-${theme}`);
       document.documentElement.style.colorScheme = theme;

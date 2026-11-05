@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { createRoot } from 'react-dom/client';
 import { MessageBubble } from '../../src/kordi-app/components/transcript';
 import type { Message } from '../../src/kordi-app/types';

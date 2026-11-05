@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import HelpTour from '../../src/features/onboarding/HelpTour';
 // Login-free synthetic preview of the real account settings dialog opened on
 // the Memory tab. It uses the in-memory preview memory client, so it

@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { createRef, useLayoutEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ChatSessionPane } from '../../src/pages/chatsPage.sessionPane';

@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { createRoot } from 'react-dom/client';
 import { mapCanonicalMessage } from '../../src/features/canonical/readModel/messageMapping';
 import { mapCollaborationConversationToViewModel } from '../../src/features/collaboration/transcript';

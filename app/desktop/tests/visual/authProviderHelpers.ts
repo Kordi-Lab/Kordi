@@ -44,7 +44,7 @@ export async function openPreview(page: Page, variant: 'settings' | 'start' | 'l
   const offOrigin: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if (url.protocol.startsWith('http') && url.origin !== 'http://127.0.0.1:4174') offOrigin.push(url.href);
+    if (url.protocol.startsWith('http') && url.origin !== `http://127.0.0.1:${process.env.KORDI_VISUAL_PORT ?? '4174'}`) offOrigin.push(url.href);
   });
   const provider = options.provider ? `&provider=${encodeURIComponent(options.provider)}` : '';
   const method = options.method ? `&method=${encodeURIComponent(options.method)}` : '';

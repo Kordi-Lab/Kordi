@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { TranscriptMediaBoundary } from '../../src/kordi-app/components/TranscriptMediaBoundary';
