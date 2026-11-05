@@ -428,6 +428,37 @@
   bottom: 22px;
   display: flex;
   justify-content: center;
+  gap: 12px;
+}
+
+.app-cloud-device-code-line,
+.app-cloud-device-code-warning {
+  margin: 8px 0 0;
+  color: var(--utility-muted-text, var(--app-cloud-signin-muted));
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.app-cloud-device-code-uri {
+  color: var(--utility-foreground);
+  font-weight: 500;
+}
+
+.app-cloud-device-code {
+  margin: 20px 0 0;
+  padding: 12px 22px;
+  border: 1px solid var(--app-cloud-login-border);
+  border-radius: 12px;
+  background: var(--app-cloud-login-input-bg);
+  color: var(--utility-foreground);
+  font: 600 26px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.14em;
+  user-select: all;
+}
+
+.app-cloud-device-code-warning {
+  margin-bottom: 18px;
+  font-size: 12px;
 }
 
 @media (prefers-reduced-motion: reduce) {

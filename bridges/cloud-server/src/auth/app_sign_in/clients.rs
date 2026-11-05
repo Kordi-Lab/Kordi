@@ -8,7 +8,8 @@
 use serde::Deserialize;
 
 /// Server configuration that replaces the built-in client list. A JSON array
-/// of `{"clientId", "name", "redirectUris"}` objects.
+/// of `{"clientId", "name", "redirectUris", "deviceCode"}` objects;
+/// `deviceCode` (default false) allows device code sign-in.
 pub const APP_CLIENTS_ENV: &str = "KORDI_AUTH_APP_CLIENTS";
 
 const MAX_REDIRECT_URI_CHARS: usize = 2048;
@@ -21,6 +22,10 @@ pub struct AppClient {
     pub name: String,
     #[serde(rename = "redirectUris")]
     pub redirect_uris: Vec<String>,
+    /// Whether the app may sign in with a device code (RFC 8628). Only apps
+    /// that can run on a host without a browser need it.
+    #[serde(rename = "deviceCode", default)]
+    pub device_code: bool,
 }
 
 impl AppClient {
@@ -49,11 +54,13 @@ impl AppClientRegistry {
                 "http://[::1]/auth/callback".to_string(),
                 format!("{scheme}://auth/callback"),
             ],
+            device_code: true,
         };
         let ios = |client_id: &str, name: &str, scheme: &str| AppClient {
             client_id: client_id.to_string(),
             name: name.to_string(),
             redirect_uris: vec![format!("{scheme}://auth/callback")],
+            device_code: false,
         };
         Self {
             clients: vec![

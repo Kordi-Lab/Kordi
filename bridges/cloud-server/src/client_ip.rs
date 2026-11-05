@@ -16,6 +16,12 @@ use std::sync::OnceLock;
 use axum::http::HeaderMap;
 
 pub const TRUSTED_PROXIES_ENV: &str = "KORDI_CLOUD_TRUSTED_PROXIES";
+/// Names a request header that the edge sets to the client's approximate
+/// location, such as `Zurich, CH`. It is read only when the request came
+/// from a trusted proxy, and the edge must overwrite any value the client
+/// sent. Unset means no location is known.
+pub const CLIENT_LOCATION_HEADER_ENV: &str = "KORDI_CLIENT_LOCATION_HEADER";
+const MAX_LOCATION_CHARS: usize = 120;
 const DEFAULT_TRUSTED_PROXIES: &str = "127.0.0.0/8,::1/128";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +127,22 @@ impl TrustedProxies {
             .or(Some(peer))
     }
 
+    /// The value of `header` when the nearest peer is a trusted proxy:
+    /// printable, trimmed, and at most 120 characters.
+    pub fn trusted_header(
+        &self,
+        headers: &HeaderMap,
+        peer: Option<IpAddr>,
+        header: &str,
+    ) -> Option<String> {
+        if !self.contains(peer?.to_canonical()) {
+            return None;
+        }
+        let value = headers.get(header)?.to_str().ok()?.trim();
+        (!value.is_empty() && !value.chars().any(char::is_control))
+            .then(|| value.chars().take(MAX_LOCATION_CHARS).collect())
+    }
+
     /// Walks `X-Forwarded-For` from the nearest hop outward and returns the
     /// first address that is not a trusted proxy. A malformed hop stops the
     /// walk, because anything farther out cannot be attributed reliably.
@@ -172,6 +194,19 @@ pub fn trusted_proxies() -> &'static TrustedProxies {
 /// Resolves the client address using the process-wide configuration.
 pub fn resolve_client_ip(headers: &HeaderMap, peer: Option<IpAddr>) -> Option<IpAddr> {
     trusted_proxies().client_ip(headers, peer)
+}
+
+/// The client's approximate location from the configured edge header, if
+/// any.
+pub fn resolve_client_location(headers: &HeaderMap, peer: Option<IpAddr>) -> Option<String> {
+    static HEADER: OnceLock<Option<String>> = OnceLock::new();
+    let header = HEADER.get_or_init(|| {
+        std::env::var(CLIENT_LOCATION_HEADER_ENV)
+            .ok()
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| axum::http::HeaderName::from_bytes(value.as_bytes()).is_ok())
+    });
+    trusted_proxies().trusted_header(headers, peer, header.as_deref()?)
 }
 
 #[cfg(test)]
@@ -282,6 +317,26 @@ mod tests {
         assert_eq!(
             trusted.client_ip(&claimed, Some(ip("10.42.0.7"))),
             Some(ip("10.42.0.7"))
+        );
+    }
+
+    #[test]
+    fn location_header_counts_only_from_trusted_proxies() {
+        let trusted = TrustedProxies::loopback();
+        let located = headers(&[("x-test-location", " Zurich, CH ")]);
+        assert_eq!(
+            trusted
+                .trusted_header(&located, Some(ip("127.0.0.1")), "x-test-location")
+                .as_deref(),
+            Some("Zurich, CH")
+        );
+        assert_eq!(
+            trusted.trusted_header(&located, Some(ip("203.0.113.8")), "x-test-location"),
+            None
+        );
+        assert_eq!(
+            trusted.trusted_header(&located, None, "x-test-location"),
+            None
         );
     }
 }

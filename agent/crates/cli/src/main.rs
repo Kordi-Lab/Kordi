@@ -45,6 +45,7 @@ mod update_check;
   kordi --list-models                 List all available models
   kordi --list-models sonnet          Search models
   kordi login                         Login to a provider (OAuth)
+  kordi login --device                Sign this host in to Kordi Cloud with a code
   kordi logout                        Logout from a provider
   kordi install npm:kordi-example-skill
   kordi install --local ./my-skill
@@ -149,10 +150,19 @@ enum Commands {
     },
     /// Print bundled third-party licenses and exact source links
     Licenses,
-    /// Login to a provider (OAuth / API key)
+    /// Login to a provider (OAuth / API key), or sign this host in to Kordi
+    /// Cloud with a code (--device)
     Login {
         /// Provider name (anthropic, openai, google, ...)
+        #[arg(conflicts_with = "device")]
         provider: Option<String>,
+        /// Sign this host in to Kordi Cloud with a code entered on another
+        /// device, for a Mac without a usable browser
+        #[arg(long)]
+        device: bool,
+        /// Kordi Cloud server for --device (default: https://kordi.ai)
+        #[arg(long, requires = "device", value_name = "URL")]
+        server: Option<String>,
     },
     /// Logout from a provider
     Logout {
@@ -290,7 +300,12 @@ async fn main() -> Result<()> {
                 );
                 Ok(())
             }
-            Commands::Login { provider } => login::handle_login(provider.as_deref()).await,
+            Commands::Login {
+                device: true,
+                server,
+                ..
+            } => login::handle_device_login(server.as_deref()).await,
+            Commands::Login { provider, .. } => login::handle_login(provider.as_deref()).await,
             Commands::Logout { provider } => login::handle_logout(provider.as_deref()).await,
             Commands::Install { local, source } => {
                 let scope = if *local {

@@ -6,15 +6,17 @@ use crate::auth::app_sign_in::codes::{
 };
 use crate::auth::app_sign_in::tokens::{
     revoke_sign_in, revoke_sign_in_in_transaction, revoked_reason, rotate_refresh_token,
-    sign_in_for_token, start_sign_in,
+    sign_in_for_token,
 };
 use crate::auth::app_sign_in::{IssuedTokens, RefreshOutcome};
 use crate::auth::rate_limit::AccountActionLimit;
 
+use super::sign_in_start::{begin_sign_in, finish_sign_in};
+
 /// Placeholder device name for a browser sign-in without device details.
 /// It follows the `oauth-<method>-device` pattern so later metadata updates
 /// may replace it.
-const BROWSER_PLACEHOLDER_DEVICE_NAME: &str = "oauth-browser-device";
+pub(in crate::auth::routes) const BROWSER_PLACEHOLDER_DEVICE_NAME: &str = "oauth-browser-device";
 
 /// Code exchanges one account may complete across every app.
 const REDEMPTION_LIMIT: AccountActionLimit = AccountActionLimit {
@@ -84,7 +86,7 @@ struct TokenResponse {
     account: Option<AccountResponse>,
 }
 
-fn token_response(issued: IssuedTokens, account: Option<AccountResponse>) -> Response {
+pub(super) fn token_response(issued: IssuedTokens, account: Option<AccountResponse>) -> Response {
     let now = Utc::now();
     let body = TokenResponse {
         access_token: issued.access_token,
@@ -99,11 +101,11 @@ fn token_response(issued: IssuedTokens, account: Option<AccountResponse>) -> Res
     no_store((StatusCode::OK, Json(body)).into_response())
 }
 
-fn invalid_grant(description: &str) -> Response {
+pub(in crate::auth::routes) fn invalid_grant(description: &str) -> Response {
     oauth_error(StatusCode::BAD_REQUEST, "invalid_grant", description)
 }
 
-fn server_error() -> Response {
+pub(in crate::auth::routes) fn server_error() -> Response {
     oauth_error(
         StatusCode::INTERNAL_SERVER_ERROR,
         "server_error",
@@ -277,50 +279,19 @@ async fn exchange_code(
         let _ = tx.commit().await;
         return error.response();
     }
-    let Ok(device) = authorize_device(&mut tx, &account_id, &registration, "pending_review").await
-    else {
-        return server_error();
-    };
-    let Ok(issued) = start_sign_in(&mut tx, &account_id, &device.device_id, client_id).await else {
-        return server_error();
-    };
-    if link_code_to_sign_in(&mut tx, code, &issued.sign_in_id)
-        .await
-        .is_err()
+    let started = match begin_sign_in(
+        &mut tx,
+        &account_id,
+        &registration,
+        client_id,
+        serde_json::json!({ "ip": peer_ip.map(|ip| ip.to_string()) }),
+    )
+    .await
     {
-        return server_error();
-    }
-    let audit = query(
-        "INSERT INTO cloud_audit_events \
-         (event_id, account_id, device_id, event_type, metadata_json, created_at) \
-         VALUES ($1, $2, $3, 'auth.app_sign_in.success', $4, $5)",
-    )
-    .bind(format!("evt_{}", uuid::Uuid::new_v4().simple()))
-    .bind(&account_id)
-    .bind(&device.device_id)
-    .bind(
-        serde_json::json!({
-            "clientId": client_id,
-            "signInId": issued.sign_in_id,
-            "ip": peer_ip.map(|ip| ip.to_string()),
-        })
-        .to_string(),
-    )
-    .bind(Utc::now().to_rfc3339())
-    .execute(&mut *tx)
-    .await;
-    if audit.is_err() {
-        return server_error();
-    }
-    if device.is_new_authorization
-        && append_device_sync_event(
-            &mut tx,
-            &account_id,
-            "device.added",
-            &device.device_id,
-            registration.display_name.as_deref(),
-            "pending_review",
-        )
+        Ok(started) => started,
+        Err(response) => return response,
+    };
+    if link_code_to_sign_in(&mut tx, code, &started.issued.sign_in_id)
         .await
         .is_err()
     {
@@ -329,21 +300,7 @@ async fn exchange_code(
     if tx.commit().await.is_err() {
         return server_error();
     }
-    if device.is_new_authorization {
-        let events = state.events().clone();
-        let account_id = account_id.clone();
-        let device_id = device.device_id.clone();
-        tokio::spawn(async move {
-            events
-                .publish_device_event(&account_id, "added", &device_id)
-                .await;
-        });
-    }
-    let account = owner_account_response_row(pool, &account_id)
-        .await
-        .ok()
-        .flatten();
-    token_response(issued, account)
+    finish_sign_in(state, started, true).await
 }
 
 async fn refresh(state: &ServerState, client_id: &str, request: &TokenRequest) -> Response {

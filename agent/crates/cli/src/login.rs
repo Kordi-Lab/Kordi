@@ -1,4 +1,5 @@
 mod cli;
+pub mod kordi_device;
 mod providers;
 mod resolver;
 mod store;
@@ -17,6 +18,7 @@ use store::{
 };
 
 pub use cli::{handle_login, handle_logout, run_oauth_login, try_open_browser};
+pub use kordi_device::handle_device_login;
 pub use providers::{
     ProviderAuthMethod, is_local_openai_provider, is_loopback_base_url, is_oauth_provider,
     known_providers, local_openai_provider_base_url, normalize_provider_for_model_selection,

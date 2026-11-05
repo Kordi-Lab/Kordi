@@ -12,6 +12,9 @@ import type { StoredSession } from '../session';
 export const APP_AUTHORIZE_PATH = '/v1/cloud/auth/app/authorize';
 export const APP_TOKEN_PATH = '/v1/cloud/auth/app/token';
 export const APP_REVOKE_PATH = '/v1/cloud/auth/app/revoke';
+export const DEVICE_CODE_PATH = '/v1/cloud/auth/device/code';
+export const DEVICE_TOKEN_PATH = '/v1/cloud/auth/device/token';
+const DEVICE_CODE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code';
 
 export type BrowserSignInIntent = 'login' | 'signup';
 
@@ -286,13 +289,111 @@ export async function exchangeAppAuthorizationCode({
     ...deviceFields(device),
   });
   if (status < 200 || status >= 300) throw tokenError(status, body);
+  return signInResult(status, body, clientId, tokenEndpoint, now());
+}
+
+/** A device code sign-in in progress (docs/development/device-code-sign-in.md). */
+export type DeviceCodePrompt = {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  expiresAt: number;
+  intervalMs: number;
+};
+
+export type DeviceCodePoll =
+  | { kind: 'pending' }
+  | { kind: 'slow_down'; intervalMs: number }
+  | { kind: 'signed_in'; result: AppSignInResult };
+
+function signInResult(
+  status: number,
+  body: unknown,
+  clientId: string,
+  tokenEndpoint: string,
+  now: number,
+): AppSignInResult {
   const parsed = (body ?? {}) as TokenResponse;
-  const result = tokenResult(parsed, { clientId, tokenEndpoint }, now());
+  const result = tokenResult(parsed, { clientId, tokenEndpoint }, now);
   const account = parsed.account as CloudAccount | undefined;
   if (!result || !account || typeof account.accountId !== 'string' || !account.accountId) {
     throw new CloudAuthError('browser_sign_in_failed', 'Could not finish signing in. Try again.', status);
   }
   return { account, session: result.session, refresh: result.refresh };
+}
+
+/** Asks for a code to show; a server without device codes answers 404. */
+export async function requestDeviceCode({
+  baseUrl,
+  fetchImpl,
+  clientId,
+  device,
+  now = Date.now,
+}: {
+  baseUrl: string;
+  fetchImpl: FetchLike;
+  clientId: string;
+  device?: CloudDeviceRegistration | null;
+  now?: () => number;
+}): Promise<DeviceCodePrompt> {
+  const { status, body } = await postForm(fetchImpl, `${cleanBaseUrl(baseUrl)}${DEVICE_CODE_PATH}`, {
+    client_id: clientId,
+    ...deviceFields(device),
+  });
+  if (status === 404 || status === 405) {
+    throw new CloudAuthError('device_code_unavailable', 'Sign-in with a code is not available on this server.', status);
+  }
+  if (status < 200 || status >= 300) throw tokenError(status, body);
+  const record = (body ?? {}) as Record<string, unknown>;
+  const { device_code: deviceCode, user_code: userCode, verification_uri: verificationUri } = record;
+  const expiresIn = record.expires_in;
+  const interval = typeof record.interval === 'number' && record.interval > 0 ? record.interval : 5;
+  if (
+    typeof deviceCode !== 'string' || !deviceCode
+    || typeof userCode !== 'string' || !userCode
+    || typeof verificationUri !== 'string' || !verificationUri
+    || typeof expiresIn !== 'number' || expiresIn <= 0
+  ) {
+    throw new CloudAuthError('browser_sign_in_failed', 'Could not start signing in. Try again.', status);
+  }
+  return { deviceCode, userCode, verificationUri, expiresAt: now() + expiresIn * 1000, intervalMs: interval * 1000 };
+}
+
+/** One poll of the device token endpoint. */
+export async function pollDeviceCode({
+  baseUrl,
+  fetchImpl,
+  clientId,
+  deviceCode,
+  now = Date.now,
+}: {
+  baseUrl: string;
+  fetchImpl: FetchLike;
+  clientId: string;
+  deviceCode: string;
+  now?: () => number;
+}): Promise<DeviceCodePoll> {
+  const { status, body } = await postForm(fetchImpl, `${cleanBaseUrl(baseUrl)}${DEVICE_TOKEN_PATH}`, {
+    grant_type: DEVICE_CODE_GRANT_TYPE,
+    client_id: clientId,
+    device_code: deviceCode,
+  });
+  if (status >= 200 && status < 300) {
+    return { kind: 'signed_in', result: signInResult(status, body, clientId, appTokenEndpoint(baseUrl), now()) };
+  }
+  const error = oauthErrorCode(body);
+  if (error === 'authorization_pending') return { kind: 'pending' };
+  if (error === 'slow_down') {
+    const interval = (body as Record<string, unknown>).interval;
+    return { kind: 'slow_down', intervalMs: typeof interval === 'number' && interval > 0 ? interval * 1000 : 10_000 };
+  }
+  if (error === 'access_denied') {
+    throw new CloudAuthError('device_code_denied', oauthErrorMessage(body) ?? 'The sign-in was denied.', status);
+  }
+  if (error === 'expired_token') {
+    throw new CloudAuthError('device_code_expired', 'The code expired. Try again.', status);
+  }
+  throw tokenError(status, body);
 }
 
 /**
