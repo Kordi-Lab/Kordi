@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { agentRuntimePresence, type CloudPresenceAccount } from '@/features/cloud/presence';
 import { useContactPresenceLabel } from '@/features/cloud/useCloudPresence';
@@ -51,7 +52,7 @@ export function useChatHeaderModel({
   );
   // A personal session keeps its agent's name.
   const personalAgent = usePersonalAgentForConversation(activeConv);
-  const canRename = isNativeShell
+  const canRename = (isNativeShell || (isBrowserAppRuntime() && Boolean(selfAgentSessionId)))
     && !personalAgent
     && activeConv.type === 'owned-agent'
     && (Boolean(selfAgentSessionId) || isDraft)

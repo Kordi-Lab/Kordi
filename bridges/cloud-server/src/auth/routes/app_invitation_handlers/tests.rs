@@ -99,6 +99,49 @@ fn invitation_document_can_offer_a_safe_open_app_action() {
 }
 
 #[test]
+fn group_invitation_can_offer_browser_without_replacing_native_actions_or_joining() {
+    let document = invitation_landing_document_with_actions(
+        "Join <Team>",
+        "Preview and choose Join group. Opening this page does not add you.",
+        Some(("Open Kordi", "kordi://group-invite/kordi_gi_fixture")),
+        Some("/app?groupInvite=kordi_gi_fixture&test=\"escaped\""),
+        Some(VERSIONED_DMG_URL),
+    );
+    assert!(document.contains("Open Kordi"));
+    assert!(document.contains("Open in browser"));
+    assert!(document.contains("Download Kordi for Mac"));
+    assert!(document
+        .contains("href=\"/app?groupInvite=kordi_gi_fixture&amp;test=&quot;escaped&quot;\""));
+    assert!(document.contains("Join &lt;Team&gt;"));
+    assert!(!document.contains("<script"));
+    assert!(!document.contains("http-equiv=\"refresh\""));
+    assert!(
+        !invitation_landing_document_with_open_action("Join Team", "Preview", None, None)
+            .contains("Open in browser")
+    );
+    let response = invitation_landing_html_with_browser_action(
+        StatusCode::OK,
+        "Join Team",
+        "Preview",
+        None,
+        Some("/app?groupInvite=kordi_gi_fixture"),
+        None,
+    );
+    assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
+    assert_eq!(
+        response.headers().get("referrer-policy").unwrap(),
+        "no-referrer"
+    );
+    assert!(response
+        .headers()
+        .get("content-security-policy")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains("frame-ancestors 'none'"));
+}
+
+#[test]
 fn invitation_response_allows_the_same_origin_favicon() {
     let response = invitation_landing_html(
         StatusCode::OK,

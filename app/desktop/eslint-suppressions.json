@@ -183,9 +183,6 @@
     }
   },
   "src/features/chat/useDesktopSessionController.ts": {
-    "@typescript-eslint/require-await": {
-      "count": 1
-    },
     "no-console": {
       "count": 1
     }

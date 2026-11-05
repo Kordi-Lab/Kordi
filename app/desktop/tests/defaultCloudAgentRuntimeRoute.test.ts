@@ -185,3 +185,27 @@ test('with an OpenAI key and a ChatGPT sign-in both active, a ChatGPT model keep
   assert.equal(key?.model, 'openai/gpt-6.1-sol');
   assert.equal(key?.authChoice, 'profile:key');
 });
+
+
+test('browser default route keeps a hosted account and never uses native saved credentials', () => {
+  const args = {
+    activeLoginProviderId: 'openai',
+    authOptions: [{ ...activeOpenAiAuthOption, value: 'cloud-login:browser', providerId: 'openai-codex' }],
+    chatModelOptions: [{ value: 'openai-codex/gpt-6-sol', label: 'Model' }],
+    desktopAuthState: authState([openAiProvider()]),
+    isNativeShell: false, browserApp: true,
+    preferredModelValueForProvider: () => 'openai-codex/gpt-6-sol',
+    resolveComposerProviderId: () => 'openai-codex',
+    selectedModel: 'openai-codex/gpt-6-sol', selectedThinking: 'medium',
+  };
+  assert.deepEqual(resolveDefaultCloudAgentRuntimeRoute(args), {
+    model: 'openai-codex/gpt-6-sol', authProvider: 'openai-codex',
+    authChoice: 'cloud-login:browser', thinking: 'medium',
+  });
+  const nativeOnly = resolveDefaultCloudAgentRuntimeRoute({ ...args,
+    authOptions: [activeOpenAiAuthOption], selectedModel: 'openai/gpt-6-sol',
+    resolveComposerProviderId: () => 'openai',
+  });
+  assert.notEqual(nativeOnly?.authChoice, 'local-active-api-key');
+  assert.notEqual(nativeOnly?.authChoice, 'profile-1');
+});

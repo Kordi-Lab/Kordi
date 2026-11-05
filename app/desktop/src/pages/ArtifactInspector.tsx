@@ -1,8 +1,11 @@
+import { fileNameFromPath, extensionLabel, languageFromPath, artifactPreviewKind } from './artifactPreviewFormat';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { loadArtifactPreview } from './artifactPreviewLoader';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Braces, ChevronLeft, FileText, FolderOpen, Globe2, LoaderCircle, Maximize2, X } from 'lucide-react';
 import { MarkdownCodeBlock, MarkdownContent, MermaidDiagram } from '@/kordi-app/components';
 import type { ConversationParticipant, DesktopArtifactDirectory, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
-import { fetchDesktopChatArtifactDirectory, fetchDesktopChatArtifactPreview } from '@/lib/desktop';
+import { fetchDesktopChatArtifactDirectory } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 import { ArtifactDocumentSection } from '@/features/documents/ArtifactDocumentSection';
 import { documentFormatForPath, isDocumentReaderArtifact } from '@/features/documents/documentReaderModel';
@@ -26,10 +29,6 @@ type ArtifactInspectorProps = {
   participants?: ConversationParticipant[];
 };
 
-function fileNameFromPath(path: string) {
-  return path.split('/').filter(Boolean).pop()?.trim() || path;
-}
-
 function parentPathFromPath(path: string) {
   const parts = path.split('/').filter(Boolean);
   parts.pop();
@@ -45,47 +44,12 @@ function compactArtifactLocation(path: string, fileName = fileNameFromPath(path)
   return parts.length > visibleParts.length ? `…/${visibleParts.join('/')}` : visibleParts.join('/');
 }
 
-function extensionLabel(path: string, fallback: SessionArtifact['kind'] = 'file') {
-  const extension = fileNameFromPath(path).split('.').pop()?.trim().toLowerCase();
-  if (!extension || extension === fileNameFromPath(path).toLowerCase()) return fallback;
-  if (extension === 'markdown') return 'md';
-  return extension;
-}
-
 function artifactIcon(kind: SessionArtifact['kind'], path = '') {
   const extension = extensionLabel(path, kind);
   if (extension === 'html' || extension === 'htm') return Globe2;
   if (kind === 'code') return Braces;
   if (kind === 'document') return FileText;
   return FileText;
-}
-
-function languageFromPath(path: string) {
-  const extension = path.split('.').pop()?.trim().toLowerCase();
-  if (!extension) return 'text';
-  if (['js', 'jsx', 'mjs', 'cjs'].includes(extension)) return 'javascript';
-  if (['ts', 'tsx'].includes(extension)) return 'typescript';
-  if (['py', 'py3'].includes(extension)) return 'python';
-  if (['sh', 'zsh', 'bash'].includes(extension)) return 'bash';
-  if (extension === 'rs') return 'rust';
-  if (['css', 'scss'].includes(extension)) return 'css';
-  if (['html', 'htm', 'svg'].includes(extension)) return 'html';
-  if (['yaml', 'yml'].includes(extension)) return 'yaml';
-  if (['md', 'mdx'].includes(extension)) return 'markdown';
-  if (['mmd', 'mermaid'].includes(extension)) return 'mermaid';
-  return extension;
-}
-
-function artifactPreviewKind(path: string) {
-  const extension = extensionLabel(path).toLowerCase();
-  if (extension === 'html' || extension === 'htm') return 'html';
-  if (extension === 'svg') return 'svg';
-  if (extension === 'md' || extension === 'mdx') return 'markdown';
-  if (extension === 'mmd' || extension === 'mermaid') return 'mermaid';
-  if (extension === 'json') return 'json';
-  if (extension === 'csv' || extension === 'tsv') return 'table';
-  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif'].includes(extension)) return 'image';
-  return 'source';
 }
 
 export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: ArtifactPreviewMode = 'panel') {
@@ -386,7 +350,7 @@ export function ArtifactInspector({
   useEffect(() => {
     setPreviewError(null);
 
-    if (!previewArtifact?.id || !activePreviewKey || !isNativeShell || cachedPreview || opensInCompanion) {
+    if (!previewArtifact?.id || !activePreviewKey || (!isNativeShell && !isBrowserAppRuntime()) || cachedPreview || opensInCompanion) {
       setIsPreviewLoading(false);
       return;
     }
@@ -394,7 +358,7 @@ export function ArtifactInspector({
     let cancelled = false;
     setIsPreviewLoading(true);
 
-    fetchDesktopChatArtifactPreview(previewArtifact.path, effectivePreviewBaseRoot)
+    loadArtifactPreview({ isNativeShell, path: previewArtifact.path, attachmentId: previewArtifact.attachmentId, baseRoot: effectivePreviewBaseRoot })
       .then((preview) => {
         if (cancelled) return;
         setPreviewCache((current) => ({
@@ -415,7 +379,7 @@ export function ArtifactInspector({
     return () => {
       cancelled = true;
     };
-  }, [activePreviewKey, cachedPreview, effectivePreviewBaseRoot, isNativeShell, opensInCompanion, previewArtifact?.id, previewArtifact?.path]);
+  }, [activePreviewKey, cachedPreview, effectivePreviewBaseRoot, isNativeShell, opensInCompanion, previewArtifact?.attachmentId, previewArtifact?.id, previewArtifact?.path]);
 
   return (
     <div data-artifact-inspector="true" className="flex h-full min-h-0 flex-col">

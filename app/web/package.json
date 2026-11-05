@@ -1,0 +1,41 @@
+{
+  "name": "kordi-web",
+  "version": "0.0.2-beta.6",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1428 --strictPort",
+    "build": "node ../../scripts/licenses.mjs check && node ../../scripts/licenses.mjs stage ../desktop/public/licenses && vite build && pnpm check:bundle",
+    "check:bundle": "node ../desktop/scripts/check-js-chunk-budget.mjs dist/assets --web-app",
+    "preview": "vite preview --host 127.0.0.1",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "tsx --import ../desktop/tests/setupDistribution.mjs --test tests/unit/*.test.ts",
+    "test:e2e": "playwright test -c playwright.config.ts",
+    "test": "pnpm test:unit && pnpm test:e2e"
+  },
+  "dependencies": {
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@playwright/test": "1.61.1",
+    "@types/jsdom": "^28.0.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
+    "jsdom": "^29.1.1",
+    "tsx": "^4.21.0",
+    "typescript-eslint": "^8.65.0",
+    "vite": "^8.0.4",
+    "yaml": "^2.8.3",
+    "typescript": "^6.0.2",
+    "@tauri-apps/api": "^2.8.0"
+  }
+}

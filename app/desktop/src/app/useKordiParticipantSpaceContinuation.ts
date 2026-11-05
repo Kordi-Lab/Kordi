@@ -1,3 +1,5 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { captureCloudGroupCanonicalPersistence } from '@/features/cloud/cloudGroupCanonicalPersistence';
 import {
   useCallback,
   type Dispatch,
@@ -17,7 +19,6 @@ import type {
   Conversation,
   ParticipantSpaceViewModel,
 } from '@/kordi-app/types';
-import { openOrCreateCanonicalSessionFast } from '@/lib/desktop';
 import { rememberSessionOrganization } from '@/features/organizations/sessionOrganization';
 
 import { mergeOpenCanonicalSessionResult } from './canonicalSessionStateMutations';
@@ -70,7 +71,7 @@ export function useKordiParticipantSpaceContinuation({
     }
 
     if (space.kind === 'group') {
-      if (!isNativeShell || !canonicalState || !account) {
+      if ((!isNativeShell && !isBrowserAppRuntime()) || !canonicalState || !account) {
         throw new Error('Sign in before creating a channel.');
       }
       const key = `channel:${space.id}:${channelName?.trim()}`;
@@ -90,7 +91,8 @@ export function useKordiParticipantSpaceContinuation({
       return;
     }
 
-    if (!isNativeShell) return;
+    if (!isNativeShell && !isBrowserAppRuntime()) return;
+    const persistence = captureCloudGroupCanonicalPersistence();
     setDesktopError(null);
 
     const creatorIdentityId =
@@ -128,7 +130,7 @@ export function useKordiParticipantSpaceContinuation({
 
       const kind =
         receiver.kind === 'agent' ? 'direct-agent' : 'direct-person';
-      const openResult = await openOrCreateCanonicalSessionFast({
+      const openResult = await persistence.openOrCreateCanonicalSessionFast({
         id: sessionId,
         kind,
         title: 'New session',

@@ -1,3 +1,5 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+
 export type CloudDeviceRegistration = {
   displayName: string;
   platform: string;
@@ -159,6 +161,7 @@ async function desktopMetadata(): Promise<{
   machineId?: string;
 }> {
   if (!isTauriRuntime()) {
+    if (isBrowserAppRuntime()) return { displayName: 'Web browser', platform: 'web', osVersion: '', approximateLocation: '' };
     return { ...browserDesktopPlatform(), approximateLocation: '' };
   }
   try {

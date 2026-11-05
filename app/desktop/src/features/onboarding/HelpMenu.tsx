@@ -9,6 +9,7 @@ import { HelpPermissions } from './HelpPermissions';
 import { HelpReleaseNotes } from './HelpReleaseNotes';
 import { nativeMacPermissions } from './permissionAccess';
 import { readHelpProgress } from './helpProgress';
+import { publicAssetPath } from '@/lib/publicAsset';
 import type { HelpTourId } from './helpTourSteps';
 import type { HelpAction } from './helpContent';
 import '@/styles/help.css';
@@ -77,7 +78,7 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
       {supportAvailable ? <button disabled={busy} onClick={() => void action({ kind: 'support' })}><span>Contact support</span></button> : null}
       {updateAction ? <button onClick={(event) => { updateAction.onClick(event); onDismiss(); }}><span>{updateAction.label}</span><ArrowRight size={14} /></button> : null}
     </div> : <div className="help-menu-content">
-      {view === 'licenses' ? <iframe title="Open-source licenses" src="/licenses/index.html" className="help-license-frame" onLoad={(event) => {
+      {view === 'licenses' ? <iframe title="Open-source licenses" src={publicAssetPath('licenses/index.html')} className="help-license-frame" onLoad={(event) => {
         event.currentTarget.contentDocument?.addEventListener('click', (click) => {
           const href = (click.target as Element | null)?.closest?.('a')?.getAttribute('href');
           if (!href?.startsWith('https://')) return;

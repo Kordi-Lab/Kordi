@@ -21,7 +21,7 @@ export function isSystemAgentAccountId(accountId: string | null | undefined): bo
  * System with a gray Kordi bird, whichever built-in account posted them. */
 export const KORDI_SYSTEM_NOTICE_KIND = 'system-notice';
 export const KORDI_SYSTEM_NAME = 'System';
-export const KORDI_SYSTEM_AVATAR_URL = '/kordi-system-avatar.svg';
+export const KORDI_SYSTEM_AVATAR_URL = publicAssetPath('kordi-system-avatar.svg');
 
 export function isSystemAvatarUrl(url: string | null | undefined): boolean {
   return url?.trim() === KORDI_SYSTEM_AVATAR_URL;
@@ -44,3 +44,4 @@ export function isBuiltInAccountId(accountId: string | null | undefined): boolea
 export function isBuiltInIdentity(identity: { humanId?: string | null; agentId?: string | null; sourceIdentityId?: string | null } | null | undefined): boolean {
   return isSystemAgentIdentity(identity) || isSystemAccountId(identity?.humanId) || isSystemAccountId(identity?.sourceIdentityId);
 }
+import { publicAssetPath } from '@/lib/publicAsset';

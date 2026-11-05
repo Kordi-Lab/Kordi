@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "ff3f9195296fad668f6a9c5daffe8e91c0fef5026c2b75957e793c7bdd6b6092",
+  "catalogSha256": "09a5c4d5693a751ec0d6e60d379d042cef93dc0c28a8e076a280e65f9bc37bd5",
   "inputs": {
     "Cargo.lock": "a7e7fb8fd5e429d68f5d4fb2069814499d1670d250dc6cd7ec15ed8a7f1b1f13",
-    "pnpm-lock.yaml": "b1ab9e2c06646f73288db2ef5075bf48107bc0f4a8364e1a3726f5e8dee85e30",
+    "pnpm-lock.yaml": "538ab03d007684ded90b4f672a8eda6e9758c69d6abccd7d9807484e693e4e08",
     "shared/omp-runtime/bun.lock": "ceb1c45ea56f52fa440e8c3aa23377c484b8acb5ef512d0de8ab6cfc218ef43a",
     "bridges/cloud-temporal-bridge/go.mod": "c09969e162406833ad4a1c85524a1fbe4196fd84aea2ded9ef4c8b251da72c51",
     "bridges/cloud-temporal-bridge/go.sum": "c1311ad16d865fb72e794d12b7ef49dfdf616fbb6c21145bc28c5d320a69f5c7",
@@ -12,7 +12,7 @@
     "legal/runtime-sources.json": "19b23dc48c6e5f1ae535454bc46350f7530d1a653ae12b00bddb7d07b688c11e",
     "legal/native/archive-evidence.json": "90f8c673a36c1557adda2b118c3b2b5c29200c252c35d01a7b3ce4610ce99598",
     "legal/public-contact-hashes.json": "241ddd7846876dcb475628fb6b57a7797a438cee0e2a669a9bfa2871c54a8ae1",
-    "app/desktop/package.json": "a3e7acd1efd543e7da9256827248f95d0515f5033a10df32232af3abaf41f082",
+    "app/desktop/package.json": "d81963e7ae6d748ed6a325706cd9434b71832721d309e80794f96f197ece648e",
     "legal/runtime-relink-verification.json": "f69b0ab7976cdf30cc076e243ed6180b2c7cc4fc7e3289c06e37957ae7eeafdb",
     "legal/runtime-bundle-review.json": "c026d9b9ad1fe8ada7f29d2a86e7b9178ef8616bb6bffef5125fe970320dbb5c",
     "deploy/minio/Dockerfile.server": "fe4e8d79b1bcd1663bddc367d48870f924c4a26f9784068ed99deb28153a5b00",
@@ -27,7 +27,8 @@
     "legal/native/webrtc-dependencies.json": "fc9e748f39b4a98ddfc50c75a25b90e6e2998bdfa62605ae0b2fa0194f6a057b",
     "legal/runtime-patches/javascriptcore-proof.patch": "d76d9f1e594ef9963f97465970e758f1dffda89e8b24401759b9186ecbafa598",
     "legal/runtime-patches/macos-sdk-compatibility.patch": "209bacc11f0cdc2d68f1e4d87f2fd537a11f5c512e1776e3c04af1364c8ac2d0",
-    "legal/runtime-patches/tinycc-proof.patch": "0f27549d4de8409a5c41c78759f910d8619f85e1fe8c251685f5019e7c63312f"
+    "legal/runtime-patches/tinycc-proof.patch": "0f27549d4de8409a5c41c78759f910d8619f85e1fe8c251685f5019e7c63312f",
+    "app/web/package.json": "430a6e48ffc305060f209ef88e3cd69edcb336944540c09afda78be13b43de9a"
   },
   "files": {
     "LICENSE": "0d699f2763ad95c6b648b27536bf176e2b517e06bf204643629ada1623ac1196",

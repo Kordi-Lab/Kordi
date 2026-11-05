@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import type { ChatSyncConversation, ChatSyncEvent, ChatSyncMessage } from '@/features/cloud/authClient';
 import { invokeDesktop, isNativeDesktopShell } from './desktop';
 
@@ -56,6 +57,8 @@ export type ChatSyncRecoveryMessageIds = {
 
 export type ApplyChatSyncRequest = {
   accountId: string;
+  /** Scope captured before fetching. Browser writes reject a changed or omitted scope. */
+  expectedOrganizationId?: string | null;
   bootstrap: boolean;
   cursor?: string | null;
   lastStreamSeq?: number | null;
@@ -90,17 +93,17 @@ export function publishChatSyncLocalStateChanged(
 }
 
 export async function loadChatSyncLocalState(accountId: string) {
-  if (!isNativeDesktopShell()) return null;
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return null;
   return invokeDesktop<ChatSyncLocalState>('desktop_chat_sync_load', { accountId });
 }
 
 export async function loadChatSyncCursor(accountId: string) {
-  if (!isNativeDesktopShell()) return null;
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return null;
   return invokeDesktop<ChatSyncCursorState>('desktop_chat_sync_cursor', { accountId });
 }
 
 export async function loadChatSyncCoverage(accountId: string) {
-  if (!isNativeDesktopShell()) return [];
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return [];
   return invokeDesktop<ChatSyncConversationCoverage[]>('desktop_chat_sync_coverage', { accountId });
 }
 
@@ -143,17 +146,17 @@ export async function waitForCompleteChatSyncHistory(
 }
 
 export async function loadChatSyncConversations(accountId: string) {
-  if (!isNativeDesktopShell()) return [];
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return [];
   return invokeDesktop<ChatSyncConversation[]>('desktop_chat_sync_conversations', { accountId });
 }
 
 export async function loadChatSyncUnreadCounts(accountId: string) {
-  if (!isNativeDesktopShell()) return [];
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return [];
   return invokeDesktop<ChatSyncConversationHead[]>('desktop_chat_sync_unread_counts', { accountId });
 }
 
 export async function loadChatSyncMessageRefs(accountId: string, conversationIds: string[]) {
-  if (!isNativeDesktopShell() || conversationIds.length === 0) return [];
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime()) || conversationIds.length === 0) return [];
   return invokeDesktop<ChatSyncMessageRef[]>('desktop_chat_sync_message_refs', {
     accountId,
     conversationIds,
@@ -166,7 +169,7 @@ export async function loadChatSyncMessagesPage(
   afterSequence: number | null = null,
   limit = 100,
 ) {
-  if (!isNativeDesktopShell()) return null;
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return null;
   return invokeDesktop<ChatSyncMessagePage>('desktop_chat_sync_messages_page', {
     accountId,
     conversationId,
@@ -179,7 +182,7 @@ export async function loadChatSyncRecoveryMessageIds(
   accountId: string,
   conversationId: string,
 ) {
-  if (!isNativeDesktopShell()) return null;
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return null;
   return invokeDesktop<ChatSyncRecoveryMessageIds>(
     'desktop_chat_sync_recovery_message_ids',
     { accountId, conversationId },
@@ -187,12 +190,12 @@ export async function loadChatSyncRecoveryMessageIds(
 }
 
 export async function loadChatSyncDeletedMessageIds(accountId: string): Promise<string[]> {
-  if (!isNativeDesktopShell()) return [];
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return [];
   return invokeDesktop<string[]>('desktop_chat_sync_deleted_message_ids', { accountId });
 }
 
 export async function applyChatSyncLocalBatch(request: ApplyChatSyncRequest) {
-  if (!isNativeDesktopShell()) return null;
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return null;
   const result = await invokeDesktop<ChatSyncApplyResult>('desktop_chat_sync_apply', { request });
   if (request.bootstrap || request.conversations?.length || request.messages?.length
     || request.events?.length || result.changedConversationHeads.length) {
@@ -205,24 +208,25 @@ export async function enqueueChatSyncOutbox(
   accountId: string,
   operationId: string,
   payload: ChatSyncOutboxPayload,
+  expectedOrganizationId?: string | null,
 ) {
-  if (!isNativeDesktopShell()) return;
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return;
   await invokeDesktop<void>('desktop_chat_sync_outbox_enqueue', {
-    request: { accountId, operationId, payload },
+    request: { accountId, operationId, payload, expectedOrganizationId },
   });
 }
 
-export async function dueChatSyncOutbox(accountId: string) {
-  if (!isNativeDesktopShell()) return [];
+export async function dueChatSyncOutbox(accountId: string, expectedOrganizationId?: string | null) {
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return [];
   return invokeDesktop<ChatSyncPendingOperation[]>(
     'desktop_chat_sync_outbox_due',
-    { accountId },
+    { accountId, expectedOrganizationId },
   );
 }
 
-export async function completeChatSyncOutbox(accountId: string, operationId: string) {
-  if (!isNativeDesktopShell()) return;
-  await invokeDesktop<void>('desktop_chat_sync_outbox_complete', { accountId, operationId });
+export async function completeChatSyncOutbox(accountId: string, operationId: string, expectedOrganizationId?: string | null) {
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return;
+  await invokeDesktop<void>('desktop_chat_sync_outbox_complete', { accountId, operationId, expectedOrganizationId });
 }
 
 export async function failChatSyncOutbox(
@@ -230,9 +234,10 @@ export async function failChatSyncOutbox(
   operationId: string,
   error: string,
   retryable: boolean,
+  expectedOrganizationId?: string | null,
 ) {
-  if (!isNativeDesktopShell()) return;
+  if ((!isNativeDesktopShell() && !isBrowserAppRuntime())) return;
   await invokeDesktop<void>('desktop_chat_sync_outbox_fail', {
-    request: { accountId, operationId, error, retryable },
+    request: { accountId, operationId, error, retryable, expectedOrganizationId },
   });
 }

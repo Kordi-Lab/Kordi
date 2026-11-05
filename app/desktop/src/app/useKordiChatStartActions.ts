@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import {
   useCallback,
   type Dispatch,
@@ -145,7 +146,7 @@ export function useKordiChatStartActions({
       return;
     }
 
-    if (!isNativeShell) return;
+    if (!isNativeShell && !isBrowserAppRuntime()) return;
     const existingSessionId = existingSessionIdForPersonStart(
       contact,
       conversations,
@@ -208,7 +209,7 @@ export function useKordiChatStartActions({
     setActiveNav('agent-chats');
 
     if (agent.isOwned) {
-      if (!isNativeShell) {
+      if (!isNativeShell && !isBrowserAppRuntime()) {
         await createOwnedAgentSession();
         return;
       }
@@ -243,7 +244,7 @@ export function useKordiChatStartActions({
       return;
     }
 
-    if (!isNativeShell) return;
+    if (!isNativeShell && !isBrowserAppRuntime()) return;
     const creatorIdentityId =
       canonicalState?.profile.humanIdentityId?.trim();
     if (!creatorIdentityId) {

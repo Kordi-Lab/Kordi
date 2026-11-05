@@ -1,10 +1,9 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import type { CompanionToolbarProps } from './chatsPage.companionToolbar';
 import { PinnedMessageShelf } from './PinnedMessageShelf';
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { ChatPaneLayout } from '@/pages/ChatPaneLayout';
-import {
-  localOwnedAgentSenderLabel,
-} from '@/app/viewModels/helpers';
+import { localOwnedAgentSenderLabel } from '@/app/viewModels/helpers';
 import { composerAgentRequestStop } from '@/features/chat/agentRequestStop';
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
@@ -236,7 +235,7 @@ export function ChatMainWorkspace({
             {needsProvider ? (
               <AuthNoticeBanner
                 title="No provider connected yet"
-                description={auth.onOpenAccountAuthentication
+                description={isBrowserAppRuntime() ? 'Connect a hosted provider in Authentication. Local models require the desktop app.' : auth.onOpenAccountAuthentication
                   ? 'Connect a provider, save an API key, or choose a local LM Studio/Ollama server before starting AI chats.'
                   : 'Connect a cloud provider, save an API key, or choose a local LM Studio/Ollama server in Authentication before starting AI chats.'}
                 actionLabel="Open authentication"

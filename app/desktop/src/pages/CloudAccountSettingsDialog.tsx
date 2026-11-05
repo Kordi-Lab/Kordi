@@ -248,8 +248,12 @@ export function CloudAccountSettingsDialog({
     <div className="app-cloud-account-settings-section app-cloud-account-theme app-settings-option-list max-w-[680px]">
       <SettingsSection title="Appearance">
         <MessageLayoutSetting />
-        {(appearanceSection?.items ?? []).map((item) => (
-          <AppearanceSettingsRow key={item.label} item={item} themeMode={themeMode} onSelectThemeMode={setThemeMode} />
+        {(appearanceSection?.items ?? []).filter((item) => isNativeShell || item.control?.type !== 'app-icon').map((item) => (
+          <AppearanceSettingsRow key={item.label}
+            item={!isNativeShell && item.control?.type === 'chat-theme'
+              ? { ...item, hint: 'Changes conversation backgrounds and message colors in this browser.' }
+              : item}
+            themeMode={themeMode} onSelectThemeMode={setThemeMode} />
         ))}
       </SettingsSection>
     </div>

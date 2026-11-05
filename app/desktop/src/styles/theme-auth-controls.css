@@ -188,7 +188,7 @@
   color: rgb(190 24 93) !important;
 }
 
-.kordi-app.theme-light a:not(.app-markdown-link):not(.app-message-link-preview) {
+.kordi-app.theme-light a:not(.app-markdown-link):not(.app-message-link-preview):not(.app-workspace-nav-button) {
   color: rgb(14 116 144);
 }
 

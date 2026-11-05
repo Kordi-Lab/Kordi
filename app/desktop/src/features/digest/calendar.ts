@@ -1,3 +1,4 @@
+import { publicAssetPath } from '@/lib/publicAsset';
 import type { CalendarEvent, CalendarConnection, DeviceCalendarAccess, DeviceCalendarEvent } from './types';
 import { isNativeDesktopShell } from '@/lib/desktop';
 
@@ -29,18 +30,20 @@ export type CalendarImport = { events: CalendarEvent[]; warnings: string[] };
 export async function importCalendar(text: string, from: string, to: string): Promise<CalendarImport> {
   // Blob workers also work with the packaged desktop app's custom URL scheme.
   const scripts = await Promise.all(['ical.js', 'import.js'].map(async name => {
-    const response = await fetch(new URL(`/digest/${name}`, window.location.href), { signal: AbortSignal.timeout(5000) });
+    const response = await fetch(new URL(publicAssetPath(`digest/${name}`), window.location.href), { signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error('Could not load the calendar reader.');
     return response.text();
   }));
   const scriptUrl = URL.createObjectURL(new Blob([...scripts, '\nonmessage=({data})=>{try{postMessage({result:DigestICS.parse(data.text,data.from,data.to)});}catch(error){postMessage({error:error.message});}};'], { type: 'text/javascript' }));
   let worker: Worker;
-  try { worker = new Worker(scriptUrl); } finally { URL.revokeObjectURL(scriptUrl); }
+  try { worker = new Worker(scriptUrl); } catch (error) { URL.revokeObjectURL(scriptUrl); throw error; }
+  // WebKit loads the blob asynchronously; keep its URL alive until the worker finishes.
+  const dispose = () => { worker.terminate(); URL.revokeObjectURL(scriptUrl); };
   return new Promise((resolve,reject)=>{
-    const timer=setTimeout(()=>{worker.terminate();reject(new Error('Calendar processing timed out. Export a smaller date range.'));},5000);
-    worker.onerror=()=>{clearTimeout(timer);worker.terminate();reject(new Error('Could not read this calendar.'));};
+    const timer=setTimeout(()=>{dispose();reject(new Error('Calendar processing timed out. Export a smaller date range.'));},5000);
+    worker.onerror=()=>{clearTimeout(timer);dispose();reject(new Error('Could not read this calendar.'));};
     worker.onmessage=async({data}:MessageEvent<WorkerReply>)=>{
-      clearTimeout(timer);worker.terminate();
+      clearTimeout(timer);dispose();
       if(data.error||!data.result){reject(new Error(data.error||'The calendar response was invalid.'));return;}
       try {
         const events=await Promise.all(data.result.events.map(async(event: ImportedEvent)=>{
@@ -51,7 +54,7 @@ export async function importCalendar(text: string, from: string, to: string): Pr
         resolve({events,warnings:data.result.warnings});
       }catch(error){reject(error instanceof Error?error:new Error('Could not read the calendar.'));}
     };
-    worker.postMessage({text,from,to});
+    try { worker.postMessage({text,from,to}); } catch (error) { clearTimeout(timer); dispose(); reject(error instanceof Error ? error : new Error('Could not start the calendar reader.')); }
   });
 }
 export async function connectedCalendars():Promise<CalendarConnection[]> {

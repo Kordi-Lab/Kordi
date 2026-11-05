@@ -45,7 +45,7 @@ const incrementalTypeCheckedDebtRules = {
 }
 
 export default defineConfig([
-  globalIgnores(['dist', '.multi-instance-data']),
+  globalIgnores(['dist', 'dist-web', '.multi-instance-data']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
@@ -31,11 +32,11 @@ type CloudPresenceStoreState = {
 
 const stores = new Map<string, CloudPresenceStoreState>();
 
-function storeFor(accountId: string): CloudPresenceStoreState {
-  let store = stores.get(accountId);
+function storeFor(accountId: string, fresh = false): CloudPresenceStoreState {
+  let store = fresh ? undefined : stores.get(accountId);
   if (!store) {
     store = { snapshot: {}, listeners: new Set(), timer: null, ws: null };
-    stores.set(accountId, store);
+    if (!fresh) stores.set(accountId, store);
   }
   return store;
 }
@@ -80,7 +81,8 @@ function ensurePresenceWebSocket(store: CloudPresenceStoreState) {
 
 export function useCloudPresence(account: CloudAccount | null) {
   const client = useMemo(() => defaultCloudAuthClient(), []);
-  const store = account ? storeFor(account.accountId) : null;
+  const accountId = account?.accountId;
+  const store = useMemo(() => accountId ? storeFor(accountId, isBrowserAppRuntime()) : null, [accountId]);
   const [snapshot, setSnapshot] = useState<CloudPresenceStore>(() => store?.snapshot ?? {});
 
   useEffect(() => {

@@ -13,7 +13,11 @@ use crate::auth::app_sign_in::tokens::sign_in_for_session;
 use crate::auth::app_sign_in::APP_SIGN_IN_PAGE_PATH;
 use sha2::{Digest, Sha256};
 
+mod browser_application;
 mod web_oauth;
+use browser_application::web_account_matches;
+pub(crate) use browser_application::web_socket_session;
+pub(super) use browser_application::{cookie_session_middleware, web_session_status};
 
 #[cfg(test)]
 pub(super) use web_oauth::WEB_OAUTH_BIND_COOKIE;
@@ -27,6 +31,7 @@ pub(super) use web_oauth::{
 pub const WEB_SESSION_COOKIE: &str = "__Host-kordi_web_session";
 pub const WEB_CSRF_COOKIE: &str = "__Host-kordi_web_csrf";
 pub const WEB_CSRF_HEADER: &str = "x-kordi-csrf-token";
+pub const WEB_ACCOUNT_HEADER: &str = "x-kordi-web-account";
 pub(super) use crate::auth::oauth::WEB_OAUTH_COMPLETE_PATH;
 const WEB_SESSION_MAX_AGE_SECS: i64 = DEFAULT_SESSION_LIFETIME_DAYS * 24 * 60 * 60;
 const MAX_RETURN_TO_CHARS: usize = 2048;
@@ -137,6 +142,13 @@ async fn cookie_session(
         Ok(None) => return Err(login_required()),
         Err(_) => return Err(server_error()),
     };
+    if !web_account_matches(headers, &row.account_id) {
+        return Err(web_error(
+            StatusCode::FORBIDDEN,
+            "browser_account_changed",
+            "The browser account changed. Reload the page.",
+        ));
+    }
     // Only a direct web sign-in may act here; an app's access token may not.
     match sign_in_for_session(pool, &row.token_id).await {
         Ok(None) => {}
@@ -199,34 +211,13 @@ pub(super) async fn authenticated_web_session(
 pub async fn cloud_or_web_session_middleware(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
-    mut req: axum::extract::Request,
+    req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
     if headers.contains_key(axum::http::header::AUTHORIZATION) {
         return super::middleware::cloud_session_middleware(State(state), headers, req, next).await;
     }
-    let reads = matches!(
-        *req.method(),
-        axum::http::Method::GET | axum::http::Method::HEAD
-    );
-    let session = if reads {
-        cookie_session(&state, &headers)
-            .await
-            .map(|(session, _)| session)
-    } else {
-        authenticated_web_session(&state, &headers).await
-    };
-    match session {
-        Ok(session) => {
-            use crate::organizations::requests::{load_for_session, RequestOrganization};
-            if let Ok(Some(claim)) = load_for_session(state.db_pool(), &session.token_id).await {
-                RequestOrganization::attach(&mut req, &session.account_id, &claim, &headers);
-            }
-            req.extensions_mut().insert(session);
-            super::app_sign_in_handlers::no_store(next.run(req).await)
-        }
-        Err(response) => *response,
-    }
+    cookie_session_middleware(State(state), headers, req, next).await
 }
 
 /// The live web session a cookie names, if any. App access tokens never
@@ -339,35 +330,6 @@ pub(super) async fn web_signup(
     )
     .await;
     into_web_session_response(&state, response, previous).await
-}
-
-/// `GET /v1/cloud/auth/web/session`: the signed-in account and the CSRF
-/// token, or `401 login_required`.
-pub(super) async fn web_session_status(
-    State(state): State<Arc<ServerState>>,
-    headers: HeaderMap,
-) -> Response {
-    let (session, token) = match cookie_session(&state, &headers).await {
-        Ok(value) => value,
-        Err(response) => return *response,
-    };
-    match owner_account_response_row(state.db_pool(), &session.account_id).await {
-        Ok(Some(account)) => super::app_sign_in_handlers::no_store(
-            (
-                StatusCode::OK,
-                Json(serde_json::json!({
-                    "account": account,
-                    "csrfToken": web_csrf_token(&token),
-                })),
-            )
-                .into_response(),
-        ),
-        _ => err(
-            "server_error",
-            "Could not load account.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ),
-    }
 }
 
 /// `POST /v1/cloud/auth/web/logout`: revoke the web session and clear its

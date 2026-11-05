@@ -296,11 +296,13 @@ pub(crate) async fn group_invitation_landing(
                         "{inviter} invited you to this group. {member_label}. Preview the invitation in Kordi and choose Join group; opening this page does not add you."
                     );
                     let deep_link = group_invite_deep_link(&token);
-                    invitation_landing_html_with_open_action(
+                    let browser_url = configured_browser_group_invitation_url(&token).await;
+                    invitation_landing_html_with_browser_action(
                         StatusCode::OK,
                         &format!("Join {}", record.snapshot.group_title),
                         &message,
                         Some(("Open Kordi", &deep_link)),
+                        browser_url.as_deref(),
                         release_download_url.as_deref(),
                     )
                 }
