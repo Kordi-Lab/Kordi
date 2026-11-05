@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronLeft, ChevronRight, Search, UserRound } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -142,7 +142,18 @@ export function OrganizationMenuLevels({
   children: (organizationEntry: ReactNode) => ReactNode;
 }) {
   const [menu, setMenu] = useState<MenuLevel>({ level: 'account', direction: null });
+  const levelRef = useRef<HTMLDivElement | null>(null);
   const back = () => setMenu({ level: 'account', direction: 'back' });
+
+  // The focused row unmounts when the level changes; keep keyboard focus in the menu.
+  useEffect(() => {
+    if (menu.direction === null) return;
+    const container = levelRef.current;
+    const target = menu.level === 'organizations'
+      ? container?.querySelector<HTMLElement>('[aria-pressed="true"]') ?? container?.querySelector<HTMLElement>('button')
+      : container?.querySelector<HTMLElement>('[aria-haspopup="menu"]');
+    target?.focus({ preventScroll: true });
+  }, [menu]);
 
   useEffect(() => {
     if (menu.level !== 'organizations') return;
@@ -158,7 +169,7 @@ export function OrganizationMenuLevels({
 
   if (menu.level === 'organizations') {
     return (
-      <div className="org-menu-level" data-direction={menu.direction ?? undefined} key="organizations">
+      <div ref={levelRef} className="org-menu-level" data-direction={menu.direction ?? undefined} key="organizations">
         <OrganizationMenuPanel
           organizations={organizations}
           selectedOrganizationId={selectedOrganizationId}
@@ -173,7 +184,7 @@ export function OrganizationMenuLevels({
     );
   }
   return (
-    <div className="org-menu-level" data-direction={menu.direction ?? undefined} key="account">
+    <div ref={levelRef} className="org-menu-level" data-direction={menu.direction ?? undefined} key="account">
       {children(
         <OrganizationMenuEntry
           organizations={organizations}

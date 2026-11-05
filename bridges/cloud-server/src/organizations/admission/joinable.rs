@@ -72,10 +72,13 @@ async fn joinable_view<'a>(
     let (facts, _) = current_facts(pool, org, account_id, now).await?;
     let caller = caller_state(org, &facts, now);
     let listed = match caller.state {
-        AdmissionState::Pending | AdmissionState::Rejected => true,
+        AdmissionState::Pending => true,
         AdmissionState::Join | AdmissionState::Lapsed => {
             caller.options.email_code || caller.options.join_request
         }
+        // A rejected request blocks another until it is purged, but an email
+        // code can still admit the caller.
+        AdmissionState::Rejected => caller.options.email_code,
         _ => false,
     };
     if !listed {
@@ -87,7 +90,7 @@ async fn joinable_view<'a>(
         name: &org.display_name,
         member_count: member_count(pool, &org.organization_id).await?,
         join_options: caller.options,
-        requested: facts.request_status.is_some(),
+        requested: caller.state == AdmissionState::Pending,
         join_request_fields: org
             .join_requests
             .as_ref()
