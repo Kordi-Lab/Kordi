@@ -15,7 +15,7 @@ import { PersonScreen } from './PersonScreen';
 import { ResultsScreen } from './ResultsScreen';
 import { currentProfile, hasAnyCard, type CommonGroundStore } from './store';
 import { useCommonGround, usePairLinkRedeem } from './useCommonGround';
-import { buildScreenKey } from './wallet';
+import { buildScreenKey, ownerIsCurrent } from './wallet';
 import { WalletShell } from './WalletShell';
 
 /** Common ground in the Contacts detail pane. Navigation lives in the store. */
@@ -48,7 +48,7 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
     body = <CgProgress line="Opening your card" />;
   } else if (!state.owner) {
     body = <CgNotice text={state.notice ?? 'Could not open Grounding.'} />;
-  } else if (screen.name === 'home' || (screen.name === 'card' && state.owner.card)) {
+  } else if (screen.name === 'home' || (screen.name === 'card' && (state.owner.card || !ownerIsCurrent(state)))) {
     // Home and the card page share the wallet: header, deck rail and one centre column.
     const onCard = screen.name === 'card';
     const title = onCard ? currentProfile(state)?.name ?? 'Your card' : 'Grounding';

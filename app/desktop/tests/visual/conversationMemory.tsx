@@ -3,6 +3,7 @@
 // client. `?chat=group` opens the group chat whose id matches the sample group
 // memories: one this account saved and one another member saved, which shows
 // "Saved by Priya". It makes no network calls and needs no session.
+import './previewChatTheme';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 

@@ -2,6 +2,7 @@
 // stay in this page; it needs no session.
 //   ?theme=light|dark
 //   ?open=1  opens the picker on load
+import './previewChatTheme';
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 

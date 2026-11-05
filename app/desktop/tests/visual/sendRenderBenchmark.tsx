@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { Profiler, useState, createRef, useLayoutEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { scheduleTranscriptScrollToBottom } from '../../src/pages/chatsPage.header';

@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import HelpMenu from '../../src/features/onboarding/HelpMenu';

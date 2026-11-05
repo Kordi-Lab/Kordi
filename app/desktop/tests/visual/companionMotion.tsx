@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppShellFrame } from '../../src/app/AppShellFrame';

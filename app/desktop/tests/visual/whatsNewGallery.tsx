@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { createRoot } from 'react-dom/client';
 
 import { WhatsNewDialog } from '../../src/features/updates/WhatsNewDialog';
