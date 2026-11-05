@@ -3,7 +3,8 @@ use kordi_omp_runtime::{EventSink, HostTool, RuntimeError, RuntimeEvent, ToolCal
 use std::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-pub(crate) async fn run<C: CloudAgentRunClient + Sync>(
+/// The OMP engine's run; `system_agent::run` picks it by default.
+pub async fn run<C: CloudAgentRunClient + Sync>(
     client: &C,
     run: &CloudAgentRun,
     material: ProviderAuthMaterial,
@@ -98,6 +99,7 @@ impl EventSink for Journal {
     async fn on_event(&self, event: RuntimeEvent) -> Result<(), String> {
         if event.kind == "message_end" {
             if let Some(message) = event.data.get("message") {
+                crate::usage_meter::record_omp_message(message);
                 self.0
                     .lock()
                     .map_err(|_| "System agent journal unavailable")?

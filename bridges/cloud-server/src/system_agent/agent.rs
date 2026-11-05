@@ -83,17 +83,7 @@ pub async fn bootstrap_system_agent(
     .execute(pool)
     .await?;
 
-    let config = SystemAgentConfig {
-        group_chat_enabled: pending.group_chat_enabled,
-        account_id: pending.account_id,
-        owner_email: pending.owner_email,
-        agent_id: pending.agent_id,
-        name: pending.name,
-        subtitle: pending.subtitle,
-        provider_auth: pending.provider_auth,
-        resource_pools: pending.resource_pools,
-        system_prompt: pending.system_prompt,
-    };
+    let config = pending.unprovisioned();
 
     let result = query(
         "INSERT INTO cloud_agent_definitions (

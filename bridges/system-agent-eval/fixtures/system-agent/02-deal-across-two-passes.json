@@ -1,0 +1,64 @@
+{
+  "kind": "systemAgent",
+  "id": "deal-across-two-passes",
+  "description": "One concrete suggestion becomes a card; everyone agrees later and the System agent confirms.",
+  "title": "Climbing",
+  "members": [
+    {"key": "maya", "name": "Maya Chen"},
+    {"key": "jordan", "name": "Jordan Lee"},
+    {"key": "riya", "name": "Riya Shah"}
+  ],
+  "turns": [
+    {
+      "messages": [
+        {"from": "maya", "text": "Climbing gym on {{d+3:long}} at 6pm? Uptown Boulders", "minutesAgo": 3}
+      ],
+      "expect": {
+        "reply": "any",
+        "allowedActions": ["propose", "rsvp"],
+        "requiredActions": ["propose"],
+        "card": {
+          "state": ["awaiting_confirmation"],
+          "titleIncludes": ["climb"],
+          "startAt": "{{d+3}}T18:00:00+00:00",
+          "locationIncludes": ["uptown"]
+        }
+      },
+      "stub": [
+        {"toolCalls": [{
+          "action": "propose", "conversationId": "$conversationId", "title": "Climbing at Uptown Boulders",
+          "state": "awaitingConfirmation", "startAt": "{{d+3}}T18:00:00+00:00", "location": "Uptown Boulders",
+          "participants": "$participants:maya", "sourceMessageIds": "$newMessageIds"
+        }]},
+        {"final": {"message": "I put Maya's plan on a card. Say if it works for you.", "hooksHandled": []}}
+      ]
+    },
+    {
+      "messages": [
+        {"from": "jordan", "text": "I'm in", "minutesAgo": 3},
+        {"from": "riya", "text": "works for me", "minutesAgo": 2},
+        {"from": "maya", "text": "great, let's lock it in", "minutesAgo": 1}
+      ],
+      "expect": {
+        "reply": "message",
+        "allowedActions": ["rsvp", "confirm"],
+        "requiredActions": ["confirm"],
+        "card": {
+          "state": ["confirmed"],
+          "startAt": "{{d+3}}T18:00:00+00:00",
+          "going": ["jordan", "riya"]
+        }
+      },
+      "stub": [
+        {"toolCalls": [
+          {"action": "rsvp", "eventId": "$eventId", "participantId": "$member:jordan", "rsvp": "yes"},
+          {"action": "rsvp", "eventId": "$eventId", "participantId": "$member:riya", "rsvp": "yes"}
+        ]},
+        {"toolCalls": [{
+          "action": "confirm", "eventId": "$eventId", "revision": "$revision", "confirmedBy": "$member:maya"
+        }]},
+        {"final": {"message": "Everyone is in, so climbing is now fixed.", "hooksHandled": []}}
+      ]
+    }
+  ]
+}

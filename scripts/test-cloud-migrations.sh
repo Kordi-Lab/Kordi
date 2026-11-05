@@ -164,3 +164,11 @@ migration_create_database kordi_migration_test_plan_cards
 KORDI_DIGEST_TEST_DATABASE_URL="$(migration_database_url kordi_migration_test_plan_cards)" \
   cargo test -p kordi-cloud-server --lib plan_cards:: --locked -- \
     --include-ignored --test-threads=1
+
+# The System agent quality harness, replayed with its scripted stub model
+# through the real sweep, plan_card handler and run completion. Each test
+# creates and drops its own database on this server; the named database is
+# only the administration connection.
+migration_create_database kordi_migration_test_system_agent_eval
+KORDI_SYSTEM_AGENT_EVAL_DATABASE_URL="$(migration_database_url kordi_migration_test_system_agent_eval)" \
+  cargo test -p kordi-system-agent-eval --locked -- --include-ignored --test-threads=1

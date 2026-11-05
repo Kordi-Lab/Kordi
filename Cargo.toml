@@ -16,6 +16,7 @@ members = [
     "bridges/cli",
     "bridges/cloud-server",
     "bridges/cloud-agent-runner",
+    "bridges/system-agent-eval",
     "shared/rust/protocol",
     "shared/rust/omp-runtime",
 ]

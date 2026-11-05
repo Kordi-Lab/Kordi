@@ -118,6 +118,18 @@ impl SystemAgentProviderAuth {
         &self.credential
     }
 
+    /// The provider-auth payload a runner receives for an admitted System
+    /// agent run (`apiKey`, `baseUrl`, `model`), for the quality test that
+    /// replays runs without a runner. For Vertex AI this mints a short-lived
+    /// access token.
+    pub async fn runner_payload(&self) -> Result<serde_json::Value, &'static str> {
+        Ok(serde_json::json!({
+            "apiKey": self.credential.bearer_token().await?,
+            "baseUrl": self.base_url,
+            "model": self.model,
+        }))
+    }
+
     #[cfg(test)]
     pub(crate) fn api_key(&self) -> &str {
         self.credential.api_key()
@@ -363,6 +375,25 @@ impl PendingSystemAgentConfig {
             provider_auth,
             resource_pools,
         }))
+    }
+}
+
+impl PendingSystemAgentConfig {
+    /// The configuration as it runs, before its account is provisioned. Only
+    /// `bootstrap_system_agent` and checks that never touch a database (the
+    /// quality test's Grounding builds) use it directly.
+    pub fn unprovisioned(self) -> SystemAgentConfig {
+        SystemAgentConfig {
+            group_chat_enabled: self.group_chat_enabled,
+            account_id: self.account_id,
+            owner_email: self.owner_email,
+            agent_id: self.agent_id,
+            name: self.name,
+            subtitle: self.subtitle,
+            provider_auth: self.provider_auth,
+            resource_pools: self.resource_pools,
+            system_prompt: self.system_prompt,
+        }
     }
 }
 
