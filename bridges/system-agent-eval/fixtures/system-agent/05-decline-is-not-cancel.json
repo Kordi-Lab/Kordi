@@ -1,0 +1,32 @@
+{
+  "kind": "systemAgent",
+  "id": "decline-is-not-cancel",
+  "description": "One member drops out of a confirmed plan; the plan stays on for everyone else.",
+  "title": "Weekend",
+  "members": [
+    {"key": "maya", "name": "Maya Chen"},
+    {"key": "jordan", "name": "Jordan Lee"},
+    {"key": "riya", "name": "Riya Shah"}
+  ],
+  "card": {
+    "organizer": "maya", "title": "Picnic at Riverside Park", "state": "confirmed",
+    "startAt": "{{d+4}}T12:00:00+00:00", "location": "Riverside Park"
+  },
+  "turns": [
+    {
+      "messages": [
+        {"from": "riya", "text": "Sorry, I can't make it on {{d+4:weekday}} anymore, have fun!", "minutesAgo": 2}
+      ],
+      "expect": {
+        "reply": "any",
+        "allowedActions": ["rsvp"],
+        "requiredActions": ["rsvp"],
+        "card": {"state": ["confirmed"], "sameCard": true, "declined": ["riya"]}
+      },
+      "stub": [
+        {"toolCalls": [{"action": "rsvp", "eventId": "$eventId", "participantId": "$member:riya", "rsvp": "no"}]},
+        {"final": {"message": null, "hooksHandled": []}}
+      ]
+    }
+  ]
+}

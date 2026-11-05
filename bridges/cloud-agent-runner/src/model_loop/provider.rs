@@ -328,6 +328,21 @@ fn message_content_text(message: &Value) -> String {
     }
 }
 
+/// Reports the call's token counts to a usage meter, if a run installed one.
+fn record_usage(events: &[StreamEvent]) {
+    let counts = events.iter().fold(None, |counts, event| match event {
+        StreamEvent::Usage(usage) => {
+            let (input, output) = counts.unwrap_or((0, 0));
+            Some((
+                input.max(usage.input_tokens),
+                output.max(usage.output_tokens),
+            ))
+        }
+        _ => counts,
+    });
+    crate::usage_meter::record(counts.map(|c| c.0), counts.map(|c| c.1));
+}
+
 #[derive(Debug, Default)]
 struct PendingToolCall {
     name: String,
@@ -337,6 +352,7 @@ struct PendingToolCall {
 fn model_response_from_stream_events(
     events: Vec<StreamEvent>,
 ) -> Result<ModelProviderResponse, ModelLoopError> {
+    record_usage(&events);
     let mut text = String::new();
     let mut thinking_chars = 0usize;
     let mut output_tokens = 0u64;

@@ -1,0 +1,29 @@
+[package]
+name = "kordi-system-agent-eval"
+version = "0.0.1"
+edition = "2021"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+description = "Opt-in quality test that replays synthetic conversations through the System agent"
+
+[[bin]]
+name = "system-agent-eval"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+async-trait = "0.1"
+axum = "0.7"
+base64.workspace = true
+chrono.workspace = true
+kordi-cloud-agent-runner = { path = "../cloud-agent-runner" }
+kordi-cloud-server = { path = "../cloud-server" }
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx-core = { version = "0.8", default-features = false, features = ["_rt-tokio"] }
+sqlx-postgres = { version = "0.8", default-features = false, features = ["chrono", "uuid"] }
+tokio.workspace = true
+uuid.workspace = true
