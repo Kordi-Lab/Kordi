@@ -183,16 +183,16 @@ async fn authorize(
     headers: &HeaderMap,
     pool_id: &str,
     worker_id: &str,
-) -> Result<Authorized, Response> {
+) -> Result<Authorized, Box<Response>> {
     let Some(system_agent) = state.system_agent() else {
-        return Err(unauthorized());
+        return Err(Box::new(unauthorized()));
     };
     if !valid_id(pool_id) || !valid_id(worker_id) {
-        return Err(error_response(
+        return Err(Box::new(error_response(
             "invalid_pool_worker_request",
             "poolId and workerId must be 1-64 letters, digits, '.', '_' or '-'.",
             StatusCode::BAD_REQUEST,
-        ));
+        )));
     }
     let pools = system_agent.config().resource_pools();
     let pool = pools
@@ -200,17 +200,17 @@ async fn authorize(
         .filter(|pool| pool.executor() == Executor::PoolWorker)
         .cloned();
     if !within_rate(pool.as_ref().map(ResourcePool::id)) {
-        return Err(rate_limited());
+        return Err(Box::new(rate_limited()));
     }
     let Some(pool) = pool else {
-        return Err(unauthorized());
+        return Err(Box::new(unauthorized()));
     };
     let Some(token) = bearer(headers) else {
-        return Err(unauthorized());
+        return Err(Box::new(unauthorized()));
     };
     let Some(identity) = pool.worker_identity() else {
         eprintln!("[pool-workers] Pool {pool_id} accepts no worker identity");
-        return Err(unauthorized());
+        return Err(Box::new(unauthorized()));
     };
     let now = chrono::Utc::now().timestamp();
     let cache = keys::KeyCache::shared();
@@ -220,7 +220,7 @@ async fn authorize(
             Ok(keys) => keys,
             Err(_) => {
                 eprintln!("[pool-workers] Signing keys for pool {pool_id} are unavailable");
-                return Err(unauthorized());
+                return Err(Box::new(unauthorized()));
             }
         };
         outcome = token::verify(token, identity, &keys, now);
@@ -230,7 +230,7 @@ async fn authorize(
     }
     if let Err(reason) = outcome {
         eprintln!("[pool-workers] Refused a token for pool {pool_id}: {reason:?}");
-        return Err(unauthorized());
+        return Err(Box::new(unauthorized()));
     }
     Ok(Authorized { pools, pool })
 }
@@ -242,7 +242,7 @@ async fn lease(
 ) -> Response {
     let auth = match authorize(&state, &headers, &input.pool_id, &input.worker_id).await {
         Ok(auth) => auth,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     if auth.pool.is_stopped() {
         return pool_stopped();
@@ -281,7 +281,7 @@ async fn held_run(
     run_id: &str,
     input: &RunRequest,
     spend: bool,
-) -> Result<(Authorized, store::HeldRun), Response> {
+) -> Result<(Authorized, store::HeldRun), Box<Response>> {
     let auth = authorize(state, headers, &input.pool_id, &input.worker_id).await?;
     let (db, pool_id) = (state.db_pool(), auth.pool.id());
     let found = if spend {
@@ -291,8 +291,8 @@ async fn held_run(
     };
     match found {
         Ok(Some(held)) => Ok((auth, held)),
-        Ok(None) => Err(run_not_found()),
-        Err(error) => Err(server_error("check a lease", error)),
+        Ok(None) => Err(Box::new(run_not_found())),
+        Err(error) => Err(Box::new(server_error("check a lease", error))),
     }
 }
 
@@ -304,7 +304,7 @@ async fn heartbeat(
 ) -> Response {
     let (auth, held) = match held_run(&state, &headers, &run_id, &input, false).await {
         Ok(found) => found,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     if auth.pool.is_stopped() {
         return pool_stopped();
@@ -327,7 +327,7 @@ async fn plan_card(
 ) -> Response {
     let (auth, held) = match held_run(&state, &headers, &run_id, &input, false).await {
         Ok(found) => found,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     if auth.pool.is_stopped() {
         return pool_stopped();
@@ -366,7 +366,7 @@ async fn complete(
     };
     let (auth, held) = match held_run(&state, &headers, &run_id, &input, true).await {
         Ok(found) => found,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let db = state.db_pool();
     if auth.pool.is_stopped() {
@@ -434,7 +434,7 @@ async fn fail(
     }
     let (_, held) = match held_run(&state, &headers, &run_id, &input, true).await {
         Ok(found) => found,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     match store::fail(state.db_pool(), &run_id, Some(&held.runner_id), &code).await {
         Ok(()) => Json(json!({ "ok": true })).into_response(),

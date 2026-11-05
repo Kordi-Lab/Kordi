@@ -193,7 +193,7 @@ async fn create_agent(
     )
     .await
     {
-        return response;
+        return *response;
     }
     let agent_id = format!("cloud_agent_{}", uuid::Uuid::new_v4().simple());
     if let Some(mutation) = input.avatar_mutation.as_mut() {
@@ -234,19 +234,19 @@ async fn check_organization(
     account_id: &str,
     organization: Option<&RequestOrganization>,
     requested: Option<&str>,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     use crate::organizations::selection::{for_new_content, SelectionError};
     match for_new_content(state.db_pool(), account_id, requested).await {
         Ok(_) => {
             check_new_content(organization, state.db_pool(), "/v1/cloud/agents", requested).await;
             Ok(())
         }
-        Err(SelectionError::NotMember) => Err(organization_forbidden()),
-        Err(SelectionError::Database(_)) => Err(error_response(
+        Err(SelectionError::NotMember) => Err(Box::new(organization_forbidden())),
+        Err(SelectionError::Database(_)) => Err(Box::new(error_response(
             "server_error",
             "Could not check the organization.",
             StatusCode::INTERNAL_SERVER_ERROR,
-        )),
+        ))),
     }
 }
 
