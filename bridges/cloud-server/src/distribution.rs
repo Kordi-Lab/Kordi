@@ -13,6 +13,13 @@ pub(crate) fn agent_persona<'a>(
     Ok(persona)
 }
 
+/// True for debug builds and for release images compiled for the isolated
+/// development stack with `KORDI_DEVELOPMENT_BUILD=1`. Hosted release images
+/// never set it, so development-only options fail closed there.
+pub(crate) fn development_build() -> bool {
+    cfg!(debug_assertions) || matches!(option_env!("KORDI_DEVELOPMENT_BUILD"), Some("1"))
+}
+
 pub fn public_origin() -> String {
     let configured = std::env::var("KORDI_CLOUD_PUBLIC_BASE_URL").ok();
     let value = configured
