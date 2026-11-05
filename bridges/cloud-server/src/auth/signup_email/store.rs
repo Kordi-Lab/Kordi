@@ -80,8 +80,18 @@ impl From<sqlx_core::Error> for SignupCodeError {
 /// expiry, guess, cooldown, and send budget rule.
 #[derive(Clone, Copy)]
 enum CodeScope<'a> {
-    Signup { email: &'a str },
-    Account { account_id: &'a str, email: &'a str },
+    Signup {
+        email: &'a str,
+    },
+    Account {
+        account_id: &'a str,
+        email: &'a str,
+    },
+    /// An organization email, which may differ from the primary email.
+    Organization {
+        account_id: &'a str,
+        email: &'a str,
+    },
 }
 
 impl<'a> CodeScope<'a> {
@@ -89,26 +99,29 @@ impl<'a> CodeScope<'a> {
         match self {
             Self::Signup { .. } => "cloud_signup_email_codes",
             Self::Account { .. } => "cloud_account_email_codes",
+            Self::Organization { .. } => "cloud_organization_email_codes",
         }
     }
 
     fn key_column(self) -> &'static str {
         match self {
             Self::Signup { .. } => "email",
-            Self::Account { .. } => "account_id",
+            Self::Account { .. } | Self::Organization { .. } => "account_id",
         }
     }
 
     fn key(self) -> &'a str {
         match self {
             Self::Signup { email } => email,
-            Self::Account { account_id, .. } => account_id,
+            Self::Account { account_id, .. } | Self::Organization { account_id, .. } => account_id,
         }
     }
 
     fn email(self) -> &'a str {
         match self {
-            Self::Signup { email } | Self::Account { email, .. } => email,
+            Self::Signup { email }
+            | Self::Account { email, .. }
+            | Self::Organization { email, .. } => email,
         }
     }
 }
@@ -163,6 +176,31 @@ pub(crate) async fn consume_account_email_code(
     .await
 }
 
+/// Sends a code proving that the signed-in account can read `email`, an
+/// organization email that may differ from its primary email.
+pub(crate) async fn request_organization_email_code(
+    pool: &PgPool,
+    service: &SignupEmailService,
+    account_id: &str,
+    email: &str,
+) -> Result<SignupCodeChallenge, SignupCodeError> {
+    request_code(pool, service, CodeScope::Organization { account_id, email }).await
+}
+
+/// The caller commits failed guesses and applies the admission together with
+/// consuming a successful code.
+pub(crate) async fn consume_organization_email_code(
+    tx: &mut Transaction<'_, Postgres>,
+    service: &SignupEmailService,
+    account_id: &str,
+    email: &str,
+    id: &str,
+    code: &str,
+) -> Result<(), SignupCodeError> {
+    let scope = CodeScope::Organization { account_id, email };
+    consume_code(tx, service, scope, id, code).await
+}
+
 async fn request_code(
     pool: &PgPool,
     service: &SignupEmailService,
@@ -177,7 +215,9 @@ async fn request_code(
     // Account challenges also record the recipient, which a resend replaces.
     let (recipient_column, recipient_value, recipient_update) = match scope {
         CodeScope::Signup { .. } => ("", "", ""),
-        CodeScope::Account { .. } => (", email", ", $7", "email = EXCLUDED.email, "),
+        CodeScope::Account { .. } | CodeScope::Organization { .. } => {
+            (", email", ", $7", "email = EXCLUDED.email, ")
+        }
     };
     let now = Utc::now();
     let id = format!("email_{}", uuid::Uuid::new_v4().simple());
@@ -234,7 +274,7 @@ async fn request_code(
         .bind(expires_at)
         .bind(now + Duration::seconds(60))
         .bind(now);
-    if let CodeScope::Account { .. } = scope {
+    if let CodeScope::Account { .. } | CodeScope::Organization { .. } = scope {
         upsert = upsert.bind(email);
     }
     let inserted: Option<(bool,)> = upsert.fetch_optional(&mut *tx).await?;

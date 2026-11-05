@@ -7,6 +7,7 @@ fn channel_request(members: Vec<String>) -> CreateConversationRequest {
         shared_title: Some("Synthetic channel".into()),
         client_session_id: format!("session:group:{}", Uuid::now_v7()),
         member_account_ids: members,
+        organization_id: None,
     }
 }
 

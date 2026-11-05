@@ -176,9 +176,10 @@ pub async fn create_agent_definition(
              agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, created_at, updated_at, avatar_url, avatar_source, avatar_style,
-             avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at, proactive_json
+             avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at, proactive_json,
+             organization_id
          ) VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13,
-             $14, $15, $16, $17, $18, $19, $20, $21) RETURNING ",
+             $14, $15, $16, $17, $18, $19, $20, $21, $22) RETURNING ",
         agent_columns!()
     ))
     .bind(&agent_id)
@@ -202,6 +203,7 @@ pub async fn create_agent_definition(
     .bind(avatar.version)
     .bind(&avatar.updated_at)
     .bind(proactive.to_value())
+    .bind(crate::organizations::selection::requested(input.organization_id.as_deref()))
     .fetch_one(&mut *transaction)
     .await?;
     let mut agent = row_to_definition(row);

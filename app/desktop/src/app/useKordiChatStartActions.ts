@@ -38,6 +38,7 @@ import {
   mergeCanonicalIdentity,
   mergeOpenCanonicalSessionResult,
 } from './canonicalSessionStateMutations';
+import { rememberSessionOrganization } from '@/features/organizations/sessionOrganization';
 
 type CollaborationPersonTarget = {
   hostId: string;
@@ -308,6 +309,7 @@ async function startCanonicalAgentSession({
     participantIdentityIds: [targetIdentityId],
     metadata: buildChatAgentSessionMetadata(agent),
   });
+  rememberSessionOrganization(sessionId);
   setCanonicalState((current) => current
     ? mergeOpenCanonicalSessionResult(current, openResult)
     : current);

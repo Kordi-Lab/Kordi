@@ -64,6 +64,10 @@ pub struct ConversationSnapshot {
     /// The owned agent whose personal session this is; absent otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub personal_agent: Option<PersonalAgentRef>,
+    /// The team organization that owns this conversation; absent for a
+    /// personal one (docs/development/organizations.md).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organization: Option<ConversationOrganization>,
     pub forked_from_session_id: Option<String>,
     pub forked_from_message_id: Option<String>,
     pub latest_message_sequence: i64,
@@ -71,6 +75,13 @@ pub struct ConversationSnapshot {
     pub updated_at: DateTime<Utc>,
     pub members: Vec<MemberSnapshot>,
     pub preferences: ConversationPreferencesSnapshot,
+}
+
+/// A team organization as a conversation snapshot names it.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ConversationOrganization {
+    pub organization_id: String,
+    pub name: String,
 }
 
 /// The agent of a personal session (docs/development/personal-agent.md).
@@ -134,6 +145,12 @@ pub struct CreateConversationRequest {
     pub client_session_id: String,
     #[serde(default)]
     pub member_account_ids: Vec<String>,
+    /// The organization that will own a new group or AI conversation; the
+    /// creator must belong to it. Absent means the creator's personal
+    /// organization. Ignored for direct conversations and for a retry that
+    /// finds the conversation already created.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organization_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

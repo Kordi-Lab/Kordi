@@ -43,6 +43,7 @@ async fn group(pool: &PgPool, owner: &str, peer: &str, session: &str) -> Uuid {
             shared_title: Some("Test channel".to_string()),
             client_session_id: session.to_string(),
             member_account_ids: vec![peer.to_string()],
+            organization_id: None,
         },
     )
     .await

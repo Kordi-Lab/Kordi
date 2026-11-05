@@ -78,6 +78,7 @@ async fn concurrent_end_and_join_leave_a_terminal_call() {
                 direct_members[0], direct_members[1]
             ),
             member_account_ids: vec![callee.clone()],
+            organization_id: None,
         },
     )
     .await

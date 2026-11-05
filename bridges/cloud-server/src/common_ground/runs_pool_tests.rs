@@ -66,6 +66,15 @@ async fn grounding_runs_follow_the_organization_pool_and_its_person_limit() {
     .execute(&pool)
     .await
     .unwrap();
+    query(
+        "INSERT INTO cloud_organization_members (organization_id, account_id, role) \
+         VALUES ($1, $2, 'owner')",
+    )
+    .bind(&team)
+    .bind(&person)
+    .execute(&pool)
+    .await
+    .unwrap();
     let team_chat = Uuid::new_v4();
     seed_conversation(&pool, team_chat, &person, &[&person]).await;
     query("UPDATE cloud_chat_conversations SET organization_id = $2 WHERE conversation_id = $1")

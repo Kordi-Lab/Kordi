@@ -7,6 +7,8 @@ pub(super) struct GroupCreation {
     pub title: Option<String>,
     pub space_id: Option<String>,
     pub roles: Option<BTreeMap<String, String>>,
+    /// The organization a channel joins: its group's.
+    pub organization_id: Option<String>,
 }
 
 /// Channels inherit the existing group's roster and authority, not the creator's contacts.
@@ -30,13 +32,13 @@ pub async fn create_group_channel(
     let mut transaction = pool.begin().await?;
     // Use the first channel as the group authority. Lock its membership rows below so a
     // concurrent removal cannot race the inherited roster into a newly created channel.
-    let source: Option<(Uuid, Option<String>)> = query_as(
-        "SELECT conversation_id, group_title FROM cloud_chat_conversations
+    let source: Option<(Uuid, Option<String>, Option<String>)> = query_as(
+        "SELECT conversation_id, group_title, organization_id FROM cloud_chat_conversations
          WHERE kind = 'group' AND COALESCE(group_space_id,
            regexp_replace(COALESCE(legacy_session_id, conversation_id::text), '^(group:)+', '')) = $1
          ORDER BY created_at, conversation_id LIMIT 1 FOR UPDATE",
     ).bind(space).fetch_optional(&mut *transaction).await?;
-    let (source_id, title) = source.ok_or(StoreError::Forbidden)?;
+    let (source_id, title, organization_id) = source.ok_or(StoreError::Forbidden)?;
     let members: Vec<(String, String)> = query_as(
         "SELECT account_id, role FROM cloud_chat_conversation_members
          WHERE conversation_id = $1 AND membership_state = 'active' ORDER BY account_id FOR UPDATE",
@@ -69,6 +71,7 @@ pub async fn create_group_channel(
             title,
             space_id: Some(space.to_string()),
             roles: Some(roles),
+            organization_id,
         }),
         None,
     )

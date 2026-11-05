@@ -86,15 +86,16 @@ pub(super) async fn complete_oauth_login_with_policy(
     query(
         "INSERT INTO cloud_account_identities \
          (identity_id, account_id, provider, provider_subject, provider_username, \
-          email, email_verified, avatar_url, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) \
+          email, email_verified, avatar_url, created_at, updated_at, hosted_domain) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10) \
          ON CONFLICT (provider, provider_subject) DO UPDATE SET \
            account_id = excluded.account_id, \
            provider_username = excluded.provider_username, \
            email = excluded.email, \
            email_verified = excluded.email_verified, \
            avatar_url = excluded.avatar_url, \
-           updated_at = excluded.updated_at",
+           updated_at = excluded.updated_at, \
+           hosted_domain = excluded.hosted_domain",
     )
     .bind(&identity_id)
     .bind(&account_id)
@@ -105,6 +106,7 @@ pub(super) async fn complete_oauth_login_with_policy(
     .bind(profile.email_verified)
     .bind(&canonical_avatar_url)
     .bind(&now)
+    .bind(profile.hosted_domain.as_deref())
     .execute(&mut *tx)
     .await?;
 

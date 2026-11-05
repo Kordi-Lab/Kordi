@@ -120,6 +120,7 @@ async fn ensure_response_conversation(
         shared_title: title,
         client_session_id: event.session_id.to_string(),
         member_account_ids: members,
+        organization_id: None,
     };
     let conversation = store::create_conversation(pool, event.from_account_id, request)
         .await

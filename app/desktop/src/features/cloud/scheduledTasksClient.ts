@@ -1,3 +1,6 @@
+import { organizationIdField } from '@/features/organizations/organizationStore';
+import { refreshAfterOrganizationForbidden } from '@/features/organizations/organizationForbidden';
+
 export type ScheduledTaskSchedule =
   | { kind: 'once'; at: string }
   | { kind: 'daily'; time: string; timezone?: string };
@@ -46,6 +49,8 @@ export type CreateScheduledTaskInput = {
 export type ScheduledTasksClientConfig = {
   apiBase: string;
   token: string;
+  /** The signed-in account; without it a new task is created in the personal organization. */
+  accountId?: string | null;
   fetcher?: typeof fetch;
 };
 
@@ -59,7 +64,7 @@ async function requestJson<T>(config: ScheduledTasksClientConfig, path: string, 
       ...(init.headers as Record<string, string> | undefined),
     },
   });
-  if (!response.ok) throw new Error(`Scheduled task request failed: ${response.status}`);
+  if (!response.ok) throw Object.assign(new Error(`Scheduled task request failed: ${response.status}`), { status: response.status });
   if (response.status === 204) return undefined as T;
   return await response.json() as T;
 }
@@ -75,9 +80,13 @@ export async function listScheduledTaskRuns(config: ScheduledTasksClientConfig, 
 }
 
 export async function createScheduledTask(config: ScheduledTasksClientConfig, input: CreateScheduledTaskInput): Promise<ScheduledTask> {
+  const organization = organizationIdField(config.accountId);
   const result = await requestJson<{ task: ScheduledTask }>(config, '/v1/cloud/scheduled-tasks', {
     method: 'POST',
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, ...organization }),
+  }).catch((error: unknown) => {
+    refreshAfterOrganizationForbidden(config.accountId, organization.organizationId, (error as { status?: number })?.status);
+    throw error;
   });
   return result.task;
 }

@@ -76,6 +76,10 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
             put(add_conversation_members),
         )
         .route(
+            "/v2/chat/conversations/:conversation_id/owner",
+            put(transfer_group_owner),
+        )
+        .route(
             "/v2/chat/conversations/:conversation_id/messages",
             get(history).post(send_message),
         )
@@ -244,6 +248,19 @@ async fn update_shared_title(
     {
         Ok(conversation) => Json(ConversationResponse { conversation }).into_response(),
         Err(error) => store_error("update shared title", error),
+    }
+}
+
+async fn transfer_group_owner(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(conversation_id): Path<Uuid>,
+    Json(request): Json<store::TransferGroupOwnerRequest>,
+) -> Response {
+    let pool = state.db_pool();
+    match store::transfer_group_owner(pool, &session.account_id, conversation_id, request).await {
+        Ok(conversation) => Json(ConversationResponse { conversation }).into_response(),
+        Err(error) => store_error("transfer group owner", error),
     }
 }
 

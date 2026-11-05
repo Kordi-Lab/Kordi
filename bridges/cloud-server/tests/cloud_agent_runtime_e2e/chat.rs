@@ -16,6 +16,7 @@ pub(super) async fn create_test_conversation(
             shared_title: None,
             client_session_id: session_id.to_string(),
             member_account_ids,
+            organization_id: None,
         },
     )
     .await

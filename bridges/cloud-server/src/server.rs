@@ -13,6 +13,7 @@ use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, RateLimite
 use crate::calls::{CallMediaConfig, CallMediaConfigError};
 use crate::events::{EventBus, EventBusError};
 use crate::notifications::{PushNotificationConfigError, PushNotificationService};
+use crate::organizations::admission::OrganizationAdmission;
 use crate::pg::{init_pool, PgPoolError};
 use crate::support::{PendingSupportConfig, SupportConfigError, SupportService};
 use crate::system_agent::{PendingSystemAgentConfig, SystemAgentConfigError, SystemAgentService};
@@ -28,6 +29,7 @@ use logging::redact_url_credentials;
 
 pub struct ServerState {
     admission: crate::auth::admission::AdmissionPolicy,
+    organization_admission: Arc<OrganizationAdmission>,
     pool: PgPool,
     events: EventBus,
     chat_sync_wakes: Arc<crate::chat_sync::realtime::ChatSyncWakeHub>,
@@ -47,6 +49,7 @@ impl ServerState {
     pub fn new(pool: PgPool, events: EventBus) -> Self {
         Self {
             admission: Default::default(),
+            organization_admission: Default::default(),
             pool,
             events,
             chat_sync_wakes: crate::chat_sync::realtime::ChatSyncWakeHub::new(),
@@ -68,6 +71,14 @@ impl ServerState {
     }
     pub fn with_admission(mut self, policy: crate::auth::admission::AdmissionPolicy) -> Self {
         self.admission = policy;
+        self
+    }
+    pub fn organization_admission(&self) -> &OrganizationAdmission {
+        &self.organization_admission
+    }
+    /// Takes an admission file already synced to the database.
+    pub fn with_organization_admission(mut self, synced: OrganizationAdmission) -> Self {
+        self.organization_admission = Arc::new(synced);
         self
     }
 
@@ -338,6 +349,9 @@ pub async fn run(
     let admission =
         crate::auth::admission::AdmissionPolicy::from_env().map_err(RunError::Configuration)?;
     let pool = init_pool(database_url).await.map_err(RunError::Pool)?;
+    let organizations = crate::organizations::admission::load(&pool)
+        .await
+        .map_err(RunError::Configuration)?;
     let events = match nats_url {
         Some(url) => {
             println!("Kordi cloud server connecting to NATS");
@@ -365,7 +379,8 @@ pub async fn run(
     });
     let mut state = ServerState::new(pool, events)
         .with_connector_call_limiter(rate_limiter.clone())
-        .with_admission(admission);
+        .with_admission(admission)
+        .with_organization_admission(organizations);
     if let Some(service) = signup_email {
         state = state.with_signup_email(service);
         println!("Kordi signup email verification is configured");

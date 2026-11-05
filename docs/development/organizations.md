@@ -7,7 +7,8 @@ change what an organization holds without touching each member.
 - Every account has exactly one **personal** organization. The account is
   its only member and its owner. It cannot gain members or lose its owner.
 - A **team** organization can have many members. There is no route that
-  creates one yet; this slice adds the model and the membership rules.
+  creates one; a deployment defines team organizations, domain claims and
+  join requests in its [admission file](organization-admission.md).
 
 Nothing else changes: with every account in its personal organization, each
 existing feature behaves as before.
@@ -45,9 +46,71 @@ backfills it from the owner column:
 | `cloud_attachments` | `owner_account_id` |
 
 A `BEFORE INSERT` trigger fills an empty `organization_id` with the owner's
-personal organization. A writer that names an organization keeps it, which is
-how a later organization selection will write. Migration 0164 indexes the
-columns.
+personal organization. A writer that names an organization keeps it.
+Migration 0164 indexes the columns.
+
+## Choosing an organization for new content
+
+Migration 0168 lets a client choose the organization that owns new content,
+but only one the owner belongs to:
+
+| Writer | Field | Owner checked |
+| --- | --- | --- |
+| `POST /v2/chat/conversations` | `organization_id` (group and AI chats; ignored for direct chats) | creator |
+| `POST /v1/cloud/agents` | `organizationId` | owner |
+| `POST /v1/cloud/scheduled-tasks` | `organizationId` | owner |
+
+Leaving the field out keeps the personal organization. Naming an organization
+the owner does not belong to, or one that does not exist, answers `403`. The
+shared helper `organizations::selection::for_new_content` gives that answer;
+a `BEFORE INSERT OR UPDATE OF organization_id` trigger on conversations,
+agent definitions, scheduled tasks, and attachments refuses any writer that
+skips it (constraint name `organization_member_owner`); a writer that loses
+that race also answers `403`. A new channel joins its group's organization. A
+retry that finds the conversation already created keeps its first
+organization.
+
+A conversation's owner is its active member with the owner role, or else its
+creator. A group and its channels (one group space) belong to one
+organization and one owner: moving or handing over any of them moves or
+hands over all of them. A direct chat stays with its two people. Conversation snapshots carry `organization: {organization_id, name}`
+when a team owns the conversation and nothing for a personal one, so clients
+can label team groups. Clients keep the selected organization per account on
+the device; switching never changes the account, its sign-in, or local data.
+
+Runs are charged to an organization when they are queued and checked again
+when they are leased or start. A team pays only for work one of its members
+owns, or requests from a server-run agent:
+
+- A run admitted against a resource pool keeps the organization it was
+  admitted against.
+- In a conversation, a run whose writer named the conversation's own
+  organization keeps it (a team one while the conversation qualifies, see
+  the rule below); in a team conversation that qualifies, a run whose agent
+  owner is a member is charged to the team.
+- Outside a conversation, a named team stays while the run's owner or
+  requester is a member, and a named personal organization stays when it
+  belongs to either.
+- Anything else goes to the agent owner's personal organization.
+
+A scheduled task run follows its task while the task owner is a member there,
+and goes to the owner's personal organization otherwise.
+
+## Owner-eligibility rule
+
+A team setting, `memberOwnedContent` (default off), says content in the team
+must be owned by a member. When it is on:
+
+- Handing a group to someone outside the team, or a member leaving, being
+  removed, or reaching the end of a timed membership, moves the content they
+  own to their personal organization. Everyone stays in the group: outsiders
+  may still take part, and while the group qualifies its members' runs stay
+  with the team; an outsider's own agent pays for itself.
+- Turning the setting on moves content already owned by non-members.
+
+With the setting off, content stays in the team when its owner leaves or is
+outside it. Timed memberships end through the scheduled-task sweep; until the
+sweep runs, an expired member already counts as outside the team.
 
 Records that follow a parent are left without the column for now: messages,
 members and other conversation children, run events, artifacts and documents,
@@ -66,9 +129,34 @@ to answers `404 organization_not_found`, as if it did not exist.
 | `GET /v1/cloud/organizations` | any account | `organizations`: each with `organizationId`, `name`, `kind`, `role` (the caller's), `memberCount`, `createdAt`; personal first |
 | `GET /v1/cloud/organizations/:id` | member | `organization` |
 | `GET /v1/cloud/organizations/:id/members?after=` | member | `members` (`accountId`, `displayName`, `role`, `joinedAt`), 200 per page by account id, and `nextAfter` |
-| `POST /v1/cloud/organizations/:id/members` | owner, admin | body `{accountId, role}`; `201 {member}` |
+| `PATCH /v1/cloud/organizations/:id` | owner, admin of a team | body `{name?, memberOwnedContent?}`; `200 {organization}` |
 | `PATCH /v1/cloud/organizations/:id/members/:accountId` | owner, admin | body `{role}`; `200 {member}` |
 | `DELETE /v1/cloud/organizations/:id/members/:accountId` | owner, admin | `204` |
+| `POST /v1/cloud/organizations/:id/leave` | member of a team | `204` |
+| `GET /v1/cloud/organizations/:id/invitations` | owner, admin | pending `invitations` |
+| `POST /v1/cloud/organizations/:id/invitations` | owner, admin | body `{accountId, role, membershipExpiresAt?}`; `201 {invitation}` |
+| `DELETE /v1/cloud/organizations/:id/invitations/:invitationId` | owner, admin | `204` |
+| `POST /v1/cloud/organizations/:id/transfers` | owner, admin of both | body `{kind, id, targetOrganizationId}`, `kind` is `conversation`, `agent`, or `scheduledTask`; `200` |
+| `GET /v1/cloud/organization-invitations` | any account | the caller's pending `invitations` |
+| `POST /v1/cloud/organization-invitations/:id/accept` | the invitee | `200 {organization}` |
+| `POST /v1/cloud/organization-invitations/:id/decline` | the invitee | `204` |
+| `PUT /v2/chat/conversations/:id/owner` | the group owner | body `{client_operation_id, account_id}`: hands the group, with its channels, to another member, who becomes owner; the old owner becomes an admin |
+
+Organization summaries also carry `memberOwnedContent` and the caller's
+`membershipExpiresAt`; members carry `membershipExpiresAt`. An expired
+membership no longer counts anywhere.
+
+An account joins a team only by accepting an invitation. Inviting an account
+that does not exist, a server-managed account, or a current member answers
+the same `404 invitee_unavailable`. Invitations lapse after 14 days, and an
+invitation can be accepted only while its inviter could still send it and
+before the membership end date it names. An owner's membership never
+expires.
+
+Organizations from the [admission file](organization-admission.md) take no
+invitations and no setting changes (`409 configured_organization`); their
+name and `memberOwnedContent` come from the file (`requireMemberOwner`), and
+leaving one ends the admission.
 
 Membership rules, checked under a lock on the organization row:
 
@@ -76,6 +164,16 @@ Membership rules, checked under a lock on the organization row:
 - A personal organization never changes (`409 personal_organization`).
 - Only an owner adds an owner, changes an owner's role, or removes an owner
   (`403 organization_owner_required`).
-- The last owner cannot be demoted or removed (`409 last_owner`).
-- Other errors: `400 invalid_role`, `404 account_not_found`,
-  `404 member_not_found`, `409 already_member`.
+- The last owner cannot be demoted, removed, or leave (`409 last_owner`).
+  If the last owner's account is deleted, the longest-standing admin without
+  an end date becomes the owner; members and timed admins never do.
+  Organizations from the admission file have admins only and never gain an
+  owner this way.
+- Moving content: the caller manages both organizations
+  (`403 organization_forbidden`) and the content owner belongs to the target
+  (`409 owner_not_member`); a direct chat cannot move
+  (`409 direct_conversation`). Attachments in a moved conversation follow
+  when their owner belongs to the target.
+- Other errors: `400 invalid_role`, `400 invalid_expiry`,
+  `404 invitation_not_found`, `404 member_not_found`,
+  `404 content_not_found`.

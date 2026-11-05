@@ -20,6 +20,7 @@ async fn only_frontend_visible_messages_restore_deleted_sessions() {
                 shared_title: None,
                 client_session_id: session_id,
                 member_account_ids: vec![peer.to_string()],
+                organization_id: None,
             },
         )
         .await

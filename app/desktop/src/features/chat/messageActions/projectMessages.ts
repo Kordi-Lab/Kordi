@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import type { Project } from '@/kordi-app/types';
 import { createDesktopProjectSession, startDesktopChatMessage } from '@/lib/desktop';
 import { isProjectDraftSessionId } from '../draftSessions';
+import { rememberSessionOrganization } from '@/features/organizations/sessionOrganization';
 
 import { formatDesktopEventTime, resizeComposerTextarea } from '../composerController.shared';
 import type {
@@ -94,6 +95,7 @@ export function useProjectMessageActions({
       }
       const sessionTitle = optimisticSessionTitleFromMessage(text, chatComposerAttachments, 'New chat');
       const nextState = await createDesktopProjectSession(projectRoot, sessionTitle);
+      rememberSessionOrganization(nextState.activeSessionId);
       resolvedDesktopChatState = nextState;
       resolvedProjectSessionId = nextState.activeSessionId;
       setDesktopChatState(nextState);
