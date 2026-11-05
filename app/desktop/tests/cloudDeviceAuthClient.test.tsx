@@ -59,7 +59,7 @@ test('login and OAuth start bind authentication to the installation identity', a
     deviceRegistration: async () => testDevice,
   });
 
-  const login = await client.login({ email: 'ada@example.com', password: 'correct horse' });
+  const login = await client.login({ email: 'ada@example.com', password: 'Correct-horse-7' });
   const oauth = await client.startOAuth('github', '/after');
 
   assert.equal(login.session.deviceId, 'device_1');

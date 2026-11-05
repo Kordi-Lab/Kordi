@@ -30,6 +30,12 @@ impl DesktopRuntimeSession {
         );
     }
 
+    /// Attach a scheduled task runtime built by the host, for example one that
+    /// resolves its access token per request.
+    pub fn set_scheduled_tasks_runtime(&mut self, runtime: kordi_tools::ScheduleTaskRuntime) {
+        self.setup.tool_ctx.schedule_task = Some(runtime);
+    }
+
     pub fn set_session_observation_runtime(
         &mut self,
         runtime: Option<kordi_tools::SessionObservationRuntime>,

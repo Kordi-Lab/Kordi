@@ -35,8 +35,15 @@ test('gate crop follows the native web view offset in CSS pixels', () => {
     assert.deepEqual(readAuthWindowCrop(), { x: 360, y: 110 });
     assert.deepEqual(seen, [{ x: 360, y: 110 }]);
 
+    // The native side also reports the visible window size.
+    applyAuthWindowCrop({ x: 520, y: 210, width: 440, height: 560 });
+    assert.deepEqual(readAuthWindowCrop(), { x: 520, y: 210, width: 440, height: 560 });
+    assert.equal(style.getPropertyValue('--app-gate-window-width'), '220px');
+    assert.equal(style.getPropertyValue('--app-gate-window-height'), '280px');
+
     applyAuthWindowCrop({ x: 0, y: 0 });
     assert.equal(style.getPropertyValue('--app-gate-crop-y'), '0px');
+    assert.equal(style.getPropertyValue('--app-gate-window-width'), '', 'a filled window clears the size');
   } finally {
     stop();
     dom.window.close();

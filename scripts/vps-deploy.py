@@ -10,7 +10,8 @@ import subprocess
 import sys
 
 from backend_deploy_common import lock
-from vps_config import ROOT, caddyfile, credential_checksum, initialize, load, manifests, outside_repository, private_write
+from vps_config import (ROOT, caddyfile, credential_checksum, host_imported_images, initialize, load, manifests,
+                        outside_repository, private_write)
 
 KUBE = ["k3s", "kubectl", "--kubeconfig", "/etc/rancher/k3s/k3s.yaml"]
 
@@ -74,12 +75,17 @@ def apply(config, state):
         raw = run(KUBE + ["get", "namespace", "kordi-cloud", "--ignore-not-found", "-o", "json"])
         existing = json.loads(raw) if raw else None
         assert_owned_namespace(existing, config)
+        documents = manifests(config)
+        imported = set(run(["k3s", "ctr", "--namespace", "k8s.io", "images", "list", "--quiet"]).splitlines())
+        missing = [image for image in host_imported_images(documents) if image not in imported]
+        if missing:
+            raise ValueError("Import the MinIO image archives before deploying (missing: "
+                             + ", ".join(missing) + "); no changes made")
         deployed = run(KUBE + ["-n", "kordi-cloud", "get", "deployment", "kordi-cloud-server",
                               "--ignore-not-found", "-o", "name"]) if existing else ""
         if deployed:
             backup_database(state)
             print("Created a private pre-deployment database backup (attachments require separate backup).")
-        documents = manifests(config)
         # Separate stages keep the API from starting before its database and
         # buckets exist. No delete, reset, or prune is performed.
         prerequisites, infrastructure, applications = deployment_stages(documents)

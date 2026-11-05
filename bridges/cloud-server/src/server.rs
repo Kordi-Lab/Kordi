@@ -262,6 +262,7 @@ pub fn router_with_shared_rate_limiter(
         .merge(crate::support::routes(state.clone()))
         .merge(crate::updates::routes::routes(state.clone()))
         .merge(ws_router)
+        .merge(crate::web_pages::routes_from_env())
         .route("/health", axum::routing::get(health))
         .route(
             "/ready",
@@ -321,11 +322,13 @@ pub async fn run(
     nats_url: Option<&str>,
     redis_url: Option<&str>,
 ) -> Result<(), RunError> {
+    let signup_email = crate::auth::signup_email::SignupEmailService::from_env()
+        .map_err(RunError::Configuration)?;
     if std::env::var("KORDI_REQUIRE_CORE_SERVICES").as_deref() == Ok("true")
         && (nats_url.is_none()
             || redis_url.is_none()
             || S3Config::from_env().is_none()
-            || crate::auth::signup_email::SignupEmailService::from_env().is_none())
+            || signup_email.is_none())
     {
         return Err(RunError::Configuration(
             "Hosted deployment requires NATS, Redis, S3, and signup email configuration",
@@ -362,7 +365,7 @@ pub async fn run(
     let mut state = ServerState::new(pool, events)
         .with_connector_call_limiter(rate_limiter.clone())
         .with_admission(admission);
-    if let Some(service) = crate::auth::signup_email::SignupEmailService::from_env() {
+    if let Some(service) = signup_email {
         state = state.with_signup_email(service);
         println!("Kordi signup email verification is configured");
     } else {

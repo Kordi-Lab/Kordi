@@ -35,6 +35,7 @@
     "lint:suppressions:check": "node scripts/check-eslint-suppressions-ratchet.mjs",
     "test:scripts": "node --import ./scripts/test_support/distribution-setup.mjs --test scripts/*.test.mjs",
     "privacy:check": "node scripts/repository-privacy-guard.mjs",
+    "privacy:add-identifier": "node scripts/privacy-identifiers.mjs add",
     "lint:web": "pnpm --dir app/desktop lint",
     "typecheck:web": "pnpm --dir app/desktop typecheck",
     "lint": "pnpm lint:web",

@@ -2,6 +2,17 @@ import { clientDistribution } from '@/features/cloud/distribution';
 import type { CloudAuthError } from '@/features/cloud/authClient';
 
 export const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_RULE =
+  `at least ${PASSWORD_MIN_LENGTH} characters, with an uppercase letter, a lowercase letter, and a number`;
+export const PASSWORD_RULE_HINT = `Use ${PASSWORD_RULE}.`;
+
+/** Mirrors the server sign-up policy; sign-in never checks it. */
+export function passwordMeetsSignupRule(password: string): boolean {
+  return [...password].length >= PASSWORD_MIN_LENGTH
+    && /\p{Lu}/u.test(password)
+    && /\p{Ll}/u.test(password)
+    && /[0-9]/.test(password);
+}
 
 export function cloudLoginErrorMessage(
   error: CloudAuthError,
@@ -11,7 +22,7 @@ export function cloudLoginErrorMessage(
     case 'invalid_email':
       return 'That email address looks malformed.';
     case 'weak_password':
-      return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+      return error.message || `Password must have ${PASSWORD_RULE}.`;
     case 'email_in_use':
       return 'An account with that email already exists. Try signing in instead.';
     case 'invalid_credentials':

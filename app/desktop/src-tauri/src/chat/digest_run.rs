@@ -56,8 +56,11 @@ fn observe_body(claim_id: &str, tool: &str, arguments: Value) -> Value {
     json!({"claimId": claim_id, "tool": tool, "arguments": arguments})
 }
 
-async fn post_observe(url: &str, token: &str, body: &Value) -> Result<Value, KordiError> {
+async fn post_observe(url: &str, account_id: &str, body: &Value) -> Result<Value, KordiError> {
     let unavailable = || KordiError::Tool("The digest input could not be read.".into());
+    let token = crate::cloud_session_refresh::fresh_token_for(account_id)
+        .await
+        .ok_or_else(unavailable)?;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::none())
@@ -89,7 +92,7 @@ fn observation_runtime(
     claim_id: &str,
     tools: &[DesktopDigestTool],
     api_base: &str,
-    token: String,
+    account_id: String,
 ) -> ConnectorToolsRuntime {
     let url = format!(
         "{}/v1/cloud/digest/desktop/{run_id}/observe",
@@ -99,9 +102,10 @@ fn observation_runtime(
     ConnectorToolsRuntime {
         descriptors: descriptors(tools),
         call: Arc::new(move |tool, arguments| {
-            let (url, token) = (url.clone(), token.clone());
+            let (url, account_id) = (url.clone(), account_id.clone());
             let body = observe_body(&claim_id, &tool.name, arguments);
-            Box::pin(async move { post_observe(&url, &token, &body).await }) as ConnectorCallFuture
+            Box::pin(async move { post_observe(&url, &account_id, &body).await })
+                as ConnectorCallFuture
         }),
         report_declined: None,
         offer_request_connect: false,
@@ -152,7 +156,8 @@ pub async fn desktop_digest_run(
     route: DesktopChatMessageRoute,
     fallback_model: Option<String>,
 ) -> Result<String, String> {
-    let session = crate::cloud_session::cloud_session_load()?
+    let session = crate::cloud_session_refresh::load_fresh_session()
+        .await?
         .filter(|session| session.account_id == owner_account_id && !session.token.is_empty())
         .ok_or_else(|| "Sign in to Kordi to run the digest.".to_string())?;
     let api_base = crate::cloud_api_base_url_from_env()?;
@@ -172,7 +177,7 @@ pub async fn desktop_digest_run(
         None
     };
     let observation = (!tools.is_empty())
-        .then(|| observation_runtime(&run_id, &claim_id, &tools, &api_base, session.token));
+        .then(|| observation_runtime(&run_id, &claim_id, &tools, &api_base, session.account_id));
     let tool_names: Vec<String> = tools.iter().map(|tool| tool.name.clone()).collect();
     let mut failure = String::new();
     for route in attempt_routes(route, fallback_model) {
@@ -288,7 +293,7 @@ mod tests {
             "claim",
             &tools,
             "http://127.0.0.1:1/",
-            "t".into(),
+            "acct_owner".into(),
         );
         assert_eq!(
             runtime.tools().len(),

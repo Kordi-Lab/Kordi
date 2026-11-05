@@ -28,7 +28,7 @@ async fn signup_happy_path_returns_session_and_persists_account() {
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse").await,
+            signup_body(&email, TEST_PASSWORD).await,
         ))
         .await
         .unwrap();
@@ -65,14 +65,14 @@ async fn signup_duplicate_email_returns_409() {
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse").await,
+            signup_body(&email, TEST_PASSWORD).await,
         ))
         .await
         .unwrap();
     let second = router
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "another password").await,
+            signup_body(&email, "Another-password-8").await,
         ))
         .await
         .unwrap();
@@ -93,7 +93,7 @@ async fn login_with_correct_password_returns_session_and_me_works() {
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse").await,
+            signup_body(&email, TEST_PASSWORD).await,
         ))
         .await
         .unwrap();
@@ -103,7 +103,7 @@ async fn login_with_correct_password_returns_session_and_me_works() {
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/login",
-            Body::from(json!({"email": &email, "password": "correct horse"}).to_string()),
+            Body::from(json!({"email": &email, "password": TEST_PASSWORD}).to_string()),
         ))
         .await
         .unwrap();
@@ -132,7 +132,7 @@ async fn login_with_wrong_password_returns_401() {
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse").await,
+            signup_body(&email, TEST_PASSWORD).await,
         ))
         .await
         .unwrap();

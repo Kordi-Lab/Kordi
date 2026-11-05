@@ -59,7 +59,7 @@ async fn device_list_hides_dead_legacy_rows_and_labels_placeholder_sign_ins() {
             .clone()
             .oneshot(post(
                 "/v1/cloud/auth/signup",
-                signup_body(&unique_email("device-list-filter"), "correct horse").await,
+                signup_body(&unique_email("device-list-filter"), TEST_PASSWORD).await,
             ))
             .await
             .unwrap(),
@@ -118,7 +118,7 @@ async fn device_list_hides_sessions_idle_for_more_than_two_days() {
             .clone()
             .oneshot(post(
                 "/v1/cloud/auth/signup",
-                signup_body(&unique_email("device-list-idle"), "correct horse").await,
+                signup_body(&unique_email("device-list-idle"), TEST_PASSWORD).await,
             ))
             .await
             .unwrap(),

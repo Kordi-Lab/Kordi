@@ -153,7 +153,6 @@ async fn exercise(pool: &PgPool, name: &str) {
     assert!(login_id.ends_with("@example.invalid"));
     assert!(password.len() >= 40);
     validate_email(login_id).unwrap();
-    validate_password_strength(password).unwrap();
     let row: (String,Option<String>,String,String,i64) = query_as("SELECT account.password_hash,account.primary_email_verified_at,account.avatar_source,account.avatar_seed,(SELECT count(*) FROM cloud_default_agent_profiles profile WHERE profile.owner_account_id=account.account_id) FROM cloud_accounts account WHERE account.account_id=$1")
         .bind(id).fetch_one(pool).await.unwrap();
     assert!(verify_password(&row.0, password).unwrap());

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "9ab0e05f0127df4b4f4c4af8fb2fbd4ce88aa354237cdb5273e3458e0127b096",
+  "catalogSha256": "ce0958eab8008c407383461cc60c03f4de52a49b299f377ba895f9328d0b5806",
   "inputs": {
     "Cargo.lock": "c3f6059ac5c030f786b08e84c2875fdfdbb0ddc827e71cec8a6eb70a797c9f85",
     "pnpm-lock.yaml": "b1ab9e2c06646f73288db2ef5075bf48107bc0f4a8364e1a3726f5e8dee85e30",
@@ -15,6 +15,8 @@
     "app/desktop/package.json": "a3e7acd1efd543e7da9256827248f95d0515f5033a10df32232af3abaf41f082",
     "legal/runtime-relink-verification.json": "f69b0ab7976cdf30cc076e243ed6180b2c7cc4fc7e3289c06e37957ae7eeafdb",
     "legal/runtime-bundle-review.json": "c026d9b9ad1fe8ada7f29d2a86e7b9178ef8616bb6bffef5125fe970320dbb5c",
+    "deploy/minio/Dockerfile.server": "fe4e8d79b1bcd1663bddc367d48870f924c4a26f9784068ed99deb28153a5b00",
+    "deploy/minio/Dockerfile.client": "3624200200b5270fa8a6fd86f0b29b811d6bcf1f9fb37d49766c060bee07333d",
     "legal/native/Bun-THIRD-PARTY-NOTICES.txt": "f4ca369a72fd02167f2dd774cfde9bdc2aed2e9d919119679d6028e3b8568646",
     "legal/native/UniFFI-THIRD-PARTY-NOTICES.txt": "34634a030abf7428eda2a4850c623d4c9c7f1de0094fd3cddfcfc842214f3e39",
     "legal/native/WebRTC-LICENSE": "ab00a482b6a3902e40211b43c5d0441962ea99b6cc7c25c0f243fa270b78d482",
@@ -30,9 +32,9 @@
   "files": {
     "LICENSE": "0d699f2763ad95c6b648b27536bf176e2b517e06bf204643629ada1623ac1196",
     "NOTICE": "8fc419687eab6772d2f483c7008369bc87feb896c215b8e4b0cfa6da6eca60eb",
-    "SOURCES.md": "f9e751b638c6366f9df8f5d627d5a6015dfa225413293a43bd11f5f1a01a6e9f",
-    "THIRD-PARTY-NOTICES.txt": "de9da6491fb3ee055fb121b2582460342bba095fbfff72304c8e358f4895332f",
-    "index.html": "ed55a4d8ec04769ba53b07bed1d6f82e30fdfb47e48f7fb147fe19c5d133c6e3",
-    "inventory.json": "e42748515335e77c0128235317d8fcd90981681bfed63fce771ec8aace2633af"
+    "SOURCES.md": "b021f41b86bb08cadd4e04f3efd1a0294ea2f325416bfa74aeb49bcd1754ab8c",
+    "THIRD-PARTY-NOTICES.txt": "cf91bd958fcaf0028787a054699c02702a30dc95b5a4de5830758b3a22514096",
+    "index.html": "90933177b864b53a852717d8b5ae2f9916820f9854c928ed8b05afb5b33f5f1a",
+    "inventory.json": "eb776fb0036ef2549e74983fa58817d51f3fc79e159e39bdd7a628730b6a3f87"
   }
 }

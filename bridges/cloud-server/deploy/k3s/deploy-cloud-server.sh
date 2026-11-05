@@ -8,8 +8,12 @@
 #   2. Tags it as docker.io/library/kordi-cloud-server:<tag> so kubelet's
 #      bare-name resolution finds it without trying Docker Hub.
 #   3. Exports it to an OCI archive and imports into k3s's containerd.
-#   4. Applies the Deployment + Service manifests with the new tag.
-#   5. Waits for rollout, hits /health from inside the cluster.
+#   4. Builds the MinIO server and client images from source on the VM and
+#      imports them into containerd before applying minio.yaml, unless they
+#      are already imported. Importing archives built elsewhere is preferred;
+#      see deploy/minio/README.md.
+#   5. Applies the Deployment + Service manifests with the new tag.
+#   6. Waits for rollout, hits /health from inside the cluster.
 #
 # No Docker daemon needed on the laptop. Idempotent: re-running with a
 # fresh binary triggers a rolling restart via image-tag rotation.
@@ -40,9 +44,12 @@ echo "[deploy] target:    ${SSH_TARGET} (project ${SSH_PROJECT}, zone ${SSH_ZONE
 echo "[deploy] image tag: ${IMAGE_TAG}"
 echo "[deploy] image ref: ${IMAGE}"
 
-echo "[deploy] syncing Dockerfile.runtime + manifest to VM"
+echo "[deploy] syncing Dockerfiles + manifests to VM"
 tar -C "${REPO_ROOT}" -czf - \
         bridges/cloud-server/Dockerfile.runtime \
+        deploy/minio/Dockerfile.server \
+        deploy/minio/Dockerfile.client \
+        deploy/minio/build-k3s-images.sh \
         bridges/cloud-server/deploy/k3s/manifests/minio.yaml \
         bridges/cloud-server/deploy/k3s/manifests/livekit.yaml \
         bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml \
@@ -80,6 +87,11 @@ sudo k3s ctr images import \$TAR
 sudo rm -f \$TAR
 sudo k3s ctr images ls | grep kordi-cloud-server | head -3"
 
+echo "[deploy] building and importing MinIO images"
+# minio.yaml uses imagePullPolicy: Never, so the images must exist in
+# containerd before the StatefulSet or its Jobs are applied.
+"${GCLOUD_SSH[@]}" --command "cd ${REMOTE_DEPLOY} && bash deploy/minio/build-k3s-images.sh"
+
 echo "[deploy] reconciling private release storage"
 "${GCLOUD_SSH[@]}" --command "set -e
 cd ${REMOTE_DEPLOY}/bridges/cloud-server/deploy/k3s/manifests
@@ -100,7 +112,8 @@ spec:
   restartPolicy: Never
   containers:
     - name: mc
-      image: quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z
+      image: docker.io/library/kordi-minio-mc:RELEASE.2024-11-21T17-21-54Z
+      imagePullPolicy: Never
       env:
         - name: ACCESS_KEY
           valueFrom:

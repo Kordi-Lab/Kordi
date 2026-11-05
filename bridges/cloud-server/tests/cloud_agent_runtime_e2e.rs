@@ -20,6 +20,9 @@ use kordi_cloud_server::server::{router_with_rate_limiter, ServerState};
 use serde_json::{json, Value};
 use tower::util::ServiceExt;
 
+/// Sign-up requires mixed case and a number, so every fixture account uses this.
+const TEST_PASSWORD: &str = "Correct-horse-7";
+
 static INIT_POOL_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[derive(Clone, Debug)]
@@ -143,7 +146,7 @@ async fn signup(router: &axum::Router, prefix: &str, display_name: &str) -> Test
             Body::from(
                 signup_email_fixture::with_proof(json!({
                     "email": email,
-                    "password": "correct horse",
+                    "password": TEST_PASSWORD,
                     "displayName": display_name,
                     "avatarSeed": "agent_runtime_avatar",
                 }))

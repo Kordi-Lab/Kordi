@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from vps_config import ROOT, caddyfile, initialize, load, manifests, outside_repository, validate
+from vps_config import ROOT, caddyfile, host_imported_images, initialize, load, manifests, outside_repository, validate
 
 spec = importlib.util.spec_from_file_location("vps_deploy", ROOT / "scripts/vps-deploy.py")
 deploy = importlib.util.module_from_spec(spec)
@@ -108,6 +108,14 @@ class VPSConfigTests(unittest.TestCase):
         runner = next(d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"] == "kordi-cloud-agent-runner")
         env = runner["spec"]["template"]["spec"]["containers"][0]["env"]
         self.assertIn({"name": "KORDI_CLOUD_SANDBOX_BACKEND", "value": "k8s"}, env)
+
+    def test_minio_images_come_from_imported_archives(self):
+        docs = manifests(validate(self.config))
+        self.assertEqual(host_imported_images(docs), [
+            "docker.io/library/kordi-minio-mc:RELEASE.2024-11-21T17-21-54Z",
+            "docker.io/library/kordi-minio:RELEASE.2024-12-18T13-15-44Z",
+        ])
+        self.assertNotIn("quay.io", json.dumps(docs))
 
     def test_rejects_domain_injection_and_mutable_images(self):
         for value in ("http://example.test", "https://user:password@example.test", "https://example.test/other", "https://example.test\n}"):

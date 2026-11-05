@@ -8,7 +8,7 @@ async fn signup_owner(router: &axum::Router, email: &str, seed: u8) -> serde_jso
                 "/v1/cloud/auth/signup",
                 signup_body_with_device(
                     email,
-                    "correct horse",
+                    TEST_PASSWORD,
                     device_registration(seed, "Owner Mac", "macos"),
                 )
                 .await,
@@ -28,7 +28,7 @@ async fn login_installation(router: &axum::Router, email: &str, seed: u8) -> ser
                 Body::from(
                     json!({
                         "email": email,
-                        "password": "correct horse",
+                        "password": TEST_PASSWORD,
                         "device": device_registration(seed, "MacBook Pro", "macos"),
                     })
                     .to_string(),

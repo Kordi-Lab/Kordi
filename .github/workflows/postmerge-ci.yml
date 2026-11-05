@@ -94,6 +94,8 @@ jobs:
     uses: ./.github/workflows/ci-hygiene.yml
     with:
       manifest: ${{ needs.manifest.outputs.manifest }}
+    secrets:
+      KORDI_PRIVACY_DENYLIST: ${{ secrets.KORDI_PRIVACY_DENYLIST }}
 
   platforms:
     name: Platform compilation

@@ -487,7 +487,7 @@ If you prefer commands, the rough shape is:
 
 ```bash
 gcloud compute instances create bridges-server \
-  --zone=us-central1-a \
+  --zone="<ZONE>" \
   --machine-type=e2-standard-2 \
   --image-family=ubuntu-2204-lts \
   --image-project=ubuntu-os-cloud \
@@ -544,7 +544,7 @@ Example:
 ```text
 Type: A
 Name: bridge
-Value: 34.123.45.67
+Value: 203.0.113.10
 TTL: 300
 ```
 

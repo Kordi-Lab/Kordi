@@ -137,6 +137,17 @@ def secret(name, values):
             "type": "Opaque", "stringData": values}
 
 
+def host_imported_images(documents):
+    """Images kubelet must find in containerd because they are never pulled."""
+    images = set()
+    for doc in documents:
+        pod = doc.get("spec", {}).get("template", {}).get("spec", {})
+        for container in pod.get("initContainers", []) + pod.get("containers", []):
+            if container.get("imagePullPolicy") == "Never":
+                images.add(container["image"])
+    return sorted(images)
+
+
 def manifests(config):
     generated = config["generated"]
     docs = [{"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": "kordi-cloud",

@@ -42,7 +42,7 @@ pub(super) fn build(lease: &DesktopCloudExecutionLease) -> Option<ConnectorTools
         return None;
     };
     eprintln!("[connectors] lease tools offered: {names:?}");
-    let mut runtime = http_runtime(descriptors, lease, api_base, session.token);
+    let mut runtime = http_runtime(descriptors, lease, api_base, session.account_id);
     runtime.offer_request_connect = offer_request_connect;
     Some(runtime)
 }
@@ -164,11 +164,11 @@ fn http_runtime(
     descriptors: Vec<ConnectorToolDescriptor>,
     lease: &DesktopCloudExecutionLease,
     api_base: String,
-    token: String,
+    account_id: String,
 ) -> ConnectorToolsRuntime {
     let post: PostFn = Arc::new(move |path: String, body: Value| {
-        let (api_base, token) = (api_base.clone(), token.clone());
-        Box::pin(async move { post_broker(&api_base, &token, &path, &body).await })
+        let (api_base, account_id) = (api_base.clone(), account_id.clone());
+        Box::pin(async move { post_broker(&api_base, &account_id, &path, &body).await })
             as ConnectorCallFuture
     });
     let (call_lease, call_post) = (lease.clone(), post.clone());
@@ -188,13 +188,18 @@ fn http_runtime(
     }
 }
 
+/// Each call resolves a current token for the lease owner, so a turn that
+/// outlives an access token keeps working.
 async fn post_broker(
     api_base: &str,
-    token: &str,
+    account_id: &str,
     path: &str,
     body: &Value,
 ) -> Result<Value, KordiError> {
     let unavailable = || KordiError::Tool("The connector broker could not be reached.".into());
+    let token = crate::cloud_session_refresh::fresh_token_for(account_id)
+        .await
+        .ok_or_else(unavailable)?;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::none())
@@ -286,7 +291,7 @@ mod tests {
             descriptors.clone(),
             &lease,
             "https://kordi.test".into(),
-            "kordi_cs_test".into(),
+            "acct_owner".into(),
         );
         assert_eq!(runtime.descriptors, descriptors);
         let body = broker_body(&lease, &descriptors[1], json!({"to": "a"}));

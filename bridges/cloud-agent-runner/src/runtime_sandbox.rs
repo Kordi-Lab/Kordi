@@ -11,14 +11,36 @@ pub enum SandboxBackendMode {
     Invalid,
 }
 
+/// True for release images compiled for the isolated development stack with
+/// `KORDI_DEVELOPMENT_BUILD=1`. Hosted release images never set it, so they
+/// keep refusing the local sandbox backend.
+fn development_build_marker() -> bool {
+    matches!(option_env!("KORDI_DEVELOPMENT_BUILD"), Some("1"))
+}
+
 pub fn sandbox_backend_mode_from_env() -> SandboxBackendMode {
-    match std::env::var("KORDI_CLOUD_SANDBOX_BACKEND") {
-        Ok(value) if value.trim().eq_ignore_ascii_case("k8s") => SandboxBackendMode::K8s,
-        Ok(value) if value.trim().eq_ignore_ascii_case("fly") => SandboxBackendMode::Fly,
-        Ok(value) if !value.trim().is_empty() && !value.trim().eq_ignore_ascii_case("local") => {
-            SandboxBackendMode::Invalid
+    sandbox_backend_mode(
+        std::env::var("KORDI_CLOUD_SANDBOX_BACKEND").ok().as_deref(),
+        cfg!(debug_assertions),
+        development_build_marker(),
+    )
+}
+
+/// An explicit `local` value runs host-local sandboxes only in debug builds or
+/// development-marked release builds. An empty or unset value selects `local`
+/// only in debug builds.
+fn sandbox_backend_mode(
+    value: Option<&str>,
+    debug_build: bool,
+    development_build: bool,
+) -> SandboxBackendMode {
+    match value.map(str::trim).unwrap_or_default() {
+        value if value.eq_ignore_ascii_case("k8s") => SandboxBackendMode::K8s,
+        value if value.eq_ignore_ascii_case("fly") => SandboxBackendMode::Fly,
+        value if value.eq_ignore_ascii_case("local") && (debug_build || development_build) => {
+            SandboxBackendMode::Local
         }
-        _ if cfg!(debug_assertions) => SandboxBackendMode::Local,
+        "" if debug_build => SandboxBackendMode::Local,
         _ => SandboxBackendMode::Invalid,
     }
 }
@@ -53,6 +75,29 @@ pub fn sandbox_backend_for_run(
             Ok(std::sync::Arc::new(K8sSandboxBackend::from_env(
                 sandbox_id.to_string(),
             )))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_sandbox_requires_a_debug_or_development_build() {
+        use SandboxBackendMode::{Fly, Invalid, K8s, Local};
+        let cases = [
+            (Some(" Local "), false, true, Local),
+            (Some("local"), true, false, Local),
+            (Some("local"), false, false, Invalid),
+            (None, false, true, Invalid),
+            (Some(" "), false, false, Invalid),
+            (Some("k8s"), false, false, K8s),
+            (Some("FLY"), false, true, Fly),
+            (Some("docker"), true, true, Invalid),
+        ];
+        for (value, debug, development, expected) in cases {
+            assert_eq!(sandbox_backend_mode(value, debug, development), expected);
         }
     }
 }

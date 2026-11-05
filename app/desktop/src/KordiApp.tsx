@@ -1,13 +1,10 @@
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEventHandler } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { CloudStartingScreen } from '@/features/cloud/CloudStartingScreen';
 import { reopenCloudOAuthBrowser } from '@/features/cloud/cloudOAuthSignIn';
 
 import { AppShellFrame } from '@/app/AppShellFrame';
 import { useNativeViewport } from '@/app/useNativeViewport';
-import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
-import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
 import { CloudCallHost } from '@/features/cloud/CloudCallHost';
 import { CloudCallProvider } from '@/features/cloud/CloudCallProvider';
@@ -23,7 +20,6 @@ import {
   type CloudCallsChangedDetail,
 } from '@/features/cloud/cloudCalls';
 import type { CloudCallsController } from '@/features/cloud/cloudCallController';
-import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
 import {
   clearNativeTextSelection,
   installCopySurfaceSelectionTracking,
@@ -36,15 +32,15 @@ import {
   usePendingGroupInvitation,
 } from '@/features/cloud/groupInvitationDeepLink';
 import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/sessionGate';
-import { isTauriRuntime, readAuthWindowCropOffset, type CloudLoginMode } from '@/features/cloud/loginWindow';
+import { isTauriRuntime, supportsFrostedGate, type CloudLoginMode } from '@/features/cloud/loginWindow';
+import { CloudGateShell } from '@/features/cloud/CloudGateShell';
 import { readLoginModePreference } from '@/features/cloud/loginModePreference';
 import { useCloudWindowSurface } from '@/features/cloud/useCloudWindowSurface';
 import { useCloudSyncPresentation } from '@/features/cloud/useCloudSyncPresentation';
 import { useCloudAuthTransition } from '@/features/cloud/useCloudAuthTransition';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { WhatsNewLaunchWindow } from '@/features/updates/useWhatsNewWindow';
-import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
-import type { ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
+import { CloudSignInGate } from '@/kordi-app/cloud/CloudSignInGate';
 import type { Conversation } from '@/kordi-app/types';
 import { GroupInvitationDialog } from '@/pages/GroupInvitationDialog';
 import { DocumentShareLinkHost } from '@/features/documents/DocumentShareLinkDialog';
@@ -55,115 +51,8 @@ const SHOW_DEBUG_AUTH_DIAGNOSTICS = cloudAuthCapabilityDiscoveryEnabled();
 
 type CloudSessionGateResult = Pick<
   UseCloudSessionResult,
-  'status' | 'account' | 'signIn' | 'signUp' | 'signInWithProvider'
+  'status' | 'account' | 'signIn' | 'signUp' | 'signInWithProvider' | 'browserSignIn'
 >;
-
-function readSystemTheme(): ResolvedThemeMode {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'dark';
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-}
-
-function nativeWindowThemeIsResolvedTheme(theme: unknown): theme is ResolvedThemeMode {
-  return theme === 'light' || theme === 'dark';
-}
-
-const GATE_WINDOW_BACKGROUND: Record<ResolvedThemeMode, string> = {
-  light: '#f8fafc',
-  dark: '#0f1115',
-};
-
-const APP_WINDOW_BACKGROUND: Record<ResolvedThemeMode, string> = {
-  light: '#f4f1e7',
-  dark: '#22231d',
-};
-
-// The shell's useKordiUiEffects also writes `theme-*` to <body>, but it only
-// runs after KordiAppShell mounts. Before that — on the cloud login gate and
-// the restoring-session splash — nothing else applies a theme class, so the
-// dark/light tokens never reach those screens. This hook syncs the body class
-// to the persisted theme preference; `auto` follows system while the
-// gate/splash is up. Once the shell mounts, its effect takes over.
-function useGateThemeClass(active: boolean) {
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredThemeMode());
-  const [theme, setTheme] = useState<ResolvedThemeMode>(() => {
-    return resolveThemeMode(themeMode, readSystemTheme());
-  });
-
-  const [previousActive, setPreviousActive] = useState(active);
-  if (active !== previousActive) {
-    setPreviousActive(active);
-    if (active) {
-      const nextMode = readStoredThemeMode();
-      setThemeMode(nextMode);
-      setTheme(resolveThemeMode(nextMode, readSystemTheme()));
-    }
-  }
-
-  useEffect(() => {
-    if (!active) return;
-    let disposed = false;
-    let unlistenNativeTheme: (() => void) | undefined;
-    const mediaQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(prefers-color-scheme: light)')
-      : null;
-    const applySystemTheme = (systemTheme: ResolvedThemeMode) => {
-      setTheme(resolveThemeMode(themeMode, systemTheme));
-    };
-    const handleMediaTheme = () => {
-      if (!mediaQuery) return;
-      applySystemTheme(mediaQuery.matches ? 'light' : 'dark');
-    };
-
-    if (themeMode === 'auto' && isTauriRuntime()) {
-      void getCurrentWindow().theme()
-        .then((nativeTheme) => {
-          if (!disposed && nativeWindowThemeIsResolvedTheme(nativeTheme)) setTheme(nativeTheme);
-        })
-        .catch(() => {
-          handleMediaTheme();
-        });
-      void getCurrentWindow().onThemeChanged(({ payload }) => {
-        if (!disposed && nativeWindowThemeIsResolvedTheme(payload)) setTheme(payload);
-      })
-        .then((unlisten) => {
-          if (disposed) unlisten();
-          else unlistenNativeTheme = unlisten;
-        })
-        .catch(() => undefined);
-    } else {
-      handleMediaTheme();
-    }
-
-    mediaQuery?.addEventListener('change', handleMediaTheme);
-    return () => {
-      disposed = true;
-      mediaQuery?.removeEventListener('change', handleMediaTheme);
-      unlistenNativeTheme?.();
-    };
-  }, [active, themeMode]);
-
-  useLayoutEffect(() => {
-    if (!active) return;
-    document.body.classList.toggle('theme-light', theme === 'light');
-    document.body.classList.toggle('theme-dark', theme === 'dark');
-    document.documentElement.style.colorScheme = theme;
-    void syncNativeWindowTheme(themeMode).catch(() => undefined);
-  }, [active, theme, themeMode]);
-
-  useLayoutEffect(() => {
-    document.body.classList.toggle('app-cloud-gate-active', active);
-    if (isTauriRuntime()) {
-      const background = active ? GATE_WINDOW_BACKGROUND[theme] : APP_WINDOW_BACKGROUND[theme];
-      void getCurrentWindow().setBackgroundColor(background).catch(() => undefined);
-    }
-
-    return () => {
-      document.body.classList.remove('app-cloud-gate-active');
-    };
-  }, [active, theme]);
-
-  return theme;
-}
 
 export type KordiAppRootProps = {
   /**
@@ -207,41 +96,6 @@ export function KordiAppRoot({
   );
 }
 
-// Hosts whatever gate-time screen is showing (login form or restoring-session
-// splash) inside the same `kordi-app` root the main shell uses, so the
-// theme-tokens.css palette resolves. The wrapping hook installs the system
-// theme class on <body> until the shell takes over.
-function CloudGateShell({ children, active = true }: { children: React.ReactNode; active?: boolean }) {
-  const theme = useGateThemeClass(active);
-  const handleGateWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
-    if (!shouldStartNativeWindowDrag({
-      isNativeShell: isTauriRuntime(),
-      button: event.button,
-      clientY: event.clientY,
-      shellTop: event.currentTarget.getBoundingClientRect().top + readAuthWindowCropOffset().y,
-      target: event.target,
-    })) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    void getCurrentWindow().startDragging().catch(() => undefined);
-  };
-
-  return (
-    <div
-      className={`kordi-app app-cloud-login-shell theme-${theme}`}
-      data-active={active}
-      inert={!active}
-      aria-hidden={!active}
-      onMouseDownCapture={handleGateWindowDragMouseDown}
-    >
-      {children}
-    </div>
-  );
-}
-
 function CloudEditionRoot({
   cloudSessionStatusOverride,
   cloudSessionOverride,
@@ -270,7 +124,13 @@ function CloudEditionRoot({
     setLoginPresented(false);
   }
   const signedOut = shouldShowCloudLoginGate({ cloudSessionStatus: status });
-  const windowReady = useCloudWindowSurface(signedOut ? loginMode : status === 'authenticated' ? 'main' : null);
+  // Browser sign-in uses the compact welcome window until the server turns
+  // out not to offer it; then the in-app form takes its own window size.
+  const [inAppForm, setInAppForm] = useState(false);
+  const handleBrowserSignInChange = useCallback((active: boolean) => setInAppForm(!active), []);
+  const welcome = signedOut && Boolean(session.browserSignIn) && !inAppForm;
+  const frosted = welcome && supportsFrostedGate();
+  const windowReady = useCloudWindowSurface(signedOut ? (welcome ? 'welcome' : loginMode) : status === 'authenticated' ? 'main' : null);
   if (signedOut && windowReady && !loginPresented) setLoginPresented(true);
   const loginReady = (windowReady || loginPresented) && !activity;
   const gateActive = Boolean(activity) || status !== 'authenticated' || sync.status !== 'ready' || !windowReady;
@@ -284,7 +144,7 @@ function CloudEditionRoot({
           windowReady={windowReady && !activity}
         />
       ) : null}
-      <CloudGateShell active={gateActive}>
+      <CloudGateShell active={gateActive} frosted={frosted}>
         <CloudStartingScreen
           visible={!(signedOut && loginReady)}
           status={status === 'authenticated' && sync.status === 'error' ? 'error' : 'syncing'}
@@ -294,7 +154,8 @@ function CloudEditionRoot({
         />
         {signedOut ? (
           <div className="app-cloud-login-surface" data-ready={loginReady} inert={!loginReady}>
-            <CloudLoginPage
+            <CloudSignInGate browserSignIn={session.browserSignIn}
+              onBrowserSignInChange={handleBrowserSignInChange}
               initialMode={loginMode}
               onModeChange={setLoginMode}
               onSignIn={signIn}

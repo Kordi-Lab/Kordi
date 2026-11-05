@@ -38,6 +38,7 @@ pub(super) async fn complete_oauth_login_with_policy(
         (None, Some(email)) => linkable_email_account(pool, email, profile.email_verified).await?,
         _ => None,
     };
+    let links_by_email = linked_email_account.is_some();
     let account_id = existing_identity
         .map(|row| row.0)
         .or(linked_email_account)
@@ -106,6 +107,21 @@ pub(super) async fn complete_oauth_login_with_policy(
     .bind(&now)
     .execute(&mut *tx)
     .await?;
+
+    if links_by_email {
+        // The new identity joined an account that already proved this email.
+        query(
+            "INSERT INTO cloud_audit_events \
+             (event_id, account_id, device_id, event_type, metadata_json, created_at) \
+             VALUES ($1, $2, NULL, 'auth.oauth.linked_by_email', $3, $4)",
+        )
+        .bind(format!("evt_{}", uuid::Uuid::new_v4().simple()))
+        .bind(&account_id)
+        .bind(serde_json::json!({"provider": provider.id()}).to_string())
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?;
+    }
 
     if profile.email_verified {
         if let Some(email) = normalized_email.as_deref() {

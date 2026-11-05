@@ -10,7 +10,7 @@ async fn signup_exposes_public_kordi_id_and_app_invites_resolve_without_auth() {
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&unique_email("public-kordi-id"), "correct horse").await,
+            signup_body(&unique_email("public-kordi-id"), TEST_PASSWORD).await,
         ))
         .await
         .unwrap();

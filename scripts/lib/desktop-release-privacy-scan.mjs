@@ -1,5 +1,7 @@
 import { homedir } from 'node:os';
 
+import { findPrivateIdentifiers, PRIVATE_IDENTIFIER_HASHES } from './private-identifiers.mjs';
+
 const SENSITIVE_PATTERNS = [
   'pi-clipboard',
   '/var/folders',
@@ -9,10 +11,11 @@ const SENSITIVE_PATTERNS = [
   'displayName["\x27]?\\s*[:=]\\s*["\x27]111',
   'primaryEmail',
   'sessionToken',
-  'korde-product',
-  '35\\.188\\.85\\.31',
   'sslip\\.io',
 ];
+// Former hosts and addresses are compared by hash (scripts/lib/private-identifier-hashes.json)
+// so the scanner does not publish them. rg extracts address-shaped strings for that check.
+const IPV4_SHAPED = '(?:[0-9]{1,3}\\.){3}[0-9]{1,3}';
 // The bundled agent runtime is third-party code whose own source text and upstream
 // build paths contain these generic strings. Its files get every other pattern plus
 // the build host's home directory, which is what a real leak from this build would carry.
@@ -41,6 +44,21 @@ export function vendoredRuntimeScanArguments(root, { homeDirectory = homedir() }
   for (const glob of VENDORED_RUNTIME_GLOBS) args.push('--glob', glob);
   args.push(root);
   return args;
+}
+
+export function releaseAddressScanArguments(root) {
+  return ['--text', '--hidden', '--no-ignore', '--no-messages', '-n', '-o', '-e', IPV4_SHAPED, root];
+}
+
+// Fails when a hashed former host address appears in the bundle; the error never names it.
+export function assertReleaseAddressesClean(run, root, hashes = PRIVATE_IDENTIFIER_HASHES) {
+  const addresses = run('rg', releaseAddressScanArguments(root));
+  if (addresses.status === 0 && findPrivateIdentifiers(addresses.stdout, hashes).length > 0) {
+    throw new Error('Release privacy scan found a forbidden value');
+  }
+  if (addresses.status !== 0 && addresses.status !== 1) {
+    throw new Error('Release privacy scan could not inspect the application bundle');
+  }
 }
 
 export function redactPublisherText(value, env = process.env) {

@@ -1,8 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Deserialize)]
+mod layout;
+
+#[derive(Clone, Copy, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum AuthWindowSurface {
+    /// The compact browser sign-in window.
+    Welcome,
     Login,
     Signup,
     Main,
@@ -11,6 +15,7 @@ pub(crate) enum AuthWindowSurface {
 impl AuthWindowSurface {
     fn dimensions(self) -> (f64, f64, f64, f64) {
         match self {
+            Self::Welcome => (440.0, 480.0, 440.0, 480.0),
             Self::Login => (760.0, 760.0, 620.0, 640.0),
             Self::Signup => (760.0, 860.0, 620.0, 640.0),
             Self::Main => (1480.0, 980.0, 1192.0, 760.0),
@@ -18,12 +23,16 @@ impl AuthWindowSurface {
     }
 }
 
-/// How far the web view extends past the window's left and top edges, in
-/// logical points. The gate offsets its top-anchored chrome by this amount.
-#[derive(Clone, Copy, Default, PartialEq, Serialize)]
+/// How far the web view extends past the window's left and top edges, and
+/// the window's content size, in logical points. The gate lays its screens
+/// out in that visible rectangle. A zero size means the web view fills the
+/// window.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
 pub(crate) struct AuthWindowCrop {
     x: f64,
     y: f64,
+    width: f64,
+    height: f64,
 }
 
 #[tauri::command]
@@ -98,6 +107,11 @@ fn last_crop() -> AuthWindowCrop {
 // the same when cropped. It rejoins autoresizing once the main shell is shown.
 #[cfg(target_os = "macos")]
 mod macos {
+    use super::layout::{
+        crop_between,
+        native::{clamped_frame, ns_rect, prepare_backdrop, remembered_frame, window_rect},
+        WindowRect,
+    };
     use super::{AuthWindowCrop, AuthWindowSurface};
     use objc2::{
         class, ffi, msg_send,
@@ -106,7 +120,7 @@ mod macos {
         sel,
     };
     use objc2_foundation::{
-        NSNotification, NSNotificationCenter, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
+        NSNotification, NSNotificationCenter, NSObjectProtocol, NSRect, NSSize, NSString,
     };
     use std::{
         cell::{Cell, RefCell},
@@ -115,8 +129,12 @@ mod macos {
     };
     use tauri::Emitter;
 
-    pub(super) static LAST_CROP: Mutex<AuthWindowCrop> =
-        Mutex::new(AuthWindowCrop { x: 0.0, y: 0.0 });
+    pub(super) static LAST_CROP: Mutex<AuthWindowCrop> = Mutex::new(AuthWindowCrop {
+        x: 0.0,
+        y: 0.0,
+        width: 0.0,
+        height: 0.0,
+    });
     const CROP_EVENT: &str = "kordi://auth-window-crop";
     const WIDTH_AND_HEIGHT_SIZABLE: usize = (1 << 1) | (1 << 4);
 
@@ -130,6 +148,10 @@ mod macos {
 
     thread_local! {
         static STATE: RefCell<Option<AuthWebviewState>> = const { RefCell::new(None) };
+        // Whether the window currently shows the main shell at its own frame.
+        static SHOWING_MAIN: Cell<bool> = const { Cell::new(false) };
+        // The main shell's frame when a gate replaced it, restored on return.
+        static MAIN_FRAME: Cell<Option<NSRect>> = const { Cell::new(None) };
         // Mirrors the detached web view so the hold override never needs a
         // STATE borrow, which may already be held when AppKit calls it.
         static DETACHED_WEBVIEW: Cell<*const AnyObject> = const { Cell::new(std::ptr::null()) };
@@ -219,20 +241,37 @@ mod macos {
         let _ = window.emit(CROP_EVENT, crop);
     }
 
-    /// Centers `webview` in `parent` without changing its size.
+    /// The area the window shows its content in, in window coordinates. With
+    /// a full-size content view that is the whole window, title bar included.
+    unsafe fn visible_rect(webview: &AnyObject) -> Option<WindowRect> {
+        let window: *const AnyObject = msg_send![webview, window];
+        let content: *const AnyObject = msg_send![window.as_ref()?, contentView];
+        let content = content.as_ref()?;
+        let bounds: NSRect = msg_send![content, bounds];
+        let nil = std::ptr::null::<AnyObject>();
+        let rect: NSRect = msg_send![content, convertRect: bounds, toView: nil];
+        Some(window_rect(rect))
+    }
+
+    /// Centers `webview` on the window's visible area without changing its
+    /// size, and reports the crop measured from where it actually landed.
+    /// Both steps convert through window coordinates, so a superview that is
+    /// offset from the window, flipped, or a different size cannot skew the
+    /// crop the page lays out with.
     unsafe fn center(webview: &AnyObject, parent: &AnyObject) -> AuthWindowCrop {
-        let bounds: NSRect = msg_send![parent, bounds];
+        let nil = std::ptr::null::<AnyObject>();
         let frame: NSRect = msg_send![webview, frame];
-        let offset_x = ((bounds.size.width - frame.size.width) / 2.0).round();
-        let offset_y = ((bounds.size.height - frame.size.height) / 2.0).round();
-        let origin = NSPoint::new(bounds.origin.x + offset_x, bounds.origin.y + offset_y);
-        if origin != frame.origin {
-            let _: () = msg_send![webview, setFrameOrigin: origin];
+        let Some(visible) = visible_rect(webview) else {
+            return AuthWindowCrop::default();
+        };
+        let target = visible.centered(frame.size.width, frame.size.height);
+        let target: NSRect = msg_send![parent, convertRect: ns_rect(target), fromView: nil];
+        if target.origin != frame.origin {
+            let _: () = msg_send![webview, setFrameOrigin: target.origin];
         }
-        AuthWindowCrop {
-            x: (-offset_x).max(0.0),
-            y: (-offset_y).max(0.0),
-        }
+        let placed: NSRect = msg_send![webview, frame];
+        let placed: NSRect = msg_send![parent, convertRect: placed, toView: nil];
+        crop_between(window_rect(placed), visible)
     }
 
     /// Returns the web view to window-sized autoresizing.
@@ -324,34 +363,6 @@ mod macos {
         Ok(())
     }
 
-    /// Centers `current`'s replacement for a content size, clamped to the screen.
-    unsafe fn clamped_frame(
-        native: &AnyObject,
-        current: NSRect,
-        width: f64,
-        height: f64,
-    ) -> NSRect {
-        let content = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, height));
-        let mut frame: NSRect = msg_send![native, frameRectForContentRect: content];
-        frame.origin.x = current.origin.x + (current.size.width - frame.size.width) / 2.0;
-        frame.origin.y = current.origin.y + (current.size.height - frame.size.height) / 2.0;
-        let screen: *const AnyObject = msg_send![native, screen];
-        if let Some(screen) = screen.as_ref() {
-            let visible: NSRect = msg_send![screen, visibleFrame];
-            frame.size.width = frame.size.width.min(visible.size.width);
-            frame.size.height = frame.size.height.min(visible.size.height);
-            frame.origin.x = frame.origin.x.clamp(
-                visible.origin.x,
-                visible.origin.x + visible.size.width - frame.size.width,
-            );
-            frame.origin.y = frame.origin.y.clamp(
-                visible.origin.y,
-                visible.origin.y + visible.size.height - frame.size.height,
-            );
-        }
-        frame
-    }
-
     pub(super) fn resize(
         window: &tauri::WebviewWindow,
         webview_pointer: *mut std::ffi::c_void,
@@ -383,7 +394,21 @@ mod macos {
             )?;
 
             let current: NSRect = msg_send![native, frame];
-            let frame = clamped_frame(native, current, width, height);
+            // Leaving the main shell remembers its frame; returning restores
+            // it, and a main shell that is already showing keeps its frame.
+            let frame = if gate {
+                if SHOWING_MAIN.replace(false) {
+                    MAIN_FRAME.set(Some(current));
+                }
+                clamped_frame(native, current, width, height)
+            } else if SHOWING_MAIN.get() {
+                current
+            } else {
+                MAIN_FRAME
+                    .take()
+                    .and_then(|saved| remembered_frame(saved))
+                    .unwrap_or_else(|| clamped_frame(native, current, width, height))
+            };
             let detached =
                 STATE.with(|cell| cell.borrow().as_ref().is_some_and(|state| state.detached));
             if gate {
@@ -408,6 +433,7 @@ mod macos {
                     DETACHED_WEBVIEW.set(Retained::as_ptr(&webview));
                 }
                 center(&webview, &parent);
+                prepare_backdrop(&parent, surface);
             } else if !detached {
                 reattach(&webview, &parent);
             }
@@ -425,6 +451,8 @@ mod macos {
                     center(&webview, &parent)
                 } else {
                     reattach(&webview, &parent);
+                    prepare_backdrop(&parent, surface);
+                    SHOWING_MAIN.set(true);
                     AuthWindowCrop::default()
                 };
                 publish(&target, crop);
