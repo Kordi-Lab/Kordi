@@ -559,6 +559,7 @@
 		22AC313E53BCA366D3B33384 /* AgentSubsessionStopButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSubsessionStopButton.swift; sourceTree = "<group>"; };
 		22E2FBA3741547995F1CD27A /* DocumentHTMLView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentHTMLView.swift; sourceTree = "<group>"; };
 		2341878D50CC522B5A0EEFCE /* CommonGroundNearbyRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundNearbyRules.swift; sourceTree = "<group>"; };
+		2366894C60BFF5CA096557E7 /* KordiProduction.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KordiProduction.entitlements; sourceTree = "<group>"; };
 		23CAA0002D51BCCCF6B07B66 /* CloudMessageCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudMessageCodecTests.swift; sourceTree = "<group>"; };
 		2428C7194E60C10BB2220EAA /* ConnectorActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorActivityView.swift; sourceTree = "<group>"; };
 		260B81738036B5419DF04E25 /* SessionDetailStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailStyle.swift; sourceTree = "<group>"; };
@@ -1591,6 +1592,7 @@
 			children = (
 				D754E3537F473F98052E1220 /* Info.plist */,
 				63AC02B591615C13AB59E1FE /* Kordi.entitlements */,
+				2366894C60BFF5CA096557E7 /* KordiProduction.entitlements */,
 			);
 			path = Supporting;
 			sourceTree = "<group>";
@@ -2449,7 +2451,7 @@
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-frosted AppIcon-rice AppIcon-coral AppIcon-sakura AppIcon-butter AppIcon-mint AppIcon-sky AppIcon-lavender AppIcon-night AppIcon-midnight AppIcon-forest AppIcon-plum AppIcon-cocoa AppIcon-slate AppIcon-night-sakura AppIcon-midnight-sky";
 				ASSETCATALOG_COMPILER_APPICON_NAME = "$(KORDI_OPS_ICON)";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Kordi/Supporting/Kordi.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Kordi/Supporting/KordiProduction.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -2851,7 +2853,7 @@
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-frosted AppIcon-rice AppIcon-coral AppIcon-sakura AppIcon-butter AppIcon-mint AppIcon-sky AppIcon-lavender AppIcon-night AppIcon-midnight AppIcon-forest AppIcon-plum AppIcon-cocoa AppIcon-slate AppIcon-night-sakura AppIcon-midnight-sky";
 				ASSETCATALOG_COMPILER_APPICON_NAME = "$(KORDI_OPS_ICON)";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Kordi/Supporting/Kordi.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Kordi/Supporting/KordiProduction.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;

@@ -5,8 +5,8 @@ extension View {
     /// links (`kordi://document/<token>`, `https://kordi.ai/d/<token>`),
     /// group invite links (`kordi://group-invite/<token>`, `/g/<token>` on
     /// the public origin) and Grounding pairing links
-    /// (`kordi://common-ground/pair/<code>`), from tapped links and from
-    /// `onOpenURL`.
+    /// (`kordi://common-ground/pair/<code>`), from tapped links, from
+    /// `onOpenURL`, and from universal links opened outside the app.
     func kordiLinkHandling(openConnectors: @escaping (ConnectorsSettingsLink) -> Void) -> some View {
         modifier(KordiLinkHandling(openConnectors: openConnectors))
     }
@@ -15,16 +15,31 @@ extension View {
 private struct KordiLinkHandling: ViewModifier {
     let openConnectors: (ConnectorsSettingsLink) -> Void
     @State private var documentLink: SharedDocumentLink?
+    @State private var lastOpened: (url: URL, at: Date)?
 
     func body(content: Content) -> some View {
         content
             .environment(\.openURL, OpenURLAction { url in
                 handle(url) ? .handled : .systemAction
             })
-            .onOpenURL { url in _ = handle(url) }
+            .onOpenURL { url in open(url) }
+            // Universal links (`https://kordi.ai/g/<token>`, `/d/<token>`)
+            // tapped outside the app. Unknown paths open nothing.
+            .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                if let url = activity.webpageURL { open(url) }
+            }
             .fullScreenCover(item: $documentLink) { link in
                 SharedDocumentLinkReader(link: link)
             }
+    }
+
+    /// A link from outside the app. The system may deliver one universal link
+    /// both as a browsing activity and as a URL; the second copy is ignored.
+    private func open(_ url: URL) {
+        let now = Date()
+        if let lastOpened, lastOpened.url == url, now.timeIntervalSince(lastOpened.at) < 2 { return }
+        lastOpened = (url, now)
+        _ = handle(url)
     }
 
     private func handle(_ url: URL) -> Bool {

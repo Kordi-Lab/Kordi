@@ -15,6 +15,8 @@ final class SharedDocumentLinkTests: XCTestCase {
     func testParsesTheWebLink() throws {
         let web = try XCTUnwrap(URL(string: "https://kordi.ai/d/\(token)"))
         XCTAssertEqual(SharedDocumentLink.parse(web, hostScheme: nil)?.token, token)
+        let www = try XCTUnwrap(URL(string: "https://www.kordi.ai/d/\(token)"))
+        XCTAssertEqual(SharedDocumentLink.parse(www, hostScheme: nil)?.token, token)
         let trailing = try XCTUnwrap(URL(string: "https://KORDI.ai/d/\(token)/"))
         XCTAssertEqual(SharedDocumentLink.parse(trailing, hostScheme: nil)?.token, token)
         XCTAssertEqual(SharedDocumentLink(token: token).shareURL, web)

@@ -83,14 +83,6 @@ targets:
             export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
             python3 "$SRCROOT/../../scripts/licenses/verify-ios.py" --app "$TARGET_BUILD_DIR/$WRAPPER_NAME" --platform ios-arm64
           fi
-    entitlements:
-      path: Kordi/Supporting/Kordi.entitlements
-      properties:
-        aps-environment: $(APNS_ENVIRONMENT)
-        com.apple.security.application-groups:
-          - $(KORDI_SHARE_APP_GROUP)
-        keychain-access-groups:
-          - $(AppIdentifierPrefix)$(KORDI_SHARE_CREDENTIAL_SERVICE)
     info:
       path: Kordi/Supporting/Info.plist
       properties:
@@ -150,6 +142,12 @@ targets:
         ENABLE_PREVIEWS: YES
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Kordi/Supporting/Info.plist
+        # Committed files, chosen per configuration (XcodeGen's generated
+        # entitlements apply to every configuration). Beta, Research and
+        # Staging sign with Kordi.entitlements. The production app (Debug and
+        # Release) signs with KordiProduction.entitlements: the same
+        # entitlements plus the kordi.ai Associated Domains for universal links.
+        CODE_SIGN_ENTITLEMENTS: Kordi/Supporting/Kordi.entitlements
       configs:
         Beta:
           PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.beta
@@ -174,6 +172,7 @@ targets:
           KORDI_SHARE_CREDENTIAL_SERVICE: $(KORDI_OPS_CREDENTIAL_SERVICE)
           ASSETCATALOG_COMPILER_APPICON_NAME: $(KORDI_OPS_ICON)
           APNS_ENVIRONMENT: development
+          CODE_SIGN_ENTITLEMENTS: Kordi/Supporting/KordiProduction.entitlements
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: $(KORDI_OPS_APP_ID)
           PRODUCT_NAME: Kordi
@@ -185,6 +184,7 @@ targets:
           KORDI_SHARE_CREDENTIAL_SERVICE: $(KORDI_OPS_CREDENTIAL_SERVICE)
           ASSETCATALOG_COMPILER_APPICON_NAME: $(KORDI_OPS_ICON)
           APNS_ENVIRONMENT: production
+          CODE_SIGN_ENTITLEMENTS: Kordi/Supporting/KordiProduction.entitlements
         Research:
           PRODUCT_BUNDLE_IDENTIFIER: $(KORDI_OPS_APP_ID)
           PRODUCT_NAME: Kordi

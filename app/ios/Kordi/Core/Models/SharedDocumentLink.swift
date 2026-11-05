@@ -40,13 +40,20 @@ struct SharedDocumentLink: Equatable, Hashable, Identifiable {
         let token: String?
         if customSchemes.contains(scheme), host == "document", parts.count == 1 {
             token = parts[0]
-        } else if scheme == "https", host == URL(string: publicOrigin)?.host, url.port == URL(string: publicOrigin)?.port, parts.count == 2, parts[0] == "d" {
+        } else if scheme == "https", isPublicHost(host, port: url.port), parts.count == 2, parts[0] == "d" {
             token = parts[1]
         } else {
             token = nil
         }
         guard let token, isValidToken(token) else { return nil }
         return SharedDocumentLink(token: token)
+    }
+
+    /// The public origin's host, with or without `www.`.
+    private static func isPublicHost(_ host: String, port: Int?) -> Bool {
+        guard let origin = URL(string: publicOrigin), let originHost = origin.host?.lowercased(),
+              port == origin.port else { return false }
+        return host == originHost || host == "www.\(originHost)"
     }
 
     /// `kordi_ds_` followed by 43 URL-safe base64 characters.
