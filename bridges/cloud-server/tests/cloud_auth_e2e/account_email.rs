@@ -51,7 +51,7 @@ pub(super) async fn legacy_account(
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse").await,
+            signup_body(&email, TEST_PASSWORD).await,
         ))
         .await
         .unwrap();
@@ -235,7 +235,7 @@ async fn owner_account_payloads_report_verification() {
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse").await,
+            signup_body(&email, TEST_PASSWORD).await,
         ))
         .await
         .unwrap();
@@ -257,7 +257,7 @@ async fn owner_account_payloads_report_verification() {
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/login",
-            Body::from(json!({ "email": &email, "password": "correct horse" }).to_string()),
+            Body::from(json!({ "email": &email, "password": TEST_PASSWORD }).to_string()),
         ))
         .await
         .unwrap();

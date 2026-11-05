@@ -121,6 +121,67 @@ pub(crate) fn is_allowed_oauth_redirect(target: &str) -> bool {
     is_allowed_oauth_redirect_with_config(target, allowlist.as_deref(), &public_base_url())
 }
 
+/// Where a failed or finished web provider sign-in lands on the public
+/// origin. See `docs/development/browser-sign-in.md`.
+pub(crate) const WEB_OAUTH_COMPLETE_PATH: &str = "/v1/cloud/auth/web/oauth/complete";
+
+/// Whether a provider sign-in may return to `target`. Sign-in returns hand
+/// over a session, so on the public origin only the web completion endpoint
+/// is accepted: any other page there could read the session from the URL.
+/// Loopback and allowlisted app targets follow [`is_allowed_oauth_redirect`].
+pub(crate) fn is_allowed_sign_in_redirect(target: &str) -> bool {
+    let allowlist = std::env::var("KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST").ok();
+    is_allowed_sign_in_redirect_with_config(target, allowlist.as_deref(), &public_base_url())
+}
+
+/// Whether `target` is served by this server's public origin. Such a target
+/// may receive a session only through the web cookie hand-off, never in a
+/// URL fragment.
+pub(crate) fn targets_public_server(target: &str) -> bool {
+    url::Url::parse(target.trim()).is_ok_and(|url| reaches_public_server(&url, &public_base_url()))
+}
+
+fn is_allowed_sign_in_redirect_with_config(
+    target: &str,
+    allowlist: Option<&str>,
+    public_base: &str,
+) -> bool {
+    if !is_allowed_oauth_redirect_with_config(target, allowlist, public_base) {
+        return false;
+    }
+    let Ok(url) = url::Url::parse(target.trim()) else {
+        return false;
+    };
+    !reaches_public_server(&url, public_base)
+        || (is_public_base_url(&url, public_base) && url.path() == WEB_OAUTH_COMPLETE_PATH)
+}
+
+/// Whether `url` reaches the server at `public_base`. A loopback public
+/// origin answers under every loopback name on its port, so with
+/// `http://localhost:<port>` the target `http://127.0.0.1:<port>/...` is
+/// this server too, and the same rules apply.
+fn reaches_public_server(url: &url::Url, public_base: &str) -> bool {
+    if is_public_base_url(url, public_base) {
+        return true;
+    }
+    let Ok(base) = url::Url::parse(public_base) else {
+        return false;
+    };
+    is_loopback_name(&base)
+        && is_loopback_name(url)
+        && url.scheme() == base.scheme()
+        && url.port_or_known_default() == base.port_or_known_default()
+}
+
+fn is_loopback_name(url: &url::Url) -> bool {
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
+        None => false,
+    }
+}
+
 fn is_allowed_oauth_redirect_with_config(
     target: &str,
     allowlist: Option<&str>,

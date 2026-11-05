@@ -10,13 +10,22 @@ export type StoredSession = {
   accountId: string;
   expiresAt: string;
   deviceId?: string;
+  /** Browser sign-in only: rotating refresh token, client ID and the issuing token endpoint. */
+  refreshToken?: string;
+  clientId?: string;
+  tokenEndpoint?: string;
 };
 
 export interface SessionStorageBackend {
   load(): Promise<StoredSession | null>;
   save(session: StoredSession): Promise<void>;
   clear(): Promise<void>;
+  /** Refreshes a browser sign-in session; rejects with a stable code such as `invalid_grant`. */
+  refresh?(session: StoredSession): Promise<StoredSession>;
 }
+
+/** Browser sign-in access tokens last an hour; refresh this long before expiry. */
+export const CLOUD_SESSION_REFRESH_MARGIN_MS = 5 * 60_000;
 
 export const CLOUD_SESSION_SIGNED_OUT_EVENT = 'kordi-cloud-session-signed-out';
 export const CLOUD_SESSION_CHANGED_EVENT = 'kordi-cloud-session-changed';
@@ -40,7 +49,16 @@ class TauriKeychainBackend implements SessionStorageBackend {
       accountId: session.accountId,
       expiresAt: session.expiresAt,
       deviceId: session.deviceId,
+      refreshToken: session.refreshToken,
+      clientId: session.clientId,
+      tokenEndpoint: session.tokenEndpoint,
     });
+  }
+
+  async refresh(session: StoredSession): Promise<StoredSession> {
+    // The native shell serializes refreshes across every window and task.
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke<StoredSession>('cloud_session_refresh', { previousToken: session.token });
   }
 
   async clear(): Promise<void> {
@@ -77,6 +95,16 @@ class MemoryBackend implements SessionStorageBackend {
   async clear(): Promise<void> {
     this.cached = null;
   }
+
+  async refresh(session: StoredSession): Promise<StoredSession> {
+    const [{ refreshAppSession }, { cloudFetchImpl }] = await Promise.all([
+      import('./appSignIn/appSignInClient'),
+      import('./cloudTransport'),
+    ]);
+    const next = await refreshAppSession(session, cloudFetchImpl());
+    this.cached = { ...next };
+    return next;
+  }
 }
 
 let backendOverride: SessionStorageBackend | null = null;
@@ -84,6 +112,7 @@ let cachedBackend: SessionStorageBackend | null = null;
 let cachedSessionValue: StoredSession | null | undefined;
 let cachedSessionLoadPromise: Promise<StoredSession | null> | null = null;
 let sessionRevision = 0;
+let refreshInFlight: Promise<StoredSession | null> | null = null;
 
 function resetSessionLoadCache(): void {
   sessionRevision += 1;
@@ -94,6 +123,7 @@ function resetSessionLoadCache(): void {
 export function __setSessionBackendForTests(backend: SessionStorageBackend | null): void {
   backendOverride = backend;
   cachedBackend = null;
+  refreshInFlight = null;
   resetSessionLoadCache();
 }
 
@@ -104,7 +134,58 @@ function backend(): SessionStorageBackend {
   return cachedBackend;
 }
 
+export function sessionNeedsRefresh(
+  session: StoredSession | null,
+  now = Date.now(),
+  marginMs = CLOUD_SESSION_REFRESH_MARGIN_MS,
+): boolean {
+  if (!session?.refreshToken) return false;
+  const expiresAt = Date.parse(session.expiresAt);
+  return !Number.isFinite(expiresAt) || expiresAt - now <= marginMs;
+}
+
+function refreshErrorCode(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Refreshes a browser sign-in session once, however many callers ask at the
+ * same time. A refused refresh token ends the session; other failures keep
+ * it so a later call can retry.
+ */
+export function refreshSession(session: StoredSession): Promise<StoredSession | null> {
+  if (refreshInFlight) return refreshInFlight;
+  const store = backend();
+  if (!session.refreshToken || !store.refresh) return Promise.resolve(session);
+  const revision = sessionRevision;
+  refreshInFlight = store.refresh(session)
+    .then((next) => {
+      if (revision !== sessionRevision) return cachedSessionValue ?? null;
+      cachedSessionValue = { ...next };
+      cachedSessionLoadPromise = null;
+      return cachedSessionValue;
+    })
+    .catch(async (error: unknown) => {
+      const code = refreshErrorCode(error);
+      if (code === 'invalid_grant' || code === 'not_signed_in') {
+        if (revision === sessionRevision) await clearSessionAndNotifySignedOut();
+        return null;
+      }
+      return session;
+    })
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+}
+
+/** The stored session, refreshed first when a browser sign-in token is about to expire. */
 export async function loadSession(): Promise<StoredSession | null> {
+  const session = await loadStoredSession();
+  return sessionNeedsRefresh(session) && session ? refreshSession(session) : session;
+}
+
+async function loadStoredSession(): Promise<StoredSession | null> {
   if (cachedSessionValue !== undefined) return cachedSessionValue;
   if (!cachedSessionLoadPromise) {
     const revision = sessionRevision;

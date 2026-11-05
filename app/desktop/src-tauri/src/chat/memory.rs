@@ -37,22 +37,18 @@ impl CloudMemoryRemote {
         Self { account_id, client }
     }
 
+    /// A current token for this remote's account, refreshed when expired.
     async fn token(&self) -> Result<String, MemoryRemoteError> {
-        let account_id = self.account_id.clone();
-        tokio::task::spawn_blocking(move || {
-            let session = crate::cloud_session::cloud_session_load()
-                .ok()
-                .flatten()
-                .ok_or_else(|| MemoryRemoteError::Unavailable("signed out".to_string()))?;
-            if session.account_id != account_id || session.token.trim().is_empty() {
-                return Err(MemoryRemoteError::Unavailable(
-                    "cloud session changed".to_string(),
-                ));
-            }
-            Ok(session.token)
-        })
-        .await
-        .map_err(|error| MemoryRemoteError::Other(error.to_string()))?
+        let session = crate::cloud_session_refresh::load_fresh_session()
+            .await
+            .map_err(MemoryRemoteError::Other)?
+            .ok_or_else(|| MemoryRemoteError::Unavailable("signed out".to_string()))?;
+        if session.account_id != self.account_id || session.token.trim().is_empty() {
+            return Err(MemoryRemoteError::Unavailable(
+                "cloud session changed".to_string(),
+            ));
+        }
+        Ok(session.token)
     }
 
     fn endpoint() -> Result<String, MemoryRemoteError> {

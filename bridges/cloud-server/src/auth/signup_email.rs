@@ -35,13 +35,16 @@ impl SignupEmailService {
         Ok(Self { sender, mac_key })
     }
 
-    pub fn from_env() -> Option<Self> {
-        let key = std::env::var("KORDI_AUTH_EMAIL_CODE_SECRET").ok()?;
-        Self::new(
-            Arc::new(smtp::SmtpSignupCodeSender::from_env()?),
-            key.into_bytes(),
-        )
-        .ok()
+    /// `Ok(None)` while signup email is not configured. `Err` refuses startup
+    /// when the configured SMTP connection security is invalid or not allowed.
+    pub fn from_env() -> Result<Option<Self>, &'static str> {
+        let Some(sender) = smtp::SmtpSignupCodeSender::from_env()? else {
+            return Ok(None);
+        };
+        let Ok(key) = std::env::var("KORDI_AUTH_EMAIL_CODE_SECRET") else {
+            return Ok(None);
+        };
+        Ok(Self::new(Arc::new(sender), key.into_bytes()).ok())
     }
 
     fn code_mac(&self, id: &str, email: &str, code: &str) -> Hmac<Sha256> {

@@ -15,19 +15,9 @@ struct Transport {
 }
 impl Transport {
     async fn call(&self, action: &str, id: &str, args: Value) -> KordiResult<Value> {
-        let owner = self.lease.owner_account_id.clone();
-        let token = tokio::task::spawn_blocking(move || {
-            let session = crate::cloud_session::cloud_session_load()
-                .ok()
-                .flatten()
-                .ok_or_else(unavailable)?;
-            if session.account_id != owner || session.token.is_empty() {
-                return Err(unavailable());
-            }
-            Ok(session.token)
-        })
-        .await
-        .map_err(|_| unavailable())??;
+        let token = crate::cloud_session_refresh::fresh_token_for(&self.lease.owner_account_id)
+            .await
+            .ok_or_else(unavailable)?;
         let response=self.client.post(&self.endpoint).bearer_auth(token).json(&json!({"claimId":self.lease.claim_id,"action":action,"toolCallId":id,"arguments":args})).send().await.map_err(|_|unavailable())?;
         if !response.status().is_success() {
             return Err(unavailable());

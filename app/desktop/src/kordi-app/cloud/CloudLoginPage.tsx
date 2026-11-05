@@ -14,7 +14,7 @@ import {
 } from '@/features/cloud/canonicalAvatar';
 
 import { GitHubMark, GoogleMark } from './CloudLoginMarks';
-import { cloudLoginErrorMessage, loginHeading, loginSubtitle, PASSWORD_MIN_LENGTH } from './cloudLoginMessages';
+import { cloudLoginErrorMessage, loginHeading, loginSubtitle, PASSWORD_RULE_HINT, passwordMeetsSignupRule } from './cloudLoginMessages';
 import { CloudSignupAvatarPicker } from './CloudSignupAvatarPicker';
 import { CloudSignupVerificationFields } from './CloudSignupVerificationFields';
 import { useCloudSignupVerification } from './useCloudSignupVerification';
@@ -192,12 +192,12 @@ export function CloudLoginPage({
   }
 
   const emailInvalid = email.length > 0 && !EMAIL_PATTERN.test(email);
-  const passwordTooShort = isSignup && password.length > 0 && password.length < PASSWORD_MIN_LENGTH;
+  const passwordTooWeak = isSignup && password.length > 0 && !passwordMeetsSignupRule(password);
   const passwordMismatch = isSignup && confirmPassword.length > 0 && password !== confirmPassword;
   const canSubmit = useMemo(() => {
     if (isBusy) return false;
     if (!EMAIL_PATTERN.test(email)) return false;
-    if (password.length === 0 || (isSignup && password.length < PASSWORD_MIN_LENGTH)) return false;
+    if (password.length === 0 || (isSignup && !passwordMeetsSignupRule(password))) return false;
     if (isSignup && password !== confirmPassword) return false;
     if (isVerifying && !/^\d{6}$/.test(verificationCode)) return false;
     return true;
@@ -437,8 +437,8 @@ export function CloudLoginPage({
             value={password}
             onChange={setPassword}
             disabled={isBusy}
-            validation={passwordTooShort ? 'hint' : undefined}
-            hint={passwordTooShort ? `At least ${PASSWORD_MIN_LENGTH} characters.` : undefined}
+            validation={passwordTooWeak ? 'hint' : undefined}
+            hint={passwordTooWeak ? PASSWORD_RULE_HINT : undefined}
           /> : null}
           <div
             className="app-cloud-login-signup-section"

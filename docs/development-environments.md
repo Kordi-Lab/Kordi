@@ -55,6 +55,8 @@ pnpm dev:desktop:profile -- \
   --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
+Sign-up verification emails are captured by the stack's Mailpit inbox at `http://127.0.0.1:18025` instead of being delivered; see [Sign-up email change](self-hosted-debug.md#sign-up-email-change).
+
 See [Local development with an isolated Kordi backend](self-hosted-debug.md) for OAuth, multi-user, log, validation, and reset commands. Voice and video require the additional [call hosting guide](call-hosting.md); the base stack does not start LiveKit.
 
 ## Remote isolated backend through IAP
@@ -107,6 +109,8 @@ VITE_KORDI_DEV_PROFILE=community \
 pnpm dev:desktop:profile -- \
   --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
+
+To read sign-up codes from a remote stack, add `-L 127.0.0.1:18025:127.0.0.1:18025` to the diagnostic tunnel for the Mailpit inbox.
 
 The tunnel is transport only. It does not authorize product access, and the remote host must continue to satisfy every isolation invariant above. API-only forwarding is insufficient for calls; follow [Hosting Kordi voice and video calls](call-hosting.md#isolated-development-host) to add signaling and ICE/TCP forwards.
 

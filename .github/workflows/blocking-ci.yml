@@ -98,6 +98,8 @@ jobs:
     uses: ./.github/workflows/ci-hygiene.yml
     with:
       manifest: ${{ needs.changes.outputs.manifest }}
+    secrets:
+      KORDI_PRIVACY_DENYLIST: ${{ secrets.KORDI_PRIVACY_DENYLIST }}
 
   platforms:
     name: Platform compilation

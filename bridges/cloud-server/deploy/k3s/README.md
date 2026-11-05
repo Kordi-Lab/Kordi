@@ -93,6 +93,13 @@ KORDI_CLOUD_TRUSTED_PROXIES=127.0.0.1/32,::1/128
 
 For test/self-hosted Cloud servers, use that server's public HTTPS origin for `KORDI_CLOUD_PUBLIC_BASE_URL` and provider callback URLs.
 
+`deploy-cloud-server.sh` also builds the MinIO server and client images from
+source on the host and imports them into k3s containerd before it applies
+`minio.yaml`, because MinIO no longer publishes those images. `minio.yaml` and
+the release-identity Job use `imagePullPolicy: Never`, so run the deploy script
+(or `deploy/minio/build-k3s-images.sh` on the host) before applying them by
+hand. See [MinIO images built from source](../../../../deploy/minio/README.md).
+
 `KORDI_CLOUD_TRUSTED_PROXIES` lists the peer addresses or CIDR ranges whose
 `X-Real-IP` (then `X-Forwarded-For`) header names the client for sign-in rate
 limits, login lockouts, and audit records. It defaults to loopback only, and

@@ -444,7 +444,8 @@ test('profile-aware verifiers apply one bundle contract to every artifact copy',
       for (const marker of MACOS_NOTIFICATION_BUNDLE_MARKERS) {
         assert.equal(calls.filter((command) => command.includes(` -F ${marker} `)).length, 3);
       }
-      assert.equal(calls.filter((command) => command.startsWith('rg ') && command.includes(' -n ')).length, 8);
+      const scans = calls.filter((command) => command.startsWith('rg ') && command.includes(' -n '));
+      assert.deepEqual([scans.filter((c) => !c.includes(' -o ')).length, scans.filter((c) => c.includes(' -o ')).length], [8, 4]);
       assert.ok(calls.indexOf('[inspect updater archive]') > calls.findIndex((command) => command.startsWith('codesign ')));
       assert.ok(calls.indexOf('[mount dmg]') > calls.indexOf('[inspect updater archive]'));
       assert.ok(calls.indexOf('[validate dmg layout]') > calls.indexOf('[mount dmg]'));

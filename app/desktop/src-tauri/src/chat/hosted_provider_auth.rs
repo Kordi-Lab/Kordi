@@ -268,9 +268,8 @@ async fn resolve_with_lease(
 ) -> Result<HostedTurnAuth, String> {
     let issued_at_ms = now_millis();
     let owner_account_id = lease.owner_account_id.clone();
-    let session = tokio::task::spawn_blocking(crate::cloud_session::cloud_session_load)
+    let session = crate::cloud_session_refresh::load_fresh_session()
         .await
-        .map_err(|_| UNAVAILABLE)?
         .map_err(|_| UNAVAILABLE)?
         .ok_or(UNAVAILABLE)?;
     if session.account_id != owner_account_id || session.token.trim().is_empty() {

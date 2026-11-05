@@ -201,6 +201,7 @@ pub async fn desktop_chat_send_message(
             .cloned()
             .ok_or_else(|| "Session is unavailable".to_string())?
     };
+    let _ = crate::cloud_session_refresh::load_fresh_session().await;
     let (provider, model) = {
         let mut session = session_handle.lock().await;
         if !agent_builder::is_agent_builder_session_id(&target_session_id) {

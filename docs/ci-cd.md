@@ -245,9 +245,13 @@ promotion.
 
 ## Secrets
 
-- Pull-request checks use no secrets. The only optional repository secret is
-  `KORDI_PRIVACY_DENYLIST` for the private denylist integration; the mandatory
-  public privacy baseline is secret-free and must not depend on it.
+- The only secret check workflows receive is the optional
+  `KORDI_PRIVACY_DENYLIST`. `blocking-ci.yml` and `postmerge-ci.yml` pass it
+  explicitly to the reusable `ci-hygiene.yml`, which maps it into the privacy
+  guard step. Pull requests from forks do not receive it; the mandatory public
+  privacy baseline, including the hashed identifier list, is secret-free and
+  must not depend on it. The weekly `privacy-scan-github-text.yml` workflow
+  reads it to scan issue, pull request, comment, and release text.
 - Release and signing secret names are documented in `docs/release.md`. Those
   credentials are never available to PR execution or to reusable check
   workflows.

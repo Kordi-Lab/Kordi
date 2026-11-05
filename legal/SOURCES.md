@@ -68,6 +68,16 @@ the iOS arm64 UniFFI framework passed both Swift and C interface comparisons.
 The release check binds framework contents to reviewed executable section
 hashes, which remain stable when the application is signed.
 
+## MinIO service images
+
+Kordi's server deployments run MinIO and its client (mc) as separate service
+images, built without modification from MinIO's public source at the exact
+commits listed in inventory.json. MinIO and mc are licensed under the GNU AGPL
+version 3 or later; that source remains available at those links. Each image
+carries the upstream LICENSE, NOTICE and CREDITS (notices of its Go
+dependencies) under /usr/share/licenses. These programs communicate with Kordi
+over the S3 network protocol and do not relicense Kordi.
+
 ## Artwork
 
 Noto Animated Emoji: Copyright Google LLC, CC BY 4.0.

@@ -25,7 +25,7 @@ async fn signup_with_email(router: &axum::Router, email: &str) {
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(email, "correct horse").await,
+            signup_body(email, TEST_PASSWORD).await,
         ))
         .await
         .unwrap();
@@ -74,7 +74,7 @@ async fn failed_logins_lock_only_the_failing_client() {
         .clone()
         .oneshot(login_from(
             &email,
-            "correct horse",
+            TEST_PASSWORD,
             proxy,
             Some("203.0.113.10"),
         ))
@@ -87,7 +87,7 @@ async fn failed_logins_lock_only_the_failing_client() {
         .clone()
         .oneshot(login_from(
             &email,
-            "correct horse",
+            TEST_PASSWORD,
             proxy,
             Some("203.0.113.11"),
         ))
@@ -113,7 +113,7 @@ async fn email_wide_failures_lock_new_addresses_but_not_familiar_ones() {
             .oneshot(login_from(&email, password, proxy, Some(client)))
     };
 
-    let familiar = login("correct horse", "203.0.113.20").await.unwrap();
+    let familiar = login(TEST_PASSWORD, "203.0.113.20").await.unwrap();
     assert_eq!(familiar.status(), StatusCode::OK);
 
     // The test limiter's email-wide ceiling is 50: five failures from each of
@@ -127,7 +127,7 @@ async fn email_wide_failures_lock_new_addresses_but_not_familiar_ones() {
         }
     }
 
-    let new_address = login("correct horse", "198.51.100.200").await.unwrap();
+    let new_address = login(TEST_PASSWORD, "198.51.100.200").await.unwrap();
     assert_eq!(
         new_address.status(),
         StatusCode::TOO_MANY_REQUESTS,
@@ -135,7 +135,7 @@ async fn email_wide_failures_lock_new_addresses_but_not_familiar_ones() {
     );
     assert!(new_address.headers().contains_key("retry-after"));
 
-    let owner = login("correct horse", "203.0.113.20").await.unwrap();
+    let owner = login(TEST_PASSWORD, "203.0.113.20").await.unwrap();
     assert_eq!(
         owner.status(),
         StatusCode::OK,
@@ -169,7 +169,7 @@ async fn forwarded_addresses_from_untrusted_peers_are_ignored() {
         .clone()
         .oneshot(login_from(
             &email,
-            "correct horse",
+            TEST_PASSWORD,
             public_peer,
             Some("203.0.113.99"),
         ))
