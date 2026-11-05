@@ -34,17 +34,22 @@
 .help-tour-card button:disabled { opacity: .4; cursor: not-allowed; }
 
 .help-menu-backdrop { z-index: 310; }
-.help-menu { top: auto !important; bottom: 12px; width: min(280px, calc(100vw - 80px)); padding: 6px; border-radius: 12px; color: var(--app-transient-text); }
+.help-menu { top: auto !important; bottom: 12px; width: min(260px, calc(100vw - 80px)); padding: 5px; border-radius: 12px; color: var(--app-transient-text); }
 .help-menu-detail { width: min(360px, calc(100vw - 80px)); }
 .help-menu > .app-dialog-popover-arrow { display: none; }
-.help-menu-header { display: flex; align-items: center; gap: 8px; padding: 4px 6px 6px; }
+.help-menu-header { display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px 8px; }
 .help-menu-header h2 { flex: 1; font-size: 13px; font-weight: 600; }
-.help-menu-header .help-icon-button { width: 28px; height: 28px; border-radius: 6px; }
+.help-menu-header .help-icon-button { width: 24px; height: 24px; border-radius: 6px; }
 .help-menu-items { display: grid; }
-.help-menu-items > button { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 8px 10px; border-radius: 7px; font-size: 12px; text-align: left; }
+/* Dense one-line rows, matching the account menu. */
+.help-menu-items > button { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 4px 8px; border-radius: 6px; font-size: 12px; line-height: 16px; text-align: left; }
+.help-menu-items > button > svg { width: 14px; height: 14px; flex-shrink: 0; }
+.help-menu-items > button > svg:last-child:not(:first-child) { width: 12px; height: 12px; color: var(--app-transient-subtle-text); }
+.help-menu .help-menu-section-label { margin: 2px 8px; }
+.help-menu .help-menu-note { margin: 2px 8px 6px; }
 .help-menu-items > button > span { flex: 1; }
 .help-menu-items > button:hover, .help-menu-header button:hover { background: var(--app-transient-hover-bg); }
-.help-menu-divider { border-top: 1px solid var(--app-transient-border); margin: 5px 4px; }
+.help-menu-divider { border-top: 1px solid var(--app-transient-border); margin: 4px 6px; }
 .help-menu-content { padding: 0 10px 10px; max-height: min(500px, calc(100dvh - 100px)); overflow: auto; overscroll-behavior: contain; }
 .help-menu-content h3 { font-size: 12px; font-weight: 600; margin: 0 0 4px; }
 .help-menu-content p { font-size: 12px; line-height: 1.5; color: var(--app-transient-muted-text); margin: 6px 0 12px; }
