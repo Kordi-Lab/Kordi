@@ -225,3 +225,67 @@ fn a_structured_json_credential_fails_closed_instead_of_becoming_a_bearer_token(
     ))
     .is_ok());
 }
+
+#[test]
+fn only_the_openai_api_counts_as_openai() {
+    for url in [
+        "https://api.openai.com/v1",
+        "https://API.OPENAI.COM/v1/",
+        " https://api.openai.com ",
+    ] {
+        assert!(is_openai_api(url), "{url}");
+    }
+    for url in [
+        "https://gateway.example.test/api/v1",
+        "http://api.openai.com/v1",
+        "https://api.openai.com.example.test/v1",
+        "not a url",
+        "",
+    ] {
+        assert!(!is_openai_api(url), "{url}");
+    }
+}
+
+fn routed_model(base_url: &str, model: &str) -> String {
+    let mut config = OpenAiProviderConfig::from_material(&material(
+        "openai",
+        json!({ "apiKey": "key", "baseUrl": base_url }),
+    ))
+    .unwrap();
+    config
+        .apply_runtime_route(
+            &AgentRuntimeRoute {
+                default_model: Some(model.to_string()),
+                thinking: None,
+            },
+            "openai",
+        )
+        .unwrap();
+    config.model
+}
+
+#[test]
+fn the_openai_api_drops_the_route_provider_prefix() {
+    assert_eq!(
+        routed_model("https://api.openai.com/v1", "openai/gpt-5.6-sol"),
+        "gpt-5.6-sol"
+    );
+    assert_eq!(
+        routed_model("https://api.openai.com/v1", "gpt-5.6-sol"),
+        "gpt-5.6-sol"
+    );
+}
+
+#[test]
+fn an_openai_compatible_gateway_receives_the_configured_model_id_verbatim() {
+    let gateway = "https://gateway.example.test/api/v1";
+    assert_eq!(
+        routed_model(gateway, "openai/gpt-5.6-sol"),
+        "openai/gpt-5.6-sol"
+    );
+    assert_eq!(
+        routed_model(gateway, "anthropic/claude-sonnet-5"),
+        "anthropic/claude-sonnet-5"
+    );
+    assert_eq!(routed_model(gateway, "synthetic-model"), "synthetic-model");
+}

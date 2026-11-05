@@ -24,9 +24,22 @@ pub enum CallMediaConfigError {
 
 impl CallMediaConfig {
     pub fn from_env() -> Result<Option<Self>, CallMediaConfigError> {
-        let url = non_empty_env("KORDI_LIVEKIT_URL");
-        let api_key = non_empty_env("KORDI_LIVEKIT_API_KEY");
-        let api_secret = non_empty_env("KORDI_LIVEKIT_API_SECRET");
+        Self::from_lookup(|name| std::env::var(name).ok())
+    }
+
+    /// Calls are off when all three settings are empty, which is how a
+    /// deployment without a media server runs. A partial set is an error.
+    fn from_lookup(
+        get: impl Fn(&str) -> Option<String>,
+    ) -> Result<Option<Self>, CallMediaConfigError> {
+        let non_empty = |name: &str| {
+            get(name)
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        };
+        let url = non_empty("KORDI_LIVEKIT_URL");
+        let api_key = non_empty("KORDI_LIVEKIT_API_KEY");
+        let api_secret = non_empty("KORDI_LIVEKIT_API_SECRET");
         match (url, api_key, api_secret) {
             (None, None, None) => Ok(None),
             (Some(client_url), Some(api_key), Some(api_secret)) => {
@@ -85,16 +98,54 @@ impl CallMediaConfig {
     }
 }
 
-fn non_empty_env(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::CallMediaConfig;
+    use super::{CallMediaConfig, CallMediaConfigError};
+
+    fn lookup(values: &[(&str, &str)]) -> Result<Option<CallMediaConfig>, CallMediaConfigError> {
+        CallMediaConfig::from_lookup(|name| {
+            values
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.to_string())
+        })
+    }
+
+    #[test]
+    fn empty_media_settings_turn_calls_off() {
+        assert!(lookup(&[]).unwrap().is_none());
+        assert!(lookup(&[
+            ("KORDI_LIVEKIT_URL", ""),
+            ("KORDI_LIVEKIT_API_KEY", " "),
+            ("KORDI_LIVEKIT_API_SECRET", ""),
+        ])
+        .unwrap()
+        .is_none());
+    }
+
+    #[test]
+    fn partial_or_insecure_media_settings_refuse_to_start() {
+        assert!(matches!(
+            lookup(&[("KORDI_LIVEKIT_URL", "wss://media.example.test")]),
+            Err(CallMediaConfigError::Incomplete)
+        ));
+        assert!(matches!(
+            lookup(&[
+                ("KORDI_LIVEKIT_URL", "ws://media.example.test"),
+                ("KORDI_LIVEKIT_API_KEY", "key"),
+                ("KORDI_LIVEKIT_API_SECRET", "secret"),
+            ]),
+            Err(CallMediaConfigError::UnsafeUrl)
+        ));
+        let config = lookup(&[
+            ("KORDI_LIVEKIT_URL", "wss://media.example.test"),
+            ("KORDI_LIVEKIT_API_KEY", "key"),
+            ("KORDI_LIVEKIT_API_SECRET", "secret"),
+        ])
+        .unwrap()
+        .unwrap();
+        assert_eq!(config.client_url(), "wss://media.example.test");
+    }
 
     #[test]
     fn join_token_uses_short_lived_room_grants() {

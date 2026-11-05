@@ -111,6 +111,8 @@ projection.
 Configure the LiveKit variables together. `KORDI_LIVEKIT_URL` must use `wss`,
 except that an isolated development service may use `ws` on a loopback host.
 The API key and secret remain on the server and are never sent to a client.
+Leave all three empty to run the server with calls off; setting only some of
+them stops it at startup.
 
 ```bash
 KORDI_LIVEKIT_URL=wss://<LIVEKIT_HOST>

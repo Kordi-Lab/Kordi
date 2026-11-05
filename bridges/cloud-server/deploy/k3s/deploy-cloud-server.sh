@@ -12,8 +12,17 @@
 #      imports them into containerd before applying minio.yaml, unless they
 #      are already imported. Importing archives built elsewhere is preferred;
 #      see deploy/minio/README.md.
-#   5. Applies the Deployment + Service manifests with the new tag.
-#   6. Waits for rollout, hits /health from inside the cluster.
+#   5. Applies the in-cluster LiveKit media server unless
+#      KORDI_CLUSTER_LIVEKIT=false.
+#   6. Applies the Deployment + Service manifests with the new tag.
+#   7. Waits for rollout, hits /health from inside the cluster.
+#
+# KORDI_CLUSTER_LIVEKIT (default true) controls only the in-cluster media
+# server. With false the script neither requires the kordi-livekit Secret nor
+# applies livekit.yaml, and it scales an existing in-cluster media server to
+# zero. The Cloud server offers calls only while the kordi-livekit Secret
+# exists, so leave it absent to run with calls off, or point its url at a
+# separate media host.
 #
 # No Docker daemon needed on the laptop. Idempotent: re-running with a
 # fresh binary triggers a rolling restart via image-tag rotation.
@@ -31,6 +40,14 @@ EXPECT_UNPUBLISHED_RELEASE="${KORDI_EXPECT_DESKTOP_RELEASE_UNPUBLISHED:-true}"
 VERIFY_PUBLIC_ORIGINS="${KORDI_VERIFY_PUBLIC_ORIGINS:-true}"
 VERIFY_RESOLVE_IP="${KORDI_VERIFY_RESOLVE_IP:-}"
 PUBLIC_ORIGIN="${KORDI_CLOUD_PUBLIC_BASE_URL:-https://kordi.ai}"
+CLUSTER_LIVEKIT="${KORDI_CLUSTER_LIVEKIT:-true}"
+case "${CLUSTER_LIVEKIT}" in
+    true | false) ;;
+    *)
+        echo "[deploy] KORDI_CLUSTER_LIVEKIT must be true or false" >&2
+        exit 1
+        ;;
+esac
 
 GCLOUD_SSH=(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --project "${SSH_PROJECT}")
 
@@ -138,14 +155,28 @@ kubectl -n kordi-cloud wait --for=jsonpath='{.status.phase}'=Succeeded pod/relea
 kubectl -n kordi-cloud logs pod/release-store-check
 kubectl -n kordi-cloud delete pod/release-store-check --wait=true >/dev/null"
 
-echo "[deploy] reconciling call media"
-"${GCLOUD_SSH[@]}" --command "set -e
+if [ "${CLUSTER_LIVEKIT}" = "true" ]; then
+    echo "[deploy] reconciling call media"
+    "${GCLOUD_SSH[@]}" --command "set -e
 kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.url}' | grep -q .
 kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.api-key}' | grep -q .
 kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.api-secret}' | grep -q .
 kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.keys}' | grep -q .
 kubectl apply -f ${REMOTE_DEPLOY}/bridges/cloud-server/deploy/k3s/manifests/livekit.yaml >/dev/null
 kubectl -n kordi-cloud rollout status deployment/livekit --timeout=180s"
+else
+    echo "[deploy] skipping in-cluster call media (KORDI_CLUSTER_LIVEKIT=false)"
+    "${GCLOUD_SSH[@]}" --command "set -e
+if kubectl -n kordi-cloud get deployment/livekit >/dev/null 2>&1; then
+    kubectl -n kordi-cloud scale deployment/livekit --replicas=0 >/dev/null
+    echo '[deploy] scaled the existing in-cluster media server to zero'
+fi
+if kubectl -n kordi-cloud get secret kordi-livekit >/dev/null 2>&1; then
+    echo '[deploy] kordi-livekit exists: the server offers calls through its url'
+else
+    echo '[deploy] kordi-livekit is absent: the server runs with calls off'
+fi"
+fi
 
 echo "[deploy] applying manifest with image=${IMAGE}"
 "${GCLOUD_SSH[@]}" --command "set -e
