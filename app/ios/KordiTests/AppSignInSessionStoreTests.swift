@@ -145,14 +145,19 @@ final class AppSignInSessionStoreTests: XCTestCase {
         let kept = await store(matching).launchCredential(origin: origin)
         XCTAssertEqual(kept?.refreshToken, "kordi_rt_old")
 
+        // A refresh saved the credential but not the session token: repair it.
         try seed(credential())
-        try keychain.saveToken("kordi_cs_password_session")
-        let leftover = FakeTransport([])
-        let dropped = await store(leftover).launchCredential(origin: origin)
-        XCTAssertNil(dropped)
-        XCTAssertNil(try keychain.loadAppSignInCredential())
-        let leftoverPaths = await leftover.paths()
-        XCTAssertEqual(leftoverPaths, ["/v1/cloud/auth/app/revoke"])
+        try keychain.saveToken("kordi_cs_stale")
+        let halfWritten = FakeTransport([])
+        let repaired = await store(halfWritten).launchCredential(origin: origin)
+        XCTAssertEqual(repaired?.accessToken, "kordi_cs_old")
+        XCTAssertEqual(try keychain.loadToken(), "kordi_cs_old")
+        let halfWrittenPaths = await halfWritten.paths()
+        XCTAssertTrue(halfWrittenPaths.isEmpty)
+
+        try seed(credential())
+        let defaultPort = await store(FakeTransport([])).launchCredential(origin: URL(string: "https://cloud.example.test:443")!)
+        XCTAssertNotNil(defaultPort, "an explicit default port is the same origin")
 
         try seed(credential())
         let otherServer = FakeTransport([])
@@ -161,6 +166,14 @@ final class AppSignInSessionStoreTests: XCTestCase {
         XCTAssertNil(try keychain.loadAppSignInCredential())
         let otherServerPaths = await otherServer.paths()
         XCTAssertTrue(otherServerPaths.isEmpty)
+    }
+
+    func testOriginsTreatAnExplicitDefaultPortAsNone() {
+        let same = AppSignInSessionStore.sameOrigin
+        XCTAssertTrue(same(URL(string: "https://kordi.ai:443/v1/cloud/auth/app/token")!, URL(string: "https://kordi.ai")!))
+        XCTAssertTrue(same(URL(string: "http://127.0.0.1:17081/x")!, URL(string: "http://127.0.0.1:17081")!))
+        XCTAssertFalse(same(URL(string: "https://kordi.ai:8443/x")!, URL(string: "https://kordi.ai")!))
+        XCTAssertFalse(same(URL(string: "http://kordi.ai/x")!, URL(string: "https://kordi.ai")!))
     }
 
     func testDeletingTheSessionTokenRemovesTheSignInToo() throws {

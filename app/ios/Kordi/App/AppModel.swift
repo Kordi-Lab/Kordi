@@ -482,10 +482,7 @@ final class AppModel: ObservableObject {
             try? shareCredentialStore.save(ShareExtensionCredential(
                 token: savedToken,
                 accountID: restoredAccount.accountId,
-                expiresAt: existingShareCredential?.token == savedToken
-                    && existingShareCredential?.isExpired == false
-                    ? existingShareCredential?.expiresAt
-                    : nil
+                expiresAt: await shareExpiry(forLaunchToken: savedToken, existing: existingShareCredential)
             ))
             token = savedToken
             account = restoredAccount.preservingEmailVerification(from: account)
@@ -8130,6 +8127,7 @@ final class AppModel: ObservableObject {
     }
 
     func completeAuthentication(_ response: CloudAuthResponse) async throws {
+        await dropBrowserSignIn(unlessFor: response.session.token)
         try keychain.saveToken(response.session.token)
         try? shareCredentialStore.save(ShareExtensionCredential(
             token: response.session.token,

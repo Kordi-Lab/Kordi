@@ -84,6 +84,25 @@ extension AppModel {
         return error.statusCode == 401 || ["invalid_session", "account_missing"].contains(error.code)
     }
 
+    /// A password or provider sign-in replaces a kept browser sign-in: it is
+    /// removed and revoked, so a later refresh cannot swap its token back in.
+    /// The browser path stores its credential first, which this keeps.
+    func dropBrowserSignIn(unlessFor token: String) async {
+        guard let stored = await browserSignIn.store.credential(), stored.accessToken != token,
+              let removed = await browserSignIn.endForSignOut() else { return }
+        Task { await browserSignIn.revoke(removed) }
+    }
+
+    /// The share extension's expiry for the launch token: the browser
+    /// sign-in's expiry when the token came from one, otherwise the saved
+    /// expiry of an unchanged, unexpired token.
+    func shareExpiry(forLaunchToken token: String, existing: ShareExtensionCredential?) async -> String? {
+        if let credential = await browserSignIn.store.credential(), credential.accessToken == token {
+            return credential.expiresAtText
+        }
+        return existing?.token == token && existing?.isExpired == false ? existing?.expiresAt : nil
+    }
+
     /// Removes the stored session after the server ended it, revoking a
     /// browser sign-in instead of only forgetting it.
     func discardStoredSession() async {

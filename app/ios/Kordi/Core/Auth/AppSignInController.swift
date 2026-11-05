@@ -64,9 +64,11 @@ actor AppSignInSessionStore {
         await AppSignInClient.revoke(credential, transport: transport)
     }
 
-    /// The stored sign-in that belongs to the stored session token, checked
-    /// after any refresh in flight. A sign-in from another server is dropped
-    /// without contacting it; one left behind by an older session is revoked.
+    /// The stored sign-in, checked after any refresh in flight. A sign-in
+    /// from another server is dropped without contacting it. The credential
+    /// is the source of truth: a session token left behind by a refresh whose
+    /// second write failed is repaired. (Password and provider sign-ins remove
+    /// the credential first, so a mismatch is never another session's.)
     func launchCredential(origin: URL) async -> AppSignInCredential? {
         if let inFlight { _ = await inFlight.value }
         guard let stored = credential() else { return nil }
@@ -74,18 +76,23 @@ actor AppSignInSessionStore {
             try? keychain.deleteAppSignInCredential()
             return nil
         }
-        guard stored.accessToken == ((try? keychain.loadToken()) ?? nil) else {
-            try? keychain.deleteAppSignInCredential()
-            await revoke(stored)
-            return nil
-        }
+        repairSessionToken(stored)
         return stored
+    }
+
+    private func repairSessionToken(_ stored: AppSignInCredential) {
+        if ((try? keychain.loadToken()) ?? nil) != stored.accessToken {
+            try? keychain.saveToken(stored.accessToken)
+        }
     }
 
     func refresh(ifExpiringWithin margin: TimeInterval, now: Date = Date()) async -> RefreshResult {
         if let inFlight { return await inFlight.value }
         guard let stored = credential() else { return .notBrowserSession }
-        guard stored.expires(within: margin, now: now) else { return .current(stored) }
+        guard stored.expires(within: margin, now: now) else {
+            repairSessionToken(stored)
+            return .current(stored)
+        }
         let task = Task { await self.performRefresh(stored) }
         inFlight = task
         let result = await task.value
@@ -114,10 +121,14 @@ actor AppSignInSessionStore {
         }
     }
 
+    /// Scheme, host and port, with an explicit default port equal to none.
     static func sameOrigin(_ endpoint: URL, _ origin: URL) -> Bool {
-        endpoint.scheme?.lowercased() == origin.scheme?.lowercased()
+        func port(_ url: URL) -> Int? {
+            url.port ?? ["https": 443, "http": 80][url.scheme?.lowercased() ?? ""]
+        }
+        return endpoint.scheme?.lowercased() == origin.scheme?.lowercased()
             && endpoint.host?.lowercased() == origin.host?.lowercased()
-            && endpoint.port == origin.port
+            && port(endpoint) == port(origin)
     }
 }
 

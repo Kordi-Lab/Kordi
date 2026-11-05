@@ -14,8 +14,9 @@ struct WelcomeView: View {
     /// Set once the server is known to lack browser sign-in; picks the form's mode.
     @State private var fallback: AppSignInIntent? = WelcomeView.previewFallback
     @State private var activeIntent: AppSignInIntent?
-    /// A sign-in kept after a failed launch is being restored.
-    @State private var resuming = false
+    /// Restores a sign-in kept after a failed launch. Log in and Sign up stay
+    /// usable meanwhile; tapping one cancels the restore.
+    @State private var resumeTask: Task<Void, Never>?
 
     /// `--preview-signup` and `--preview-email-sign-in` open the email form directly.
     private static var previewFallback: AppSignInIntent? {
@@ -33,11 +34,11 @@ struct WelcomeView: View {
             }
         }
         .task {
-            await resume()
+            resume()
             await settleAvailability()
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await resume() } }
+            if phase == .active { resume() }
         }
     }
 
@@ -114,7 +115,7 @@ struct WelcomeView: View {
             .frame(maxWidth: .infinity, minHeight: 52)
         }
         .buttonStyle(WelcomeButtonStyle(primary: primary))
-        .disabled(activeIntent != nil || resuming)
+        .disabled(activeIntent != nil)
         .accessibilityLabel(title)
     }
 
@@ -124,15 +125,18 @@ struct WelcomeView: View {
         fallback = .login
     }
 
-    private func resume() async {
-        guard !resuming, activeIntent == nil else { return }
-        resuming = true
-        defer { resuming = false }
-        await model.resumeStoredBrowserSession()
+    private func resume() {
+        guard resumeTask == nil, activeIntent == nil else { return }
+        resumeTask = Task {
+            await model.resumeStoredBrowserSession()
+            resumeTask = nil
+        }
     }
 
     private func start(_ intent: AppSignInIntent) async {
-        guard activeIntent == nil, !resuming else { return }
+        guard activeIntent == nil else { return }
+        resumeTask?.cancel()
+        resumeTask = nil
         activeIntent = intent
         model.errorMessage = nil
         defer { activeIntent = nil }

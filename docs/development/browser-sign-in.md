@@ -530,11 +530,14 @@ The iPhone app shows a welcome screen with Log in and Sign up. Both open
 - Session identity: work started under an earlier access token of the same
   sign-in stays current after a refresh, so in-flight requests are not
   dropped. A refresh reconnects realtime with the new token.
-- Launch: a stored sign-in for another server is dropped, and one left behind
-  by an older session is revoked. Only the server ending the session (401,
+- Launch: a stored sign-in for another server is dropped. The refresh
+  credential is the source of truth, so a session token left behind by a
+  refresh whose second write failed is repaired. A password or provider
+  sign-in removes and revokes any kept browser sign-in first. Only the server ending the session (401,
   `invalid_session`, `account_missing`) discards the stored sign-in, revoking
   it; a connection or server error keeps it, and the welcome screen restores
-  it when it appears or the app returns to the foreground.
+  it when it appears or the app returns to the foreground. Log in and Sign up
+  stay usable during that; tapping one cancels the restore.
 - Share extension: it never refreshes (a second process could present a
   rotated token). With an expired token it shows "Open Kordi to continue";
   opening the app refreshes the session and rewrites the extension's copy.
