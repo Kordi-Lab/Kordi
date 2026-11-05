@@ -26,6 +26,11 @@ fn signed_out_page_names_inviter_group_and_count_and_returns_after_sign_in() {
     )));
     assert!(!page.contains("<form"));
     assert!(!page.contains("<script"));
+    // The kordi.ai home page's type, header and footer.
+    assert!(page.contains("/research-preview/public/assets/fonts/geist-600.ttf"));
+    assert!(page.contains(r#"<header class="wrap mast">"#));
+    assert!(page.contains(r#"<nav aria-label="Footer">"#));
+    assert!(!page.contains("Marcellus"));
 }
 
 #[test]

@@ -313,6 +313,8 @@ fn public_page_carries_the_csp_nonce_author_and_open_action() {
         !page.contains("font-family: \"Marcellus\""),
         "no serif fonts"
     );
+    assert!(page.contains("--sans: Geist, \"Helvetica Neue\", sans-serif;"));
+    assert!(page.contains("<span>kordi</span></a>"));
 
     let csp = page_csp("nonceABC");
     for directive in [
@@ -320,6 +322,7 @@ fn public_page_carries_the_csp_nonce_author_and_open_action() {
         "style-src 'nonce-nonceABC'",
         "script-src 'nonce-nonceABC'",
         "img-src https: data:",
+        "font-src 'self'",
         "connect-src 'self'",
         "frame-src 'self'",
         "base-uri 'none'",

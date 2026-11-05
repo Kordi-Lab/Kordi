@@ -60,7 +60,10 @@ fn invitation_document_matches_the_approved_kordi_surface() {
     assert!(document.contains("Download Kordi for Mac"));
     assert!(document.contains(VERSIONED_DMG_URL));
     assert!(document.contains("href=\"https://kordi.ai/\">Learn more</a>"));
-    assert!(document.contains("&copy; Kordi 2026"));
+    assert!(document.contains(r#"<nav aria-label="Footer">"#));
+    assert!(document.contains(r#"href="https://kordi.ai/terms">Terms</a>"#));
+    assert!(document.contains("/research-preview/public/assets/fonts/geist-400.ttf"));
+    assert!(!document.contains("Marcellus"));
     assert!(!document.contains("Back to overview"));
     assert!(!document.contains("Kordi beta"));
     assert!(!document.contains("@218208141"));
