@@ -67,6 +67,7 @@ export function useCloudAgentAvailability({
   messageIndex,
   messageIndexRef,
   initialMessagesSettled,
+  desktopExecutionReadyRef,
   reportWarning,
 }: {
   account: CloudAccount | null;
@@ -80,6 +81,7 @@ export function useCloudAgentAvailability({
   messageIndex: CloudMessageIndex;
   messageIndexRef: MutableRefObject<CloudMessageIndex>;
   initialMessagesSettled: boolean;
+  desktopExecutionReadyRef?: MutableRefObject<boolean>;
   reportWarning: (message: string, error: unknown) => void;
 }): CloudFallbackRunClaimer {
   const trackHostedSelfAgentRun = useHostedSelfAgentRunProgress({
@@ -428,14 +430,15 @@ export function useCloudAgentAvailability({
 
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;
-    const selfAgentFallbackBeforeMs =
-      Date.now() - CLOUD_SELF_AGENT_FALLBACK_TIMEOUT_MS;
+    const selfAgentFallbackBeforeMs = Date.now() - CLOUD_SELF_AGENT_FALLBACK_TIMEOUT_MS;
     const claims = cloudFallbackRunClaimsForMessages({
       account,
       contacts,
       messageIndex,
       recentSinceMs: Date.now() - CLOUD_AGENT_MENTION_WINDOW_MS,
       selfAgentFallbackBeforeMs,
+      // A ready Mac claims its own requests; the 5-second recheck re-reads this.
+      desktopExecutionReady: desktopExecutionReadyRef?.current === true,
     }).filter(
       (claim) => !claimedRunKeysRef.current.has(claim.idempotencyKey),
     );
@@ -457,15 +460,7 @@ export function useCloudAgentAvailability({
     return () => {
       cancelled = true;
     };
-  }, [
-    account,
-    claimCloudFallbackRun,
-    contacts,
-    initialMessagesSettled,
-    messageIndex,
-    reportWarning,
-    selfFallbackRevision,
-  ]);
+  }, [account, claimCloudFallbackRun, contacts, desktopExecutionReadyRef, initialMessagesSettled, messageIndex, reportWarning, selfFallbackRevision]);
 
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;

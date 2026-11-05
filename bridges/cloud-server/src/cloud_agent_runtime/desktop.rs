@@ -27,7 +27,7 @@ use context::context_scope_response;
 #[path = "desktop_claim.rs"]
 mod claim;
 pub(crate) use claim::agent_desktop_ready;
-pub(super) use claim::claim;
+pub(super) use claim::{claim, prefer_ready_desktop};
 #[path = "desktop_ready.rs"]
 mod ready;
 pub(super) use ready::ready;
@@ -39,16 +39,6 @@ mod release;
 #[path = "desktop_reply_row.rs"]
 mod reply_row;
 pub(super) use release::release;
-
-pub(super) async fn prefer_ready_desktop(
-    pool: &PgPool,
-    input: &ClaimRunRequest,
-) -> super::runs::RunResult<bool> {
-    // A ready owner Mac executes regardless of where the selected provider
-    // account is stored. Hosted credentials are resolved for its claimed run.
-    let agent = execution_agent_id(pool, input).await?;
-    Ok(agent_desktop_ready(pool, &input.owner_account_id, &agent).await?)
-}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

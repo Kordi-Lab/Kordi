@@ -238,6 +238,7 @@ export function cloudFallbackRunClaimsForMessages({
   messagesByPeer = {},
   recentSinceMs,
   selfAgentFallbackBeforeMs,
+  desktopExecutionReady = false,
 }: {
   account: CloudAccount;
   contacts: Contact[];
@@ -245,6 +246,8 @@ export function cloudFallbackRunClaimsForMessages({
   messagesByPeer?: Record<string, CloudMessage[]>;
   recentSinceMs?: number;
   selfAgentFallbackBeforeMs?: number;
+  /** This device is a Mac the server accepted as ready to run the owner's agent. */
+  desktopExecutionReady?: boolean;
 }): CloudAgentRunClaimInput[] {
   const index = messageIndex
     ?? buildCloudMessageIndex(account.accountId, messagesByPeer);
@@ -375,12 +378,13 @@ export function cloudFallbackRunClaimsForMessages({
         const processingAtMs = processingDirectRequestAtMsByPeerId
           .get(peerId)
           ?.get(message.messageId) ?? observedAtMs;
-        // Submit hosted-account requests with their exact route immediately.
-        // Shared admission keeps a ready Mac first and permits Cloud fallback offline.
+        // Other devices submit hosted-account requests with their exact route
+        // at once; shared admission holds them for a ready Mac. A ready Mac
+        // claims them itself as desktop runs, so it waits for the fallback window.
         const requestRoute = cloudDirectMessageAgentRuntimeRoute(message.body);
         const kordiCloudRoute = routeRunsOnKordiCloud(requestRoute) ? requestRoute : null;
         if (
-          !kordiCloudRoute
+          (!kordiCloudRoute || desktopExecutionReady)
           && (!Number.isFinite(processingAtMs) || processingAtMs > selfAgentFallbackBeforeMs)
         ) continue;
         const sessionId = cleanText(message.sessionId);
