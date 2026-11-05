@@ -77,7 +77,8 @@ pub(super) async fn submit(
     Path(config_id): Path<String>,
     Json(req): Json<SubmitRequest>,
 ) -> Response {
-    let Some(org) = state.organization_admission().by_config_id(&config_id) else {
+    let admission = state.organization_admission().current();
+    let Some(org) = admission.by_config_id(&config_id) else {
         return not_configured().into_response();
     };
     let Some(policy) = org.join_requests.as_ref().filter(|_| org.state.admits()) else {
@@ -144,17 +145,19 @@ fn requests_closed() -> ApiError {
 
 /// The configured organization when the caller is one of its owners or
 /// admins. Anyone else gets 404, or 403 when they are a plain member.
-async fn managed<'a>(
-    state: &'a ServerState,
+async fn managed(
+    state: &ServerState,
     session: &CloudSession,
     organization_id: &str,
-) -> Result<&'a ConfiguredOrganization, ApiError> {
+) -> Result<ConfiguredOrganization, ApiError> {
     let summary = member_summary(state.db_pool(), &session.account_id, organization_id)
         .await?
         .ok_or_else(not_found)?;
     let org = state
         .organization_admission()
+        .current()
         .by_organization_id(organization_id)
+        .cloned()
         .ok_or_else(not_found)?;
     if summary.role == OrganizationRole::Member {
         return Err(error(

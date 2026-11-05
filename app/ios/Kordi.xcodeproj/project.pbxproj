@@ -44,6 +44,7 @@
 		103E087FF4423F03F4F8870C /* ContactPresencePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D2AF3B66E209A9728305F4 /* ContactPresencePresentation.swift */; };
 		1045622D69A49EDA88492D53 /* AppModelSessionPins.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85D76D3C4C75887D61CBC73A /* AppModelSessionPins.swift */; };
 		116EB1E235D2C7679DA0F97F /* CommonGroundNewCardSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FC10294FCF342F09390129D /* CommonGroundNewCardSheet.swift */; };
+		11C450111E14488E94745ED0 /* ManagedSignInPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 330FEE041C8274D80B1A054D /* ManagedSignInPolicy.swift */; };
 		11DBFE58DCB91D13EE71F491 /* PreviewProviderLoginSimulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00B91CB9823A024699588B01 /* PreviewProviderLoginSimulator.swift */; };
 		126800B85342E36E4F5349FE /* ConversationTimelineVirtualizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 328D64891C42264C1660455B /* ConversationTimelineVirtualizationTests.swift */; };
 		12A04863D661AF2255724438 /* IdentityAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 844BA3411A7748BF0EA7F6B3 /* IdentityAvatar.swift */; };
@@ -94,6 +95,7 @@
 		334D5D158BF8F36F8643CA6C /* DocumentEditorSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E156AB8850E4AB9DE3401275 /* DocumentEditorSession.swift */; };
 		3369E116205FF6BDB09AC162 /* LocalMessageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1381CF79C72E0D7F70A6AF27 /* LocalMessageStore.swift */; };
 		33A95833DE67008E0C7D3ED8 /* KordiID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6D4254D09283B27D15B674 /* KordiID.swift */; };
+		33E502B490A93C6E7B2834D8 /* AppModel+ManagedSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DF656ABA09AF1948BD6F99A /* AppModel+ManagedSignIn.swift */; };
 		34D1737CBEFA979EC9353A72 /* digest in Resources */ = {isa = PBXBuildFile; fileRef = EC7028A6ADF145A7DE23EB58 /* digest */; };
 		354F791494399C7EA20CBA9D /* CommonGroundCardMemoriesSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 949D9778803DE7915795407E /* CommonGroundCardMemoriesSection.swift */; };
 		355C449A0A563748B9371015 /* DocumentTitleViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6E60F374E48C3B3B5A869A /* DocumentTitleViews.swift */; };
@@ -102,6 +104,7 @@
 		36C6057F301E3510BB90F96A /* MemoryRowLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50D38033B37984E5C10FC21C /* MemoryRowLabel.swift */; };
 		36F11A76114A0EA7BA9EFD6B /* ConversationHeaderTrailingLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28702B9B56ABA49A3411856E /* ConversationHeaderTrailingLabel.swift */; };
 		36FDDF68B689C2873619FA83 /* MemoryOrganizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15622272F72BA96C4D44C47C /* MemoryOrganizerTests.swift */; };
+		3715AD3817AB6C76E10B9F29 /* ManagedSignInPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F60AE6C95759568F3F75406 /* ManagedSignInPolicyTests.swift */; };
 		3721A0A2CC0167373FC6AD17 /* ShareExtensionSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE75382D6C8FA0FC7A711C7 /* ShareExtensionSupport.swift */; };
 		372AD920A3BC05A74C36A0FA /* DocumentEditorTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FC6BE42FDE7E4B2FA1C8A35 /* DocumentEditorTransport.swift */; };
 		384CEA6FD6D3803D7750D658 /* DigestCalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6B70D03EA8C02F0F10917A6 /* DigestCalendarService.swift */; };
@@ -564,6 +567,7 @@
 		310F9B146798BBE0C0C3F2B2 /* CommonGroundTileHue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundTileHue.swift; sourceTree = "<group>"; };
 		328D64891C42264C1660455B /* ConversationTimelineVirtualizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTimelineVirtualizationTests.swift; sourceTree = "<group>"; };
 		330FA05DEA807B716B3BA48B /* CommonGroundNearbyLocator+Background.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CommonGroundNearbyLocator+Background.swift"; sourceTree = "<group>"; };
+		330FEE041C8274D80B1A054D /* ManagedSignInPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedSignInPolicy.swift; sourceTree = "<group>"; };
 		3310BE41F1F31B92D8D6151B /* ForwardMessageSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForwardMessageSheet.swift; sourceTree = "<group>"; };
 		331C7A5D910D9A8B4D8343F6 /* MainNavigationDestinations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainNavigationDestinations.swift; sourceTree = "<group>"; };
 		33451A578001C77EC9A794DF /* DocumentPreviewHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPreviewHost.swift; sourceTree = "<group>"; };
@@ -615,6 +619,7 @@
 		4D3FAACD21D63BFA6A9455D5 /* MediaPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPreviewTests.swift; sourceTree = "<group>"; };
 		4D720EBECE49FE6CE5E068D8 /* ThreadMessageHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadMessageHeader.swift; sourceTree = "<group>"; };
 		4DCEE1B4AB8ED2647728BD25 /* CloudConversationCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudConversationCatalog.swift; sourceTree = "<group>"; };
+		4DF656ABA09AF1948BD6F99A /* AppModel+ManagedSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+ManagedSignIn.swift"; sourceTree = "<group>"; };
 		4E67BBDF8DF185EA694C3205 /* SharedDocumentLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDocumentLink.swift; sourceTree = "<group>"; };
 		4EA7D44D8A1C2EFED3C150F4 /* PlanCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCard.swift; sourceTree = "<group>"; };
 		509B7E9F27B599320FB93D6B /* CommonGroundCardDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundCardDesign.swift; sourceTree = "<group>"; };
@@ -673,6 +678,7 @@
 		6D8AF8ABA81E2E6C3E4339FD /* OrderedAgentExecution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderedAgentExecution.swift; sourceTree = "<group>"; };
 		6DC94D86D66062CE5D496811 /* ProviderAccountTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccountTests.swift; sourceTree = "<group>"; };
 		6F4F983C0DA68380146BEFF9 /* CommonGroundMatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundMatchView.swift; sourceTree = "<group>"; };
+		6F60AE6C95759568F3F75406 /* ManagedSignInPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedSignInPolicyTests.swift; sourceTree = "<group>"; };
 		6F8CE113A5D004E972C7441D /* ConversationSendQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSendQueueTests.swift; sourceTree = "<group>"; };
 		7009EE3B936E4C9889D2A14A /* ConversationModalPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationModalPresenter.swift; sourceTree = "<group>"; };
 		7057F708821F2D5D4A0AE795 /* ContactsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactsView.swift; sourceTree = "<group>"; };
@@ -1078,6 +1084,7 @@
 				151CB7A492FFA22F02806ED0 /* CloudOAuthSession.swift */,
 				9E1F7F05D1DA2959E22A1154 /* CloudSessionIdentity.swift */,
 				276E693EF06321E619FD4D1B /* KeychainSessionStore.swift */,
+				330FEE041C8274D80B1A054D /* ManagedSignInPolicy.swift */,
 				00B91CB9823A024699588B01 /* PreviewProviderLoginSimulator.swift */,
 				79311A2E20AB174050C9F8A1 /* ProviderLoginController.swift */,
 				7D8174EC8BFB7A84E06048DB /* SignupAvatarRenderer.swift */,
@@ -1461,6 +1468,7 @@
 				D9C013E8001C316A9C9CA130 /* KordiMarkdownListParserTests.swift */,
 				274B3D971B28CFFC0EF77C13 /* KordiMarkdownParserTests.swift */,
 				16C36C042F23DA97ABD30265 /* LocalMessageStoreTests.swift */,
+				6F60AE6C95759568F3F75406 /* ManagedSignInPolicyTests.swift */,
 				A8BE8ED2C03AEBF0EAA5F045 /* MediaCacheTests.swift */,
 				4D3FAACD21D63BFA6A9455D5 /* MediaPreviewTests.swift */,
 				15622272F72BA96C4D44C47C /* MemoryOrganizerTests.swift */,
@@ -1520,6 +1528,7 @@
 			children = (
 				8468E1A2764A8C92164AD82E /* AppModel.swift */,
 				77AEEA614BD1B1D4B1FAD9D0 /* AppModel+BrowserSignIn.swift */,
+				4DF656ABA09AF1948BD6F99A /* AppModel+ManagedSignIn.swift */,
 				75E1D3C2011737116168C8D4 /* AppModel+PersonalAgents.swift */,
 				60DD1D3913A71FB94809F8D0 /* AppModelGroupParticipants.swift */,
 				85D76D3C4C75887D61CBC73A /* AppModelSessionPins.swift */,
@@ -2010,6 +2019,7 @@
 				FA72A7984BAF93FA187C0D67 /* KordiMarkdownListParserTests.swift in Sources */,
 				A7D9800431A98277443048BB /* KordiMarkdownParserTests.swift in Sources */,
 				C6F07352981BFA43F316E7AA /* LocalMessageStoreTests.swift in Sources */,
+				3715AD3817AB6C76E10B9F29 /* ManagedSignInPolicyTests.swift in Sources */,
 				B41CEC7F2405B39CDF400491 /* MediaCacheTests.swift in Sources */,
 				35B9B24F661F5992EE4281EA /* MediaPreviewTests.swift in Sources */,
 				36FDDF68B689C2873619FA83 /* MemoryOrganizerTests.swift in Sources */,
@@ -2078,6 +2088,7 @@
 				B8B0FD14A856C5B45DBFAEC0 /* AppModel+BrowserSignIn.swift in Sources */,
 				7B0A2530B19830857AC137E9 /* AppModel+CommonGround.swift in Sources */,
 				BE7A0C420EAEE2B706EFF49E /* AppModel+Digest.swift in Sources */,
+				33E502B490A93C6E7B2834D8 /* AppModel+ManagedSignIn.swift in Sources */,
 				D1666AE13D39512AF35A9D55 /* AppModel+PersonalAgents.swift in Sources */,
 				E1DA88F3DADA025B847BEA95 /* AppModel+Projects.swift in Sources */,
 				2E4333FCFA2A1DA835345DE6 /* AppModel.swift in Sources */,
@@ -2284,6 +2295,7 @@
 				CCB2300E90B26B2402BA8933 /* MainNavigationDestinations.swift in Sources */,
 				B6385E2469989CDAB5A71539 /* MainNavigationHost.swift in Sources */,
 				A424BE366BC650CB66FF21C5 /* MainTab.swift in Sources */,
+				11C450111E14488E94745ED0 /* ManagedSignInPolicy.swift in Sources */,
 				8AF4705D22CA6731B2670C42 /* MarkdownMessageContent.swift in Sources */,
 				288EF6D4D32F00F41E0754A5 /* MediaPreviewView.swift in Sources */,
 				8A3A4E46D852EE0F31BC105B /* MemoryLabelChips.swift in Sources */,

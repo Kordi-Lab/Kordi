@@ -60,6 +60,8 @@ export function buildAppAuthorizeUrl({
   codeChallenge,
   state,
   intent,
+  organizationHint,
+  signInMethods,
 }: {
   baseUrl: string;
   clientId: string;
@@ -67,6 +69,9 @@ export function buildAppAuthorizeUrl({
   codeChallenge: string;
   state: string;
   intent: BrowserSignInIntent;
+  /** Managed device hints (docs/development/managed-devices.md); they only shape the page. */
+  organizationHint?: string;
+  signInMethods?: readonly string[];
 }): string {
   const params = new URLSearchParams({
     response_type: 'code',
@@ -78,6 +83,8 @@ export function buildAppAuthorizeUrl({
   });
   // OpenID Connect `prompt=create` asks the page to open on account creation.
   if (intent === 'signup') params.set('prompt', 'create');
+  if (organizationHint) params.set('organization_hint', organizationHint);
+  if (signInMethods?.length) params.set('sign_in_methods', signInMethods.join(','));
   return `${cleanBaseUrl(baseUrl)}${APP_AUTHORIZE_PATH}?${params.toString()}`;
 }
 

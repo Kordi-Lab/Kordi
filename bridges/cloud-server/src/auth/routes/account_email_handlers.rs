@@ -131,7 +131,7 @@ pub(super) async fn verify_account_email_code(
     }
     crate::organizations::admission::hooks::record_verified_primary_email(
         state.db_pool(),
-        state.organization_admission(),
+        &state.organization_admission().current(),
         &session.account_id,
     )
     .await;

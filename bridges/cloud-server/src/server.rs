@@ -29,7 +29,7 @@ use logging::redact_url_credentials;
 
 pub struct ServerState {
     admission: crate::auth::admission::AdmissionPolicy,
-    organization_admission: Arc<crate::organizations::admission::OrganizationAdmission>,
+    organization_admission: crate::organizations::admission::LiveAdmission,
     pool: PgPool,
     events: EventBus,
     chat_sync_wakes: Arc<crate::chat_sync::realtime::ChatSyncWakeHub>,

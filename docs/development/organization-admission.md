@@ -10,7 +10,8 @@ organization.
 
 ## The file
 
-`KORDI_ORGANIZATIONS_FILE` names a JSON file read once at startup. Example
+`KORDI_ORGANIZATIONS_FILE` names a JSON file read at startup and reloaded
+while the server runs (see [Reloading the file](#reloading-the-file)). Example
 with synthetic values: [organization-admission.example.json](organization-admission.example.json).
 
 Startup fails with a message naming the field when the file is invalid.
@@ -22,7 +23,7 @@ limit falls back to a bounded server default, never to unlimited.
 | `version` | Must be `1`. |
 | `personalOrganizations.pool` | Pool binding for personal organizations (read by pool work). |
 | `organizations[].id` | Configuration id, 1-63 lowercase letters, digits or hyphens. Startup creates or updates one team organization per id (`cloud_organizations.config_id`). |
-| `displayName` | Organization name, at most 120 characters; updated on every start. |
+| `displayName` | Organization name, at most 120 characters; updated on every start and reload. |
 | `state` | `disabled`: no domain claim, no auto-join, no join requests. `interim` and `active`: admission works. |
 | `pool`, `targetPool` | Pool bindings, carried for pool work. Admission does not read them, and does not enforce that work bound to a missing pool is rejected: that belongs to the resource pool and pool worker changes. |
 | `admission.claimedDomains` | Lowercase domains, at most 20. |
@@ -114,6 +115,61 @@ purged after 30 days. The hourly sweep repeats this, also when the file is
 unset. Adding the id back reopens it; former members join again by the
 normal rules.
 
+## Reloading the file
+
+The server reloads the file on `SIGHUP` and within about 5 seconds of the file
+or its signature changing. A reload that cannot be read, is not signed when a
+signing key is set, or is invalid is logged and changes nothing.
+
+Sign-in critical keys decide who gets in; a reload may only narrow them:
+
+| Key | Narrower means |
+| --- | --- |
+| `state` | `disabled` (from `interim` or `active`; switching between those two applies) |
+| `admission.claimedDomains` | a subset |
+| `admission.domainMatch` | `exact` |
+| `admission.requireGoogleHostedDomain` | `true` |
+| `admission.autoJoinMethods` | a subset |
+| `admission.reverifyIntervalMonths` | a smaller number (`null` is unbounded) |
+| `admission.googleSignInReverifies` | `false` |
+| `admission.stripSubaddress` | `true` |
+| `admission.joinRequests.enabled` | `false` |
+| `admission.joinRequests.approvedMembershipExpiry` | fewer days; any other change counts as widening |
+| `membership.requireMemberOwner` | `true` |
+| `membership.outsidersAllowed` | `false` |
+| `membership.workEndBoundSeconds` | a smaller number; any change to or from `null` counts as widening |
+| admins from `adminsEnv` | a subset of account ids and of emails |
+| `organizations[]` | removing an organization (retired at once, as at startup) |
+
+A change that widens one of these keys does not take effect: the key keeps its
+running value until the next restart, and the server logs
+`reload kept organizations[<id>].<key>: widening needs a restart (<diff>)`.
+Admins are counted in the diff, never named. Adding an organization also waits
+for a restart. Narrowed keys are logged as `reload narrowed ...`. Ordinary
+keys (`displayName`, `pool`, `targetPool`, `personalOrganizations.pool`,
+`entryPage`, join-request `fields` and `retentionDays`) always apply.
+
+The resource pool reload reads `pool`, `targetPool` and `state` from the same
+file for pool bindings only; it never admits anyone.
+
+## Signed file
+
+When `KORDI_ORGANIZATIONS_SIGNING_KEY` is set to an Ed25519 public key
+(standard base64 of its 32 raw bytes), the file needs a detached signature in
+`<file>.sig`: the standard base64 Ed25519 signature of the file's exact bytes.
+An unsigned or badly signed file stops startup and is refused on reload. A
+set but malformed key is an error, never a disabled check. Changing the key
+needs a restart.
+
+With OpenSSL 3, from a private key kept outside the server:
+
+```sh
+openssl genpkey -algorithm ed25519 -out organizations-signing.pem
+openssl pkey -in organizations-signing.pem -pubout -outform DER | tail -c 32 | base64
+openssl pkeyutl -sign -inkey organizations-signing.pem -rawin \
+  -in organizations.json | base64 > organizations.json.sig
+```
+
 ## Verified provider emails
 
 A Google or GitHub identity joins an existing account by email only when the
@@ -133,6 +189,9 @@ account's security log (`auth.identity.email_changed` or
 `auth.identity.email_unverified`, provider only). Proving the new address with
 a Kordi email code (account email or organization email code) makes it the
 matching email again (`auth.identity.email_reverified`).
+
+Managed devices can pin the apps to configured organizations; see
+[managed-devices.md](managed-devices.md).
 
 ## API
 

@@ -1,3 +1,4 @@
+import Combine
 import Photos
 import Foundation
 import SwiftUI
@@ -312,6 +313,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastMessageSyncAt: Date?
     @Published private(set) var loadingConversationIDs = Set<String>()
     @Published var errorMessage: String?
+    /// Managed App Configuration limits on sign-in. Unrestricted outside Kordi Beta.
+    @Published var managedSignInPolicy = ManagedSignInPolicy.current()
     /// A profile save rejected for one field, shown under that row in the editor.
     @Published var profileFieldError: ProfileFieldError?
     @Published private(set) var accountEmailCodeState: AccountEmailCodeState?
@@ -326,6 +329,7 @@ final class AppModel: ObservableObject {
     let keychain: KeychainSessionStore
     let browserSignIn: AppSignInController
     private let shareCredentialStore: ShareExtensionCredentialStore
+    private var managedConfigurationObservation: AnyCancellable?
     private let cache: LocalMessageStore?
     private let wireCache: CloudWireCache
     private let sessionRuntimeRouteStore: SessionRuntimeRouteStore
@@ -437,6 +441,17 @@ final class AppModel: ObservableObject {
         self.previewHistoryLoadDelay = previewHistoryLoadDelay
             ?? (ProcessInfo.processInfo.arguments.contains("--preview-slow-session-load") ? .seconds(2) : .zero)
         UserDefaults.standard.removeObject(forKey: "kordi.session-title-overrides")
+        #if BETA
+        if !previewMode {
+            // Device management can push a new configuration at any time.
+            managedConfigurationObservation = NotificationCenter.default
+                .publisher(for: UserDefaults.didChangeNotification)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    Task { @MainActor in await self?.managedConfigurationMayHaveChanged() }
+                }
+        }
+        #endif
         if previewMode {
             // Preview data always advertises memory, so every group info page and
             // Settings show the Memory entry without an extra launch argument.
@@ -478,6 +493,11 @@ final class AppModel: ObservableObject {
                 return
             }
             let restoredAccount = try await api.me(token: savedToken)
+            // A managed device keeps only accounts from its organizations. A
+            // failed check keeps the session and checks again later.
+            if await managedOrganizationCheck(token: savedToken) == .refused {
+                throw ManagedSignInRefusal(accountId: restoredAccount.accountId, token: savedToken)
+            }
             let existingShareCredential = try? shareCredentialStore.load()
             try? shareCredentialStore.save(ShareExtensionCredential(
                 token: savedToken,
@@ -522,8 +542,11 @@ final class AppModel: ObservableObject {
         } catch {
             if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
             presencePublisher.stop()
-            if await keepsBrowserSession(afterLaunchFailure: error) { errorMessage = userFacing(error, fallback: "Could not reach Kordi Cloud.") }
-            else { await discardStoredSession(); try? shareCredentialStore.delete() }
+            if let refusal = error as? ManagedSignInRefusal {
+                await signOutRefusedLaunchAccount(refusal)
+            } else if await keepsBrowserSession(afterLaunchFailure: error) {
+                errorMessage = userFacing(error, fallback: "Could not reach Kordi Cloud.")
+            } else { await discardStoredSession(); try? shareCredentialStore.delete() }
             token = nil
             currentDeviceId = nil
             account = nil
@@ -539,9 +562,11 @@ final class AppModel: ObservableObject {
             errorMessage = "Enter your email and password."
             return false
         }
+        guard managedSignInAllows(.email) else { return false }
         errorMessage = nil
         do {
             let response = try await api.login(email: cleanEmail, password: password)
+            guard await keepsManagedSignIn(response) else { return false }
             try await completeAuthentication(response)
             return true
         } catch {
@@ -551,6 +576,7 @@ final class AppModel: ObservableObject {
     }
 
     func requestSignupCode(email: String) async -> CloudSignupCodeChallenge? {
+        guard managedSignInAllows(.email) else { return nil }
         errorMessage = nil
         do {
             return try await api.requestSignupCode(email: email.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -579,6 +605,7 @@ final class AppModel: ObservableObject {
             errorMessage = KordiLoginCopy.weakPasswordMessage
             return false
         }
+        guard managedSignInAllows(.email) else { return false }
         errorMessage = nil
         do {
             let response = try await api.signup(
@@ -590,6 +617,7 @@ final class AppModel: ObservableObject {
                 avatarSeed: avatarSeed,
                 avatarMutation: avatarMutation
             )
+            guard await keepsManagedSignIn(response) else { return false }
             try await completeAuthentication(response)
             if let warning = response.avatarUploadWarning {
                 errorMessage = warning
@@ -737,9 +765,11 @@ final class AppModel: ObservableObject {
     }
 
     func signIn(with provider: CloudOAuthProvider) async -> Bool {
+        guard managedSignInAllows(provider.managedSignInMethod) else { return false }
         errorMessage = nil
         do {
-            let response = try await oauth.authenticate(with: provider)
+            let response = try await oauth.authenticate(with: provider, organizationHint: managedSignInPolicy.organizationHint)
+            guard await keepsManagedSignIn(response) else { return false }
             try await completeAuthentication(response)
             return true
         } catch CloudOAuthSessionError.cancelled {
@@ -1052,7 +1082,8 @@ final class AppModel: ObservableObject {
     }
 
     func appDidBecomeActive() async {
-        await refreshBrowserSessionIfNeeded()
+        reloadManagedSignInPolicy()
+        if !(await refreshBrowserSessionIfNeeded()) { await enforceManagedOrganization() }
         guard phase == .signedIn, !previewMode, let token else { return }
         Task { await refreshConnectorsCapability() }
         scheduleDigestWarmup()
@@ -8124,6 +8155,38 @@ final class AppModel: ObservableObject {
         cloudRealtimeTask?.cancel()
         cloudRealtimeTask = nil
         startCloudSync(resetCursor: false)
+    }
+
+    /// Signs out when the managed device policy no longer admits the
+    /// signed-in account. Only a definitive answer signs out; a failed check
+    /// keeps the session and checks again at the next start or refresh.
+    func enforceManagedOrganization() async {
+        guard !previewMode, phase == .signedIn, let token, let accountId = account?.accountId else { return }
+        guard await managedOrganizationCheck(token: token) == .refused,
+              sessionIdentity.contains(token), account?.accountId == accountId else { return }
+        await signOut()
+        errorMessage = ManagedSignInPolicy.signedOutMessage
+    }
+
+    /// Launch found a restored account the managed device policy refuses:
+    /// remove everything stored for it and say why on the signed-out screen.
+    private func signOutRefusedLaunchAccount(_ refusal: ManagedSignInRefusal) async {
+        await discardStoredSession()
+        try? shareCredentialStore.delete()
+        cache?.clear(accountId: refusal.accountId)
+        await wireCache.clear(accountId: refusal.accountId)
+        let token = refusal.token
+        Task { [api] in try? await api.logout(token: token) }
+        errorMessage = ManagedSignInPolicy.signedOutMessage
+    }
+
+    /// Whether a password, sign-up or provider session may be kept on a
+    /// managed device. A refused or unchecked session is ended at once.
+    private func keepsManagedSignIn(_ response: CloudAuthResponse) async -> Bool {
+        guard let refusal = await managedSignInRefusal(token: response.session.token) else { return true }
+        try? await api.logout(token: response.session.token)
+        errorMessage = refusal
+        return false
     }
 
     func completeAuthentication(_ response: CloudAuthResponse) async throws {

@@ -29,6 +29,7 @@ import {
   isCloudOAuthCancelled,
 } from './cloudOAuthCancellation';
 import { startCloudOAuthSignIn } from './cloudOAuthSignIn';
+import { admitManagedSignIn, signOutIfManagedPolicyRefuses } from './managedPolicy/managedSignInAdmission';
 import {
   useCloudAccountEmailVerification,
   type CloudAccountEmailVerificationActions,
@@ -104,9 +105,8 @@ export async function completeCloudAuthResult({
     expiresAt: result.session.expiresAt,
     deviceId: result.session.deviceId,
   };
-  if (persistSession) {
-    await persistSession(session);
-  }
+  // A managed device keeps only accounts of its organization; check before storing.
+  if (persistSession) { await admitManagedSignIn(result); await persistSession(session); }
   const activation = await activateAccountStorage(result.account.accountId);
   const switchedAuthenticatedAccount = Boolean(
     activation.storageRoot && currentAccountId && currentAccountId !== result.account.accountId,
@@ -280,6 +280,7 @@ export function useCloudSession({
         }
         try {
           const me = await authClient.me(stored.token);
+          if (await signOutIfManagedPolicyRefuses(stored)) { if (!cancelled && mountedRef.current) setSignedOut(); return; }
           await completeCloudAuthResult({
             result: {
               account: me,

@@ -18,6 +18,7 @@ mod digest_calendar;
 mod digest_calendar_sync;
 mod link_preview;
 mod mac_local;
+mod managed_sign_in_policy;
 mod media_permissions;
 mod media_preview_window;
 mod menu_bar;
@@ -433,6 +434,7 @@ pub fn run() {
             cloud_oauth_loopback::cloud_oauth_loopback_cancel,
             cloud_app_sign_in_loopback::cloud_app_sign_in_loopback_prepare,
             cloud_session_refresh::cloud_session_refresh,
+            managed_sign_in_policy::managed_sign_in_policy,
             cloud_session::cloud_session_store,
             cloud_session::cloud_session_load,
             cloud_session::cloud_session_clear,

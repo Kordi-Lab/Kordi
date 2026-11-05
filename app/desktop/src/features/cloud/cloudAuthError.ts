@@ -60,6 +60,10 @@ export type CloudAuthErrorCode =
   | 'sign_in_code_invalid'
   | 'browser_sign_in_failed'
   | 'browser_sign_in_timed_out'
+  // Managed device policy (docs/development/managed-devices.md).
+  | 'sign_in_method_not_allowed'
+  | 'organization_not_allowed'
+  | 'organization_check_failed'
   | 'unknown';
 
 export class CloudAuthError extends Error {

@@ -327,8 +327,8 @@ pub(super) async fn signup(
             "[auth] legacy signup without email code created unverified account {account_id}"
         );
     } else {
-        let admission = state.organization_admission();
-        record_verified_primary_email(state.db_pool(), admission, &account_id).await;
+        let admission = state.organization_admission().current();
+        record_verified_primary_email(state.db_pool(), &admission, &account_id).await;
     }
     apply_deferred_signup_avatar(&state, &account_id, &avatar, &now, deferred_avatar_bytes).await;
     rate_limiter

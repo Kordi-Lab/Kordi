@@ -17,8 +17,12 @@ use crate::server::ServerState;
 mod account;
 pub mod claim;
 pub mod config;
+pub mod hints;
 pub mod hooks;
 pub mod join_requests;
+pub mod narrowing;
+pub mod reload;
+pub mod signature;
 pub mod store;
 #[cfg(test)]
 mod test_support;
@@ -26,6 +30,7 @@ pub mod view;
 
 pub use claim::SignInEvidence;
 pub use config::{OrganizationAdmission, SignInMethod};
+pub use reload::LiveAdmission;
 
 const SWEEP_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
@@ -73,7 +78,7 @@ pub fn account_routes() -> Router<Arc<ServerState>> {
 /// Reads `KORDI_ORGANIZATIONS_FILE` and syncs its organizations to the
 /// database. The error is a startup message that names the bad field and
 /// never contains secrets; it is leaked because startup stops on it.
-pub async fn load(pool: &sqlx_postgres::PgPool) -> Result<OrganizationAdmission, &'static str> {
+pub async fn load(pool: &sqlx_postgres::PgPool) -> Result<LiveAdmission, &'static str> {
     let leak = |message: String| -> &'static str { Box::leak(message.into_boxed_str()) };
     let admission = OrganizationAdmission::from_env().map_err(leak)?;
     let admission = admission
@@ -88,19 +93,27 @@ pub async fn load(pool: &sqlx_postgres::PgPool) -> Result<OrganizationAdmission,
     for warning in &admission.warnings {
         eprintln!("[organization admission] warning: {warning}");
     }
-    Ok(admission)
+    let path = std::env::var(config::FILE_ENV)
+        .ok()
+        .map(|path| path.trim().to_string())
+        .filter(|path| !path.is_empty());
+    Ok(LiveAdmission::with_path(admission, path))
 }
 
-/// Expires lapsed memberships and purges old join requests every hour.
+/// Expires lapsed memberships and purges old join requests every hour, and
+/// reloads the file when it changes.
 pub fn spawn(state: Arc<ServerState>) {
-    if !state.organization_admission().needs_sweep() {
-        return;
-    }
+    state
+        .organization_admission()
+        .spawn_watcher(state.db_pool().clone());
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(SWEEP_INTERVAL);
         loop {
             interval.tick().await;
-            store::sweep(state.db_pool(), state.organization_admission()).await;
+            let admission = state.organization_admission().current();
+            if admission.needs_sweep() {
+                store::sweep(state.db_pool(), &admission).await;
+            }
         }
     });
 }

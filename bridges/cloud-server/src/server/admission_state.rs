@@ -1,11 +1,9 @@
 //! Who may use the instance and join its configured organizations: the
 //! instance admission policy and the organization admission file.
 
-use std::sync::Arc;
-
 use super::ServerState;
 use crate::auth::admission::AdmissionPolicy;
-use crate::organizations::admission::OrganizationAdmission;
+use crate::organizations::admission::LiveAdmission;
 
 impl ServerState {
     pub fn admission(&self) -> &AdmissionPolicy {
@@ -17,13 +15,15 @@ impl ServerState {
         self
     }
 
-    pub fn organization_admission(&self) -> &OrganizationAdmission {
+    /// The running admission file; take [`LiveAdmission::current`] for one
+    /// decision.
+    pub fn organization_admission(&self) -> &LiveAdmission {
         &self.organization_admission
     }
 
     /// Takes an admission file already synced to the database.
-    pub fn with_organization_admission(mut self, synced: OrganizationAdmission) -> Self {
-        self.organization_admission = Arc::new(synced);
+    pub fn with_organization_admission(mut self, synced: impl Into<LiveAdmission>) -> Self {
+        self.organization_admission = synced.into();
         self
     }
 }

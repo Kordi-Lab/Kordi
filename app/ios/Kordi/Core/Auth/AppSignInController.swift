@@ -196,10 +196,10 @@ final class AppSignInController {
 
     /// Opens the authorize page in a web authentication session, checks
     /// `state`, and exchanges the code. The caller stores the result.
-    func signIn(_ intent: AppSignInIntent) async throws -> AppSignInGrant {
+    func signIn(_ intent: AppSignInIntent, policy: ManagedSignInPolicy = .unrestricted) async throws -> AppSignInGrant {
         let client = client
         let pkce = AppSignInPKCE.make()
-        let callback = try await webSession.open(client.authorizeURL(pkce: pkce, intent: intent))
+        let callback = try await webSession.open(client.authorizeURL(pkce: pkce, intent: intent, hints: policy.authorizeHintFields))
         let code = try AppSignInCallback.code(from: callback, redirectURI: client.redirectURI, expectedState: pkce.state)
         let device = try? await api.deviceRegistration()
         return try await client.exchange(code: code, pkce: pkce, device: device)

@@ -206,6 +206,11 @@ pub(super) async fn oauth_authorization_url(
         auth_url
             .query_pairs_mut()
             .append_pair("access_type", "online");
+        let admission = state.organization_admission().current();
+        let hint = start_query.organization_hint.as_deref();
+        if let Some(domain) = admission.google_hosted_domain_hint(hint) {
+            auth_url.query_pairs_mut().append_pair("hd", domain);
+        }
     }
 
     Ok(auth_url.to_string())
@@ -372,8 +377,8 @@ pub(super) async fn oauth_callback(
                 email_verified: evidence_verified,
                 hosted_domain: evidence_hd.as_deref(),
             };
-            let admission = state.organization_admission();
-            record_sign_in(pool, admission, &body.account.account_id, evidence).await;
+            let admission = state.organization_admission().current();
+            record_sign_in(pool, &admission, &body.account.account_id, evidence).await;
             if is_new_authorization {
                 state
                     .events()

@@ -46,10 +46,22 @@ struct LoginView: View {
                 ScrollView {
                     VStack(spacing: dynamicTypeSize.isAccessibilitySize ? 24 : 28) {
                         header
-                        socialSignIn
-                        divider
-                        modePicker
-                        form
+                        // A managed device may limit the sign-in methods.
+                        if !policy.allowsAnyMethod {
+                            errorBanner
+                            if model.errorMessage != ManagedSignInPolicy.noMethodsMessage {
+                                ManagedSignInUnavailableNotice()
+                            }
+                        } else {
+                            if !allowedProviders.isEmpty { socialSignIn }
+                            if allowsEmail {
+                                if !allowedProviders.isEmpty { divider }
+                                modePicker
+                                form
+                            } else {
+                                errorBanner
+                            }
+                        }
                     }
                     .padding(.horizontal, 24)
                     .padding(.vertical, 28)
@@ -71,6 +83,11 @@ struct LoginView: View {
         }
     }
 
+    private var policy: ManagedSignInPolicy { model.managedSignInPolicy }
+    private var allowsEmail: Bool { policy.allows(.email) }
+    private var allowedProviders: [CloudOAuthProvider] {
+        CloudOAuthProvider.allCases.filter { policy.allows($0.managedSignInMethod) }
+    }
     private var isSignup: Bool { mode == .signup }
     private var isVerifying: Bool { isSignup && signupChallenge != nil }
     private var isBusy: Bool { activeSubmission != nil }
@@ -122,7 +139,7 @@ struct LoginView: View {
 
     private var socialSignIn: some View {
         HStack(spacing: 18) {
-            ForEach(CloudOAuthProvider.allCases) { provider in
+            ForEach(allowedProviders) { provider in
                 Button {
                     Task { await submitSocial(provider) }
                 } label: {
@@ -238,19 +255,7 @@ struct LoginView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let error = model.errorMessage {
-                Label {
-                    Text(error).fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "exclamationmark.circle.fill")
-                }
-                .font(.subheadline)
-                .foregroundStyle(.red)
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .accessibilityLabel("Authentication error: \(error)")
-            }
+            errorBanner
 
             Button {
                 Task { await submitForm() }
@@ -267,6 +272,23 @@ struct LoginView: View {
             .disabled(!canSubmit)
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.20), value: mode)
+    }
+
+    @ViewBuilder
+    private var errorBanner: some View {
+        if let error = model.errorMessage {
+            Label {
+                Text(error).fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "exclamationmark.circle.fill")
+            }
+            .font(.subheadline)
+            .foregroundStyle(.red)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .accessibilityLabel("Authentication error: \(error)")
+        }
     }
 
     private var verificationFields: some View {

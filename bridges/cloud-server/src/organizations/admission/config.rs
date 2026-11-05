@@ -259,8 +259,8 @@ impl OrganizationAdmission {
         else {
             return Ok(Self::default());
         };
-        let raw = std::fs::read_to_string(path.trim())
-            .map_err(|error| format!("{FILE_ENV}: cannot read the file: {error}"))?;
+        let key = super::signature::signing_key_from_env()?;
+        let raw = super::signature::read_file(path.trim(), key.as_ref())?;
         Self::parse(&raw, |key| std::env::var(key).ok())
     }
 

@@ -162,7 +162,7 @@ pub(super) async fn account_organizations(
     Extension(session): Extension<CloudSession>,
 ) -> Response {
     let pool = state.db_pool();
-    let admission = state.organization_admission();
+    let admission = state.organization_admission().current();
     let mut configured = Vec::with_capacity(admission.organizations.len());
     for org in &admission.organizations {
         match configured_view(pool, org, &session.account_id).await {
@@ -179,13 +179,15 @@ pub(super) async fn account_organizations(
 }
 
 /// The configured organization when it accepts organization email codes.
-fn email_code_organization<'a>(
-    state: &'a ServerState,
+fn email_code_organization(
+    state: &ServerState,
     config_id: &str,
-) -> Result<&'a ConfiguredOrganization, ApiError> {
+) -> Result<ConfiguredOrganization, ApiError> {
     let org = state
         .organization_admission()
+        .current()
         .by_config_id(config_id)
+        .cloned()
         .ok_or_else(not_configured)?;
     if !org.state.admits() {
         return Err(error(
@@ -346,7 +348,7 @@ pub(super) async fn verify_email_code(
         email_verified: true,
         hosted_domain: None,
     };
-    match apply_evidence(pool, org, &session.account_id, &evidence).await {
+    match apply_evidence(pool, &org, &session.account_id, &evidence).await {
         Ok(VerifyOutcome::Joined | VerifyOutcome::Renewed) => {}
         Ok(VerifyOutcome::Ignored) => return email_not_claimed().into_response(),
         Ok(VerifyOutcome::Removed) => {
@@ -367,7 +369,7 @@ pub(super) async fn verify_email_code(
         }
         Err(_) => return server_error().into_response(),
     }
-    match configured_view(pool, org, &session.account_id).await {
+    match configured_view(pool, &org, &session.account_id).await {
         Ok(view) => Json(json!({ "configured": view })).into_response(),
         Err(_) => server_error().into_response(),
     }

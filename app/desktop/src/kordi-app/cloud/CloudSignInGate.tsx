@@ -8,8 +8,10 @@ import {
 import type { CloudBrowserSignInSession } from '@/features/cloud/appSignIn/cloudBrowserSignInSession';
 import { useBrowserSignIn, type BrowserSignInState } from '@/features/cloud/appSignIn/useBrowserSignIn';
 import { applyCloudLoginWindowSize } from '@/features/cloud/loginWindow';
+import { anyMethodAllowed } from '@/features/cloud/managedPolicy/managedSignInPolicy';
+import { useManagedSignInPolicy } from '@/features/cloud/managedPolicy/useManagedSignInPolicy';
 
-import { CloudBrowserSignInPage } from './CloudBrowserSignInPage';
+import { CloudBrowserSignInPage, CloudSignInBlockedPage } from './CloudBrowserSignInPage';
 import { CloudLoginPage, type CloudLoginPageProps } from './CloudLoginPage';
 
 // Signed out: browser sign-in when the server offers it, otherwise the
@@ -81,8 +83,21 @@ export function CloudSignInGate({
   /** Reports whether the browser sign-in screens (true) or the in-app form (false) show. */
   onBrowserSignInChange?: BrowserSignInChange;
 }) {
-  if (!browserSignIn) return <CloudLoginPage {...loginProps} />;
-  return <BrowserSignInOrForm session={browserSignIn} loginProps={loginProps} onBrowserSignInChange={onBrowserSignInChange} />;
+  // A managed device hides the methods it does not allow; wait for its policy.
+  const policy = useManagedSignInPolicy();
+  if (!policy) return null;
+  if (!anyMethodAllowed(policy)) return <SignInBlocked onBrowserSignInChange={onBrowserSignInChange} />;
+  const managedProps = { ...loginProps, allowedSignInMethods: policy.allowedSignInMethods };
+  if (!browserSignIn) return <CloudLoginPage {...managedProps} />;
+  return <BrowserSignInOrForm session={browserSignIn} loginProps={managedProps} onBrowserSignInChange={onBrowserSignInChange} />;
+}
+
+function SignInBlocked({ onBrowserSignInChange }: { onBrowserSignInChange?: BrowserSignInChange }) {
+  useEffect(() => {
+    if (onBrowserSignInChange) onBrowserSignInChange(true);
+    else void applyCloudLoginWindowSize('welcome').catch(() => undefined);
+  }, [onBrowserSignInChange]);
+  return <CloudSignInBlockedPage />;
 }
 
 function BrowserSignInOrForm({

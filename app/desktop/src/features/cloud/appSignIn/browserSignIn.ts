@@ -15,6 +15,13 @@ import {
   type AppSignInResult,
   type BrowserSignInIntent,
 } from './appSignInClient';
+import {
+  anyMethodAllowed,
+  loadManagedSignInPolicy,
+  MANAGED_NO_SIGN_IN_MESSAGE,
+  organizationHint,
+  type ManagedSignInPolicy,
+} from '../managedPolicy/managedSignInPolicy';
 import { createPkcePair, createSignInState } from './pkce';
 
 /** The loopback wait is capped at ten minutes by the native listener command. */
@@ -34,6 +41,8 @@ export type BrowserSignInConfig = {
   fetchImpl: typeof fetch;
   driver: BrowserSignInDriver;
   deviceRegistration?: () => Promise<CloudDeviceRegistration>;
+  /** The managed sign-in policy; defaults to the one the native shell reports. */
+  managedPolicy?: () => Promise<ManagedSignInPolicy>;
 };
 
 export class BrowserSignInCancelledError extends Error {
@@ -77,6 +86,8 @@ export class BrowserSignInAttempt {
   ) {}
 
   static async start(config: BrowserSignInConfig, intent: BrowserSignInIntent): Promise<BrowserSignInAttempt> {
+    const policy = await (config.managedPolicy ?? loadManagedSignInPolicy)();
+    if (!anyMethodAllowed(policy)) throw new CloudAuthError('sign_in_method_not_allowed', MANAGED_NO_SIGN_IN_MESSAGE, 0);
     const state = createSignInState();
     const pkce = await createPkcePair();
     const loopback = await config.driver.prepare(state);
@@ -87,6 +98,8 @@ export class BrowserSignInAttempt {
       codeChallenge: pkce.challenge,
       state,
       intent,
+      organizationHint: organizationHint(policy),
+      signInMethods: policy.allowedSignInMethods ?? undefined,
     });
     return new BrowserSignInAttempt(
       config, intent, authorizeUrl, loopback.redirectUrl, pkce.verifier, state, loopback.requestId,

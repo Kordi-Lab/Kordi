@@ -133,7 +133,9 @@ struct AppSignInClient: Sendable {
 
     var tokenEndpoint: URL { endpoint(Self.tokenPath) }
 
-    func authorizeURL(pkce: AppSignInPKCE, intent: AppSignInIntent) -> URL {
+    /// `hints` are extra query fields that only shape the page, such as a
+    /// managed device's `organization_hint` and `sign_in_methods`.
+    func authorizeURL(pkce: AppSignInPKCE, intent: AppSignInIntent, hints: [(String, String)] = []) -> URL {
         var fields = [
             ("response_type", "code"),
             ("client_id", clientId),
@@ -144,6 +146,7 @@ struct AppSignInClient: Sendable {
         ]
         // OpenID Connect `prompt=create` asks the page to open on account creation.
         if intent == .signup { fields.append(("prompt", "create")) }
+        fields += hints
         return endpoint(Self.authorizePath, query: fields)
     }
 

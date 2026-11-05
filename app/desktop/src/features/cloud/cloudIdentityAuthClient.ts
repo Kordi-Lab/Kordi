@@ -12,6 +12,11 @@ import { CloudAuthError } from './cloudAuthError';
 import { isProductionCloudOrigin } from './cloudApiEnvironment';
 import type { CloudDeviceRegistration } from './deviceIdentity';
 import { referenceBackedAvatarMutation } from './avatarAssetClient';
+import {
+  assertManagedSignInMethodAllowed,
+  loadManagedSignInPolicy,
+  organizationHint,
+} from './managedPolicy/managedSignInPolicy';
 
 type CloudIdentityRequest = <TResponse>(
   path: string,
@@ -27,6 +32,7 @@ export class CloudIdentityAuthClient {
   ) {}
 
   async signup(input: CloudSignupInput): Promise<CloudAuthResult> {
+    await assertManagedSignInMethodAllowed('email');
     const device = await this.deviceRegistration();
     const pendingAvatar = input.avatarMutation?.action === 'upload'
       && input.avatarMutation.uploadedAsset?.startsWith('data:image/')
@@ -86,7 +92,8 @@ export class CloudIdentityAuthClient {
     }
   }
 
-  requestSignupCode(email: string): Promise<CloudSignupCodeChallenge> {
+  async requestSignupCode(email: string): Promise<CloudSignupCodeChallenge> {
+    await assertManagedSignInMethodAllowed('email');
     return this.request<CloudSignupCodeChallenge>(
       '/v1/cloud/auth/signup/code',
       { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }) },
@@ -95,6 +102,7 @@ export class CloudIdentityAuthClient {
   }
 
   async login(input: { email: string; password: string }): Promise<CloudAuthResult> {
+    await assertManagedSignInMethodAllowed('email');
     const device = await this.deviceRegistration();
     return this.request<CloudAuthResult>(
       '/v1/cloud/auth/login',
@@ -122,6 +130,8 @@ export class CloudIdentityAuthClient {
     provider: CloudOAuthProvider,
     redirectAfter: string,
   ): Promise<CloudOAuthStartResponse> {
+    await assertManagedSignInMethodAllowed(provider);
+    const hint = organizationHint(await loadManagedSignInPolicy());
     const device = await this.deviceRegistration();
     const params = new URLSearchParams({
       redirectAfter,
@@ -133,6 +143,7 @@ export class CloudIdentityAuthClient {
       devicePublicKey: device.publicKey,
       deviceKeyAlgorithm: device.keyAlgorithm,
     });
+    if (hint) params.set('organizationHint', hint);
     return this.request<CloudOAuthStartResponse>(
       `/v1/cloud/auth/oauth/${encodeURIComponent(provider)}/start?${params.toString()}`,
       { method: 'GET' },

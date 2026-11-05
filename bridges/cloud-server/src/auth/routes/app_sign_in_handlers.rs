@@ -5,6 +5,7 @@ use super::*;
 use crate::auth::app_sign_in::codes::{is_s256_challenge, issue_code};
 use crate::auth::app_sign_in::{AppClientRegistry, AuthorizationGrant, CodeDelivery};
 use crate::auth::rate_limit::AccountActionLimit;
+use crate::organizations::admission::hints;
 
 mod sign_ins;
 mod token;
@@ -108,6 +109,12 @@ pub(super) struct AppAuthorizationParams {
     /// creation) is forwarded to the sign-in page; other values are dropped.
     #[serde(default, skip_serializing)]
     pub prompt: Option<String>,
+    /// Managed device hints (docs/development/managed-devices.md), forwarded
+    /// to the sign-in page when well formed.
+    #[serde(default, skip_serializing)]
+    pub organization_hint: Option<String>,
+    #[serde(default, skip_serializing)]
+    pub sign_in_methods: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -249,6 +256,14 @@ pub(super) async fn app_authorize_start(
             ];
             if let Some(prompt) = params.sign_in_page_prompt() {
                 query.push(("prompt", prompt));
+            }
+            let organization = hints::organization_hint(params.organization_hint.as_deref());
+            if let Some(organization) = organization {
+                query.push(("organization_hint", organization));
+            }
+            let methods = hints::sign_in_methods_hint(params.sign_in_methods.as_deref());
+            if let Some(methods) = methods.as_deref() {
+                query.push(("sign_in_methods", methods));
             }
             no_store(
                 Redirect::to(&redirect_uri_with(&app_sign_in_page_url(), &query)).into_response(),

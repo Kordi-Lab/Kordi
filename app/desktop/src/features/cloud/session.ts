@@ -159,7 +159,15 @@ export function refreshSession(session: StoredSession): Promise<StoredSession | 
   if (!session.refreshToken || !store.refresh) return Promise.resolve(session);
   const revision = sessionRevision;
   refreshInFlight = store.refresh(session)
-    .then((next) => {
+    .then(async (next) => {
+      if (revision !== sessionRevision) return cachedSessionValue ?? null;
+      // A managed device checks the account again after every refresh; only a
+      // definitive refusal signs out, a failed check keeps the session.
+      const { sessionRefusedByManagedPolicy } = await import('./managedPolicy/managedSignInAdmission');
+      if (await sessionRefusedByManagedPolicy(next)) {
+        if (revision === sessionRevision) await clearSessionAndNotifySignedOut();
+        return null;
+      }
       if (revision !== sessionRevision) return cachedSessionValue ?? null;
       cachedSessionValue = { ...next };
       cachedSessionLoadPromise = null;

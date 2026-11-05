@@ -14,13 +14,26 @@ extension AppModel {
     func signInWithBrowser(_ intent: AppSignInIntent) async -> Bool {
         guard !isPreviewMode else { return false }
         errorMessage = nil
+        let policy = reloadManagedSignInPolicy()
+        guard policy.allowsAnyMethod else {
+            errorMessage = ManagedSignInPolicy.noMethodsMessage
+            return false
+        }
+        if intent == .signup, !managedSignInAllows(.email) { return false }
         let grant: AppSignInGrant
         do {
-            grant = try await browserSignIn.signIn(intent)
+            grant = try await browserSignIn.signIn(intent, policy: policy)
         } catch CloudOAuthSessionError.cancelled {
             return false
         } catch {
             errorMessage = userFacing(error, fallback: "Could not finish signing in. Try again.")
+            return false
+        }
+        // A managed device keeps only accounts from its organizations. A
+        // refused or unchecked sign-in is revoked before anything is stored.
+        if let refusal = await managedSignInRefusal(token: grant.credential.accessToken) {
+            await browserSignIn.revoke(grant.credential)
+            errorMessage = refusal
             return false
         }
         // Another account's data must never show under this one.
@@ -123,13 +136,20 @@ extension AppModel {
 
     /// Refreshes a browser sign-in token that expires within the refresh
     /// margin and adopts it, or adopts a token background work already
-    /// refreshed. A refused refresh signs out.
-    func refreshBrowserSessionIfNeeded() async {
-        guard !isPreviewMode else { return }
-        switch await browserSignIn.store.refresh(ifExpiringWithin: AppSignInController.refreshMargin) {
+    /// refreshed. A refused refresh signs out. Returns whether a new token
+    /// was checked against the managed device policy.
+    @discardableResult
+    func refreshBrowserSessionIfNeeded() async -> Bool {
+        guard !isPreviewMode else { return false }
+        let result = await browserSignIn.store.refresh(ifExpiringWithin: AppSignInController.refreshMargin)
+        switch result {
         case .current(let credential), .refreshed(let credential):
             applyRefreshedSession(token: credential.accessToken, expiresAt: credential.expiresAtText, accountId: credential.accountId)
             scheduleBrowserSessionRefresh(expiresAt: credential.expiresAt)
+            if case .refreshed = result {
+                await enforceManagedOrganization()
+                return true
+            }
         case .rejected:
             await signOut()
             errorMessage = "Your session expired. Sign in again."
@@ -138,6 +158,7 @@ extension AppModel {
         case .notBrowserSession:
             break
         }
+        return false
     }
 
     /// Ends the server side of a sign-out: revokes the browser sign-in, then
@@ -170,13 +191,13 @@ extension AppModel {
     private func scheduleBrowserSessionRefresh(expiresAt: Date) {
         let delay = expiresAt.timeIntervalSinceNow - AppSignInController.refreshMargin
         browserSignIn.scheduleRefresh(after: delay) { [weak self] in
-            await self?.refreshBrowserSessionIfNeeded()
+            _ = await self?.refreshBrowserSessionIfNeeded()
         }
     }
 
     private func scheduleBrowserSessionRetry() {
         browserSignIn.scheduleRefresh(after: AppSignInController.retryDelay) { [weak self] in
-            await self?.refreshBrowserSessionIfNeeded()
+            _ = await self?.refreshBrowserSessionIfNeeded()
         }
     }
 }

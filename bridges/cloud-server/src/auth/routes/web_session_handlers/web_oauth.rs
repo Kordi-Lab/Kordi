@@ -71,6 +71,8 @@ pub(in crate::auth::routes) fn browser_binding_matches(
 pub(in crate::auth::routes) struct WebReturnQuery {
     #[serde(rename = "returnTo")]
     return_to: Option<String>,
+    #[serde(rename = "organizationHint", default)]
+    organization_hint: Option<String>,
 }
 
 fn web_oauth_complete_url(return_to: &str) -> String {
@@ -109,6 +111,7 @@ pub(in crate::auth::routes) async fn web_oauth_start(
         device_approximate_location: None,
         device_public_key: None,
         device_key_algorithm: None,
+        organization_hint: query.organization_hint.clone(),
     };
     let binding = random_binding();
     // The page's own link sends the strict session cookie; a link from

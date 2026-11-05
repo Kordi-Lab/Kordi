@@ -95,8 +95,15 @@ struct WelcomeView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 4)
             }
-            actionButton(.login, title: "Log in", primary: true)
-            actionButton(.signup, title: "Sign up", primary: false)
+            // A managed device may limit sign-in; `email` covers sign-up.
+            if model.managedSignInPolicy.allowsAnyMethod {
+                actionButton(.login, title: "Log in", primary: true)
+                if model.managedSignInPolicy.allows(.email) {
+                    actionButton(.signup, title: "Sign up", primary: false)
+                }
+            } else if model.errorMessage != ManagedSignInPolicy.noMethodsMessage {
+                ManagedSignInUnavailableNotice()
+            }
         }
     }
 
@@ -150,6 +157,18 @@ struct WelcomeView: View {
         // The page may have signed in to an existing account, so never claim one was created.
         UIAccessibility.post(notification: .announcement, argument: "Signed in")
 #endif
+    }
+}
+
+/// The single line a managed device shows when it allows no sign-in method.
+struct ManagedSignInUnavailableNotice: View {
+    var body: some View {
+        Text(ManagedSignInPolicy.noMethodsMessage)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity)
     }
 }
 

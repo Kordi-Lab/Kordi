@@ -55,6 +55,9 @@ pub struct OAuthStartQuery {
     pub device_public_key: Option<String>,
     #[serde(rename = "deviceKeyAlgorithm")]
     pub device_key_algorithm: Option<String>,
+    /// A managed device's organization (docs/development/managed-devices.md).
+    #[serde(rename = "organizationHint", default)]
+    pub organization_hint: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

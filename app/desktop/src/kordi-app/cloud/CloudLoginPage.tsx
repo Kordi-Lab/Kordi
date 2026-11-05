@@ -3,6 +3,7 @@ import { applyCloudLoginWindowSize, type CloudLoginMode } from '@/features/cloud
 import { CLOUD_LOGIN_WINDOW_DRAG_STYLE } from '@/app/windowDrag';
 import { CloudAuthError, type CloudOAuthProvider, type CloudSignupCodeChallenge, type CloudSignupInput } from '@/features/cloud/authClient';
 import { isCloudOAuthCancelled } from '@/features/cloud/cloudOAuthCancellation';
+import { managedSignedOutNotice, type ManagedSignInMethod } from '@/features/cloud/managedPolicy/managedSignInPolicy';
 import {
   readLoginModePreference,
   writeLoginModePreference,
@@ -15,17 +16,15 @@ import {
 
 import { GitHubMark, GoogleMark } from './CloudLoginMarks';
 import { cloudLoginErrorMessage, loginHeading, loginSubtitle, PASSWORD_RULE_HINT, passwordMeetsSignupRule } from './cloudLoginMessages';
+import { CloudField, INK, INK_MUTED, TYPE_HINT } from './CloudLoginField';
 import { CloudSignupAvatarPicker } from './CloudSignupAvatarPicker';
 import { CloudSignupVerificationFields } from './CloudSignupVerificationFields';
 import { useCloudSignupVerification } from './useCloudSignupVerification';
 
 // Type scale — one place, applied everywhere. The whole page reads from these.
 const TYPE_DISPLAY = 'text-[34px] leading-[1.1] font-bold tracking-[-0.025em]';
-const TYPE_LABEL = 'text-[12px] font-medium tracking-[-0.005em]';
-const TYPE_INPUT = 'text-[15px] font-medium tracking-[-0.005em]';
 const TYPE_ACTION = 'text-[13px] font-semibold tracking-[-0.005em]';
 const TYPE_TAB = 'text-[13px] font-semibold tracking-[-0.005em]';
-const TYPE_HINT = 'text-[12px] font-medium tracking-[-0.005em]';
 const TYPE_DIVIDER = 'text-[10px] font-semibold uppercase tracking-[0.18em]';
 const TYPE_TITLEBAR = 'text-[12px] font-semibold tracking-[0.02em]';
 
@@ -34,28 +33,10 @@ const TYPE_TITLEBAR = 'text-[12px] font-semibold tracking-[0.02em]';
 // `.kordi-app.theme-light` and `.kordi-app.theme-dark` cascades apply
 // automatically. Decorative layers (page bg gradient, paper grain) are themed
 // via `theme-overrides.css` keyed off the same class names used below.
-const INK = 'text-foreground';
-const INK_MUTED = 'text-muted-foreground';
 const INK_SUBTLE = 'text-[var(--utility-meta-text)]';
 const PAPER_RAISED = 'bg-[var(--app-cloud-login-raised-bg)]';
 const PAPER_SUNK = 'bg-[var(--app-cloud-login-sunk-bg)]';
-const PAPER_INPUT = 'bg-[var(--app-cloud-login-input-bg)]';
-const BORDER_SOFT = 'border-[var(--app-cloud-login-border)]';
 const BORDER_INNER = 'border-[var(--app-cloud-login-inner-border)]';
-const FOCUS_RING = 'focus:border-[var(--app-cloud-login-focus-border)] focus:shadow-[0_0_0_3px_var(--app-cloud-login-focus-ring)]';
-const INPUT_BASE_CLASS = [
-  'app-cloud-login-input h-12 rounded-full border px-5 outline-none transition',
-  'focus:bg-[var(--app-cloud-login-input-focus-bg)]',
-].join(' ');
-const INPUT_ERROR_CLASS = [
-  'border-[var(--app-cloud-login-danger-border)]',
-  'focus:border-[var(--app-cloud-login-danger-border-strong)]',
-  'focus:shadow-[0_0_0_3px_var(--app-cloud-login-danger-ring)]',
-].join(' ');
-const INPUT_HINT_CLASS = [
-  'focus:border-[var(--app-cloud-login-hint-border)]',
-  'focus:shadow-[0_0_0_3px_var(--app-cloud-login-hint-ring)]',
-].join(' ');
 const SMALL_FOCUS_RING = 'focus-visible:ring-2 focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)]';
 
 type SocialProvider = { id: 'google' | 'github'; label: string; Mark: ComponentType };
@@ -69,73 +50,6 @@ const ALL_SOCIAL_PROVIDER_IDS: ReadonlyArray<CloudOAuthProvider> = SOCIAL_LOGIN_
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-type CloudFieldValidation = 'invalid' | 'hint' | undefined;
-
-function CloudField({
-  label,
-  ariaLabel,
-  type,
-  autoComplete,
-  placeholder,
-  value,
-  onChange,
-  validation,
-  hint,
-  disabled,
-  inputMode,
-  maxLength,
-}: {
-  label?: string;
-  ariaLabel?: string;
-  type: string;
-  autoComplete: string;
-  placeholder: string;
-  value: string;
-  onChange: (next: string) => void;
-  validation?: CloudFieldValidation;
-  hint?: string;
-  disabled?: boolean;
-  inputMode?: 'numeric';
-  maxLength?: number;
-}) {
-  const baseInput = `${INPUT_BASE_CLASS} ${PAPER_INPUT} ${TYPE_INPUT} ${INK}`;
-  const tone =
-    validation === 'invalid'
-      ? INPUT_ERROR_CLASS
-      : validation === 'hint'
-      ? `${BORDER_SOFT} ${INPUT_HINT_CLASS}`
-      : `${BORDER_SOFT} ${FOCUS_RING}`;
-  return (
-    <label className={`grid gap-1.5 ${TYPE_LABEL} ${INK_MUTED}`}>
-      {label ? <span>{label}</span> : null}
-      <input
-        type={type}
-        autoComplete={autoComplete}
-        placeholder={placeholder}
-        value={value}
-        onChange={(event) => onChange(event.currentTarget.value)}
-        aria-label={ariaLabel ?? label}
-        aria-invalid={validation === 'invalid' || undefined}
-        disabled={disabled}
-        inputMode={inputMode}
-        maxLength={maxLength}
-        className={`${baseInput} ${tone}`}
-      />
-      {hint ? (
-        <span
-          className={`${TYPE_HINT} normal-case tracking-normal ${
-            validation === 'invalid'
-              ? 'text-[var(--app-cloud-login-danger-text)]'
-              : 'text-[var(--app-cloud-login-hint-text)]'
-          }`}
-        >
-          {hint}
-        </span>
-      ) : null}
-    </label>
-  );
-}
-
 export type CloudLoginPageProps = {
   onModeChange?: (mode: CloudLoginMode) => void;
   initialMode?: CloudLoginMode;
@@ -144,6 +58,8 @@ export type CloudLoginPageProps = {
   onSignUp?: (input: CloudSignupInput) => Promise<void>;
   onSocialSignIn?: (provider: CloudOAuthProvider) => Promise<void>;
   showDebugAuthDiagnostics?: boolean;
+  /** Methods a managed device allows; null or omitted allows every method. */
+  allowedSignInMethods?: readonly ManagedSignInMethod[] | null;
 };
 
 const noopSignIn = async () => {
@@ -159,6 +75,7 @@ export function CloudLoginPage({
   onSocialSignIn,
   showDebugAuthDiagnostics = false,
   onModeChange,
+  allowedSignInMethods = null,
 }: CloudLoginPageProps = {}) {
   const [mode, setMode] = useState<CloudLoginMode>(() => readLoginModePreference() ?? initialMode);
   const [avatarSeed, setAvatarSeed] = useState(() => newCanonicalAvatarSeed());
@@ -169,12 +86,15 @@ export function CloudLoginPage({
   const [displayName, setDisplayName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [socialProvider, setSocialProvider] = useState<CloudOAuthProvider | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(managedSignedOutNotice);
   const { challenge, verificationCode, setVerificationCode, resendSeconds, sendCode, resetVerification } = useCloudSignupVerification(email, onRequestSignupCode);
   const isSignup = mode === 'signup';
   const isVerifying = isSignup && challenge !== null;
   const isBusy = submitting || socialProvider !== null;
-  const enabledSocialProviders = onSocialSignIn ? ALL_SOCIAL_PROVIDER_IDS : [];
+  const allows = (method: ManagedSignInMethod) => allowedSignInMethods === null || allowedSignInMethods.includes(method);
+  const visibleProviders = SOCIAL_LOGIN_PROVIDERS.filter((provider) => allows(provider.id));
+  const emailAllowed = allows('email');
+  const enabledSocialProviders = onSocialSignIn ? ALL_SOCIAL_PROVIDER_IDS.filter(allows) : [];
   const generatedSignupAvatarUrl = generatedAvatarPreviewUrl(
     HUMAN_CANONICAL_AVATAR_STYLE,
     avatarSeed,
@@ -321,8 +241,8 @@ export function CloudLoginPage({
           </p>
         </div>
 
-        <div className="mt-7 flex items-center justify-center gap-6">
-          {SOCIAL_LOGIN_PROVIDERS.map((provider) => {
+        {visibleProviders.length > 0 ? <div className="mt-7 flex items-center justify-center gap-6">
+          {visibleProviders.map((provider) => {
             const isAvailable = Boolean(
               onSocialSignIn && enabledSocialProviders.includes(provider.id),
             );
@@ -353,11 +273,12 @@ export function CloudLoginPage({
               </button>
             );
           })}
-        </div>
+        </div> : null}
+        {!emailAllowed && submitError ? <div role="alert" className={`app-cloud-login-error mt-5 rounded-[14px] border px-4 py-2.5 ${TYPE_HINT}`}>{submitError}</div> : null}
 
-        <div className={`mt-5 flex items-center gap-3 ${TYPE_DIVIDER} ${INK_SUBTLE}`}>
+        {emailAllowed ? <><div className={`mt-5 flex items-center gap-3 ${TYPE_DIVIDER} ${INK_SUBTLE}`}>
           <div className="h-px flex-1 bg-[var(--app-cloud-login-divider)]" />
-          {onSocialSignIn ? 'or' : 'Email and password'}
+          {onSocialSignIn && visibleProviders.length > 0 ? 'or' : 'Email and password'}
           <div className="h-px flex-1 bg-[var(--app-cloud-login-divider)]" />
         </div>
 
@@ -491,7 +412,7 @@ export function CloudLoginPage({
           >
             {submitLabel}
           </button>
-        </form>
+        </form></> : null}
       </main>
     </div>
   );

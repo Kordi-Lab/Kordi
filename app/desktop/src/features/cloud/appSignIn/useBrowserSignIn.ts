@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { CloudAuthError } from '../cloudAuthError';
+import { managedSignedOutNotice } from '../managedPolicy/managedSignInPolicy';
 import type { AppSignInResult, BrowserSignInIntent } from './appSignInClient';
 import {
   BrowserSignInAttempt,
@@ -39,7 +40,8 @@ export function useBrowserSignIn({
   onSignedIn: (result: AppSignInResult) => Promise<void>;
 }): BrowserSignInState {
   const [phase, setPhase] = useState<BrowserSignInPhase>('welcome');
-  const [error, setError] = useState<string | null>(null);
+  // A managed device that just ended the session says why.
+  const [error, setError] = useState<string | null>(managedSignedOutNotice);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [submittingCode, setSubmittingCode] = useState(false);
   const attemptRef = useRef<BrowserSignInAttempt | null>(null);

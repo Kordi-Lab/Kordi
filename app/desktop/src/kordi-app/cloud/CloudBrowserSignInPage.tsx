@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { APP_WINDOW_RESIZE_EDGE } from '@/app/windowDrag';
 import type { BrowserSignInState } from '@/features/cloud/appSignIn/useBrowserSignIn';
 import { KordiFlyingBird } from '@/features/cloud/KordiFlyingBird';
+import { MANAGED_NO_SIGN_IN_MESSAGE, managedSignedOutNotice } from '@/features/cloud/managedPolicy/managedSignInPolicy';
 
 import { loginHeading, loginSubtitle } from './cloudLoginMessages';
 
@@ -128,6 +129,21 @@ function WaitingScreen({ signIn }: { signIn: BrowserSignInState }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** A managed device that allows no sign-in method: say so and offer nothing. */
+export function CloudSignInBlockedPage() {
+  const notice = managedSignedOutNotice();
+  return (
+    <GateFrame>
+      <main className="app-cloud-login-panel app-cloud-welcome" data-managed-sign-in="blocked">
+        <KordiFlyingBird className="app-cloud-welcome-bird" cutout />
+        <h1 className="app-cloud-welcome-title">{loginHeading(false)}</h1>
+        <p className="app-cloud-welcome-subtitle">{MANAGED_NO_SIGN_IN_MESSAGE}</p>
+        {notice ? <p role="alert" className="app-cloud-welcome-error">{notice}</p> : null}
+      </main>
+    </GateFrame>
   );
 }
 

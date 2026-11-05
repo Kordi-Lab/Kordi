@@ -73,10 +73,11 @@ final class CloudOAuthSession: NSObject, ASWebAuthenticationPresentationContextP
         self.api = api
     }
 
-    func authenticate(with provider: CloudOAuthProvider) async throws -> CloudAuthResponse {
+    func authenticate(with provider: CloudOAuthProvider, organizationHint: String? = nil) async throws -> CloudAuthResponse {
         let authenticationURL = try await api.startOAuth(
             provider: provider,
-            redirectAfter: CloudOAuthCallbackParser.callbackURL
+            redirectAfter: CloudOAuthCallbackParser.callbackURL,
+            organizationHint: organizationHint
         )
         let callbackURL = try await open(authenticationURL)
         return try CloudOAuthCallbackParser.parse(callbackURL)

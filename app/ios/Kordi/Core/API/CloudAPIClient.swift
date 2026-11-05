@@ -209,12 +209,14 @@ actor CloudAPIClient {
         return response
     }
 
-    func startOAuth(provider: CloudOAuthProvider, redirectAfter: URL) async throws -> URL {
+    /// `organizationHint` is a managed device's first allowed organization.
+    /// It only shapes the provider page and never relaxes anything.
+    func startOAuth(provider: CloudOAuthProvider, redirectAfter: URL, organizationHint: String? = nil) async throws -> URL {
         let device = try await deviceRegistration()
         let response: CloudOAuthStartResponse = try await send(
             path: "/v1/cloud/auth/oauth/\(provider.rawValue)/start",
             method: "GET",
-            query: [
+            query: Self.oauthStartHintItems(organizationHint: organizationHint) + [
                 URLQueryItem(name: "redirectAfter", value: redirectAfter.absoluteString),
                 URLQueryItem(name: "deviceName", value: device.displayName),
                 URLQueryItem(name: "devicePlatform", value: device.platform),
