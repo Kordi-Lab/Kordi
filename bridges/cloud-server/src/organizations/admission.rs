@@ -29,7 +29,28 @@ pub use config::{OrganizationAdmission, SignInMethod};
 
 const SWEEP_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
+/// Admin routes, behind the bearer cloud session like the other
+/// organization routes.
 pub(super) fn routes() -> Router<Arc<ServerState>> {
+    Router::new()
+        .route(
+            "/v1/cloud/organizations/:organization_id/join-requests",
+            get(join_requests::list),
+        )
+        .route(
+            "/v1/cloud/organizations/:organization_id/join-requests/:request_id/approve",
+            post(join_requests::approve),
+        )
+        .route(
+            "/v1/cloud/organizations/:organization_id/join-requests/:request_id/reject",
+            post(join_requests::reject),
+        )
+}
+
+/// The caller's account routes. The kordi.ai pages call them with the web
+/// session cookie and the apps with a bearer session; the auth router mounts
+/// them behind a middleware that accepts either.
+pub fn account_routes() -> Router<Arc<ServerState>> {
     Router::new()
         .route(
             "/v1/cloud/account/organizations",
@@ -46,18 +67,6 @@ pub(super) fn routes() -> Router<Arc<ServerState>> {
         .route(
             "/v1/cloud/account/organizations/:config_id/join-requests",
             post(join_requests::submit),
-        )
-        .route(
-            "/v1/cloud/organizations/:organization_id/join-requests",
-            get(join_requests::list),
-        )
-        .route(
-            "/v1/cloud/organizations/:organization_id/join-requests/:request_id/approve",
-            post(join_requests::approve),
-        )
-        .route(
-            "/v1/cloud/organizations/:organization_id/join-requests/:request_id/reject",
-            post(join_requests::reject),
         )
 }
 

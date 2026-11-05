@@ -126,6 +126,7 @@ pub(crate) use group_invitation_handlers::{
 pub use middleware::cloud_session_middleware;
 pub(crate) use session_forks::cloud_session_participants;
 pub use types::*;
+pub use web_session_handlers::{web_csrf_token, WEB_CSRF_HEADER, WEB_SESSION_COOKIE};
 
 pub fn routes(state: Arc<ServerState>) -> Router {
     routes_with_config(
@@ -423,7 +424,14 @@ pub fn routes_with_shared_rate_limiter(
             state.clone(),
             cloud_session_middleware,
         ))
+        .with_state(state.clone());
+    let account = crate::organizations::admission::account_routes()
+        .layer(Extension(rate_limiter.clone()))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            web_session_handlers::cloud_or_web_session_middleware,
+        ))
         .with_state(state);
 
-    public.merge(protected).merge(simulator)
+    public.merge(protected).merge(simulator).merge(account)
 }

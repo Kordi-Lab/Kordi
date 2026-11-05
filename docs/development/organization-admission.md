@@ -116,7 +116,18 @@ normal rules.
 
 ## API
 
-All routes need a cloud session.
+The join-request admin routes need a bearer cloud session, like the other
+organization routes. The four `/v1/cloud/account/organizations` routes also
+accept the web session cookie (`__Host-kordi_web_session`), so the kordi.ai
+pages can call them same-origin with `credentials: 'same-origin'`:
+
+- A request with an `Authorization` header takes the bearer path unchanged.
+- Otherwise the cookie must name a web session; an app's access token there
+  is refused (`403 web_session_required`). Without one: `401 login_required`.
+- Every `POST` also needs the exact public `Origin` (`403 origin_mismatch`)
+  and the CSRF token from `__Host-kordi_web_csrf` in `X-Kordi-CSRF-Token`
+  (`403 csrf_token_invalid`), as on the `/v1/cloud/auth/web/*` routes.
+- Responses through the cookie path are marked `no-store`.
 
 | Route | Result |
 | --- | --- |

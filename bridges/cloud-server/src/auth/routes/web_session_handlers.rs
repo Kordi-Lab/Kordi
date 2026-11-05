@@ -192,6 +192,39 @@ pub(super) async fn authenticated_web_session(
         .map(|(session, _)| session)
 }
 
+/// Account routes the kordi.ai pages call from the browser. A request with
+/// an `Authorization` header takes the app (bearer) path unchanged; any other
+/// request needs the web session cookie, and every state-changing method
+/// also needs the exact `Origin` and the CSRF header.
+pub async fn cloud_or_web_session_middleware(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    mut req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if headers.contains_key(axum::http::header::AUTHORIZATION) {
+        return super::middleware::cloud_session_middleware(State(state), headers, req, next).await;
+    }
+    let reads = matches!(
+        *req.method(),
+        axum::http::Method::GET | axum::http::Method::HEAD
+    );
+    let session = if reads {
+        cookie_session(&state, &headers)
+            .await
+            .map(|(session, _)| session)
+    } else {
+        authenticated_web_session(&state, &headers).await
+    };
+    match session {
+        Ok(session) => {
+            req.extensions_mut().insert(session);
+            super::app_sign_in_handlers::no_store(next.run(req).await)
+        }
+        Err(response) => *response,
+    }
+}
+
 /// The live web session a cookie names, if any. App access tokens never
 /// count, so replacing a web session cannot end an app's sign-in.
 pub(super) async fn web_session_token_id(pool: &PgPool, token: Option<&str>) -> Option<String> {

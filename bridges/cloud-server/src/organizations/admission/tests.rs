@@ -20,6 +20,7 @@ mod admins;
 mod guards;
 mod join_requests;
 mod reverify;
+mod web_session;
 
 const ACCOUNT_ORGS: &str = "/v1/cloud/account/organizations";
 
