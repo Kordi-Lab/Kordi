@@ -170,7 +170,7 @@ test('nearby screen: Within stores the range and searches again; Add posts a req
   });
 });
 
-test('nearby screen: selecting a rail card opens its home without changing Nearby sharing', async () => {
+test('nearby screen: selecting a built rail card opens its page without changing Nearby sharing', async () => {
   const { CommonGroundPage } = await import('../src/features/commonGround/CommonGroundPage');
   const { store, calls } = storeWith({
     'GET nearby': { status: 200, body: settings() },
@@ -187,19 +187,50 @@ test('nearby screen: selecting a rail card opens its home without changing Nearb
   store.open({ name: 'nearby' });
   await mount(createElement(CommonGroundPage, { store, host }), async (root) => {
     await click(root.querySelector('[aria-label="Workshops card"]'));
-    assert.deepEqual(store.getSnapshot().stack, [{ name: 'home' }]);
+    assert.deepEqual(store.getSnapshot().stack, [{ name: 'home' }, { name: 'card' }]);
     assert.equal(store.getSnapshot().profileId, workshops.profileId);
-    assert.equal(root.querySelector('h1')?.textContent, 'Grounding');
+    assert.equal(root.querySelector('h1')?.textContent, 'Workshops');
     assert.equal(root.querySelector('.cg-deck [aria-pressed="true"]')?.getAttribute('aria-label'), 'Workshops card');
-    assert.doesNotMatch(root.textContent ?? '', /Opening your card/);
+    assert.doesNotMatch(root.textContent ?? '', /Opening/);
     assert.equal(root.querySelector('.cg-progress'), null, 'card switching never shows the bird progress view');
-    assert.ok(root.querySelector('[aria-label="Open Workshops"]'));
     assert.doesNotMatch(root.textContent ?? '', /Agent memory/, 'the old card topics never appear under the new card');
     await act(async () => finishCard(owner({ profile: workshops, card: { ...owner().card!, workingOn: ['Weekend workshops'] } })));
     await settle();
-    assert.match(root.querySelector('.cg-yours')?.textContent ?? '', /WorkshopsWeekend workshops/);
+    assert.match(root.querySelector('.cg-cardpage')?.textContent ?? '', /Weekend workshops/);
     assert.equal(root.querySelector('.cg-nb'), null);
     assert.equal(calls.filter((call) => call.method === 'PUT').length, 0, 'navigation does not change sharing');
+  });
+});
+
+test('deck: a click opens a built card\'s page and an unbuilt card\'s Build, with no Open pill', async () => {
+  const { CommonGroundPage } = await import('../src/features/commonGround/CommonGroundPage');
+  const { store } = storeWith({ 'GET rooms': { status: 200, body: { rooms: [] } } });
+  store.set({ owner: owner({ profile: work }) });
+  const cards: Record<string, ReturnType<typeof owner>> = {
+    [health.profileId]: owner({ profile: health, card: null }),
+    [work.profileId]: owner({ profile: work }),
+  };
+  let pending: Array<() => void> = [];
+  store.client.card = (id) => new Promise((resolve) => { pending.push(() => resolve(cards[id!])); });
+  const finish = async () => { const run = pending; pending = []; await act(async () => run.forEach((done) => done())); await settle(); };
+  await mount(createElement(CommonGroundPage, { store, host }), async (root) => {
+    assert.equal(root.querySelector('.cg-tile-open'), null, 'no Open pill on the selected card');
+    await click(root.querySelector('[aria-label="Work card"]'));
+    assert.deepEqual(store.getSnapshot().stack, [{ name: 'home' }, { name: 'card' }], 'the selected built card opens its page');
+    assert.match(root.querySelector('.cg-cardpage')?.textContent ?? '', /Agent memory/);
+
+    await click(root.querySelector('[aria-label="Health card"]'));
+    assert.deepEqual(store.getSnapshot().stack, [{ name: 'home' }], 'an unbuilt card goes back to Home');
+    await finish();
+    assert.ok(buttonNamed(root, 'Build'), 'Build shows in place');
+
+    await click(root.querySelector('[aria-label="Work card"]'));
+    assert.deepEqual(store.getSnapshot().stack, [{ name: 'home' }, { name: 'card' }]);
+    assert.ok(root.querySelector('.cg-deck'), 'the rail stays while the card loads');
+    assert.equal(root.querySelector('.cg-progress'), null, 'no Opening card screen');
+    assert.equal(buttonNamed(root, 'Build'), undefined, 'the previous Build pane is gone');
+    await finish();
+    assert.match(root.querySelector('.cg-cardpage')?.textContent ?? '', /Agent memory/);
   });
 });
 

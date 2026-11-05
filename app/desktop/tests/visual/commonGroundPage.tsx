@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import HelpTour from '../../src/features/onboarding/HelpTour';
 import { requestHelpGrounding } from '../../src/features/onboarding/helpNavigation';
 import { StrictMode, useLayoutEffect, useMemo, useState } from 'react';
@@ -31,11 +32,15 @@ if (params.has('emptyCard')) {
   fx.profiles = fx.profiles.map((profile) => ({ ...profile, hasCard: false }));
 }
 
+// Workshops reuses the Work topics so clicking it in the rail opens a filled card page.
+const workshopsOwner = { ...fx.owner, memoriesSinceBuild: 0, profile: { profileId: 'cgp_ws', kind: 'custom', name: 'Workshops', design: 'workshop', icon: null, focus: 'Poster on memory benchmarks' } };
 const joinedRoom = { ...fx.room, roomId: 'room_5160', code: '5160', name: 'Poster session 2026' };
 
 const ROUTES: Record<string, (query: string, body: Record<string, unknown>) => unknown> = {
   'GET profiles': () => ({ profiles: fx.profiles }),
-  'GET card': (query) => params.has('emptyCard') ? { ...fx.owner, card: null } : (screen === 'build' || query.includes('cgp_health') ? fx.healthOwner : fx.owner),
+  'GET card': (query) => params.has('emptyCard') ? { ...fx.owner, card: null }
+    : screen === 'build' || query.includes('cgp_health') ? fx.healthOwner
+      : query.includes('cgp_ws') ? workshopsOwner : fx.owner,
   'GET recent': () => fx.recent,
   'GET profiles/cgp_work/memories': () => ({ memories: fx.memories }),
   'GET documents': () => ({ documents: fx.documents }),

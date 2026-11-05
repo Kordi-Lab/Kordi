@@ -1,3 +1,4 @@
+import './previewChatTheme';
 import { createRoot } from 'react-dom/client';
 import { PinnedMessageBar } from '../../src/pages/chatsPage.pins';
 import type { PinnedMessageItem } from '../../src/pages/chatsPage.pinModel';

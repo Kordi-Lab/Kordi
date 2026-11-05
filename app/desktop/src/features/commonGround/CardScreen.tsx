@@ -10,7 +10,7 @@ import { cardSources, cardTimeline, cardTopics, firstCiters, sourceLook } from '
 import { CardNow, CardTimeline } from './CardTimeline';
 import { CardLookButton, CardLookPopover } from './CardLookPopover';
 import { useLookPopover } from './cardLook';
-import { CgButton, CgNotice, CgProgress } from './parts';
+import { CgButton, CgNotice } from './parts';
 import { CardGlyph } from './ProfileCard';
 import { DeleteProfileDialog } from './ProfileDialogs';
 import { PROFILE_FOCUS_MAX, PROFILE_NAME_MAX, renameError, renamePatch } from './profiles';
@@ -85,9 +85,9 @@ export function CardScreen({ state, store, memoryRouting = false, memoryCards = 
   const look = useLookPopover();
   const routed = useProfileMemories(store, state.profileId, memoryRouting);
   const card = state.owner?.card;
+  // Switching cards leaves the pane empty until the new card arrives, so old topics never show under the new name.
+  if (!ownerIsCurrent(state)) return <CgNotice text={state.notice} />;
   if (!card || !state.owner) return null;
-  // Switching cards keeps the new name off the old topics until the new card arrives.
-  if (!ownerIsCurrent(state)) return <><CgProgress line="Opening card" /><CgNotice text={state.notice} /></>;
   const profile = currentProfile(state);
   const design = profile ? profileDesign(profile) : 'work';
   const name = profile?.name ?? 'Your card';
