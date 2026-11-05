@@ -6,6 +6,7 @@ import { SettingsRow, SettingsSection } from '@/kordi-app/components';
 import { EditableIdentityAvatar } from '@/kordi-app/components/EditableIdentityAvatar';
 import { CloudAccountEmailRow } from '@/kordi-app/cloud/CloudAccountEmailRow';
 import { CloudProfileFieldRow } from '@/kordi-app/cloud/CloudProfileFieldRow';
+import { openOrganizationJoinDialog } from '@/features/organizations/organizationJoinPrompt';
 import type {
   CloudAccount,
   CloudAccountEmailVerificationInput,
@@ -232,6 +233,17 @@ export function CloudProfilePanel({
           )}
         />
       </div>
+      <SettingsSection title="Organizations">
+        <SettingsRow
+          title="Find your organization"
+          className="app-cloud-account-settings-meta-row"
+          control={(
+            <Button type="button" variant="secondary" className="h-8 rounded-lg px-3.5 text-[12px]" onClick={openOrganizationJoinDialog}>
+              Find
+            </Button>
+          )}
+        />
+      </SettingsSection>
       {onSignOut ? (
         <SettingsSection title="Session">
           <SettingsRow
