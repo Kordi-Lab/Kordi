@@ -21,7 +21,7 @@ The actor `skill` must be `human-requester@1`. The configuration has no URL or c
 Set the operator API origin and operator token in the shell or a private environment manager. The token must have at least 32 characters. Do not put it in a checked-in file, command-line argument, or shared log.
 
 ```sh
-export KORDI_SIMULATOR_API_BASE=https://simulator.kordi.cloud
+export KORDI_SIMULATOR_API_BASE=https://simulator.example.test
 read -s KORDI_SIM_OPERATOR_TOKEN
 export KORDI_SIM_OPERATOR_TOKEN
 kordi sim create --config ./actor.json --credential-file ./actor-credential.json
@@ -80,7 +80,7 @@ docker build --platform linux/amd64 -f deploy/simulator/Dockerfile.api -t human-
 
 For other nodes, use their target platform. Render can build for the selected service architecture without a forced platform in the Dockerfile. The API binary is `kordi-simulator-api`; it starts only the simulator control service and does not mount routes on the product server.
 
-The Render blueprint [render.yaml](../deploy/simulator/render.yaml) defines the API service and a separate PostgreSQL database. Auto deploy is disabled. Configure the `simulator.kordi.cloud` custom domain for the service. The service needs these runtime settings:
+The Render blueprint [render.yaml](../deploy/simulator/render.yaml) defines the API service and a separate PostgreSQL database. Auto deploy is disabled. Configure the `simulator.example.test` custom domain for the service. The service needs these runtime settings:
 
 - `KORDI_SIM_DATABASE_URL`: the dedicated simulator database connection string.
 - `KORDI_SIM_OPERATOR_TOKEN`: an operator bearer token with at least 32 characters.
