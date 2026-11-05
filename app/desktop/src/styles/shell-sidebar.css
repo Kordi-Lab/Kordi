@@ -55,10 +55,6 @@
 }
 
 .app-workspace-sidebar .app-nav-rail-unread-badge {
-  /* One neutral count pill for every rail item (unread chats, contact requests): ink on the
-   * rail, a thin ring in the rail colour, pinned to the button's top-right corner so it only
-   * clips the corner of the glyph. The button is flush with the rail's right edge, so the
-   * badge stays inside it. */
   position: absolute;
   top: -5px;
   right: 0;
@@ -76,7 +72,6 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 16px;
-  letter-spacing: 0;
   white-space: nowrap;
   pointer-events: none;
 }
