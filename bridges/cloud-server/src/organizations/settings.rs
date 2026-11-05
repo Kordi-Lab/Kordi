@@ -15,7 +15,7 @@ use serde::Deserialize;
 use serde_json::json;
 use sqlx_core::query::query;
 
-use super::handlers::{lock_for_change, member_summary, owner_count};
+use super::handlers::{configured_refusal, lock_for_change, member_summary, owner_count};
 use super::policy::{check_leave, manages_content, PolicyError};
 use super::{bad_request, server_error, ApiError, TEAM_KIND};
 use crate::auth::routes::CloudSession;
@@ -50,12 +50,17 @@ pub(super) async fn update_organization(
     let result: Result<(), ApiError> = async {
         let name = request.name.as_deref().map(clean_name).transpose()?;
         let mut tx = state.db_pool().begin().await.map_err(|_| server_error())?;
-        let (kind, actor) = lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
+        let (kind, actor, configured) =
+            lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
         if !manages_content(actor) {
             return Err(PolicyError::NotManager.into());
         }
         if kind != TEAM_KIND {
             return Err(PolicyError::PersonalOrganization.into());
+        }
+        // The admission file sets the name and the rule of its organizations.
+        if configured {
+            return Err(configured_refusal());
         }
         query(
             "UPDATE cloud_organizations SET \
@@ -99,9 +104,21 @@ pub(super) async fn leave(
 ) -> Response {
     let result: Result<(), ApiError> = async {
         let mut tx = state.db_pool().begin().await.map_err(|_| server_error())?;
-        let (kind, role) = lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
+        let (kind, role, configured) =
+            lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
         let owners = owner_count(&mut tx, &organization_id).await?;
         check_leave(&kind, role, owners)?;
+        if configured {
+            // Admission records the end; configured admins cannot leave.
+            super::admission::store::remove_admitted_member(
+                &mut tx,
+                &organization_id,
+                &session.account_id,
+            )
+            .await?;
+            tx.commit().await.map_err(|_| server_error())?;
+            return Ok(());
+        }
         query(
             "DELETE FROM cloud_organization_members \
              WHERE organization_id = $1 AND account_id = $2",

@@ -69,7 +69,7 @@ async fn lock_managed(
         (target, source)
     };
     for organization_id in [first, second] {
-        let (_, role) = lock_for_change(tx, organization_id, account_id).await?;
+        let (_, role, _) = lock_for_change(tx, organization_id, account_id).await?;
         if !manages_content(role) {
             return Err(PolicyError::NotManager.into());
         }

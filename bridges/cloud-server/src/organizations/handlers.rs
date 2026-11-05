@@ -92,19 +92,26 @@ pub(super) async fn list_organizations(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Response {
+    match organizations_for(state.db_pool(), &session.account_id).await {
+        Ok(organizations) => Json(json!({ "organizations": organizations })).into_response(),
+        Err(error) => error.into_response(),
+    }
+}
+
+/// The organizations `account_id` belongs to, personal first.
+pub(super) async fn organizations_for(
+    pool: &PgPool,
+    account_id: &str,
+) -> Result<Vec<OrganizationSummary>, ApiError> {
     let sql = format!(
         "{SUMMARY_SELECT} ORDER BY (o.kind = 'personal') DESC, o.created_at, o.organization_id"
     );
-    let rows: Vec<SummaryRow> = match query_as(&sql)
-        .bind(&session.account_id)
-        .fetch_all(state.db_pool())
+    let rows: Vec<SummaryRow> = query_as(&sql)
+        .bind(account_id)
+        .fetch_all(pool)
         .await
-    {
-        Ok(rows) => rows,
-        Err(_) => return server_error().into_response(),
-    };
-    let organizations: Vec<_> = rows.into_iter().filter_map(summary).collect();
-    Json(json!({ "organizations": organizations })).into_response()
+        .map_err(|_| server_error())?;
+    Ok(rows.into_iter().filter_map(summary).collect())
 }
 
 pub(super) async fn get_organization(
@@ -193,18 +200,19 @@ pub(super) fn parse_role(value: &str) -> Result<OrganizationRole, ApiError> {
     })
 }
 
-/// Locks the organization and returns its kind and the caller's role.
-/// Organizations the caller does not belong to are not found.
+/// Locks the organization and returns its kind, the caller's role, and
+/// whether the admission file defines it. Organizations the caller does not
+/// belong to are not found.
 pub(super) async fn lock_for_change(
     tx: &mut Tx<'_>,
     organization_id: &str,
     actor_account_id: &str,
-) -> Result<(String, OrganizationRole), ApiError> {
+) -> Result<(String, OrganizationRole, bool), ApiError> {
     if !valid_id(organization_id) {
         return Err(not_found());
     }
-    let row: Option<(String, Option<String>)> = query_as(
-        "SELECT o.kind, m.role FROM cloud_organizations o \
+    let row: Option<(String, Option<String>, bool)> = query_as(
+        "SELECT o.kind, m.role, o.config_id IS NOT NULL FROM cloud_organizations o \
          LEFT JOIN cloud_organization_members m \
            ON m.organization_id = o.organization_id AND m.account_id = $2 \
           AND (m.expires_at IS NULL OR m.expires_at > now()) \
@@ -216,12 +224,23 @@ pub(super) async fn lock_for_change(
     .await
     .map_err(|_| server_error())?;
     match row {
-        Some((kind, Some(role))) => Ok((
+        Some((kind, Some(role), configured)) => Ok((
             kind,
             OrganizationRole::parse(&role).ok_or_else(server_error)?,
+            configured,
         )),
         _ => Err(not_found()),
     }
+}
+
+/// Members of an organization from the admission file join through its
+/// admission rules, so the generic API cannot add them or change roles.
+pub(super) fn configured_refusal() -> ApiError {
+    err(
+        "configured_organization",
+        "Members of this organization join through its admission rules.",
+        StatusCode::CONFLICT,
+    )
 }
 
 pub(super) async fn owner_count(tx: &mut Tx<'_>, organization_id: &str) -> Result<i64, ApiError> {
@@ -294,7 +313,8 @@ pub(super) async fn update_member(
     let result: Result<OrganizationMember, ApiError> = async {
         let to = parse_role(&request.role)?;
         let mut tx = state.db_pool().begin().await.map_err(|_| server_error())?;
-        let (kind, actor) = lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
+        let (kind, actor, configured) =
+            lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
         let from = target_role(&mut tx, &organization_id, &account_id).await?;
         let owners = owner_count(&mut tx, &organization_id).await?;
         check(
@@ -303,6 +323,9 @@ pub(super) async fn update_member(
             MembershipChange::ChangeRole { from, to },
             owners,
         )?;
+        if configured {
+            return Err(configured_refusal());
+        }
         query(
             "UPDATE cloud_organization_members SET role = $3, \
                  expires_at = CASE WHEN $3 = 'owner' THEN NULL ELSE expires_at END \
@@ -332,10 +355,17 @@ pub(super) async fn remove_member(
 ) -> Response {
     let result: Result<(), ApiError> = async {
         let mut tx = state.db_pool().begin().await.map_err(|_| server_error())?;
-        let (kind, actor) = lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
+        let (kind, actor, configured) =
+            lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
         let role = target_role(&mut tx, &organization_id, &account_id).await?;
         let owners = owner_count(&mut tx, &organization_id).await?;
         check(&kind, actor, MembershipChange::Remove { role }, owners)?;
+        if configured {
+            super::admission::store::remove_admitted_member(&mut tx, &organization_id, &account_id)
+                .await?;
+            tx.commit().await.map_err(|_| server_error())?;
+            return Ok(());
+        }
         query(
             "DELETE FROM cloud_organization_members \
              WHERE organization_id = $1 AND account_id = $2",

@@ -4,7 +4,9 @@
 //! Inviting an account that does not exist, a server-managed account, or a
 //! current member gets one generic answer, so the route cannot be used to
 //! learn which accounts exist. An invitation may carry a membership end
-//! date; owners never expire. Invitations lapse after [`INVITATION_DAYS`].
+//! date; owners never expire. Invitations lapse after [`INVITATION_DAYS`],
+//! and one can be accepted only while its inviter could still send it.
+//! Organizations from the admission file take no invitations.
 
 use std::sync::Arc;
 
@@ -19,7 +21,9 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use uuid::Uuid;
 
-use super::handlers::{check, lock_for_change, member_summary, owner_count, parse_role, valid_id};
+use super::handlers::{
+    check, configured_refusal, lock_for_change, member_summary, owner_count, parse_role, valid_id,
+};
 use super::policy::{manages_content, MembershipChange, OrganizationRole, PolicyError};
 use super::{bad_request, err, server_error, ApiError};
 use crate::auth::routes::CloudSession;
@@ -125,9 +129,13 @@ pub(super) async fn invite(
         }
         let invitee = request.account_id.trim();
         let mut tx = state.db_pool().begin().await.map_err(|_| server_error())?;
-        let (kind, actor) = lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
+        let (kind, actor, configured) =
+            lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
         let owners = owner_count(&mut tx, &organization_id).await?;
         check(&kind, actor, MembershipChange::Add { role }, owners)?;
+        if configured {
+            return Err(configured_refusal());
+        }
         if !valid_id(invitee) || crate::system_account::is_service_account(invitee) {
             return Err(unavailable());
         }
@@ -229,7 +237,7 @@ pub(super) async fn revoke(
 ) -> Response {
     let result: Result<(), ApiError> = async {
         let mut tx = state.db_pool().begin().await.map_err(|_| server_error())?;
-        let (_, actor) = lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
+        let (_, actor, _) = lock_for_change(&mut tx, &organization_id, &session.account_id).await?;
         if !manages_content(actor) {
             return Err(PolicyError::NotManager.into());
         }
@@ -280,6 +288,15 @@ pub(super) async fn accept(
              JOIN cloud_organizations o ON o.organization_id = i.organization_id \
              WHERE i.invitation_id = $1 AND i.invitee_account_id = $2 \
                AND i.status = 'pending' AND i.expires_at > now() AND o.kind = 'team' \
+               AND o.config_id IS NULL \
+               AND (i.membership_expires_at IS NULL OR i.membership_expires_at > now()) \
+               AND EXISTS ( \
+                 SELECT 1 FROM cloud_organization_members inviter \
+                 WHERE inviter.organization_id = i.organization_id \
+                   AND inviter.account_id = i.invited_by_account_id \
+                   AND (inviter.expires_at IS NULL OR inviter.expires_at > now()) \
+                   AND (inviter.role = 'owner' \
+                        OR (inviter.role = 'admin' AND i.role <> 'owner'))) \
              FOR UPDATE OF o, i",
         )
         .bind(&invitation_id)

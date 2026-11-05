@@ -307,11 +307,19 @@ pub(super) struct OAuthProfile {
     pub(super) email: Option<String>,
     pub(super) email_verified: bool,
     pub(super) avatar_url: Option<String>,
+    /// Google's `hd` from a validated ID token; `None` for other providers.
+    pub(super) hosted_domain: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct OAuthTokenResponse {
     access_token: String,
+    id_token: Option<String>,
+}
+
+pub(super) struct OAuthTokens {
+    pub(super) access_token: String,
+    pub(super) id_token: Option<String>,
 }
 
 pub(super) async fn exchange_oauth_code(
@@ -319,7 +327,7 @@ pub(super) async fn exchange_oauth_code(
     config: &OAuthConfig,
     code: &str,
     code_verifier: Option<&str>,
-) -> Result<String, reqwest::Error> {
+) -> Result<OAuthTokens, reqwest::Error> {
     let mut form = vec![
         ("client_id", config.client_id.as_str()),
         ("code", code),
@@ -339,18 +347,55 @@ pub(super) async fn exchange_oauth_code(
         .error_for_status()?
         .json::<OAuthTokenResponse>()
         .await?;
-    Ok(token.access_token)
+    Ok(OAuthTokens {
+        access_token: token.access_token,
+        id_token: token.id_token,
+    })
 }
 
+/// The provider profile. A Google ID token that fails validation fails the
+/// sign-in (`Ok(None)`), so a mismatched token cannot supply `hd`.
 pub(super) async fn fetch_oauth_profile(
     client: &reqwest::Client,
-    provider: OAuthProvider,
-    access_token: &str,
-) -> Result<OAuthProfile, reqwest::Error> {
-    match provider {
-        OAuthProvider::Google => fetch_google_profile(client, access_token).await,
-        OAuthProvider::Github => fetch_github_profile(client, access_token).await,
+    config: &OAuthConfig,
+    tokens: &OAuthTokens,
+) -> Result<Option<OAuthProfile>, reqwest::Error> {
+    match config.provider {
+        OAuthProvider::Google => {
+            let profile = fetch_google_profile(client, &tokens.access_token).await?;
+            Ok(with_google_id_token(
+                profile,
+                tokens.id_token.as_deref(),
+                &config.client_id,
+            ))
+        }
+        OAuthProvider::Github => Ok(Some(
+            fetch_github_profile(client, &tokens.access_token).await?,
+        )),
     }
+}
+
+/// Takes `hd` and `email_verified` from the ID token. The email counts as
+/// verified only when both the token and userinfo say so for the same email.
+fn with_google_id_token(
+    mut profile: OAuthProfile,
+    id_token: Option<&str>,
+    client_id: &str,
+) -> Option<OAuthProfile> {
+    let Some(id_token) = id_token else {
+        return Some(profile);
+    };
+    let now = chrono::Utc::now().timestamp();
+    let claims =
+        google_id_token::google_id_claims(id_token, client_id, &profile.provider_subject, now)
+            .ok()?;
+    let same_email = match (&claims.email, &profile.email) {
+        (Some(token_email), Some(email)) => token_email.eq_ignore_ascii_case(email.trim()),
+        _ => false,
+    };
+    profile.email_verified = profile.email_verified && claims.email_verified && same_email;
+    profile.hosted_domain = claims.hosted_domain;
+    Some(profile)
 }
 
 async fn fetch_google_profile(
@@ -372,6 +417,7 @@ async fn fetch_google_profile(
         email: value["email"].as_str().map(str::to_string),
         email_verified: value["email_verified"].as_bool().unwrap_or(false),
         avatar_url: value["picture"].as_str().map(str::to_string),
+        hosted_domain: None,
     })
 }
 
@@ -420,8 +466,10 @@ fn github_profile_from_values(user: &Value, emails: &Value) -> OAuthProfile {
         email: primary_verified_email,
         email_verified,
         avatar_url: user["avatar_url"].as_str().map(str::to_string),
+        hosted_domain: None,
     }
 }
 
+mod google_id_token;
 #[cfg(test)]
 mod tests;

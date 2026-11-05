@@ -21,6 +21,7 @@ use serde::Serialize;
 
 use crate::server::ServerState;
 
+pub mod admission;
 mod handlers;
 mod invitations;
 mod policy;
@@ -75,6 +76,7 @@ pub fn routes() -> Router<Arc<ServerState>> {
             "/v1/cloud/organization-invitations/:invitation_id/decline",
             post(invitations::decline),
         )
+        .merge(admission::routes())
 }
 
 pub const PERSONAL_KIND: &str = "personal";

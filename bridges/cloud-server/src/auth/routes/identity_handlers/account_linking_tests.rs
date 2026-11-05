@@ -33,6 +33,7 @@ fn profile(subject: &str, email: Option<&str>, email_verified: bool) -> OAuthPro
         email: email.map(str::to_string),
         email_verified,
         avatar_url: None,
+        hosted_domain: None,
     }
 }
 

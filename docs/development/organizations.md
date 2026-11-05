@@ -7,7 +7,8 @@ change what an organization holds without touching each member.
 - Every account has exactly one **personal** organization. The account is
   its only member and its owner. It cannot gain members or lose its owner.
 - A **team** organization can have many members. There is no route that
-  creates one yet.
+  creates one; a deployment defines team organizations, domain claims and
+  join requests in its [admission file](organization-admission.md).
 
 Nothing else changes: with every account in its personal organization, each
 existing feature behaves as before.
