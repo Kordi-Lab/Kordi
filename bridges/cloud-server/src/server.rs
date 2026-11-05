@@ -33,6 +33,7 @@ pub struct ServerState {
     pool: PgPool,
     events: EventBus,
     chat_sync_wakes: Arc<crate::chat_sync::realtime::ChatSyncWakeHub>,
+    session_signals: Arc<crate::auth::session_signals::SessionSignalHub>,
     s3: Option<S3Config>,
     release_store: Option<ReleaseCatalogStore>,
     support: Option<SupportService>,
@@ -53,6 +54,7 @@ impl ServerState {
             pool,
             events,
             chat_sync_wakes: crate::chat_sync::realtime::ChatSyncWakeHub::new(),
+            session_signals: crate::auth::session_signals::SessionSignalHub::new(),
             s3: None,
             release_store: None,
             support: None,
@@ -153,6 +155,10 @@ impl ServerState {
 
     pub(crate) fn chat_sync_wakes(&self) -> &Arc<crate::chat_sync::realtime::ChatSyncWakeHub> {
         &self.chat_sync_wakes
+    }
+
+    pub(crate) fn session_signals(&self) -> &Arc<crate::auth::session_signals::SessionSignalHub> {
+        &self.session_signals
     }
 
     pub fn s3(&self) -> Option<&S3Config> {

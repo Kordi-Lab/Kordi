@@ -1,9 +1,14 @@
 //! Durable realtime transport for the canonical chat protocol.
 //!
 //! The socket never owns canonical state. It authenticates with a single-use
-//! ticket, catches up from the PostgreSQL sync stream, and keeps polling that
-//! same stream for live events. A dropped notification or gateway restart is
-//! therefore repaired by the next durable read.
+//! ticket, catches up from the PostgreSQL sync stream, and reads that stream
+//! again whenever this replica's notification listener wakes the account.
+//! A backstop read repairs a dropped notification or listener restart.
+//!
+//! Sign-out, device revocation, and account deletion reach the socket as a
+//! session signal and close it at once. A jittered ~30 s recheck backs that
+//! up, the socket closes at its session's known expiry, and short database
+//! outages delay work instead of closing sockets.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,50 +17,53 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::http::{header::ORIGIN, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
-use sqlx_core::query::query;
-use sqlx_postgres::PgPool;
+use serde::Deserialize;
+use tokio::sync::watch;
+use tokio::time::Instant;
 use uuid::Uuid;
 
+use crate::auth::session_signals::{SessionSignalSubscription, SignalVerdict};
 use crate::chat_sync::cursor::CursorCodec;
-use crate::chat_sync::models::SyncEventSnapshot;
-use crate::chat_sync::store::{self, StoreError};
 use crate::chat_sync::PROTOCOL_VERSION;
 use crate::server::ServerState;
 
+mod delivery;
+mod frames;
+pub(crate) mod retry;
 mod session;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_session;
 mod ticket;
 mod wake;
 
-use session::connection_is_active;
+use delivery::{
+    persist_device_ack, Delivery, DeliveryEnd, CATCH_UP_SPREAD, REPAIR_WITHOUT_LISTENER,
+};
+use frames::{
+    receive_connect, resync_and_close, send_json, send_socket_json, ClientFrame, ErrorFrame,
+    HeartbeatAckFrame, HelloFrame,
+};
+use session::{check_connection, GuardStep, SessionCheck, SessionGuard};
 use ticket::{consume_ticket, ConsumedRealtimeTicket};
 pub use ticket::{issue_ticket, IssuedRealtimeTicket, TicketError};
-pub(crate) use wake::{spawn_wake_listener, ChatSyncWakeHub};
+pub(crate) use wake::{spawn_wake_listener, ChatSyncWakeHub, ListenerStatus};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(65);
-const DURABLE_REPAIR_INTERVAL: Duration = Duration::from_secs(15);
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CLIENT_FRAME_BYTES: usize = 64 * 1024;
 const MAX_SERVER_FRAME_BYTES: usize = 512 * 1024;
 const MAX_UNACKNOWLEDGED_EVENTS: i64 = 1_000;
-/// How often an open socket re-checks that its session and device are live,
-/// so sign-out and device revocation both close it within this interval.
-const SESSION_REVALIDATION_INTERVAL: Duration = Duration::from_secs(2);
 /// A ticket without a session, issued by an older replica during a rolling
 /// update, can only be checked against its device. Its socket is closed after
 /// this long so the client reconnects with a session-bound ticket.
 const LEGACY_TICKET_SOCKET_LIFETIME: Duration = Duration::from_secs(5 * 60);
-
-fn event_is_within_delivery_window(stream_seq: i64, acknowledged_stream_seq: i64) -> bool {
-    stream_seq.saturating_sub(acknowledged_stream_seq) <= MAX_UNACKNOWLEDGED_EVENTS
-}
 
 fn cursor_codec() -> Option<CursorCodec> {
     std::env::var("KORDI_CHAT_SYNC_CURSOR_SECRET")
@@ -94,217 +102,75 @@ pub async fn ws_handler(
         return StatusCode::FORBIDDEN.into_response();
     }
 
-    if !connection_is_active(state.db_pool(), &ticket, state.admission()).await {
-        return StatusCode::FORBIDDEN.into_response();
-    }
+    // Subscribe before checking, so a revocation that commits after the
+    // check still reaches the socket.
+    let signals = state.session_signals().subscribe(
+        &ticket.account_id,
+        &ticket.device_id,
+        ticket.session_token_id.as_deref(),
+    );
+    let expires_at = match check_connection(state.db_pool(), &ticket, state.admission()).await {
+        SessionCheck::Active { expires_at } => expires_at,
+        SessionCheck::Inactive => return StatusCode::FORBIDDEN.into_response(),
+        SessionCheck::Unavailable => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+    let opened_at = Instant::now();
+    let guard = SessionGuard::new(
+        opened_at,
+        expires_at,
+        legacy_ticket_deadline(&ticket, opened_at),
+    );
     ws.max_message_size(MAX_CLIENT_FRAME_BYTES)
         .max_frame_size(MAX_CLIENT_FRAME_BYTES)
-        .on_upgrade(move |socket| run_socket(socket, state, ticket, codec))
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum ClientFrame {
-    Connect {
-        protocol_version: i32,
-        device_id: String,
-        cursor: String,
-    },
-    Heartbeat {
-        last_applied_seq: i64,
-    },
-}
-
-#[derive(Serialize)]
-struct HelloFrame {
-    #[serde(rename = "type")]
-    frame_type: &'static str,
-    connection_id: Uuid,
-    protocol_version: i32,
-    heartbeat_interval_ms: u64,
-    max_frame_bytes: usize,
-}
-
-#[derive(Serialize)]
-struct EventFrame<'a> {
-    #[serde(rename = "type")]
-    frame_type: &'static str,
-    stream_seq: i64,
-    cursor: String,
-    event: &'a SyncEventSnapshot,
-}
-
-#[derive(Serialize)]
-struct HeartbeatAckFrame {
-    #[serde(rename = "type")]
-    frame_type: &'static str,
-    server_time: DateTime<Utc>,
-}
-
-#[derive(Serialize)]
-struct ResyncRequiredFrame<'a> {
-    #[serde(rename = "type")]
-    frame_type: &'static str,
-    reason: &'a str,
-}
-
-#[derive(Serialize)]
-struct ErrorFrame<'a> {
-    #[serde(rename = "type")]
-    frame_type: &'static str,
-    code: &'a str,
-}
-
-async fn send_json<T: Serialize>(
-    sender: &mut SplitSink<WebSocket, Message>,
-    value: &T,
-) -> Result<(), ()> {
-    let body = serde_json::to_string(value).map_err(|_| ())?;
-    if body.len() > MAX_SERVER_FRAME_BYTES {
-        return Err(());
-    }
-    tokio::time::timeout(SEND_TIMEOUT, sender.send(Message::Text(body)))
-        .await
-        .map_err(|_| ())?
-        .map_err(|_| ())
-}
-
-async fn send_socket_json<T: Serialize>(socket: &mut WebSocket, value: &T) -> Result<(), ()> {
-    let body = serde_json::to_string(value).map_err(|_| ())?;
-    if body.len() > MAX_SERVER_FRAME_BYTES {
-        return Err(());
-    }
-    tokio::time::timeout(SEND_TIMEOUT, socket.send(Message::Text(body)))
-        .await
-        .map_err(|_| ())?
-        .map_err(|_| ())
-}
-
-async fn receive_connect(
-    socket: &mut WebSocket,
-    ticket: &ConsumedRealtimeTicket,
-    codec: &CursorCodec,
-) -> Result<i64, ()> {
-    let incoming = tokio::time::timeout(CONNECT_TIMEOUT, socket.recv())
-        .await
-        .map_err(|_| ())?;
-    let Some(Ok(Message::Text(body))) = incoming else {
-        return Err(());
-    };
-    let frame: ClientFrame = serde_json::from_str(&body).map_err(|_| ())?;
-    let ClientFrame::Connect {
-        protocol_version,
-        device_id,
-        cursor,
-    } = frame
-    else {
-        return Err(());
-    };
-    if protocol_version != PROTOCOL_VERSION || device_id != ticket.device_id {
-        return Err(());
-    }
-    codec.decode(&cursor, &ticket.account_id).map_err(|_| ())
-}
-
-async fn resync_and_close(sender: &mut SplitSink<WebSocket, Message>, reason: &str) {
-    let _ = send_json(
-        sender,
-        &ResyncRequiredFrame {
-            frame_type: "resync_required",
-            reason,
-        },
-    )
-    .await;
-    let _ = sender.send(Message::Close(None)).await;
-}
-
-async fn send_available_events(
-    pool: &PgPool,
-    account_id: &str,
-    codec: &CursorCodec,
-    sender: &mut SplitSink<WebSocket, Message>,
-    sent_stream_seq: &mut i64,
-    acknowledged_stream_seq: i64,
-) -> Result<(), &'static str> {
-    loop {
-        let batch = match store::sync_batch(pool, account_id, *sent_stream_seq, Some(500)).await {
-            Ok(batch) => batch,
-            Err(StoreError::CursorExpired) => return Err("SYNC_CURSOR_EXPIRED"),
-            Err(StoreError::CursorAhead) => return Err("SYNC_CURSOR_EXPIRED"),
-            Err(StoreError::InvariantViolation(_)) => return Err("STREAM_SEQUENCE_GAP"),
-            Err(StoreError::Database(error)) => {
-                eprintln!("[chat-realtime] read durable events: {error}");
-                return Err("SERVER_ERROR");
-            }
-            Err(_) => return Err("SERVER_ERROR"),
-        };
-        for event in &batch.events {
-            if !event_is_within_delivery_window(event.stream_seq, acknowledged_stream_seq) {
-                return Ok(());
-            }
-            let frame = EventFrame {
-                frame_type: "event",
-                stream_seq: event.stream_seq,
-                cursor: codec.encode(account_id, event.stream_seq),
-                event,
-            };
-            send_json(sender, &frame)
-                .await
-                .map_err(|_| "CLIENT_TOO_SLOW")?;
-            *sent_stream_seq = event.stream_seq;
-        }
-        if !batch.has_more {
-            return Ok(());
-        }
-    }
-}
-
-async fn persist_device_ack(
-    pool: &PgPool,
-    account_id: &str,
-    device_id: &str,
-    stream_seq: i64,
-) -> Result<bool, sqlx_core::Error> {
-    let now = Utc::now().to_rfc3339();
-    let result = query(
-        "UPDATE cloud_devices \
-         SET last_ack_seq = GREATEST(last_ack_seq, $1), protocol_version = $2, \
-             last_sync_at = $3, last_seen_at = $3 \
-         WHERE device_id = $4 AND account_id = $5 AND revoked_at IS NULL",
-    )
-    .bind(stream_seq)
-    .bind(PROTOCOL_VERSION)
-    .bind(&now)
-    .bind(device_id)
-    .bind(account_id)
-    .execute(pool)
-    .await?;
-    Ok(result.rows_affected() == 1)
+        .on_upgrade(move |socket| {
+            run_socket(
+                socket,
+                state,
+                SocketAuth {
+                    ticket,
+                    guard,
+                    signals,
+                },
+                codec,
+            )
+        })
 }
 
 /// When a socket opened at `opened_at` with `ticket` must close regardless of
 /// revalidation: only sockets opened with a legacy ticket have a deadline.
-fn legacy_ticket_deadline(
-    ticket: &ConsumedRealtimeTicket,
-    opened_at: tokio::time::Instant,
-) -> Option<tokio::time::Instant> {
+fn legacy_ticket_deadline(ticket: &ConsumedRealtimeTicket, opened_at: Instant) -> Option<Instant> {
     ticket
         .session_token_id
         .is_none()
         .then(|| opened_at + LEGACY_TICKET_SOCKET_LIFETIME)
 }
 
+/// The authorization state a socket carries from the upgrade request.
+struct SocketAuth {
+    ticket: ConsumedRealtimeTicket,
+    guard: SessionGuard,
+    signals: SessionSignalSubscription,
+}
+
+/// Resolves when the listener status changes; never, if its hub is gone.
+async fn listener_changed(status: &mut watch::Receiver<ListenerStatus>) -> ListenerStatus {
+    if status.changed().await.is_err() {
+        std::future::pending::<()>().await;
+    }
+    *status.borrow_and_update()
+}
+
 async fn run_socket(
     mut socket: WebSocket,
     state: Arc<ServerState>,
-    ticket: ConsumedRealtimeTicket,
+    auth: SocketAuth,
     codec: CursorCodec,
 ) {
-    if !connection_is_active(state.db_pool(), &ticket, state.admission()).await {
-        let _ = socket.send(Message::Close(None)).await;
-        return;
-    }
-    let legacy_deadline = legacy_ticket_deadline(&ticket, tokio::time::Instant::now());
+    let SocketAuth {
+        ticket,
+        mut guard,
+        mut signals,
+    } = auth;
     let connect_stream_seq = match receive_connect(&mut socket, &ticket, &codec).await {
         Ok(sequence) => sequence,
         Err(()) => {
@@ -320,9 +186,13 @@ async fn run_socket(
             return;
         }
     };
-    let mut sent_stream_seq = connect_stream_seq;
+    let pool = state.db_pool();
+    let account_id = ticket.account_id.as_str();
     let (mut sender, mut receiver): (SplitSink<_, _>, SplitStream<_>) = socket.split();
-    let mut event_wake = state.chat_sync_wakes().subscribe(&ticket.account_id);
+    let mut event_wake = state.chat_sync_wakes().subscribe(account_id);
+    let mut listener = state.chat_sync_wakes().listener_status();
+    let mut status = *listener.borrow_and_update();
+    let mut delivery = Delivery::new(Instant::now(), connect_stream_seq, status.connected);
     if send_json(
         &mut sender,
         &HelloFrame {
@@ -338,32 +208,20 @@ async fn run_socket(
     {
         return;
     }
-    if let Err(reason) = send_available_events(
-        state.db_pool(),
-        &ticket.account_id,
-        &codec,
-        &mut sender,
-        &mut sent_stream_seq,
-        connect_stream_seq,
-    )
-    .await
+    if let DeliveryEnd::Resync(reason) = delivery
+        .deliver(pool, account_id, &codec, &mut sender, status.connected)
+        .await
     {
         resync_and_close(&mut sender, reason).await;
         return;
     }
 
-    let mut durable_repair = tokio::time::interval(DURABLE_REPAIR_INTERVAL);
-    durable_repair.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    durable_repair.tick().await;
     let mut heartbeat_check = tokio::time::interval(HEARTBEAT_INTERVAL);
     heartbeat_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut session_revalidation = tokio::time::interval(SESSION_REVALIDATION_INTERVAL);
-    session_revalidation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut last_liveness = tokio::time::Instant::now();
-    let mut last_applied_seq = connect_stream_seq;
+    let mut last_liveness = Instant::now();
 
     loop {
-        tokio::select! {
+        let deliver = tokio::select! {
             incoming = receiver.next() => match incoming {
                 Some(Ok(Message::Text(body))) => {
                     let Ok(ClientFrame::Heartbeat { last_applied_seq: applied }) =
@@ -372,28 +230,21 @@ async fn run_socket(
                         resync_and_close(&mut sender, "INVALID_CLIENT_FRAME").await;
                         return;
                     };
-                    if applied < last_applied_seq || applied > sent_stream_seq {
+                    if applied < delivery.last_applied_seq || applied > delivery.sent_stream_seq {
                         resync_and_close(&mut sender, "INVALID_CLIENT_SEQUENCE").await;
                         return;
                     }
-                    last_applied_seq = applied;
-                    last_liveness = tokio::time::Instant::now();
-                    match persist_device_ack(
-                        state.db_pool(),
-                        &ticket.account_id,
-                        &ticket.device_id,
-                        applied,
-                    ).await {
+                    let advanced = applied > delivery.last_applied_seq;
+                    delivery.last_applied_seq = applied;
+                    last_liveness = Instant::now();
+                    match persist_device_ack(pool, account_id, &ticket.device_id, applied).await {
                         Ok(true) => {}
                         Ok(false) => {
                             let _ = sender.send(Message::Close(None)).await;
                             return;
                         }
-                        Err(error) => {
-                            eprintln!("[chat-realtime] persist device ack: {error}");
-                            let _ = sender.send(Message::Close(None)).await;
-                            return;
-                        }
+                        // The ack is monotonic, so the next heartbeat stores it.
+                        Err(error) => eprintln!("[chat-realtime] persist device ack: {error}"),
                     }
                     if send_json(&mut sender, &HeartbeatAckFrame {
                         frame_type: "heartbeat_ack",
@@ -401,15 +252,18 @@ async fn run_socket(
                     }).await.is_err() {
                         return;
                     }
+                    advanced && delivery.paused()
                 }
                 Some(Ok(Message::Ping(payload))) => {
-                    last_liveness = tokio::time::Instant::now();
+                    last_liveness = Instant::now();
                     if sender.send(Message::Pong(payload)).await.is_err() {
                         return;
                     }
+                    false
                 }
                 Some(Ok(Message::Pong(_))) => {
-                    last_liveness = tokio::time::Instant::now();
+                    last_liveness = Instant::now();
+                    false
                 }
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
                 Some(Ok(_)) => {
@@ -417,36 +271,8 @@ async fn run_socket(
                     return;
                 }
             },
-            _ = event_wake.recv() => {
-                if let Err(reason) = send_available_events(
-                    state.db_pool(),
-                    &ticket.account_id,
-                    &codec,
-                    &mut sender,
-                    &mut sent_stream_seq,
-                    last_applied_seq,
-                ).await {
-                    resync_and_close(&mut sender, reason).await;
-                    return;
-                }
-            }
-            _ = durable_repair.tick() => {
-                if let Err(reason) = send_available_events(
-                    state.db_pool(),
-                    &ticket.account_id,
-                    &codec,
-                    &mut sender,
-                    &mut sent_stream_seq,
-                    last_applied_seq,
-                ).await {
-                    resync_and_close(&mut sender, reason).await;
-                    return;
-                }
-                if sent_stream_seq - last_applied_seq > MAX_UNACKNOWLEDGED_EVENTS {
-                    resync_and_close(&mut sender, "CLIENT_TOO_SLOW").await;
-                    return;
-                }
-            }
+            _ = event_wake.recv() => true,
+            _ = tokio::time::sleep_until(delivery.repair_deadline()) => true,
             _ = heartbeat_check.tick() => {
                 if last_liveness.elapsed() > HEARTBEAT_TIMEOUT {
                     let _ = sender.send(Message::Close(None)).await;
@@ -455,14 +281,53 @@ async fn run_socket(
                 if sender.send(Message::Ping(Vec::new())).await.is_err() {
                     return;
                 }
+                false
             }
-            _ = session_revalidation.tick() => {
-                let legacy_expired = legacy_deadline
-                    .is_some_and(|deadline| tokio::time::Instant::now() >= deadline);
-                if legacy_expired || !connection_is_active(state.db_pool(), &ticket, state.admission()).await {
+            verdict = signals.recv() => match verdict {
+                SignalVerdict::Close => {
                     let _ = sender.send(Message::Close(None)).await;
                     return;
                 }
+                SignalVerdict::Recheck => {
+                    guard.recheck_within(Instant::now(), Duration::ZERO);
+                    false
+                }
+            },
+            _ = tokio::time::sleep_until(guard.deadline()) => {
+                let now = Instant::now();
+                let step = if guard.must_close(now) {
+                    GuardStep::Close
+                } else {
+                    let check = check_connection(pool, &ticket, state.admission()).await;
+                    guard.record(Instant::now(), check)
+                };
+                if step == GuardStep::Close {
+                    let _ = sender.send(Message::Close(None)).await;
+                    return;
+                }
+                false
+            }
+            changed = listener_changed(&mut listener) => {
+                let reconnected = changed.connected && changed.epoch != status.epoch;
+                status = changed;
+                if !changed.connected {
+                    delivery.repair_within(Instant::now(), REPAIR_WITHOUT_LISTENER);
+                } else if reconnected {
+                    // Signals and wakes sent while it was down may be lost.
+                    let now = Instant::now();
+                    guard.recheck_within(now, CATCH_UP_SPREAD);
+                    delivery.repair_within(now, CATCH_UP_SPREAD);
+                }
+                false
+            }
+        };
+        if deliver {
+            if let DeliveryEnd::Resync(reason) = delivery
+                .deliver(pool, account_id, &codec, &mut sender, status.connected)
+                .await
+            {
+                resync_and_close(&mut sender, reason).await;
+                return;
             }
         }
     }
