@@ -368,13 +368,13 @@ test('wallet: renaming sends an emptied name so the kind default comes back, and
   assert.equal(renameError('custom', 'Lab'), null);
 });
 
-test('wallet: the card page waits for a newly selected card instead of showing old topics', () => {
+test('wallet: the card page stays empty for a newly selected card instead of showing old topics', () => {
   const store = new CommonGroundStore(mockServer({}).client, { profiles: true });
   const workOwner = owner({ profile: { profileId: 'cgp_work', kind: 'work', name: 'Work', focus: null } });
   store.set({ profiles: [work, health], profileId: 'cgp_health', owner: workOwner, stack: [{ name: 'home' }, { name: 'card' }] });
   assert.equal(ownerIsCurrent(store.getSnapshot()), false);
   const waiting = renderToStaticMarkup(createElement(CardScreen, { state: store.getSnapshot(), store }));
-  assert.match(waiting, /Opening card/);
+  assert.equal(waiting, '', 'no Opening card screen while the card loads');
   assert.doesNotMatch(waiting, /Agent memory/);
   store.set({ profileId: 'cgp_work' });
   assert.equal(ownerIsCurrent(store.getSnapshot()), true);

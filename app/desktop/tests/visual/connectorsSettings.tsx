@@ -1,6 +1,7 @@
 // Login-free synthetic preview of the real account settings dialog opened on
 // the Connectors tab. It uses the in-memory preview connectors client, so it
 // makes no network calls and needs no session.
+import './previewChatTheme';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 

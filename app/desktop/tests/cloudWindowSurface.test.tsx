@@ -3,7 +3,7 @@ import { mock, test } from 'node:test';
 import { JSDOM } from 'jsdom';
 import { act, createElement, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { mockIPC } from '@tauri-apps/api/mocks';
+import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 
 import { __setMainWindowShownForTests } from '../src/features/cloud/loginWindow';
 import { MAIN_WINDOW_SHOW_FALLBACK_MS, useCloudWindowSurface } from '../src/features/cloud/useCloudWindowSurface';
@@ -123,7 +123,7 @@ type WindowHarness = {
   restore: () => void;
 };
 
-function nativeWindowHarness(): WindowHarness {
+function nativeWindowHarness(visible = false): WindowHarness {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
   const frames = new Map<number, FrameRequestCallback>();
   let frameId = 0;
@@ -142,9 +142,11 @@ function nativeWindowHarness(): WindowHarness {
   const pending: Array<() => void> = [];
   mockIPC((command, args) => {
     calls.push({ command, args: (args ?? {}) as Record<string, unknown> });
+    if (command === 'plugin:window|is_visible') return visible;
     if (command !== 'desktop_set_auth_window_surface') return undefined;
     return new Promise<void>(resolve => pending.push(resolve));
   });
+  mockWindows('main');
   return {
     frames,
     calls,
@@ -247,6 +249,62 @@ test('a slow first screen still shows the hidden window', { timeout: 10_000 }, a
     assert.equal(await waitForShows(harness, 1), 1, 'loading the session must not keep the window hidden');
   } finally {
     mock.timers.reset();
+    await act(async () => root.unmount());
+    harness.restore();
+  }
+});
+
+test('a reload finds the window already on screen and keeps the animated resize', { timeout: 10_000 }, async () => {
+  const harness = nativeWindowHarness(true);
+  // A reloaded page has not asked the native window yet.
+  __setMainWindowShownForTests(null);
+  const root = createRoot(document.getElementById('root')!);
+  let ready = false;
+  function Probe() {
+    ready = useCloudWindowSurface('welcome');
+    return null;
+  }
+  const paint = () => act(async () => { const callbacks = [...harness.frames.values()]; harness.frames.clear(); callbacks.forEach(callback => callback(0)); });
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    // The native window state crosses an asynchronous import as well.
+    for (let i = 0; i < 50 && harness.frames.size === 0; i += 1) {
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+    }
+    assert.equal(harness.calls.filter(call => call.command === 'plugin:window|is_visible').length, 1);
+    assert.equal(harness.pending.length, 0, 'a shown window paints the current screen before it resizes');
+    await paint();
+    await paint();
+    await waitForResize(harness);
+    const resizes = harness.calls.filter(call => call.command === 'desktop_set_auth_window_surface');
+    assert.deepEqual(resizes.map(call => call.args), [{ surface: 'welcome', animate: true }]);
+    await act(async () => harness.pending.shift()!());
+    await paint();
+    await paint();
+    assert.equal(ready, true);
+    assert.equal(shows(harness), 0, 'a window already on screen is not revealed again');
+  } finally {
+    await act(async () => root.unmount());
+    harness.restore();
+  }
+});
+
+test('a reload that finds the window hidden sizes it at once', { timeout: 10_000 }, async () => {
+  const harness = nativeWindowHarness(false);
+  __setMainWindowShownForTests(null);
+  const root = createRoot(document.getElementById('root')!);
+  function Probe() {
+    useCloudWindowSurface('signup');
+    return null;
+  }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await waitForResize(harness);
+    const resizes = harness.calls.filter(call => call.command === 'desktop_set_auth_window_surface');
+    assert.deepEqual(resizes.map(call => call.args), [{ surface: 'signup', animate: false }]);
+    await act(async () => harness.pending.shift()!());
+    assert.equal(await waitForShows(harness, 1), 1);
+  } finally {
     await act(async () => root.unmount());
     harness.restore();
   }

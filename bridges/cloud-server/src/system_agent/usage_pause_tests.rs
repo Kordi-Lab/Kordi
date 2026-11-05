@@ -243,9 +243,18 @@ async fn a_stopped_pool_is_paused_by_an_owner_without_a_word_in_the_chat() {
     )
     .await
     .unwrap();
-    let runs = by_id(&snapshots, "pool.runs");
-    assert_eq!(runs.reached, Reached::Stopped);
-    assert_eq!(runs.paused_since, Some(rfc3339(recorded[0].2)));
+    // The default pool is shared with every unbound organization, so its
+    // own rows and pause times are not shown; the stop still is.
+    assert_eq!(snapshots.len(), 1);
+    let stopped = by_id(&snapshots, "pool.stopped");
+    assert_eq!(
+        (
+            stopped.reached,
+            stopped.used,
+            stopped.paused_since.as_deref()
+        ),
+        (Reached::Stopped, None, None)
+    );
 }
 
 #[tokio::test]
@@ -285,9 +294,11 @@ async fn members_see_percentages_and_owners_see_amounts() {
         pool_spend_micros: Some(1_000_000),
         ..PoolLimits::default()
     });
+    // The team has its own pool: the default pool serves everyone else.
+    let default = ResourcePool::new(format!("default-{suffix}"), test_provider("model"));
     let pools = ResourcePools::new(
-        vec![capped],
-        &pool_id,
+        vec![default, capped],
+        &format!("default-{suffix}"),
         [(organization.clone(), pool_id.clone())],
     )
     .unwrap();

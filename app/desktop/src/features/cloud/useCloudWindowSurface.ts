@@ -5,6 +5,7 @@ import {
   applyKordiMainWindowSize,
   isMainWindowShown,
   isTauriRuntime,
+  readMainWindowShown,
   showMainWindow,
   type CloudGateSurface,
 } from './loginWindow';
@@ -53,8 +54,7 @@ export function useCloudWindowSurface(surface: CloudGateSurface | 'main' | null)
     let disposed = false;
     let frame = 0;
     let cancelPaint: (() => void) | undefined;
-    const hidden = !isMainWindowShown();
-    const resize = () => {
+    const resize = (hidden: boolean) => {
       if (disposed) return;
       const resized = surface === 'main'
         ? applyKordiMainWindowSize()
@@ -75,16 +75,19 @@ export function useCloudWindowSurface(surface: CloudGateSurface | 'main' | null)
         });
       });
     };
-    if (hidden) {
-      // Nothing is on screen yet, so size the window at once.
-      resize();
-    } else {
+    void readMainWindowShown().then(shown => {
+      if (disposed) return;
+      if (!shown) {
+        // Nothing is on screen yet, so size the window at once.
+        resize(true);
+        return;
+      }
       // Paint the shared loading surface at the CURRENT size before the native
       // frame starts moving. The content must lead the resize, not follow it.
       frame = requestAnimationFrame(() => {
-        frame = requestAnimationFrame(resize);
+        frame = requestAnimationFrame(() => resize(false));
       });
-    }
+    });
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);

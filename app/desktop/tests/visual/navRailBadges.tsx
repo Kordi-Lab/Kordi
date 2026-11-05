@@ -1,5 +1,6 @@
 // Login-free preview of the left rail count badges with sample counts.
 //   ?theme=light|dark
+import './previewChatTheme';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 

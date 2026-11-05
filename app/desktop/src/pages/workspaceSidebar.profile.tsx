@@ -12,7 +12,7 @@ import { canonicalAvatarImageSource } from '@/features/cloud/canonicalAvatar';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { memoryClientForEnvironment, memorySectionAvailable } from '@/features/memory/memoryClient';
 import { OrganizationJoinHost } from '@/features/organizations/OrganizationJoinHost';
-import { OrganizationMenuEntry, OrganizationMenuPanel } from '@/features/organizations/OrganizationSwitcher';
+import { OrganizationMenuLevels } from '@/features/organizations/OrganizationSwitcher';
 import { openOrganizationJoinDialog } from '@/features/organizations/organizationJoinPrompt';
 import { useAccountOrganizations } from '@/features/organizations/useOrganizations';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
@@ -213,8 +213,6 @@ export function SidebarProfileControl({
   onCreateAppInvite,
 }: WorkspaceSidebarAccount) {
   const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
-  // The organization list opens in place of the menu; null direction means no slide.
-  const [menuLevel, setMenuLevel] = useState<{ level: 'account' | 'organizations'; direction: 'forward' | 'back' | null }>({ level: 'account', direction: null });
   const [localDialogTab, setLocalDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
   const [deviceReview, setDeviceReview] = useState<{ accountId: string; needsReview: boolean } | null>(null);
   const isDialogControlled = Boolean(setControlledDialogTab);
@@ -278,9 +276,7 @@ export function SidebarProfileControl({
       setIsProfileCardOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      if (menuLevel.level === 'organizations') setMenuLevel({ level: 'account', direction: 'back' });
-      else setIsProfileCardOpen(false);
+      if (event.key === 'Escape') setIsProfileCardOpen(false);
     };
     window.addEventListener('mousedown', onPointerDown);
     window.addEventListener('keydown', onKeyDown);
@@ -288,7 +284,7 @@ export function SidebarProfileControl({
       window.removeEventListener('mousedown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [isProfileCardOpen, menuLevel.level]);
+  }, [isProfileCardOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !cloudAccount?.accountId) return;
@@ -316,11 +312,7 @@ export function SidebarProfileControl({
         ref={profileTriggerRef}
         type="button"
         className="app-nav-rail-profile rounded-full"
-        onClick={() => {
-          // Every time the menu opens it starts at the first level.
-          if (!isProfileCardOpen) setMenuLevel({ level: 'account', direction: null });
-          setIsProfileCardOpen((open) => !open);
-        }}
+        onClick={() => setIsProfileCardOpen((open) => !open)}
         data-help-target="profile"
         aria-label="Open profile"
         aria-expanded={isProfileCardOpen}
@@ -380,78 +372,66 @@ export function SidebarProfileControl({
               'rounded-[18px] border p-2.5 text-foreground',
             )}
           >
-            {menuLevel.level === 'organizations' ? (
-              <div className="org-menu-level" data-direction={menuLevel.direction ?? undefined} key="organizations">
-                <OrganizationMenuPanel
-                  organizations={accountOrganizations.organizations}
-                  selectedOrganizationId={accountOrganizations.selectedOrganizationId}
-                  onSelect={(organizationId) => {
-                    accountOrganizations.onSelect(organizationId);
-                    setMenuLevel({ level: 'account', direction: 'back' });
-                  }}
-                  onFind={() => {
-                    setIsProfileCardOpen(false);
-                    openOrganizationJoinDialog();
-                  }}
-                  onBack={() => setMenuLevel({ level: 'account', direction: 'back' })}
-                />
-              </div>
-            ) : (
-              <div className="org-menu-level" data-direction={menuLevel.direction ?? undefined} key="account">
-              <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_1.75rem] items-center gap-x-2.5 px-2.5 py-2.5">
-                <IdentityAvatar
-                  kind="human"
-                  seed={profileAvatarSeed}
-                  isSelf
-                  name={profileDisplayName}
-                  imageUrl={profileImageUrl}
-                  className="h-10 w-10 border border-white/10"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="app-transient-identity-title truncate">{profileDisplayName}</div>
-                  <div className="app-transient-metadata truncate tabular-nums">
-                    {profileKordiHandle || 'Kordi ID unavailable'}
-                  </div>
-                </div>
-                {profileKordiHandle ? (
-                  <CloudProfileRowCopyButton
-                    label="Kordi ID"
-                    value={profileKordiHandle}
-                    compact
+            <OrganizationMenuLevels
+              {...accountOrganizations}
+              onFind={() => {
+                setIsProfileCardOpen(false);
+                openOrganizationJoinDialog();
+              }}
+            >
+              {(organizationEntry) => (
+                <>
+                <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_1.75rem] items-center gap-x-2.5 px-2.5 py-2.5">
+                  <IdentityAvatar
+                    kind="human"
+                    seed={profileAvatarSeed}
+                    isSelf
+                    name={profileDisplayName}
+                    imageUrl={profileImageUrl}
+                    className="h-10 w-10 border border-white/10"
                   />
-                ) : null}
-              </div>
-              <OrganizationMenuEntry
-                organizations={accountOrganizations.organizations}
-                selectedOrganizationId={accountOrganizations.selectedOrganizationId}
-                onOpen={() => setMenuLevel({ level: 'organizations', direction: 'forward' })}
-              />
-              <div className="app-transient-divider mt-2 grid gap-1 border-t pt-2">
-                {onCreateAppInvite ? (
-                  <CloudAppInviteCopyRow onCreateInvite={onCreateAppInvite} />
-                ) : null}
-                <button
-                  type="button"
-                  className="app-button-quiet app-transient-flat-action app-transient-action-row app-account-popover-row grid grid-cols-[0.875rem_minmax(0,1fr)_1.75rem] items-center gap-x-2.5 rounded-[12px] px-2.5 py-2 text-left"
-                  onClick={() => openCloudAccountDialog(hasDeviceReview ? 'devices' : 'profile')}
-                  aria-label={hasDeviceReview ? 'Open settings to review a new device' : 'Open account settings'}
-                >
-                  <Settings className="app-transient-action-icon app-transient-muted" aria-hidden="true" />
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="app-transient-action-label truncate">Settings</span>
-                    {hasDeviceReview ? (
-                      <span className="rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-200">
-                        Review
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="grid h-7 w-7 place-items-center justify-self-end" aria-hidden="true">
-                    <ChevronRightIcon className="app-transient-action-icon app-transient-subtle" />
-                  </span>
-                </button>
-              </div>
-              </div>
-            )}
+                  <div className="min-w-0 flex-1">
+                    <div className="app-transient-identity-title truncate">{profileDisplayName}</div>
+                    <div className="app-transient-metadata truncate tabular-nums">
+                      {profileKordiHandle || 'Kordi ID unavailable'}
+                    </div>
+                  </div>
+                  {profileKordiHandle ? (
+                    <CloudProfileRowCopyButton
+                      label="Kordi ID"
+                      value={profileKordiHandle}
+                      compact
+                    />
+                  ) : null}
+                </div>
+                {organizationEntry}
+                <div className="app-transient-divider mt-2 grid gap-1 border-t pt-2">
+                  {onCreateAppInvite ? (
+                    <CloudAppInviteCopyRow onCreateInvite={onCreateAppInvite} />
+                  ) : null}
+                  <button
+                    type="button"
+                    className="app-button-quiet app-transient-flat-action app-transient-action-row app-account-popover-row grid grid-cols-[0.875rem_minmax(0,1fr)_1.75rem] items-center gap-x-2.5 rounded-[12px] px-2.5 py-2 text-left"
+                    onClick={() => openCloudAccountDialog(hasDeviceReview ? 'devices' : 'profile')}
+                    aria-label={hasDeviceReview ? 'Open settings to review a new device' : 'Open account settings'}
+                  >
+                    <Settings className="app-transient-action-icon app-transient-muted" aria-hidden="true" />
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="app-transient-action-label truncate">Settings</span>
+                      {hasDeviceReview ? (
+                        <span className="rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-200">
+                          Review
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="grid h-7 w-7 place-items-center justify-self-end" aria-hidden="true">
+                      <ChevronRightIcon className="app-transient-action-icon app-transient-subtle" />
+                    </span>
+                  </button>
+                </div>
+                </>
+              )}
+            </OrganizationMenuLevels>
           </div>,
           document.querySelector('.kordi-app') ?? document.body,
         )

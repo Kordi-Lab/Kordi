@@ -44,8 +44,7 @@ pub(crate) fn desktop_reveal_main_window(window: tauri::WebviewWindow) -> Result
     if window.label() != MAIN_WINDOW_LABEL {
         return Err("Only the main window starts hidden.".into());
     }
-    if first_main_window_show() {
-        window.show().map_err(|err| err.to_string())?;
+    if show_once(&MAIN_WINDOW_SHOWN, || window.show()).map_err(|err| err.to_string())? {
         window.set_focus().map_err(|err| err.to_string())?;
     }
     Ok(())
@@ -57,21 +56,29 @@ pub(crate) fn show_main_window_after_fallback<R: tauri::Runtime>(app: &tauri::Ap
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(MAIN_WINDOW_SHOW_FALLBACK).await;
-        if first_main_window_show() {
+        if !MAIN_WINDOW_SHOWN.load(Ordering::SeqCst) {
             show_and_focus_main_window(&handle);
         }
     });
 }
 
-fn first_main_window_show() -> bool {
-    !MAIN_WINDOW_SHOWN.swap(true, Ordering::SeqCst)
+/// Runs `show` unless `shown` is already set and reports whether it ran.
+/// The flag is claimed first so two callers cannot both show the window,
+/// and released when `show` fails so a later reveal or the fallback retries.
+fn show_once<E>(shown: &AtomicBool, show: impl FnOnce() -> Result<(), E>) -> Result<bool, E> {
+    if shown.swap(true, Ordering::SeqCst) {
+        return Ok(false);
+    }
+    show().inspect_err(|_| shown.store(false, Ordering::SeqCst))?;
+    Ok(true)
 }
 
 pub(crate) fn show_and_focus_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    MAIN_WINDOW_SHOWN.store(true, Ordering::SeqCst);
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-        if let Err(err) = window.show() {
-            eprintln!("[kordi] Unable to show main window: {err}");
+        // Marked shown only once it is, so the page or the fallback can retry.
+        match window.show() {
+            Ok(()) => MAIN_WINDOW_SHOWN.store(true, Ordering::SeqCst),
+            Err(err) => eprintln!("[kordi] Unable to show main window: {err}"),
         }
         if let Err(err) = window.unminimize() {
             eprintln!("[kordi] Unable to unminimize main window: {err}");
@@ -162,10 +169,11 @@ pub(crate) fn should_show_main_window_on_reopen(has_visible_windows: bool) -> bo
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     use super::{
-        first_main_window_show, macos_app_bundle_path, should_hide_window_instead_of_close,
-        should_show_main_window_on_reopen, MAIN_WINDOW_LABEL,
+        macos_app_bundle_path, should_hide_window_instead_of_close,
+        should_show_main_window_on_reopen, show_once, MAIN_WINDOW_LABEL,
     };
 
     #[test]
@@ -186,8 +194,27 @@ mod tests {
 
     #[test]
     fn main_window_is_shown_once() {
-        assert!(first_main_window_show());
-        assert!(!first_main_window_show());
+        let shown = AtomicBool::new(false);
+        let mut calls = 0;
+        let mut show = || -> Result<(), ()> {
+            calls += 1;
+            Ok(())
+        };
+        assert_eq!(show_once(&shown, &mut show), Ok(true));
+        assert_eq!(show_once(&shown, &mut show), Ok(false));
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn a_failed_show_leaves_the_window_for_a_retry() {
+        let shown = AtomicBool::new(false);
+        assert_eq!(
+            show_once(&shown, || Err("no window server")),
+            Err("no window server")
+        );
+        assert!(!shown.load(Ordering::SeqCst), "the fallback must still try");
+        assert_eq!(show_once(&shown, || Ok::<_, &str>(())), Ok(true));
+        assert!(shown.load(Ordering::SeqCst));
     }
 
     #[test]

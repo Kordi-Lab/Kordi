@@ -80,6 +80,8 @@ export function OrganizationJoinHost({ accountId }: { accountId: string | null |
     if (normalized) void refreshOrganizations(normalized, { force: true });
   }, [normalized]);
 
+  // A dialog left open for another account is dropped, so it cannot come back later.
+  if (view && view.accountId !== normalized) setView(null);
   if (!view || view.accountId !== normalized) return null;
   return <OrganizationJoinDialog data={view.data} failed={view.failed} actions={actions} onJoined={onJoined} onClose={close} />;
 }

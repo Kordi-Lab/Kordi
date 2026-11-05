@@ -135,3 +135,30 @@ async fn offers_only_the_paths_the_organization_allows() {
     verify_email(&h, &account, &format!("{account}@example.test")).await;
     assert_eq!(joinable(&h, &token).await["organizations"], json!([]));
 }
+
+#[tokio::test]
+async fn a_rejected_request_is_not_shown_as_requested() {
+    let Some(pool) = crate::common_ground::tests::db_fixture::pool().await else {
+        return;
+    };
+    let (admin, admin_token) = signed_in(&pool, "jo_rej_admin").await;
+    let h = super::harness_on(pool, |_| {}, &[&admin]).await;
+    let (account, token) = signed_in(&h.pool, "jo_rej").await;
+    verify_email(&h, &account, &format!("{account}@example.test")).await;
+    let submit = format!("{ACCOUNT_ORGS}/{}/join-requests", h.config_id());
+    let request = json!({"fields": {"affiliation": "Example Lab"}});
+    let (_, body) = send(&h.app, "POST", &submit, &token, Some(request)).await;
+    let request_id = body["joinRequest"]["requestId"].as_str().unwrap();
+    let reject = format!(
+        "/v1/cloud/organizations/{}/join-requests/{request_id}/reject",
+        h.organization_id()
+    );
+    let (status, body) = send(&h.app, "POST", &reject, &admin_token, None).await;
+    assert_eq!(status, 200, "{body}");
+
+    // The email code still admits the caller, so the entry stays, unrequested.
+    let entry = joinable(&h, &token).await["organizations"][0].clone();
+    assert_eq!(entry["requested"], false, "{entry}");
+    assert_eq!(entry["joinOptions"]["emailCode"], true, "{entry}");
+    assert_eq!(entry["joinOptions"]["joinRequest"], false, "{entry}");
+}

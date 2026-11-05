@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronLeft, ChevronRight, Search, UserRound } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -116,6 +117,81 @@ export function OrganizationMenuPanel({
           <span className="app-transient-action-label truncate">Find your organization</span>
         </button>
       </div>
+    </div>
+  );
+}
+
+type MenuLevel = { level: 'account' | 'organizations'; direction: 'forward' | 'back' | null };
+
+/**
+ * The account menu body with organizations as its second level. It mounts with
+ * the menu, so every opening starts at the first level. While the list is shown,
+ * Escape steps back instead of closing the menu.
+ */
+export function OrganizationMenuLevels({
+  organizations,
+  selectedOrganizationId,
+  onSelect,
+  onFind,
+  children,
+}: {
+  organizations: CloudOrganization[];
+  selectedOrganizationId: string | null;
+  onSelect: (organizationId: string) => void;
+  onFind: () => void;
+  children: (organizationEntry: ReactNode) => ReactNode;
+}) {
+  const [menu, setMenu] = useState<MenuLevel>({ level: 'account', direction: null });
+  const levelRef = useRef<HTMLDivElement | null>(null);
+  const back = () => setMenu({ level: 'account', direction: 'back' });
+
+  // The focused row unmounts when the level changes; keep keyboard focus in the menu.
+  useEffect(() => {
+    if (menu.direction === null) return;
+    const container = levelRef.current;
+    const target = menu.level === 'organizations'
+      ? container?.querySelector<HTMLElement>('[aria-pressed="true"]') ?? container?.querySelector<HTMLElement>('button')
+      : container?.querySelector<HTMLElement>('[aria-haspopup="menu"]');
+    target?.focus({ preventScroll: true });
+  }, [menu]);
+
+  useEffect(() => {
+    if (menu.level !== 'organizations') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      // Runs before the menu's own Escape handler, which would close the menu.
+      event.stopPropagation();
+      setMenu({ level: 'account', direction: 'back' });
+    };
+    window.addEventListener('keydown', onKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
+  }, [menu.level]);
+
+  if (menu.level === 'organizations') {
+    return (
+      <div ref={levelRef} className="org-menu-level" data-direction={menu.direction ?? undefined} key="organizations">
+        <OrganizationMenuPanel
+          organizations={organizations}
+          selectedOrganizationId={selectedOrganizationId}
+          onSelect={(organizationId) => {
+            onSelect(organizationId);
+            back();
+          }}
+          onFind={onFind}
+          onBack={back}
+        />
+      </div>
+    );
+  }
+  return (
+    <div ref={levelRef} className="org-menu-level" data-direction={menu.direction ?? undefined} key="account">
+      {children(
+        <OrganizationMenuEntry
+          organizations={organizations}
+          selectedOrganizationId={selectedOrganizationId}
+          onOpen={() => setMenu({ level: 'organizations', direction: 'forward' })}
+        />,
+      )}
     </div>
   );
 }

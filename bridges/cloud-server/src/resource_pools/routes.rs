@@ -2,6 +2,9 @@
 //! across its organizations, or to one organization, as
 //! [`super::snapshot::UsageSnapshot`]s. Owners and admins of an organization
 //! see counts and spend; everyone else sees percentages and reset times.
+//! Pool-wide rows (`pool.runs`, `pool.spend`) and their pause times are shown
+//! only to organizations that have their pool to themselves (see
+//! [`has_pool_to_itself`]), so nobody sees another organization's usage.
 //! Both routes run behind the cloud session middleware, and an organization
 //! the caller does not belong to answers 404.
 
@@ -19,7 +22,7 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::snapshot::{self, Counter, Scoped, UsageSnapshot};
-use super::{pauses, Feature, ResourcePools};
+use super::{pauses, Feature, ResourcePool, ResourcePools};
 use crate::auth::routes::CloudSession;
 use crate::organizations::{OrganizationRole, PERSONAL_KIND};
 use crate::server::ServerState;
@@ -81,12 +84,29 @@ type MembershipRow = (String, String, String, String);
 const MEMBERSHIP_SELECT: &str = "SELECT o.organization_id, o.name, o.kind, m.role
      FROM cloud_organization_members m
      JOIN cloud_organizations o ON o.organization_id = m.organization_id
-     WHERE m.account_id = $1";
+     WHERE m.account_id = $1 AND (m.expires_at IS NULL OR m.expires_at > now())";
+
+/// Whether `organization_id` is the only organization whose work its pool
+/// counts: it is bound to the pool explicitly, no other organization is, and
+/// the pool is not the default pool that every unbound organization (every
+/// personal organization among them) falls back to. Only then are the pool's
+/// runs, spend and pause times its own.
+pub fn has_pool_to_itself(pools: &ResourcePools, organization_id: &str) -> bool {
+    let Some(&index) = pools.bindings.get(organization_id) else {
+        return false;
+    };
+    index != pools.default_index
+        && pools
+            .bindings
+            .iter()
+            .all(|(other, &bound)| bound != index || other == organization_id)
+}
 
 /// Every snapshot that applies to `account_id` in one organization: the
-/// pool's caps, the busiest of the caller's conversations against the
-/// per-conversation cap, and in a personal organization the caller's
-/// Grounding cap. Filtered for the caller's role.
+/// pool's caps (pool-wide rows only when it has the pool to itself), the
+/// busiest of the caller's conversations against the per-conversation cap,
+/// and in a personal organization the caller's Grounding cap. Filtered for
+/// the caller's role.
 pub async fn organization_snapshots(
     db: &PgPool,
     pools: &ResourcePools,
@@ -122,10 +142,24 @@ pub async fn organization_snapshots(
             conversation_id: None,
         });
     }
-    let pool_counter = snapshot::counter(db, pool.id(), day, None, "").await?;
-    let mut snapshots = snapshot::build(pool, &scoped, pool_counter, now);
-    pauses::attach(db, pool.id(), day, &mut snapshots).await?;
+    let pool_wide = has_pool_to_itself(pools, organization_id);
+    let mut snapshots = build(db, pool, &scoped, pool_wide, now).await?;
+    pauses::attach(db, pool.id(), day, pool_wide, &mut snapshots).await?;
     Ok(snapshot::for_role(snapshots, role))
+}
+
+async fn build(
+    db: &PgPool,
+    pool: &ResourcePool,
+    scoped: &[Scoped],
+    pool_wide: bool,
+    now: DateTime<Utc>,
+) -> sqlx_core::Result<Vec<UsageSnapshot>> {
+    if !pool_wide {
+        return Ok(snapshot::build_without_pool(pool, scoped, now));
+    }
+    let pool_counter = snapshot::counter(db, pool.id(), now.date_naive(), None, "").await?;
+    Ok(snapshot::build(pool, scoped, pool_counter, now))
 }
 
 async fn account_usage(
@@ -220,3 +254,7 @@ async fn organization_usage(
     }))
     .into_response()
 }
+
+#[cfg(test)]
+#[path = "routes_tests.rs"]
+mod tests;
