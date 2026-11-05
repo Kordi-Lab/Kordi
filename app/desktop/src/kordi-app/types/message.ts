@@ -231,8 +231,6 @@ export type MessagePlanCardOption = {
 
 /** A connector event an agent message is about, shown as a chip under the message. */
 export type MessageEventSource = { eventId: string; provider: string; title: string };
-/** A System agent notice that a daily limit or an owner pause stopped its work. */
-export type MessageUsageLimit = { reached: 'daily_limit' | 'spend_limit' | 'stopped'; resetsAt: string | null; organizationId: string | null };
 
 export type MessagePlanCard = {
   eventId: string;
@@ -319,7 +317,6 @@ export type Message = {
   messageKind?: string | null;
   voiceMessage?: MessageVoice | null;
   planCard?: MessagePlanCard | null;
-  usageLimit?: MessageUsageLimit;
   eventSources?: MessageEventSource[] | null;
   detail?: string;
   statusChips?: string[];

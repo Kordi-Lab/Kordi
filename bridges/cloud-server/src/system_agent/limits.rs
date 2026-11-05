@@ -2,11 +2,11 @@
 //!
 //! A pass is admitted against the pool of the conversation's organization
 //! before its run is queued. When the pool's daily limit is used up, or its
-//! emergency stop is on, the System agent does not answer: nothing is
-//! queued, the messages and due reminders it would have answered are marked
-//! as seen, and nothing is replayed when the next day starts. The first
-//! refused pass of a window posts one System notice saying why and when the
-//! System agent is back (see `resource_pools::notices`).
+//! emergency stop is on, the System agent stays silent: nothing is queued,
+//! the messages and due reminders it would have answered are marked as seen,
+//! and nothing is replayed when the next day starts. Nothing is posted into
+//! the conversation; the first refusal of a window is recorded so Settings
+//! can show since when the System agent is paused (`resource_pools::pauses`).
 
 use serde_json::Value;
 use sqlx_core::query::query;
@@ -17,7 +17,7 @@ use sqlx_postgres::{PgPool, Postgres};
 use super::cards::mark_card_seen;
 use super::config::SystemAgentConfig;
 use super::input::Candidate;
-use crate::resource_pools::notices::{self, Paused};
+use crate::resource_pools::pauses::{self, Pause};
 use crate::resource_pools::snapshot::{self, Reached};
 use crate::resource_pools::usage::{self, Admission};
 use crate::resource_pools::{Feature, ResourcePool};
@@ -63,22 +63,22 @@ pub(super) async fn admit(
 
 /// A pass the conversation's pool refused, and why.
 pub(super) struct Refused<'a> {
-    pub config: &'a SystemAgentConfig,
     pub resource_pool: &'a ResourcePool,
     pub organization_id: Option<&'a str>,
     pub admission: Admission,
 }
 
-/// The limit that refused a pass: the stop switch, or the first used-up
-/// limit in the order admission checks them.
-async fn reached(
+/// The limit that refused a pass, as its snapshot `limitId` and reason: the
+/// stop switch, or the first used-up limit in the order admission checks
+/// them.
+async fn refused_by(
     pool: &PgPool,
     candidate: &Candidate,
     refused: &Refused<'_>,
     now: chrono::DateTime<chrono::Utc>,
-) -> Result<Reached, sqlx_core::Error> {
+) -> Result<(&'static str, Reached), sqlx_core::Error> {
     if refused.admission == Admission::Stopped {
-        return Ok(Reached::Stopped);
+        return Ok(("pool.stopped", Reached::Stopped));
     }
     let scope = candidate.conversation_id.to_string();
     let snapshots = snapshot::load(
@@ -88,16 +88,16 @@ async fn reached(
         now,
     )
     .await?;
-    Ok(match snapshot::first_reached(&snapshots) {
-        Reached::None => Reached::DailyLimit,
-        reached => reached,
-    })
+    Ok(snapshot::first_reached(&snapshots).map_or(
+        ("conversation.system_agent_runs", Reached::DailyLimit),
+        |reached| (reached.limit_id, reached.reached),
+    ))
 }
 
-/// Drops a pass the pool would not admit, without a backlog: the cursor
-/// moves past the new messages, offered reminders count as fired and the
-/// open card as seen, as if the pass had run and stayed silent. The first
-/// refused pass of the window also posts the paused line.
+/// Drops a pass the pool would not admit, without a message or a backlog:
+/// the cursor moves past the new messages, offered reminders count as fired
+/// and the open card as seen, as if the pass had run and stayed silent. The
+/// first refusal of the window is recorded for Settings.
 pub(super) async fn stay_silent(
     pool: &PgPool,
     candidate: &Candidate,
@@ -105,7 +105,7 @@ pub(super) async fn stay_silent(
     refused: &Refused<'_>,
 ) -> Result<(), sqlx_core::Error> {
     let now = chrono::Utc::now();
-    let reached = reached(pool, candidate, refused, now).await?;
+    let (limit_id, reached) = refused_by(pool, candidate, refused, now).await?;
     let mut tx = pool.begin().await?;
     let changed = query(
         "UPDATE cloud_pip_conversation_state
@@ -121,17 +121,15 @@ pub(super) async fn stay_silent(
         for (event_id, revision) in woken_cards(input) {
             mark_card_seen(&mut *tx, candidate.conversation_id, &event_id, revision).await?;
         }
-        // The line comes after the cursor: the System agent's own messages
-        // never wake it, so the line starts no pass of its own.
-        let paused = Paused {
-            conversation_id: candidate.conversation_id,
+        let pause = Pause {
             pool_id: refused.resource_pool.id(),
+            conversation_id: candidate.conversation_id,
             organization_id: refused.organization_id,
+            limit_id,
             reached,
-            sender_account_id: &refused.config.account_id,
             now,
         };
-        notices::post_paused_line(&mut tx, &paused).await?;
+        pauses::record(&mut tx, &pause).await?;
     }
     tx.commit().await
 }

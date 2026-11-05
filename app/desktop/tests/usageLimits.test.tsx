@@ -1,113 +1,49 @@
 import assert from 'node:assert/strict';
-import { afterEach, test } from 'node:test';
+import { test } from 'node:test';
 
 import { JSDOM } from 'jsdom';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { renderToStaticMarkup } from 'react-dom/server';
 
-import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import { CloudUsagePanel, type CloudUsageClient } from '../src/features/cloud/CloudUsagePanel';
-import {
-  __resetUsageCacheForTests,
-  formatUtcClock,
-  primeOrganizations,
-  type CloudOrganization,
-  type OrganizationUsage,
-} from '../src/features/cloud/usageClient';
-import { parseUsageLimit, usageLimitNoticeCopy } from '../src/features/cloud/usageLimitNotice';
-import { KORDI_SYSTEM_AVATAR_URL } from '../src/features/systemAgent/systemAgentIdentity';
-import { MessageBubble } from '../src/kordi-app/components/transcript';
-import type { CanonicalIdentity, CanonicalSessionMessage } from '../src/kordi-app/types';
+import { formatUtcClock, type OrganizationUsageSummary, type UsageSnapshot } from '../src/features/cloud/usageClient';
+import { usageBarTone, usageLabel, usageStatusLine, usageValueLabel } from '../src/features/cloud/usagePresentation';
 
 const RESETS_AT = '2026-11-05T00:00:00.000Z';
-const systemAgent: CanonicalIdentity = {
-  id: 'human:acct_kordi_pip', kind: 'human', displayName: 'System', source: 'bridge', sourceHostId: 'cloud',
-  sourceIdentityId: 'acct_kordi_pip', humanId: 'acct_kordi_pip', profileImageUrl: KORDI_SYSTEM_AVATAR_URL,
-  createdAtMs: 1, updatedAtMs: 1,
-} as CanonicalIdentity;
-
-function limitNotice(text: string, usageLimit: unknown, messageKind = 'system-notice'): CanonicalSessionMessage {
-  return {
-    id: `group-message:${text}`,
-    sessionId: 'session:group:one',
-    senderIdentityId: systemAgent.id,
-    senderRole: 'person',
-    messageKind,
-    contentText: text,
-    content: { schema: 1, blocks: [{ type: 'text', text }], legacy_attachments: [], usageLimit },
-    status: 'received',
-    sequenceNum: 1,
-    createdAtMs: 1,
-    updatedAtMs: 1,
-    sourceTransport: 'cloud-group',
-  };
-}
-
-function mapped(text: string, usageLimit: unknown, messageKind?: string) {
-  const message = mapCanonicalMessage(limitNotice(text, usageLimit, messageKind), new Map([[systemAgent.id, systemAgent]]), 'human:me');
-  assert.ok(message);
-  return message;
-}
-
-const organizations: CloudOrganization[] = [
-  { organizationId: 'org_personal', name: 'Personal', kind: 'personal', role: 'owner', memberCount: 1, createdAt: RESETS_AT },
-  { organizationId: 'org_team', name: 'Example team', kind: 'team', role: 'owner', memberCount: 4, createdAt: RESETS_AT },
-  { organizationId: 'org_guild', name: 'Design guild', kind: 'team', role: 'member', memberCount: 9, createdAt: RESETS_AT },
-];
-
-afterEach(() => __resetUsageCacheForTests());
-
-test('system notices carry a parsed usage limit; malformed values are ignored', () => {
-  const message = mapped('Daily limit reached. Resets at 00:00 UTC.', { reached: 'daily_limit', resetsAt: RESETS_AT, organizationId: 'org_team' });
-  assert.deepEqual(message.usageLimit, { reached: 'daily_limit', resetsAt: RESETS_AT, organizationId: 'org_team' });
-  assert.equal(message.text, 'Daily limit reached. Resets at 00:00 UTC.');
-
-  assert.equal(mapped('Plain notice.', { reached: 'over_quota', resetsAt: RESETS_AT }).usageLimit, undefined);
-  assert.equal(mapped('Plain notice.', 'daily_limit').usageLimit, undefined);
-  assert.equal(mapped('Plain notice.', undefined).usageLimit, undefined);
-  assert.equal(mapped('Not a notice.', { reached: 'daily_limit' }, 'text').usageLimit, undefined);
-  assert.equal('usageLimit' in mapped('Plain notice.', null), false);
-
-  assert.deepEqual(parseUsageLimit({ reached: 'stopped', resetsAt: 'soon', organizationId: '' }), { reached: 'stopped', resetsAt: null, organizationId: null });
-  assert.equal(formatUtcClock('2026-11-05T07:30:00Z'), '07:30');
-  assert.equal(formatUtcClock(null), '00:00');
+const snapshot = (overrides: Partial<UsageSnapshot> = {}): UsageSnapshot => ({
+  limitId: 'pool.runs', scope: 'pool', usedPercent: 50, window: 'day', resetsAt: RESETS_AT, reached: 'none', ...overrides,
 });
 
-test('limit copy depends on the viewer role', () => {
-  const limit = { reached: 'daily_limit' as const, resetsAt: RESETS_AT, organizationId: 'org_team' };
-  assert.deepEqual(usageLimitNoticeCopy(limit, 'owner'), { text: 'Daily limit reached. Resets at 00:00 UTC.', showUsageLink: true });
-  assert.deepEqual(usageLimitNoticeCopy(limit, 'admin'), { text: 'Daily limit reached. Resets at 00:00 UTC.', showUsageLink: true });
-  const ask = { text: 'Daily limit reached. Resets at 00:00 UTC. Ask an owner to raise it.', showUsageLink: false };
-  assert.deepEqual(usageLimitNoticeCopy(limit, 'member'), ask);
-  assert.deepEqual(usageLimitNoticeCopy(limit, null), ask);
-  assert.deepEqual(usageLimitNoticeCopy({ ...limit, organizationId: null }, 'owner'), ask);
-  assert.deepEqual(usageLimitNoticeCopy({ ...limit, reached: 'stopped' }, 'owner'), { text: 'Paused by an owner.', showUsageLink: false });
+test('bar colour follows the 75% and 90% thresholds and reached limits', () => {
+  assert.equal(usageBarTone(snapshot({ usedPercent: 74 })), 'accent');
+  assert.equal(usageBarTone(snapshot({ usedPercent: 75 })), 'amber');
+  assert.equal(usageBarTone(snapshot({ usedPercent: 89 })), 'amber');
+  assert.equal(usageBarTone(snapshot({ usedPercent: 90 })), 'red');
+  assert.equal(usageBarTone(snapshot({ usedPercent: 10, reached: 'daily_limit' })), 'red');
+  assert.equal(usageBarTone(snapshot({ usedPercent: 0, reached: 'stopped' })), 'red');
 });
 
-test('chat bubbles show role-aware limit lines', () => {
-  primeOrganizations('acct_me', organizations);
-  const render = (organizationId: string | null, reached = 'daily_limit') => renderToStaticMarkup(createElement(MessageBubble, {
-    msg: mapped(reached === 'stopped' ? 'Paused by an owner.' : 'Daily limit reached. Resets at 00:00 UTC.', { reached, resetsAt: RESETS_AT, organizationId }),
-    onOpenSenderProfile: () => {},
-  }));
+test('labels and values', () => {
+  assert.equal(usageLabel(snapshot({ limitId: 'conversation.system_agent_runs', scope: 'conversation' })), 'System agent per chat');
+  assert.equal(usageLabel(snapshot({ limitId: 'pool.stopped' })), 'System agent');
+  assert.equal(usageValueLabel(snapshot({ used: 7, limit: 10, usedPercent: 70 })), '7 of 10');
+  assert.equal(usageValueLabel(snapshot({ limitId: 'pool.spend', used: 400_000, limit: 1_000_000, usedPercent: 40 })), '0.40 of 1.00');
+  assert.equal(usageValueLabel(snapshot({ usedPercent: 70 })), '70%');
+  assert.equal(formatUtcClock('2026-11-04T14:20:00Z'), '14:20');
+  assert.equal(formatUtcClock('soon'), '00:00');
+});
 
-  const owner = render('org_team');
-  assert.match(owner, /Daily limit reached\. Resets at 00:00 UTC\./);
-  assert.match(owner, />View usage</);
-  assert.doesNotMatch(owner, /Ask an owner/);
-
-  const member = render('org_guild');
-  assert.match(member, /Ask an owner to raise it\./);
-  assert.doesNotMatch(member, /View usage/);
-
-  const unknown = render('org_elsewhere');
-  assert.match(unknown, /Ask an owner to raise it\./);
-  assert.doesNotMatch(unknown, /View usage/);
-
-  const stopped = render('org_team', 'stopped');
-  assert.match(stopped, /Paused by an owner\./);
-  assert.doesNotMatch(stopped, /View usage|Daily limit/);
+test('the line under a row depends on the viewer role', () => {
+  assert.equal(usageStatusLine(snapshot(), 'member'), 'Resets at 00:00 UTC');
+  const reached = snapshot({ usedPercent: 100, reached: 'daily_limit' });
+  assert.equal(usageStatusLine(reached, 'owner'), 'Limit reached. Resets at 00:00 UTC.');
+  assert.equal(usageStatusLine(reached, 'admin'), 'Limit reached. Resets at 00:00 UTC.');
+  assert.equal(usageStatusLine(reached, 'member'), 'Limit reached. Resets at 00:00 UTC. Ask an owner to raise it.');
+  assert.equal(usageStatusLine({ ...reached, reached: 'spend_limit' }, null), 'Limit reached. Resets at 00:00 UTC. Ask an owner to raise it.');
+  const paused = { ...reached, pausedSince: '2026-11-04T14:20:00Z' };
+  assert.equal(usageStatusLine(paused, 'owner'), 'Paused since 14:20, resets 00:00 UTC.');
+  assert.equal(usageStatusLine(paused, 'member'), 'Paused since 14:20, resets 00:00 UTC. Ask an owner to raise it.');
+  assert.equal(usageStatusLine(snapshot({ limitId: 'pool.stopped', reached: 'stopped' }), 'member'), 'Paused by an owner.');
 });
 
 function installDom() {
@@ -130,19 +66,15 @@ function installDom() {
 
 function fakeClient(role: 'owner' | 'member'): CloudUsageClient {
   const amounts = role === 'owner';
-  const usage: OrganizationUsage = {
-    organizationId: 'org_team',
-    role,
-    notices: amounts ? [{ threshold: 90, at: RESETS_AT }] : [],
+  const organization: OrganizationUsageSummary = {
+    organizationId: 'org_team', name: 'Example team', kind: 'team', role,
     snapshots: [
-      { limitId: 'pool.runs', scope: 'pool', usedPercent: 70, window: 'day', resetsAt: RESETS_AT, reached: 'none', ...(amounts ? { used: 7, limit: 10 } : {}) },
-      { limitId: 'pool.spend', scope: 'pool', usedPercent: 100, window: 'day', resetsAt: RESETS_AT, reached: 'spend_limit', ...(amounts ? { used: 1_000_000, limit: 1_000_000 } : {}) },
+      snapshot({ usedPercent: 70, ...(amounts ? { used: 7, limit: 10 } : {}) }),
+      snapshot({ limitId: 'pool.spend', usedPercent: 100, reached: 'spend_limit', pausedSince: '2026-11-04T14:20:00Z', ...(amounts ? { used: 1_000_000, limit: 1_000_000 } : {}) }),
     ],
   };
-  return {
-    listOrganizations: async () => [{ ...organizations[1]!, role }],
-    organizationUsage: async () => usage,
-  };
+  const empty: OrganizationUsageSummary = { organizationId: 'org_empty', name: 'Quiet team', kind: 'team', role, snapshots: [] };
+  return { accountUsage: async () => [organization, empty] };
 }
 
 async function renderPanel(accountId: string, client: CloudUsageClient) {
@@ -155,25 +87,29 @@ async function renderPanel(accountId: string, client: CloudUsageClient) {
       root.render(createElement(CloudUsagePanel, { accountId, client, sessionLoader: async () => ({ token: 'token', accountId }) }));
     });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    return host.textContent ?? '';
+    return {
+      text: host.textContent ?? '',
+      tones: [...host.querySelectorAll('[data-usage-tone]')].map((row) => row.getAttribute('data-usage-tone')),
+    };
   } finally {
     await act(async () => root.unmount());
     restore();
   }
 }
 
-test('the Usage panel shows amounts to owners and percentages to members', async () => {
+test('the Usage tab shows amounts to owners and percentages to members', async () => {
   const owner = await renderPanel('acct_owner', fakeClient('owner'));
-  assert.match(owner, /Example team/);
-  assert.match(owner, /90% of today's limit used\./);
-  assert.match(owner, /Runs.*7 of 10/);
-  assert.match(owner, /Spend.*1\.00 of 1\.00/);
-  assert.match(owner, /Resets at 00:00 UTC/);
-  assert.match(owner, /Daily limit reached\. Resets at 00:00 UTC\./);
+  assert.match(owner.text, /Example team/);
+  assert.match(owner.text, /Runs.*7 of 10/);
+  assert.match(owner.text, /Spend.*1\.00 of 1\.00/);
+  assert.match(owner.text, /Paused since 14:20, resets 00:00 UTC\./);
+  assert.doesNotMatch(owner.text, /Ask an owner/);
+  assert.match(owner.text, /Quiet team.*No limits\./);
+  assert.deepEqual(owner.tones, ['accent', 'red']);
 
   const member = await renderPanel('acct_member', fakeClient('member'));
-  assert.match(member, /Runs.*70%/);
-  assert.match(member, /Spend.*100%/);
-  assert.doesNotMatch(member, / of /);
-  assert.doesNotMatch(member, /today's limit used/);
+  assert.match(member.text, /Runs.*70%/);
+  assert.match(member.text, /Spend.*100%/);
+  assert.match(member.text, /Ask an owner to raise it\./);
+  assert.doesNotMatch(member.text, / of /);
 });

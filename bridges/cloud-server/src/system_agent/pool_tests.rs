@@ -235,29 +235,21 @@ async fn an_exhausted_pool_stays_silent_without_a_backlog() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(
-        seen,
-        latest - 1,
-        "the messages are not kept for later; only the paused line follows the cursor"
-    );
+    assert_eq!(seen, latest, "the messages are not kept for later");
     assert_eq!(
         hooks[format!("t_minus_2h:{}", card.event_id)],
         json!(true),
         "the reminder will not fire later"
     );
-    let posted: Vec<(String,)> = query_as(
-        "SELECT message_kind FROM cloud_chat_messages WHERE conversation_id = $1 AND sender_account_id = $2",
+    let (posted,): (i64,) = query_as(
+        "SELECT count(*) FROM cloud_chat_messages WHERE conversation_id = $1 AND sender_account_id = $2",
     )
     .bind(chat)
     .bind(&system_agent)
-    .fetch_all(&pool)
+    .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(
-        posted,
-        [("system-notice".to_string(),)],
-        "the System agent answers nothing; one notice says it is paused"
-    );
+    assert_eq!(posted, 0, "the System agent says nothing");
     // The chat is quiet now: nothing makes the next sweep pick it again.
     assert_eq!(sweep(&pool, &config).await, 0);
     assert_eq!(runs_in(&pool, chat).await.len(), 1);

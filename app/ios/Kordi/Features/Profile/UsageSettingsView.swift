@@ -4,14 +4,12 @@ import SwiftUI
 struct UsageSettingsView: View {
     @StateObject private var model: UsageSettingsModel
 
-    init(model: @autoclosure @escaping () -> UsageSettingsModel) {
-        _model = StateObject(wrappedValue: model())
+    init(service: any UsageService) {
+        _model = StateObject(wrappedValue: UsageSettingsModel(service: service))
     }
 
     init(appModel: AppModel) {
-        self.init(model: UsageSettingsModel(service: appModel.makeUsageService()) { [weak appModel] organizations in
-            appModel?.updateOrganizations(organizations)
-        })
+        self.init(service: appModel.makeUsageService())
     }
 
     var body: some View {
@@ -26,9 +24,16 @@ struct UsageSettingsView: View {
                 SettingsLoadingRow("Loading usage…")
             }
 
-            ForEach(Array(model.sections.enumerated()), id: \.element.id) { index, section in
+            ForEach(Array(model.organizations.enumerated()), id: \.element.id) { index, organization in
                 if index > 0 { SettingsDivider() }
-                organizationSection(section)
+                SettingsSectionTitle(organization.name)
+                if organization.snapshots.isEmpty {
+                    SettingsCaption("No limits.")
+                } else {
+                    ForEach(organization.snapshots, id: \.limitId) { snapshot in
+                        UsageSnapshotRow(snapshot: snapshot, role: organization.role)
+                    }
+                }
             }
         }
         .navigationTitle("Usage")
@@ -36,40 +41,26 @@ struct UsageSettingsView: View {
         .refreshable { await model.load() }
         .task { await model.load() }
     }
-
-    @ViewBuilder
-    private func organizationSection(_ section: UsageSettingsModel.Section) -> some View {
-        SettingsSectionTitle(section.organization.name)
-        if let usage = section.usage {
-            if UsagePresentation.isManager(role: usage.role ?? section.organization.role),
-               let notice = UsagePresentation.noticeLine(usage.notices) {
-                SettingsCaption(notice)
-            }
-            if usage.snapshots.isEmpty {
-                SettingsCaption("No limits.")
-            } else {
-                ForEach(usage.snapshots, id: \.limitId) { snapshot in
-                    UsageSnapshotRow(snapshot: snapshot)
-                }
-            }
-        } else {
-            SettingsCaption("Could not load usage.")
-        }
-    }
 }
 
 /// Label, a thin bar filled to the used share, the value, and when it resets.
 struct UsageSnapshotRow: View {
     @Environment(\.kordiChatTheme) private var chatTheme
     let snapshot: CloudUsageSnapshot
+    let role: String?
 
     var body: some View {
+        let level = UsagePresentation.level(snapshot)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 12) {
                 Text(UsagePresentation.label(limitId: snapshot.limitId))
                     .font(SettingsFont.rowTitle)
-                    .frame(minWidth: 96, alignment: .leading)
-                UsageBar(fraction: Double(snapshot.usedPercent) / 100, tint: snapshot.isReached ? .orange : chatTheme.accent)
+                    .lineLimit(1)
+                    .fixedSize()
+                UsageBar(
+                    fraction: Double(snapshot.usedPercent) / 100,
+                    tint: UsagePresentation.tint(level, accent: chatTheme.accent)
+                )
                 Text(UsagePresentation.value(snapshot))
                     .font(SettingsFont.subtitle)
                     .foregroundStyle(.secondary)
@@ -77,9 +68,10 @@ struct UsageSnapshotRow: View {
                     .lineLimit(1)
                     .fixedSize()
             }
-            Text(UsagePresentation.status(snapshot))
+            Text(UsagePresentation.status(snapshot, role: role))
                 .font(SettingsFont.subtitle)
-                .foregroundStyle(snapshot.isReached ? Color.orange : Color.secondary)
+                .foregroundStyle(snapshot.isReached ? Color.red : Color.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 8)
         .frame(minHeight: SettingsMetrics.rowMinHeight)

@@ -72,10 +72,10 @@ async fn upgrade_from_165_adds_resource_pool_usage() {
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_169_adds_usage_notices() {
-    let pool = fixture(169).await;
+async fn upgrade_from_173_adds_usage_pauses() {
+    let pool = fixture(173).await;
     let before: Option<String> = sqlx_core::query_scalar::query_scalar(
-        "SELECT to_regclass('public.cloud_usage_notices')::text",
+        "SELECT to_regclass('public.cloud_usage_pauses')::text",
     )
     .fetch_one(&pool)
     .await
@@ -88,23 +88,20 @@ async fn upgrade_from_169_adds_usage_notices() {
 
     execute(
         &pool,
-        "INSERT INTO cloud_usage_notices(scope_kind,scope_id,pool_id,usage_day,notice,reached) \
-         VALUES('conversation','fixture-conversation','fixture-pool','2026-01-01','paused','daily_limit'); \
-         INSERT INTO cloud_usage_notices(scope_kind,scope_id,pool_id,usage_day,notice) \
-         VALUES('organization','org_fixture','fixture-pool','2026-01-01','threshold_75')",
+        "INSERT INTO cloud_usage_pauses(pool_id,usage_day,conversation_id,organization_id,limit_id,reached) \
+         VALUES('fixture-pool','2026-01-01','fixture-conversation','org_fixture','pool.runs','daily_limit')",
     )
     .await;
     let repeated = sqlx_core::raw_sql::raw_sql(
-        "INSERT INTO cloud_usage_notices(scope_kind,scope_id,pool_id,usage_day,notice) \
-         VALUES('organization','org_fixture','fixture-pool','2026-01-01','threshold_75')",
+        "INSERT INTO cloud_usage_pauses(pool_id,usage_day,conversation_id,limit_id,reached) \
+         VALUES('fixture-pool','2026-01-01','fixture-conversation','pool.stopped','stopped')",
     )
     .execute(&pool)
     .await;
-    assert!(repeated.is_err(), "a notice is kept once per window");
+    assert!(repeated.is_err(), "a pause is kept once per window");
     for bad in [
-        "UPDATE cloud_usage_notices SET notice = 'unknown'",
-        "UPDATE cloud_usage_notices SET reached = 'unknown'",
-        "UPDATE cloud_usage_notices SET scope_kind = 'unknown'",
+        "UPDATE cloud_usage_pauses SET limit_id = 'unknown'",
+        "UPDATE cloud_usage_pauses SET reached = 'none'",
     ] {
         let refused = sqlx_core::raw_sql::raw_sql(bad).execute(&pool).await;
         assert!(refused.is_err(), "{bad} is refused");
@@ -113,7 +110,7 @@ async fn upgrade_from_169_adds_usage_notices() {
     // Running the released SQL again keeps the rows.
     let migration = EMBEDDED_MIGRATIONS
         .iter()
-        .find(|m| m.version == 170)
+        .find(|m| m.version == 174)
         .unwrap();
     let mut tx = pool.begin().await.unwrap();
     sqlx_core::raw_sql::raw_sql(migration.sql)
@@ -121,9 +118,9 @@ async fn upgrade_from_169_adds_usage_notices() {
         .await
         .unwrap();
     tx.commit().await.unwrap();
-    let (count,): (i64,) = query_as("SELECT count(*) FROM cloud_usage_notices")
+    let (count,): (i64,) = query_as("SELECT count(*) FROM cloud_usage_pauses")
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(count, 2);
+    assert_eq!(count, 1);
 }

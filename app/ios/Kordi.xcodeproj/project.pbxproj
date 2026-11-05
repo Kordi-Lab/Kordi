@@ -53,7 +53,6 @@
 		16130E0686D6373A72FC4A54 /* ProviderAuthentication.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD490ECA738742A1C27BD23C /* ProviderAuthentication.swift */; };
 		1615F812936995DDB070BF99 /* DigestCalendarSyncViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89DC1A9F8D59901D8FA12B91 /* DigestCalendarSyncViews.swift */; };
 		19190A3F8338E074D1DA51C3 /* DigestCalendarSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19F8E7BC371380131AD40A10 /* DigestCalendarSync.swift */; };
-		19591ADCEDA6708CBA5F149B /* UsageLimitNoticeFooter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D652311524DF04B1DD64131B /* UsageLimitNoticeFooter.swift */; };
 		1A64CEAD8B7A0A03616E713F /* PreviewData+PersonalAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42607BAE42223C2DAA3C54F /* PreviewData+PersonalAgent.swift */; };
 		1AC36BD7EB5D806BCCE18ABB /* AttachmentTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC2D15EF36CFC29FD9543A9 /* AttachmentTransfer.swift */; };
 		1AFA07991060C43CB11A7921 /* CommonGroundTapController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27A7AA9C5E9ACB4C67614BC8 /* CommonGroundTapController.swift */; };
@@ -860,7 +859,6 @@
 		D3BDEA26F6B2936B8130310A /* EmojiAnimationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiAnimationTests.swift; sourceTree = "<group>"; };
 		D4CDD3CFDC6090549B244F71 /* CommonGroundModel+Wallet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CommonGroundModel+Wallet.swift"; sourceTree = "<group>"; };
 		D5E880660504E172537E8386 /* NewChatSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewChatSheet.swift; sourceTree = "<group>"; };
-		D652311524DF04B1DD64131B /* UsageLimitNoticeFooter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLimitNoticeFooter.swift; sourceTree = "<group>"; };
 		D6B70D03EA8C02F0F10917A6 /* DigestCalendarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestCalendarService.swift; sourceTree = "<group>"; };
 		D74570B49B4FD614FE68DAF0 /* CommonGroundPersonActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundPersonActions.swift; sourceTree = "<group>"; };
 		D754E3537F473F98052E1220 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -1172,7 +1170,6 @@
 				7991665C65F9A43F00EE4092 /* SubsessionConversation.swift */,
 				81F192D04307F7B834A388E8 /* ThreadDateDivider.swift */,
 				4D720EBECE49FE6CE5E068D8 /* ThreadMessageHeader.swift */,
-				D652311524DF04B1DD64131B /* UsageLimitNoticeFooter.swift */,
 				E5E0E98754E4D3E74B787C6A /* VoiceMessageView.swift */,
 				823862FF2A521E16AFC5D0D1 /* VoiceTranscriptRetryView.swift */,
 			);
@@ -2379,7 +2376,6 @@
 				D469A952DDE0D5B95CE7EDE9 /* ThreadDateDivider.swift in Sources */,
 				7C25B920649D3F40D42918B4 /* ThreadDatePreview.swift in Sources */,
 				2FCD87F86002B097DC4048AE /* ThreadMessageHeader.swift in Sources */,
-				19591ADCEDA6708CBA5F149B /* UsageLimitNoticeFooter.swift in Sources */,
 				59F10B00EDCFB7F0572DDC38 /* UsageModels.swift in Sources */,
 				815401CF8A4EACBD885CF830 /* UsageSettingsModel.swift in Sources */,
 				5B9361FC05AF8979043DD7CD /* UsageSettingsView.swift in Sources */,

@@ -16,7 +16,7 @@ use std::fmt;
 use crate::system_agent::SystemAgentProviderAuth;
 
 mod config;
-pub mod notices;
+pub mod pauses;
 pub mod routes;
 pub mod snapshot;
 pub mod usage;

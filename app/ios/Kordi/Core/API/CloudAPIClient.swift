@@ -327,11 +327,8 @@ actor CloudAPIClient {
         try await send(path: "/v1/cloud/memory/settings", method: "GET", token: token, fallback: "Could not load memory settings.")
     }
 
-    func organizations(token: String) async throws -> [CloudOrganization] {
-        let response: CloudOrganizationListResponse = try await send(
-            path: "/v1/cloud/organizations", method: "GET", token: token, fallback: "Could not load organizations."
-        )
-        return response.organizations
+    func accountUsage(token: String) async throws -> CloudAccountUsage {
+        try await send(path: "/v1/cloud/account/usage", method: "GET", token: token, fallback: "Could not load usage.")
     }
 
     func organizationUsage(token: String, organizationId: String) async throws -> CloudOrganizationUsage {
@@ -2561,7 +2558,6 @@ actor CloudAPIClient {
             messageKind: message.kind,
             voiceMessage: message.content.voiceMessage,
             planCard: message.content.planCard,
-            usageLimit: message.content.usageLimit,
             conversationId: conversation.id,
             conversationSequence: message.conversationSequence,
             version: message.version,

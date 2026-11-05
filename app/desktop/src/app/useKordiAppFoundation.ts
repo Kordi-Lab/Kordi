@@ -1,6 +1,5 @@
 import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { useConnectorsSettingsLinks } from '@/app/useConnectorsSettingsLinks';
-import { useUsageSettingsLink } from './useUsageSettingsLink';
 import { useMemo, useRef, useState } from 'react';
 import { useCompanionSessionRead } from '@/app/useCompanionSessionRead';
 import { useAppLayoutState } from '@/app/useAppLayoutState';
@@ -54,7 +53,6 @@ export function useKordiAppFoundation({
   const [cloudAccountDialogTab, setCloudAccountDialogTab] =
     useState<CloudAccountSettingsTabId | null>(null);
   useConnectorsSettingsLinks(setCloudAccountDialogTab);
-  useUsageSettingsLink(setCloudAccountDialogTab);
   const [cloudAgentRuntimeRoutesBySessionId, setCloudAgentRuntimeRoutesBySessionId] =
     useState<Record<string, DesktopChatMessageRoute>>({});
   // The cloud login gate is owned by KordiAppRoot. By the time this hook is

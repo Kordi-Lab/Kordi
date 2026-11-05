@@ -346,11 +346,6 @@ final class KordiNotificationCoordinator: ObservableObject {
     func consumeCalendarRoute() { pendingCalendarEventID = nil }
 
     private func routePendingNotificationIfPossible() {
-        // A usage notice only opens the app.
-        if pendingNotificationPayload?["notification_type"] as? String == "usage_notice" {
-            pendingNotificationPayload = nil
-            return
-        }
         // A Nearby alert opens Grounding, then the nearby person.
         if let payload = pendingNotificationPayload, let alert = CommonGroundNearbyAlertPayload(payload),
            alert.accountID == model?.account?.accountId {

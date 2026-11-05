@@ -228,7 +228,6 @@ async fn enqueue(
     if !admission.admitted() {
         tx.rollback().await?;
         let refused = limits::Refused {
-            config,
             resource_pool,
             organization_id,
             admission,

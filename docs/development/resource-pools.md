@@ -124,7 +124,7 @@ organization that was charged. When a runner fetches the run's credential, the
 server returns the key, base URL, model and headers of that pool only. Runs
 queued before pools existed have no pool id and belong to the default pool.
 
-## Limits and refusals
+## Limits and silence
 
 Admission happens in the transaction that queues the run:
 
@@ -141,12 +141,13 @@ Only limited counters are kept: a pool without a pool-wide limit keeps no
 pool counter, and a run with no limited counter at all (every run of the pool
 built without a pool file) is admitted without any write.
 
-When the System agent is refused, it does not answer: nothing is queued and
-nothing is replayed later. The conversation's message cursor moves past the
-new messages, due reminders are marked as fired, and every card the pass was
-woken for is marked as seen, exactly as if the pass had run and chosen to say
-nothing. The first refused pass of a window also posts one System notice that
-says why (see [Usage and limits](#usage-and-limits)). A
+When the System agent is refused, it stays silent: no message, nothing
+queued, and nothing replayed later. The conversation's message cursor moves
+past the new messages, due reminders are marked as fired, and every card the
+pass was woken for is marked as seen, exactly as if the pass had run and chosen to say nothing.
+The first refusal of a window is recorded for Settings (see
+[Usage and limits](#usage-and-limits)); nothing is posted into the
+conversation. A
 refused Grounding request gets the usual "Grounding isn't available" answer
 (card builds), the matching budget answer with the time until the next UTC
 day (matching and room themes), or nothing at all (group intros, nearby
@@ -168,8 +169,10 @@ worker.
 
 ## Usage and limits
 
-Every limit a person can hit is visible: how much is used, when it resets and
-why nothing more is admitted. The server builds one snapshot shape from the
+Every limit a person can hit is visible in Settings: how much is used, when
+it resets and why nothing more is admitted. Conversations stay clean: a limit
+never adds a message, error, banner or toast to a chat, and the composer and
+send flow are not blocked. The server builds one snapshot shape from the
 counters above (`resource_pools::snapshot`), and clients show it as-is:
 
 ```json
@@ -194,43 +197,35 @@ counters above (`resource_pools::snapshot`), and clients show it as-is:
 - `reached` is `none`, `daily_limit`, `spend_limit` (the next run's estimated
   cost no longer fits) or `stopped` (the pool's stop switch is on).
 - `used` and `limit` (runs, or millionths for spend) are sent only to owners
-  and admins of the organization. Members, and people outside it, see
-  percentages, reasons and reset times only.
+  and admins of the organization. Members see percentages, reasons and reset
+  times only.
+- The per-conversation limit shows the caller's busiest conversation of the
+  organization today, named by `conversationId`.
+- `pausedSince` is set on a reached limit once it refused the System agent in
+  this window.
 
 Routes, behind the cloud session:
 
-- `GET /v1/cloud/organizations/{id}/usage`: the pool snapshots of the
-  organization's pool (plus the caller's Grounding limit in their personal
-  organization), the caller's `role`, and for owners and admins the threshold
-  `notices` sent today.
-- `GET /v1/cloud/conversations/{id}/usage`: the conversation's System agent
-  limit and its pool's limits, the caller's role in the conversation's
-  organization, and `paused` (`reached`, `resetsAt`, `since`) when a pass was
-  refused in this window.
+- `GET /v1/cloud/account/usage`: every organization of the signed-in account
+  (personal first) with its `name`, `kind`, the caller's `role` and its
+  snapshots: the pool's caps, the per-conversation cap, and in the personal
+  organization the caller's Grounding cap.
+- `GET /v1/cloud/organizations/{id}/usage`: the same for one organization;
+  404 outside it.
 
-Notices, each kept once per window in `cloud_usage_notices`:
-
-- The first refused System agent pass of a window posts a System notice in
-  the conversation, as the System agent: "Daily limit reached. Resets at
-  00:00 UTC." or, with the stop switch on, "Paused by an owner." Its content
-  carries `usageLimit` (`reached`, `resetsAt`, `organizationId`) so clients
-  add the viewer's part: a link to the usage page for owners and admins, "Ask
-  an owner to raise it." for everyone else. The System agent's own messages
-  never wake it, so the line starts no pass.
-- When a pool passes 75% and then 90% of a daily cap, the owners of every
-  organization the pool admitted runs for that day get one notice per
-  threshold: an iOS push to devices that take message notifications, and the
-  `notices` list in the organization's usage. The System agent worker checks
-  about once a minute. If both thresholds pass at once, both are recorded and
-  only the 90% notice is sent. No email is sent: no notification setting
-  allows usage email yet.
+When the System agent is refused, the first refusal of each window is kept in
+`cloud_usage_pauses` per pool and conversation, with the limit and reason, so
+Settings can say "Paused since 14:20, resets 00:00 UTC". Clients color a bar
+amber at 75% and red at 90% or when reached; that is the only warning. There
+are no notices, emails or push notifications for limits.
 
 ## Storage
 
 Migration 0166 adds `cloud_resource_pool_usage`
 (one counter per pool, UTC day, feature and scope) and
-`cloud_resource_pool_reservations` (one row per admitted run). Migration 0170
-adds `cloud_usage_notices` (one row per notice and window), pruned with usage.
+`cloud_resource_pool_reservations` (one row per admitted run). Migration 0174
+adds `cloud_usage_pauses` (the first refusal per pool, conversation and day),
+pruned with usage.
 
 ## Tests
 
@@ -240,5 +235,5 @@ OpenAI-compatible endpoint. Database tests are ignored by default and need a
 task-owned PostgreSQL in `DATABASE_URL`:
 
 ```bash
-DATABASE_URL=postgres://... cargo test -p kordi-cloud-server --lib -- resource_pools system_agent::pool_tests system_agent::usage_notice_tests common_ground::runs --include-ignored --test-threads=1
+DATABASE_URL=postgres://... cargo test -p kordi-cloud-server --lib -- resource_pools system_agent::pool_tests system_agent::usage_pause_tests common_ground::runs --include-ignored --test-threads=1
 ```

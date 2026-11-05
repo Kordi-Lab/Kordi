@@ -12,7 +12,6 @@ import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from '
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { storedVoiceMessage, withoutVoiceAttachment } from '@/features/cloud/cloudVoiceMessage';
 import { normalizePlanCardSnapshot } from '@/features/cloud/planCardSnapshot';
-import { usageLimitField } from '@/features/cloud/usageLimitNotice';
 import { messageEventSourcesField } from '@/features/cloud/cloudAgentSources';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
@@ -453,7 +452,7 @@ export function mapCanonicalMessage(
     callActivity: canonicalCallActivity(message, content, isOwnMessage),
     messageKind: voiceMessage ? 'voice' : role === 'system' ? stringValue(content.kind) ?? messageKind : undefined,
     voiceMessage,
-    planCard: normalizePlanCardSnapshot(content.planCard), ...messageEventSourcesField(content.sources), ...usageLimitField(messageKind, content),
+    planCard: normalizePlanCardSnapshot(content.planCard), ...messageEventSourcesField(content.sources),
     detail: stringValue(content.detail),
     attachments: withoutVoiceAttachment(canonicalAttachments(content.attachments), voiceMessage),
     mentions,

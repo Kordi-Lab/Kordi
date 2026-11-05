@@ -65,6 +65,10 @@ impl Reached {
 pub struct UsageSnapshot {
     pub limit_id: &'static str,
     pub scope: Scope,
+    /// For the per-conversation limit: the conversation it shows, the
+    /// caller's busiest one today.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub used: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -73,6 +77,9 @@ pub struct UsageSnapshot {
     pub window: &'static str,
     pub resets_at: String,
     pub reached: Reached,
+    /// When this limit first refused the System agent in this window.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paused_since: Option<String>,
 }
 
 /// Runs and spend counted for one scope on one day.
@@ -84,10 +91,12 @@ pub struct Counter {
 
 /// The limit a caller is counted under besides the pool's: a conversation's
 /// System agent passes, or a person's Grounding runs.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Scoped {
     pub feature: Feature,
     pub counter: Counter,
+    /// The conversation counted, for System agent passes.
+    pub conversation_id: Option<String>,
 }
 
 /// When the window that contains `now` ends: the next UTC midnight.
@@ -113,7 +122,7 @@ pub fn used_percent(used: u64, limit: u64) -> u8 {
 /// limit still yields one pool snapshot, so clients can say why it is quiet.
 pub fn build(
     pool: &ResourcePool,
-    scoped: Option<Scoped>,
+    scoped: &[Scoped],
     pool_counter: Counter,
     now: DateTime<Utc>,
 ) -> Vec<UsageSnapshot> {
@@ -123,6 +132,7 @@ pub fn build(
     let snapshot = |limit_id, scope, used: u64, limit: u64, reached: bool, why| UsageSnapshot {
         limit_id,
         scope,
+        conversation_id: None,
         used: Some(used),
         limit: Some(limit),
         used_percent: used_percent(used, limit),
@@ -135,22 +145,26 @@ pub fn build(
         } else {
             Reached::None
         },
+        paused_since: None,
     };
     let mut snapshots = Vec::new();
-    if let Some(Scoped { feature, counter }) = scoped {
-        if let Some(limit) = limits.per_scope(feature).map(u64::from) {
-            let (limit_id, scope) = match feature {
+    for scoped in scoped {
+        if let Some(limit) = limits.per_scope(scoped.feature).map(u64::from) {
+            let (limit_id, scope) = match scoped.feature {
                 Feature::SystemAgent => ("conversation.system_agent_runs", Scope::Conversation),
                 Feature::Grounding => ("account.grounding_runs", Scope::Account),
             };
-            snapshots.push(snapshot(
+            let runs = scoped.counter.runs;
+            let mut row = snapshot(
                 limit_id,
                 scope,
-                counter.runs,
+                runs,
                 limit,
-                counter.runs >= limit,
+                runs >= limit,
                 Reached::DailyLimit,
-            ));
+            );
+            row.conversation_id = scoped.conversation_id.clone();
+            snapshots.push(row);
         }
     }
     if let Some(limit) = limits.pool_runs {
@@ -166,7 +180,9 @@ pub fn build(
     if let Some(limit) = limits.pool_spend_micros {
         // Admission refuses a run whose estimated cost would pass the
         // ceiling, so the limit is reached once the next run cannot fit.
-        let feature = scoped.map_or(Feature::SystemAgent, |scoped| scoped.feature);
+        let feature = scoped
+            .first()
+            .map_or(Feature::SystemAgent, |scoped| scoped.feature);
         let cost = pool.provider(feature).estimated_cost_micros();
         let next = pool_counter.spend_micros.saturating_add(cost);
         snapshots.push(snapshot(
@@ -182,12 +198,14 @@ pub fn build(
         snapshots.push(UsageSnapshot {
             limit_id: "pool.stopped",
             scope: Scope::Pool,
+            conversation_id: None,
             used: None,
             limit: None,
             used_percent: 100,
             window: WINDOW_DAY,
             resets_at: resets,
             reached: Reached::Stopped,
+            paused_since: None,
         });
     }
     snapshots
@@ -222,12 +240,10 @@ pub fn for_role(
 
 /// The first limit that admits nothing more, in the order a pass is
 /// admitted: its own scope first, then the pool.
-pub fn first_reached(snapshots: &[UsageSnapshot]) -> Reached {
+pub fn first_reached(snapshots: &[UsageSnapshot]) -> Option<&UsageSnapshot> {
     snapshots
         .iter()
-        .map(|snapshot| snapshot.reached)
-        .find(|reached| *reached != Reached::None)
-        .unwrap_or(Reached::None)
+        .find(|snapshot| snapshot.reached != Reached::None)
 }
 
 /// The counter of one scope of a pool on `day`; zero when nothing was
@@ -269,15 +285,57 @@ pub async fn load(
     now: DateTime<Utc>,
 ) -> sqlx_core::Result<Vec<UsageSnapshot>> {
     let day = now.date_naive();
-    let scoped = match scope {
-        Some((feature, scope_id)) => Some(Scoped {
+    let mut scoped = Vec::new();
+    if let Some((feature, scope_id)) = scope {
+        scoped.push(Scoped {
             feature,
             counter: counter(db, pool.id(), day, Some(feature), scope_id).await?,
-        }),
-        None => None,
-    };
+            conversation_id: (feature == Feature::SystemAgent).then(|| scope_id.to_string()),
+        });
+    }
     let pool_counter = counter(db, pool.id(), day, None, "").await?;
-    Ok(build(pool, scoped, pool_counter, now))
+    Ok(build(pool, &scoped, pool_counter, now))
+}
+
+/// The conversation of `organization_id` that `account_id` is an active
+/// member of with the most System agent passes counted by `pool_id` on
+/// `day`, and its counter.
+pub async fn busiest_conversation(
+    db: &PgPool,
+    pool_id: &str,
+    day: NaiveDate,
+    organization_id: &str,
+    account_id: &str,
+) -> sqlx_core::Result<Option<(String, Counter)>> {
+    let row: Option<(String, i64, i64)> = query_as(
+        "SELECT usage.scope_id, usage.runs, usage.spend_micros
+         FROM cloud_resource_pool_usage usage
+         JOIN cloud_chat_conversations conversation
+           ON conversation.conversation_id::text = usage.scope_id
+         JOIN cloud_chat_conversation_members member
+           ON member.conversation_id = conversation.conversation_id
+          AND member.account_id = $5 AND member.membership_state = 'active'
+         WHERE usage.pool_id = $1 AND usage.usage_day = $2 AND usage.feature = $3
+           AND conversation.organization_id = $4
+         ORDER BY usage.runs DESC, usage.scope_id
+         LIMIT 1",
+    )
+    .bind(pool_id)
+    .bind(day)
+    .bind(Feature::SystemAgent.as_str())
+    .bind(organization_id)
+    .bind(account_id)
+    .fetch_optional(db)
+    .await?;
+    Ok(row.map(|(conversation_id, runs, spend)| {
+        (
+            conversation_id,
+            Counter {
+                runs: u64::try_from(runs).unwrap_or(0),
+                spend_micros: u64::try_from(spend).unwrap_or(0),
+            },
+        )
+    }))
 }
 
 #[cfg(test)]

@@ -1308,7 +1308,6 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     let messageKind: String?
     let voiceMessage: VoiceMessage?
     var planCard: PlanCard? = nil
-    var usageLimit: ChatUsageLimit? = nil
     let conversationId: String?
     let conversationSequence: Int64?
     let version: Int?
@@ -1334,7 +1333,6 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         messageKind: String? = nil,
         voiceMessage: VoiceMessage? = nil,
         planCard: PlanCard? = nil,
-        usageLimit: ChatUsageLimit? = nil,
         conversationId: String? = nil,
         conversationSequence: Int64? = nil,
         version: Int? = nil,
@@ -1358,7 +1356,6 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         self.messageKind = messageKind
         self.voiceMessage = voiceMessage
         self.planCard = planCard
-        self.usageLimit = usageLimit
         self.conversationId = conversationId
         self.conversationSequence = conversationSequence
         self.version = version
@@ -1550,22 +1547,18 @@ struct CloudChatContent: Codable, Hashable {
     let blocks: [CloudChatBlock]
     let legacyAttachments: [CloudMessageAttachment]
     let canonicalHistory: CloudCanonicalHistory?
-    /// Set on the System agent notice that a limit refused a run.
-    let usageLimit: ChatUsageLimit?
 
     init(body: String, attachments: [CloudMessageAttachment], voiceMessage: VoiceMessage? = nil) {
         schema = 1
         blocks = [CloudChatBlock(text: body)] + (voiceMessage.map { [CloudChatBlock(voiceMessage: $0)] } ?? [])
         legacyAttachments = voiceMessage == nil ? attachments : []
         canonicalHistory = nil
-        usageLimit = nil
     }
 
     enum CodingKeys: String, CodingKey {
         case schema, blocks
         case legacyAttachments = "legacy_attachments"
         case canonicalHistory = "canonical_history"
-        case usageLimit
     }
 
     init(from decoder: Decoder) throws {
@@ -1575,8 +1568,6 @@ struct CloudChatContent: Codable, Hashable {
         legacyAttachments = try container.decodeIfPresent([CloudMessageAttachment].self, forKey: .legacyAttachments) ?? []
         // Older or malformed optional history metadata must not hide the message.
         canonicalHistory = (try? container.decodeIfPresent(CloudCanonicalHistory.self, forKey: .canonicalHistory))?.validated
-        // A malformed limit falls back to the notice's plain text.
-        usageLimit = (try? container.decodeIfPresent(ChatUsageLimit.self, forKey: .usageLimit)) ?? nil
     }
 
     var body: String { blocks.compactMap(\.text).joined() }

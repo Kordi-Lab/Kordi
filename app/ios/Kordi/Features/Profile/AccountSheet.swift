@@ -33,12 +33,6 @@ struct AccountSheet: View {
         embeddedInNavigationStack = false
     }
 
-    /// Opens on one settings screen, such as Usage from a limit notice.
-    init(opening route: AccountSettingsRoute) {
-        _path = State(initialValue: [route])
-        embeddedInNavigationStack = false
-    }
-
     /// Opens on Connectors for a settings link; a later request navigates within the open sheet.
     init(connectorsRequest: ConnectorsSettingsRequest?) {
         _path = State(initialValue: connectorsRequest?.path ?? [])

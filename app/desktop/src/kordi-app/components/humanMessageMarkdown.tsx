@@ -1,7 +1,6 @@
 import type { Message, MessageMention } from '../types';
 import { MarkdownContent } from './markdown';
 import { MarkdownInlineContent } from './markdownInline';
-import { UsageLimitNoticeText } from './usageLimitNoticeText';
 
 function messageForMentionProfile(message: Message, mention: MessageMention): Message | null {
   if (mention.targetKind !== 'person') return null;
@@ -26,7 +25,6 @@ export function HumanMessageMarkdown({
   inline?: boolean;
   onOpenSenderProfile?: (message: Message, anchorRect: DOMRect) => void;
 }) {
-  if (message.usageLimit) return <UsageLimitNoticeText limit={message.usageLimit} />;
   const openMention = onOpenSenderProfile
     ? (mention: MessageMention, anchorRect: DOMRect) => {
         const target = messageForMentionProfile(message, mention);
