@@ -139,7 +139,7 @@ pub async fn provider_material(
 ) -> Result<ProviderAuthMaterial> {
     let auth = config.provider_auth();
     let payload = if engine == Engine::Stub {
-        json!({"apiKey": "stub-key", "baseUrl": auth.base_url(), "model": auth.model()})
+        json!({"apiKey": "stub-key", "baseUrl": auth.base_url(), "model": auth.model(), "verbatimModel": true})
     } else {
         auth.runner_payload()
             .await

@@ -292,6 +292,7 @@ test('product origin serves desktop routes without redirects', async () => {
     /servers :8080 \{\n\t\ttrusted_proxies static \{\$KORDI_TRUSTED_PROXIES:130\.211\.0\.0\/22 35\.191\.0\.0\/16\} \{\$KORDI_EDGE_LB_ADDRESS\}\n\t\tclient_ip_headers \{\$KORDI_CLIENT_IP_HEADER:X-Forwarded-For\}\n\t\ttrusted_proxies_strict\n/,
   );
   assert.equal(caddyfile.match(/trusted_proxies static/g)?.length, 1);
+  assert.match(caddyfile, /unset, never empty/);
   assert.doesNotMatch(caddyfile, /trusted_proxies static[^\n]*(10\.|172\.|192\.168\.)/);
   assert.match(manifest, /nodePort: 30081/);
   assert.match(manifest, /type: NodePort/);

@@ -231,14 +231,20 @@ fn only_the_openai_api_counts_as_openai() {
     for url in [
         "https://api.openai.com/v1",
         "https://API.OPENAI.COM/v1/",
-        " https://api.openai.com ",
+        " https://api.openai.com/v1 ",
+        "https://eu.api.openai.com/v1",
+        "https://us.api.openai.com/v1",
     ] {
         assert!(is_openai_api(url), "{url}");
     }
     for url in [
         "https://gateway.example.test/api/v1",
         "http://api.openai.com/v1",
+        "https://api.openai.com",
+        "https://api.openai.com/v2",
+        "https://api.openai.com:8443/v1",
         "https://api.openai.com.example.test/v1",
+        "https://evilapi.openai.com.example.test/v1",
         "not a url",
         "",
     ] {
@@ -246,12 +252,15 @@ fn only_the_openai_api_counts_as_openai() {
     }
 }
 
-fn routed_model(base_url: &str, model: &str) -> String {
-    let mut config = OpenAiProviderConfig::from_material(&material(
-        "openai",
-        json!({ "apiKey": "key", "baseUrl": base_url }),
-    ))
-    .unwrap();
+/// The model the runner sends for `model` on an `openai` account at
+/// `base_url`, for a member snapshot or a server service credential.
+fn routed_model(base_url: &str, model: &str, service: bool) -> String {
+    let mut payload = json!({ "apiKey": "key", "baseUrl": base_url });
+    if service {
+        payload["verbatimModel"] = json!(true);
+    }
+    let mut config = OpenAiProviderConfig::from_material(&material("openai", payload)).unwrap();
+    assert_eq!(config.verbatim_model, service);
     config
         .apply_runtime_route(
             &AgentRuntimeRoute {
@@ -264,28 +273,70 @@ fn routed_model(base_url: &str, model: &str) -> String {
     config.model
 }
 
+const GATEWAY: &str = "https://gateway.example.test/api/v1";
+
 #[test]
-fn the_openai_api_drops_the_route_provider_prefix() {
+fn member_routes_keep_dropping_the_openai_prefix_on_any_endpoint() {
+    for base_url in [
+        "https://api.openai.com/v1",
+        "https://eu.api.openai.com/v1",
+        GATEWAY,
+    ] {
+        assert_eq!(
+            routed_model(base_url, "openai/gpt-5.6-sol", false),
+            "gpt-5.6-sol",
+            "{base_url}"
+        );
+    }
     assert_eq!(
-        routed_model("https://api.openai.com/v1", "openai/gpt-5.6-sol"),
-        "gpt-5.6-sol"
-    );
-    assert_eq!(
-        routed_model("https://api.openai.com/v1", "gpt-5.6-sol"),
-        "gpt-5.6-sol"
+        routed_model(GATEWAY, "anthropic/claude-sonnet-5", false),
+        "anthropic/claude-sonnet-5"
     );
 }
 
 #[test]
-fn an_openai_compatible_gateway_receives_the_configured_model_id_verbatim() {
-    let gateway = "https://gateway.example.test/api/v1";
+fn service_credentials_send_the_configured_model_verbatim_to_a_gateway() {
     assert_eq!(
-        routed_model(gateway, "openai/gpt-5.6-sol"),
+        routed_model(GATEWAY, "openai/gpt-5.6-sol", true),
         "openai/gpt-5.6-sol"
     );
     assert_eq!(
-        routed_model(gateway, "anthropic/claude-sonnet-5"),
+        routed_model(GATEWAY, "anthropic/claude-sonnet-5", true),
         "anthropic/claude-sonnet-5"
     );
-    assert_eq!(routed_model(gateway, "synthetic-model"), "synthetic-model");
+    assert_eq!(
+        routed_model(GATEWAY, "synthetic-model", true),
+        "synthetic-model"
+    );
+}
+
+#[test]
+fn service_credentials_on_the_openai_api_drop_the_openai_prefix() {
+    for base_url in ["https://api.openai.com/v1", "https://eu.api.openai.com/v1"] {
+        assert_eq!(
+            routed_model(base_url, "openai/gpt-5.6-sol", true),
+            "gpt-5.6-sol",
+            "{base_url}"
+        );
+    }
+}
+
+#[test]
+fn regional_openai_hosts_use_the_responses_api() {
+    for (base_url, api) in [
+        ("https://api.openai.com/v1", "openai-responses"),
+        ("https://eu.api.openai.com/v1", "openai-responses"),
+        (GATEWAY, "openai-completions"),
+    ] {
+        let config = OpenAiProviderConfig::from_material(&material(
+            "openai",
+            json!({ "apiKey": "key", "baseUrl": base_url }),
+        ))
+        .unwrap();
+        assert_eq!(
+            crate::model_loop::omp::api_for_provider(&config),
+            api,
+            "{base_url}"
+        );
+    }
 }

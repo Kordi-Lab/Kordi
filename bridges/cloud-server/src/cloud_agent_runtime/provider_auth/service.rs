@@ -83,6 +83,9 @@ pub(super) async fn service_provider_auth_for_run(
             "apiKey": token,
             "baseUrl": service_auth.base_url,
             "model": service_auth.model,
+            // The operator's configured model id is final; the runner must
+            // not strip a prefix that belongs to a gateway's model id.
+            "verbatimModel": true,
         }),
     }))
 }
@@ -134,15 +137,16 @@ mod tests {
             model: "gpt",
             run_id_prefix: Some("pip_"),
         };
-        assert!(service_provider_auth_for_run(
+        let material = service_provider_auth_for_run(
             "acct_kordi_pip",
             "pip_123",
             &route,
-            vec![system_agent_key()]
+            vec![system_agent_key()],
         )
         .await
         .unwrap()
-        .is_some());
+        .unwrap();
+        assert_eq!(material.payload["verbatimModel"], true);
         assert!(service_provider_auth_for_run(
             "acct_kordi_pip",
             "run_from_a_member",

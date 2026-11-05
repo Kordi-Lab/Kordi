@@ -153,6 +153,19 @@ values in operator configuration; never commit them. Trust only the proxy
 that overwrites the header: any other peer allowed here can name an arbitrary
 client and bypass per-address sign-in limits.
 
+Leave a setting unset, not empty, to keep its default. An empty
+`KORDI_TRUSTED_PROXIES=` still passes `caddy validate`, but it trusts no proxy,
+so every client shares the proxy's address. After each reload, confirm that
+the running `:8080` server has trusted ranges:
+
+```bash
+curl -fsS http://localhost:2019/config/apps/http/servers | python3 -c '
+import json, sys
+edge = [s for s in json.load(sys.stdin).values() if ":8080" in s.get("listen", [])]
+assert edge and edge[0].get("trusted_proxies", {}).get("ranges"), "no trusted proxy ranges on :8080"
+print("trusted proxy ranges:", " ".join(edge[0]["trusted_proxies"]["ranges"]))'
+```
+
 Before adding the gateway, roll that configuration out on the product host:
 
 1. Confirm `caddy version` reports 2.7.0 or newer. `{client_ip}` and
@@ -164,7 +177,8 @@ Before adding the gateway, roll that configuration out on the product host:
    it writes the client address to another header, `KORDI_CLIENT_IP_HEADER`
    in the Caddy service environment as described above.
 3. Install the snippet as described in the cutover procedure, run
-   `sudo caddy validate --config /etc/caddy/Caddyfile`, and reload Caddy.
+   `sudo caddy validate --config /etc/caddy/Caddyfile`, reload Caddy, and run
+   the trusted-range check above.
 4. Confirm that new `auth.login.*` audit rows record distinct client
    addresses rather than proxy or load balancer addresses.
 5. Add `10.42.0.1/32` to `KORDI_CLOUD_TRUSTED_PROXIES` in the deployment
@@ -346,7 +360,9 @@ operator workstation. With `false` it skips the Secret check and
 Cloud server's call settings come from the same Secret and are optional: leave
 the Secret absent to run with calls off, or keep it with a `url` that points at
 a separate media host. A Secret missing one of `url`, `api-key`, or
-`api-secret` stops the server at startup.
+`api-secret` stops the server at startup. Before building, the deploy refuses
+a Secret whose `url` is empty or on the public origin's host, because that
+would advertise the in-cluster server it is about to stop.
 Create one API key and a secret of at least 32 random bytes, then store the
 client URL and the LiveKit `key: secret` pair without printing either value:
 

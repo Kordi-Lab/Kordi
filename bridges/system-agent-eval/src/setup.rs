@@ -277,12 +277,12 @@ mod tests {
         assert_eq!(info.model, "anthropic/claude-sonnet-4.5");
     }
 
-    /// The System agent route drops an `openai/` prefix, as it does in
-    /// production; the documentation tells gateway users about it.
+    /// A gateway receives the configured model id verbatim, as it does in
+    /// production, so an `openai/` model keeps its prefix.
     #[tokio::test]
-    async fn the_route_drops_an_openai_prefix() {
+    async fn the_route_keeps_an_openai_prefix_on_a_gateway() {
         let (_, runner) = runner_config("openai/gpt-5.1").await;
-        assert_eq!(runner.model, "gpt-5.1");
+        assert_eq!(runner.model, "openai/gpt-5.1");
     }
 
     #[test]
