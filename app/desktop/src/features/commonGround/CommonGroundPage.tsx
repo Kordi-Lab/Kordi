@@ -15,6 +15,7 @@ import { PersonScreen } from './PersonScreen';
 import { ResultsScreen } from './ResultsScreen';
 import { currentProfile, hasAnyCard, type CommonGroundStore } from './store';
 import { useCommonGround, usePairLinkRedeem } from './useCommonGround';
+import { buildScreenKey } from './wallet';
 import { WalletShell } from './WalletShell';
 
 /** Common ground in the Contacts detail pane. Navigation lives in the store. */
@@ -52,7 +53,7 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
     const onCard = screen.name === 'card';
     const title = onCard ? currentProfile(state)?.name ?? 'Your card' : 'Grounding';
     return (
-      <section data-help-grounding-card={helpCard} data-help-grounding-social={helpSocial} aria-label="Grounding" className={hasAnyCard(state) ? 'cg-page is-wallet' : 'cg-page is-wallet is-first-run'}>
+      <section data-help-grounding-card={helpCard} data-help-grounding-social={helpSocial} aria-label="Grounding" className="cg-page is-wallet">
         <WalletShell state={state} store={store} owner={host.self} title={title} onBack={onCard ? () => store.back() : undefined}>
           {onCard ? <CardScreen state={state} store={store} memoryRouting={host.memoryRouting} memoryCards={host.memoryCards} /> : <HomeScreen {...props} />}
         </WalletShell>
@@ -64,8 +65,7 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
   } else if (screen.name === 'nearbyPerson') {
     body = <NearbyPersonScreen accountId={screen.accountId} {...props} />;
   } else if (screen.name === 'build') {
-    // Keyed by card, so switching cards (or the list arriving) opens Build with that card's picks.
-    body = <BuildScreen key={`${state.profileId ?? ''}:${currentProfile(state) ? 'loaded' : ''}`} {...props} />;
+    body = <BuildScreen key={buildScreenKey(state)} {...props} />;
   } else if (screen.name === 'card') {
     body = <CardScreen state={state} store={store} memoryRouting={host.memoryRouting} memoryCards={host.memoryCards} />;
   } else if (screen.name === 'lobby') {

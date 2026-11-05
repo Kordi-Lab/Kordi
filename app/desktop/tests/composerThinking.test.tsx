@@ -102,8 +102,10 @@ test('composer model controls offer sign-in instead of blank controls when no ac
   assert.doesNotMatch(markup, /app-composer-model-menu-layer/);
   assert.doesNotMatch(markup, />OpenAI</);
 
+  // With no account there is no usable model, so the chip names none.
   const withoutSignIn = renderToStaticMarkup(createElement(ComposerModelControls, props));
-  assert.match(withoutSignIn, />5\.6 Sol</);
-  assert.match(withoutSignIn, />Medium</);
+  assert.doesNotMatch(withoutSignIn, />5\.6 Sol</);
+  assert.doesNotMatch(withoutSignIn, />Medium</);
+  assert.equal(withoutSignIn.match(/>--<\/span>/g)?.length, 2);
   assert.doesNotMatch(withoutSignIn, />-<\/span>/);
 });

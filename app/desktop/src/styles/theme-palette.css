@@ -160,6 +160,8 @@ body[data-kordi-chat-theme] .kordi-app:is(.theme-light, .theme-dark),
   --app-nav-rail-glass-highlight: var(--app-palette-highlight);
   --app-nav-rail-avatar-ring: var(--app-palette-border);
   --app-nav-rail-unread-ring: var(--app-palette-surface);
+  --app-nav-rail-badge-bg: var(--app-palette-ink);
+  --app-nav-rail-badge-text: var(--app-palette-surface);
   --app-quiet-control-text: var(--app-palette-muted);
   --app-quiet-control-hover-text: var(--app-palette-ink);
   --app-quiet-control-hover-bg: var(--app-palette-hover);

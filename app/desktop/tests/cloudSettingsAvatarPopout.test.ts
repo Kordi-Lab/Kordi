@@ -168,7 +168,7 @@ test('profile rows use borderless accent values with per-row errors', () => {
   assert.match(row, /app-error-text app-cloud-profile-row-error/);
   assert.match(profileCss, /\.app-cloud-profile-input\s*\{[^}]*border:\s*0;[^}]*color:\s*var\(--app-palette-accent\);/s);
   assert.match(profileCss, /\.app-cloud-profile-input\[aria-invalid='true'\]\s*\{[^}]*var\(--app-transient-danger-text\)/s);
-  assert.match(profileCss, /\.app-cloud-profile-input:disabled\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*cursor:\s*default;/s);
+  assert.match(profileCss, /\.app-cloud-profile-input:disabled,\s*\.app-cloud-account-profile input\.app-cloud-profile-input\[readonly\]\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*cursor:\s*default;/s);
   assert.doesNotMatch(profileCss, /outline:\s*2px solid/);
   assert.match(profileCss, /\.app-cloud-profile-row-value:focus-within\s*\{[^}]*box-shadow:\s*inset 0 0 0 1px[^}]*var\(--app-transient-muted-text\)/s);
   assert.match(profileCss, /\.app-cloud-profile-input:focus-visible\s*\{[^}]*outline:\s*none/s);

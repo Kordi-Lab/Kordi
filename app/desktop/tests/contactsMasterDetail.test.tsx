@@ -43,7 +43,7 @@ test('contacts page is a master-detail layout with themed list controls', () => 
   assert.match(shellCss, /\.app-contacts-group-row\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*font-size:\s*12px;[^}]*font-weight:\s*600;/s);
   assert.match(shellCss, /:is\(\.app-contacts-page, \.app-contacts-list-column\) \.app-contact-row\.app-list-item,\s*:is\(\.app-contacts-page, \.app-contacts-list-column\) \.app-contact-request-row\s*\{[^}]*min-height:\s*44px;/s);
   assert.match(shellCss, /\.app-contacts-accept-pill,\s*\.app-contacts-tile\.is-primary\s*\{[^}]*background:\s*var\(--app-accent\);[^}]*color:\s*var\(--app-palette-accent-ink\);/s);
-  assert.match(shellCss, /\.app-contacts-add-form\s*\{[^}]*box-shadow:\s*none;/s);
+  assert.doesNotMatch(shellCss, /\.app-contacts-add-form\s*\{[^}]*background:/s, 'the Kordi ID search has no panel of its own');
   assert.match(shellCss, /\.app-contact-row\.app-contact-row-selected[\s\S]*?background:\s*var\(--app-sidebar-selected-bg\)/);
   const contactsCss = readFileSync(new URL('../src/styles/shell-contacts.css', import.meta.url), 'utf8');
   assert.doesNotMatch(contactsCss, /#[0-9a-f]{3,8}\b|rgb\(/i, 'contacts styles should only use theme tokens');

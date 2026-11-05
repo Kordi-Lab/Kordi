@@ -62,6 +62,18 @@ export function documentsSummary(count: number): string {
   return count ? `${count} chosen` : 'None chosen';
 }
 
+/**
+ * The server found nothing to read in the sources that were on: this app never builds with
+ * none on, so `common_ground_no_sources` means Memory (or another source) had nothing for the card.
+ */
+export function emptySourcesMessage(request: CgBuildRequest): string {
+  const others = request.connectors || Boolean(request.agents?.length) || request.device.length > 0
+    || Boolean(request.documents?.length) || request.links.trim().length > 0 || request.notes.trim().length > 0;
+  return request.memory && !others
+    ? 'Memory has nothing for this card yet. Add a note or another source.'
+    : 'These sources have nothing for this card yet. Add a note or another source.';
+}
+
 /** A build that found nothing for the profile cannot succeed again with the same sources. */
 export function buildFailureMessage(errorCode: string | null) {
   return errorCode === 'no_topics'

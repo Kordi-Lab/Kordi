@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 import React, { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ModelEffortPicker, type ModelEffortPickerProps } from '../src/kordi-app/components/modelEffortPicker';
-import { modelDisplayName, modelShortName } from '../src/lib/modelDisplayName';
+import { composerModelChipLabels, modelDisplayName, modelShortName } from '../src/lib/modelDisplayName';
 import { authChoiceFromProviderOption, type ComposerRoute } from '../src/kordi-app/components/composerModelSelection';
 
 const providers = [
@@ -69,6 +69,38 @@ test('composer short names drop only a leading GPT- prefix', () => {
   assert.equal(modelShortName('anthropic/claude-opus-4-8'),'Claude Opus 4.8');
   assert.equal(modelShortName('custom/private-model','Research deployment'),'Research deployment');
   assert.equal(modelShortName('custom/model','My GPT-6 build'),'My GPT-6 build');
+});
+
+test('composer chip shows a placeholder until a provider is connected', () => {
+  assert.deepEqual(composerModelChipLabels({ model: 'openai/gpt-6.1-sol', thinking: 'medium', hasProvider: false }),
+    { model: '--', effort: '--' });
+  assert.deepEqual(composerModelChipLabels({ model: 'openai/gpt-6.1-sol', thinking: 'medium', hasProvider: true }),
+    { model: '6.1 Sol', effort: 'Medium' });
+});
+
+test('the chip names no model without a connected provider and the real route once one is connected', async () => {
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { pretendToBeVisual: true });
+  const replacements = { window: dom.window, document: dom.window.document, navigator: dom.window.navigator,
+    HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, Node: dom.window.Node, IS_REACT_ACT_ENVIRONMENT: true };
+  const originals = new Map(Object.keys(replacements).map(key => [key, Object.getOwnPropertyDescriptor(globalThis,key)]));
+  Object.entries(replacements).forEach(([key,value]) => Object.defineProperty(globalThis,key,{ configurable:true,writable:true,value }));
+  const root = createRoot(document.getElementById('root')!);
+  const selection = { model: 'openai/gpt-6-sol', thinking: 'medium' };
+  const labels = () => [...document.querySelectorAll('.app-model-pill-label')].map(item => item.textContent);
+  try {
+    await act(async () => root.render(<ModelEffortPicker selection={selection} providerOptions={[]} modelOptions={models} onApply={() => undefined} />));
+    assert.deepEqual(labels(), ['--','--']);
+    assert.ok(document.querySelector('[aria-label="Select model, no model available"]'));
+    await act(async () => root.render(<ModelEffortPicker selection={selection} providerOptions={[{ ...providers[0], disabled: true }]}
+      modelOptions={models} onApply={() => undefined} />));
+    assert.deepEqual(labels(), ['--','--'], 'a disabled account is not a connected provider');
+    await act(async () => root.render(<ModelEffortPicker selection={{ ...selection, authProvider: 'openai', authChoice: 'profile:work' }}
+      providerOptions={providers} modelOptions={models} onApply={() => undefined} />));
+    assert.deepEqual(labels(), ['6 Sol','Medium']);
+  } finally {
+    await act(async () => root.unmount()); dom.window.close();
+    originals.forEach((descriptor,key)=>{ if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key); });
+  }
 });
 
 test('the route label is plain text: short model name, then effort, with full names for assistive tech', async () => {

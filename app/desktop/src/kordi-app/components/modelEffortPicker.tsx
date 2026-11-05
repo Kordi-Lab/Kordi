@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronLeft, ChevronRight, RotateCcw, X } from 'lucide-react';
-import { modelDisplayName, modelEffortLabel, modelShortName } from '@/lib/modelDisplayName';
+import { composerModelChipLabels, modelDisplayName, modelEffortLabel } from '@/lib/modelDisplayName';
 import { cn } from '@/lib/utils';
 import { composerThinkingLevelsIncludingCurrent } from './composerThinking';
 import {
@@ -48,7 +48,10 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
   const resolved = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
   const account = resolved.selectedProviderOption;
   const name = modelDisplayName(selection.model, resolved.selectedModelOption?.label);
-  const shortName = modelShortName(selection.model, resolved.selectedModelOption?.label);
+  // No connected account means no usable model: the chip shows a placeholder, not a default model.
+  const noProvider = !account?.unavailable && !providerOptions.some(composerProviderOptionUsable);
+  const chip = composerModelChipLabels({ model: selection.model, modelLabel: resolved.selectedModelOption?.label,
+    thinking: selection.thinking, hasProvider: !noProvider });
   const levels = composerThinkingLevelsIncludingCurrent(
     resolved.selectedModelOption?.thinkingLevels ?? ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], selection.thinking,
   ).filter((value) => !['default', 'auto', 'thinking'].includes(value));
@@ -220,13 +223,13 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
   }
   return <div className="app-model-effort-pill" ref={triggerRef}>
     <button type="button" aria-haspopup="dialog" aria-expanded={view !== null && view !== 'thinking'} aria-controls={id}
-      aria-label={`Select model, current ${name}${account?.unavailable ? ', Account unavailable' : ''}`}
+      aria-label={noProvider ? 'Select model, no model available' : `Select model, current ${name}${account?.unavailable ? ', Account unavailable' : ''}`}
       onClick={(event) => { returnFocusRef.current = event.currentTarget; setView(view === 'model' ? null : 'model'); setError(null); }}>
       {/* Keyed by its text so a model change replays the label animation. */}
-      <span key={account?.unavailable ? 'unavailable' : shortName} className="app-model-pill-label truncate">{account?.unavailable ? 'Account unavailable' : shortName}</span></button>
-    <button type="button" aria-haspopup="dialog" aria-expanded={view === 'thinking'} aria-controls={id} aria-label={`Adjust effort, current ${modelEffortLabel(selection.thinking)}`}
+      <span key={account?.unavailable ? 'unavailable' : chip.model} className="app-model-pill-label truncate">{account?.unavailable ? 'Account unavailable' : chip.model}</span></button>
+    <button type="button" aria-haspopup="dialog" aria-expanded={view === 'thinking'} aria-controls={id} aria-label={noProvider ? 'Adjust effort, no model available' : `Adjust effort, current ${chip.effort}`}
       onClick={(event) => { returnFocusRef.current = event.currentTarget; setView(view === 'thinking' ? null : 'thinking'); setError(null); }}>
-      <span key={selection.thinking} className="app-model-pill-label">{modelEffortLabel(selection.thinking)}</span></button>
+      <span key={chip.effort} className="app-model-pill-label">{chip.effort}</span></button>
     {view ? typeof document !== 'undefined' ? createPortal(menu, document.body) : menu : null}
   </div>;
 }
