@@ -111,14 +111,14 @@ test('build: the notes hint follows the profile kind', () => {
 });
 
 test('cards: the owner name sits under the title and the handle by the bird', () => {
-  const face = { design: 'work' as const, name: 'Work', focus: null, topicCount: 2, status: 'built' as const, owner: { name: 'Shu Yang', handle: 'shuyang' } };
+  const face = { design: 'work' as const, name: 'Work', focus: null, topicCount: 2, status: 'built' as const, owner: { name: 'Maya Chen', handle: 'mayachen' } };
   const tile = renderToStaticMarkup(createElement(ProfileCard, { face }));
-  assert.match(tile, /class="cg-tile-owner">Shu Yang</);
-  assert.match(tile, /class="cg-card-handle">@shuyang</);
+  assert.match(tile, /class="cg-tile-owner">Maya Chen</);
+  assert.match(tile, /class="cg-card-handle">@mayachen</);
   const large = renderToStaticMarkup(createElement(ProfileCard, { size: 'large', face, topics: ['Retrieval'] }));
   assert.match(large, /has-handle/);
-  assert.match(large, /class="cg-large-owner">Shu Yang</);
-  const noHandle = renderToStaticMarkup(createElement(ProfileCard, { face: { ...face, owner: { name: 'Shu Yang' } } }));
+  assert.match(large, /class="cg-large-owner">Maya Chen</);
+  const noHandle = renderToStaticMarkup(createElement(ProfileCard, { face: { ...face, owner: { name: 'Maya Chen' } } }));
   assert.equal(noHandle.includes('cg-card-handle'), false);
   const state = new CommonGroundStore(mockServer({}).client, { profiles: true }).getSnapshot();
   assert.deepEqual(deckCards({ ...state, profiles: [profile('cgp_work', 'work', 'Work', true)] }, face.owner)[0].face.owner, face.owner);

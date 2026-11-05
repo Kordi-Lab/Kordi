@@ -81,7 +81,7 @@ struct LoginView: View {
         return parts.count == 2 && !parts[0].isEmpty && parts[1].contains(".") && !cleanEmail.contains(where: \.isWhitespace)
     }
     private var canSubmit: Bool {
-        !isBusy && emailIsValid && password.count >= 8 && (!isSignup || password == confirmPassword)
+        !isBusy && emailIsValid && password.count >= 8 && (!isSignup || (KordiLoginCopy.isStrongPassword(password) && password == confirmPassword))
             && (!isVerifying || (verificationCode.utf8.count == 6 && verificationCode.utf8.allSatisfy { (48...57).contains($0) }))
     }
     private var generatedAvatarPreviewURL: String? {
@@ -339,8 +339,8 @@ struct LoginView: View {
     }
 
     private var passwordHint: String? {
-        guard isSignup, !password.isEmpty, password.count < 8 else { return nil }
-        return "Use at least 8 characters."
+        guard isSignup, !password.isEmpty, !KordiLoginCopy.isStrongPassword(password) else { return nil }
+        return KordiLoginCopy.passwordRuleHint
     }
 
     private var confirmationHint: String? {

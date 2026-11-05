@@ -38,6 +38,22 @@ pub struct CloudSessionEntry {
     pub expires_at: String,
     #[serde(rename = "deviceId", default, skip_serializing_if = "Option::is_none")]
     pub device_id: Option<String>,
+    /// Browser sign-in only: the rotating refresh token, the app's client ID
+    /// and the token endpoint of the server that issued them.
+    #[serde(
+        rename = "refreshToken",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub refresh_token: Option<String>,
+    #[serde(rename = "clientId", default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(
+        rename = "tokenEndpoint",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub token_endpoint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -248,7 +264,11 @@ pub fn cloud_session_store(
     account_id: String,
     expires_at: String,
     device_id: Option<String>,
+    refresh_token: Option<String>,
+    client_id: Option<String>,
+    token_endpoint: Option<String>,
 ) -> Result<(), String> {
+    let _writes = crate::cloud_session_refresh::lock_session_writes();
     if let Some(previous) = cloud_session_load()? {
         if previous.account_id != account_id {
             tauri::async_runtime::spawn(crate::digest_calendar::clear_reminders(Some(
@@ -256,31 +276,39 @@ pub fn cloud_session_store(
             )));
         }
     }
-    let payload = CloudSessionEntry {
+    store_session_entry(&CloudSessionEntry {
         token,
         account_id,
         expires_at,
         device_id,
-    };
-    let json = serde_json::to_string(&payload).map_err(|err| err.to_string())?;
-    secret_store(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, &json)?;
+        refresh_token,
+        client_id,
+        token_endpoint,
+    })?;
     if let Err(err) = crate::cloud_host_activity::start() {
         eprintln!("[kordi] Unable to keep Cloud agent host active: {err}");
     }
     Ok(())
 }
 
+/// Writes the session without the side effects of a new sign-in.
+pub(crate) fn store_session_entry(entry: &CloudSessionEntry) -> Result<(), String> {
+    let json = serde_json::to_string(entry).map_err(|err| err.to_string())?;
+    secret_store(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, &json)
+}
+
 /// Signs a test in without the keychain or the host activity side effects.
 #[cfg(test)]
 pub(crate) fn store_session_for_test(account_id: &str) -> Result<(), String> {
-    let payload = CloudSessionEntry {
+    store_session_entry(&CloudSessionEntry {
         token: "kordi_s_synthetic".into(),
         account_id: account_id.into(),
         expires_at: "2099-01-01T00:00:00Z".into(),
         device_id: None,
-    };
-    let json = serde_json::to_string(&payload).map_err(|err| err.to_string())?;
-    secret_store(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, &json)
+        refresh_token: None,
+        client_id: None,
+        token_endpoint: None,
+    })
 }
 
 #[tauri::command]
@@ -297,6 +325,7 @@ pub fn cloud_session_load() -> Result<Option<CloudSessionEntry>, String> {
 
 #[tauri::command]
 pub fn cloud_session_clear() -> Result<(), String> {
+    let _writes = crate::cloud_session_refresh::lock_session_writes();
     let account_id = cloud_session_load()
         .ok()
         .flatten()
@@ -422,6 +451,9 @@ mod tests {
                 "acct_123".to_string(),
                 "2026-01-01T00:00:00Z".to_string(),
                 Some("dev_123".to_string()),
+                Some("kordi_rt_123".to_string()),
+                Some("kordi-desktop".to_string()),
+                None,
             )
             .unwrap();
 
@@ -429,6 +461,15 @@ mod tests {
             assert_eq!(loaded.token, "token-123");
             assert_eq!(loaded.account_id, "acct_123");
             assert_eq!(loaded.device_id.as_deref(), Some("dev_123"));
+            assert_eq!(loaded.refresh_token.as_deref(), Some("kordi_rt_123"));
+            assert_eq!(loaded.client_id.as_deref(), Some("kordi-desktop"));
+            // A caller holding an older access token gets the stored session
+            // back instead of spending the refresh token again.
+            let refresh = crate::cloud_session_refresh::cloud_session_refresh;
+            let current = tauri::async_runtime::block_on(refresh("token-old".into())).unwrap();
+            assert_eq!(current.token, "token-123");
+            let missing_endpoint = tauri::async_runtime::block_on(refresh("token-123".into()));
+            assert_eq!(missing_endpoint.unwrap_err(), "not_refreshable");
             assert!(dir.join("kordi").join(DEV_FILE_SECRETS_DIR_NAME).exists());
 
             cloud_session_clear().unwrap();

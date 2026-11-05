@@ -574,8 +574,8 @@ final class AppModel: ObservableObject {
             errorMessage = "Enter your email address."
             return false
         }
-        guard password.count >= 8 else {
-            errorMessage = "Password must be at least 8 characters."
+        guard KordiLoginCopy.isStrongPassword(password) else {
+            errorMessage = KordiLoginCopy.weakPasswordMessage
             return false
         }
         errorMessage = nil
@@ -8157,7 +8157,7 @@ final class AppModel: ObservableObject {
         if let error = error as? CloudAPIError {
             switch error.code {
             case "invalid_email": return "That email address looks malformed."
-            case "weak_password": return "Password must be at least 8 characters."
+            case "weak_password": return error.message.nonEmpty ?? KordiLoginCopy.weakPasswordMessage
             case "email_in_use": return "An account with that email already exists. Try logging in instead."
             case "invalid_credentials": return "Email or password is incorrect."
             case "rate_limited": return "Too many attempts. Wait a moment, then try again."

@@ -53,21 +53,26 @@ pub enum PasswordPolicyError {
     TooShort,
     TooLong,
     ContainsControlChar,
+    MissingCharacterMix,
 }
 
 impl fmt::Display for PasswordPolicyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Empty => write!(f, "password must contain printable characters"),
+            Self::Empty => write!(f, "Password must contain printable characters."),
             Self::TooShort => write!(
                 f,
-                "password must be at least {PASSWORD_MIN_LENGTH} characters"
+                "Password must be at least {PASSWORD_MIN_LENGTH} characters."
             ),
             Self::TooLong => write!(
                 f,
-                "password must be at most {PASSWORD_MAX_LENGTH} characters"
+                "Password must be at most {PASSWORD_MAX_LENGTH} characters."
             ),
-            Self::ContainsControlChar => write!(f, "password must not contain control characters"),
+            Self::ContainsControlChar => write!(f, "Password must not contain control characters."),
+            Self::MissingCharacterMix => write!(
+                f,
+                "Password must include an uppercase letter, a lowercase letter, and a number."
+            ),
         }
     }
 }
@@ -127,6 +132,12 @@ pub fn validate_password_strength(plaintext: &str) -> Result<&str, PasswordPolic
     }
     if plaintext.chars().any(char::is_control) {
         return Err(PasswordPolicyError::ContainsControlChar);
+    }
+    let has_upper = plaintext.chars().any(char::is_uppercase);
+    let has_lower = plaintext.chars().any(char::is_lowercase);
+    let has_digit = plaintext.chars().any(|c| c.is_ascii_digit());
+    if !(has_upper && has_lower && has_digit) {
+        return Err(PasswordPolicyError::MissingCharacterMix);
     }
     Ok(plaintext)
 }
@@ -234,13 +245,27 @@ mod tests {
             Err(PasswordPolicyError::TooLong)
         ));
         assert!(matches!(
-            validate_password_strength("password\u{0007}"),
+            validate_password_strength("Password1\u{0007}"),
             Err(PasswordPolicyError::ContainsControlChar)
         ));
         assert_eq!(
-            validate_password_strength("acceptable-password").unwrap(),
-            "acceptable-password"
+            validate_password_strength("Acceptable-password-7").unwrap(),
+            "Acceptable-password-7"
         );
+    }
+
+    #[test]
+    fn password_policy_requires_mixed_case_and_a_number() {
+        for weak in ["all-lowercase-1", "ALL-UPPERCASE-1", "No-Numbers-Here"] {
+            assert!(
+                matches!(
+                    validate_password_strength(weak),
+                    Err(PasswordPolicyError::MissingCharacterMix)
+                ),
+                "{weak}"
+            );
+        }
+        assert!(validate_password_strength("Mixed-case-9").is_ok());
     }
 
     #[test]

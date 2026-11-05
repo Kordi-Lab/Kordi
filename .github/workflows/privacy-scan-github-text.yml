@@ -1,0 +1,42 @@
+name: Privacy scan of GitHub text
+
+# Applies the repository privacy guard rules to issue and pull request text, comments, and
+# release notes. The job only reads: it never edits, comments, or opens issues. A failure
+# lists locations and rule identifiers only, never the matched text.
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: privacy-scan-github-text
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Scan GitHub text
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+
+      - name: Scan issues, pull requests, comments, and release notes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          KORDI_PRIVACY_DENYLIST: ${{ secrets.KORDI_PRIVACY_DENYLIST }}
+        run: node scripts/scan-github-text.mjs

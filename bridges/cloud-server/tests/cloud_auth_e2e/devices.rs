@@ -14,7 +14,7 @@ async fn login_with_device(
                 Body::from(
                     json!({
                         "email": email,
-                        "password": "correct horse",
+                        "password": TEST_PASSWORD,
                         "device": device_registration(seed, name, "ios"),
                     })
                     .to_string(),
@@ -39,7 +39,7 @@ async fn stable_installation_reauthentication_deduplicates_the_device() {
                 "/v1/cloud/auth/signup",
                 signup_body_with_device(
                     &email,
-                    "correct horse",
+                    TEST_PASSWORD,
                     device_registration(7, "Test iPhone", "ios"),
                 )
                 .await,
@@ -77,7 +77,7 @@ async fn current_device_metadata_upgrades_legacy_identity_and_preserves_coarse_l
                 "/v1/cloud/auth/signup",
                 signup_body_with_device(
                     &email,
-                    "correct horse",
+                    TEST_PASSWORD,
                     device_registration(31, "Owner Mac", "macos"),
                 )
                 .await,
@@ -143,7 +143,7 @@ async fn concurrent_distinct_installations_create_distinct_reviewable_devices() 
                 "/v1/cloud/auth/signup",
                 signup_body_with_device(
                     &email,
-                    "correct horse",
+                    TEST_PASSWORD,
                     device_registration(1, "Original Mac", "macos"),
                 )
                 .await,
@@ -194,7 +194,7 @@ async fn pending_device_cannot_manage_other_authorizations() {
                 "/v1/cloud/auth/signup",
                 signup_body_with_device(
                     &email,
-                    "correct horse",
+                    TEST_PASSWORD,
                     device_registration(21, "Owner Mac", "macos"),
                 )
                 .await,
@@ -275,7 +275,7 @@ async fn remote_revoke_is_atomic_idempotent_and_invalidates_the_target_token() {
                 "/v1/cloud/auth/signup",
                 signup_body_with_device(
                     &email,
-                    "correct horse",
+                    TEST_PASSWORD,
                     device_registration(4, "Owner Mac", "macos"),
                 )
                 .await,
@@ -349,7 +349,7 @@ async fn revoke_all_others_preserves_only_the_authenticated_caller() {
                 "/v1/cloud/auth/signup",
                 signup_body_with_device(
                     &email,
-                    "correct horse",
+                    TEST_PASSWORD,
                     device_registration(8, "Owner Mac", "macos"),
                 )
                 .await,

@@ -5,6 +5,10 @@
 # - Service exposes 9000 (S3 API) + 9001 (console) inside the cluster.
 # - Credentials live in the minio-credentials Secret. The cloud-server
 #   reads the same secret as S3_ACCESS_KEY / S3_SECRET_KEY.
+# - The server and mc images are built from MinIO's public source and
+#   imported into k3s containerd before this manifest is applied (see
+#   deploy/minio/README.md). imagePullPolicy: Never keeps kubelet from
+#   reaching for a registry.
 # - A one-shot Job runs `mc mb` after the StatefulSet comes up to create
 #   the private kordi-attachments and kordi-releases buckets. Idempotent — re-running the manifest
 #   re-creates the Job but `mc mb --ignore-existing` is a no-op when the
@@ -51,9 +55,10 @@ spec:
     spec:
       containers:
         - name: minio
-          # MinIO publishes to quay.io; its Docker Hub repositories no longer resolve.
-          image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
-          imagePullPolicy: IfNotPresent
+          # Built from source on the host and imported into k3s containerd by
+          # deploy/minio/build-k3s-images.sh; MinIO no longer publishes this image.
+          image: docker.io/library/kordi-minio:RELEASE.2024-12-18T13-15-44Z
+          imagePullPolicy: Never
           args:
             - server
             - /data
@@ -129,7 +134,8 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: mc
-          image: quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z
+          image: docker.io/library/kordi-minio-mc:RELEASE.2024-11-21T17-21-54Z
+          imagePullPolicy: Never
           env:
             - name: MC_HOST_minio
               # mc reads the alias from this env var. Format:

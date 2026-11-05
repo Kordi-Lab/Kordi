@@ -161,7 +161,7 @@ test('desktop capabilities allow explicit Tauri move and directional resize call
     permissions?: string[];
   };
   const frameSource = readFileSync(new URL('../src/app/AppShellFrame.tsx', import.meta.url), 'utf8');
-  const gateSource = readFileSync(new URL('../src/KordiApp.tsx', import.meta.url), 'utf8');
+  const gateSource = readFileSync(new URL('../src/features/cloud/CloudGateShell.tsx', import.meta.url), 'utf8');
   const loginSource = readFileSync(new URL('../src/kordi-app/cloud/CloudLoginPage.tsx', import.meta.url), 'utf8');
 
   assert.equal(capabilities.permissions?.includes('core:window:allow-start-dragging'), true);

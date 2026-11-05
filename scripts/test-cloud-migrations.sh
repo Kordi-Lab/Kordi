@@ -148,6 +148,10 @@ KORDI_SIM_TEST_DATABASE_URL="$(migration_database_url kordi_migration_test_simul
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib auth::routes::identity_handlers::completion::tests -- --ignored --test-threads=1
 
+# Browser sign-in (authorization code with PKCE) needs disposable data too.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib auth::routes::app_sign_in_handlers:: -- --ignored --test-threads=1
+
 # Revalidate restricted admission for both session-bound and legacy realtime tickets.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib chat_sync::realtime::tests::realtime_revalidates_instance_admission_for_session_and_legacy_tickets -- --ignored --exact

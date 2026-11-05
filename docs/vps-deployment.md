@@ -51,8 +51,10 @@ On the builder, use a clean checkout of the same reviewed revision:
 bash scripts/build-vps-images.sh /var/tmp/kordi-images
 ```
 
-This builds Linux amd64 OCI archives for all three applications. It emits
-`images.json` and `SHA256SUMS` alongside them. Transfer that directory to the VPS
+This builds Linux amd64 OCI archives for all three applications and for the
+MinIO server and client, which are built from MinIO's public source because
+MinIO no longer publishes those images. It emits `images.json` and `SHA256SUMS`
+alongside them. Transfer that directory to the VPS
 using your SSH account; no cloud-specific transfer command is needed.
 
 On the VPS, verify the archive checksums and import the images:
@@ -60,13 +62,15 @@ On the VPS, verify the archive checksums and import the images:
 ```bash
 cd /var/tmp/kordi-images
 sha256sum --check SHA256SUMS
-for archive in cloud-server cloud-agent-runner omp-route-worker; do
+for archive in cloud-server cloud-agent-runner omp-route-worker minio minio-mc; do
   sudo k3s ctr --namespace k8s.io images import "$archive.oci.tar"
 done
 ```
 
-Alternatively supply your own registry references pinned to `@sha256:...` and
-configure registry access on k3s. Mutable tags such as `latest` are rejected.
+Alternatively supply your own application registry references pinned to
+`@sha256:...` and configure registry access on k3s. Mutable tags such as
+`latest` are rejected. The MinIO images always come from the archives:
+`apply` stops before changing anything when they are not imported.
 
 ## 3. Create private configuration
 

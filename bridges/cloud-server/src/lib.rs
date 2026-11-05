@@ -39,6 +39,7 @@ pub mod support;
 pub mod system_account;
 pub mod system_agent;
 pub mod updates;
+pub mod web_pages;
 pub mod ws;
 
 pub use server::{router, run, ServerState};

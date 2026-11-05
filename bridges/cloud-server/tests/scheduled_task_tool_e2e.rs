@@ -23,6 +23,9 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use tower::util::ServiceExt;
 
+/// Sign-up requires mixed case and a number, so every fixture account uses this.
+const TEST_PASSWORD: &str = "Correct-horse-7";
+
 #[path = "scheduled_task_tool_e2e/budgets.rs"]
 mod budgets;
 
@@ -221,7 +224,7 @@ async fn scheduled_task_tool_api_creates_local_required_task_and_run_now_waits_f
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse").await,
+            signup_body(&email, TEST_PASSWORD).await,
         ))
         .await
         .unwrap();

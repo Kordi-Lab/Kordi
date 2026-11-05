@@ -46,7 +46,7 @@ async fn send_code(router: &axum::Router, email: &str) -> axum::response::Respon
 }
 
 fn registration(email: &str, id: &str, code: &str) -> Body {
-    Body::from(json!({ "email": email, "password": "correct horse", "avatarSeed": "signup_email_test", "verificationId": id, "verificationCode": code }).to_string())
+    Body::from(json!({ "email": email, "password": TEST_PASSWORD, "avatarSeed": "signup_email_test", "verificationId": id, "verificationCode": code }).to_string())
 }
 
 async fn finish(
@@ -92,7 +92,7 @@ async fn signup_without_inbox_proof_cannot_create_account_or_session() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("no-proof");
     let router = email_router(pool.clone(), Arc::new(Inbox::default()));
-    let response = router.oneshot(post("/v1/cloud/auth/signup", Body::from(json!({ "email": email, "password": "correct horse", "avatarSeed": "signup_email_test" }).to_string()))).await.unwrap();
+    let response = router.oneshot(post("/v1/cloud/auth/signup", Body::from(json!({ "email": email, "password": TEST_PASSWORD, "avatarSeed": "signup_email_test" }).to_string()))).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let body = read_json(response).await;
     assert_eq!(body["errorCode"], "email_verification_required");

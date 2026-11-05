@@ -396,6 +396,25 @@ pub(super) async fn logout(
             StatusCode::INTERNAL_SERVER_ERROR,
         );
     }
+    // Signing out with a browser sign-in's access token also ends that
+    // sign-in, so its refresh token stops working.
+    if let Ok(Some(sign_in_id)) =
+        crate::auth::app_sign_in::tokens::sign_in_for_session(pool, &session.token_id).await
+    {
+        let revoked = crate::auth::app_sign_in::tokens::revoke_sign_in(
+            pool,
+            &sign_in_id,
+            crate::auth::app_sign_in::tokens::revoked_reason::SIGN_OUT,
+        )
+        .await;
+        if revoked.is_err() {
+            return err(
+                "server_error",
+                "Could not revoke session.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
     crate::common_ground::forget_nearby_device(pool, &session.device_id).await;
     let _ = write_audit(
         pool,

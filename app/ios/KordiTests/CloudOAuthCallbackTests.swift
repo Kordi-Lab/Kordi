@@ -57,7 +57,7 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
         let challenge = try await client.requestSignupCode(email: "avatar@example.com")
         _ = try await client.signup(
             email: "avatar@example.com",
-            password: "password123",
+            password: "Correct-horse-7",
             verificationId: challenge.verificationId,
             verificationCode: "123456",
             displayName: "Avatar",

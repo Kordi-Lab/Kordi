@@ -26,6 +26,7 @@ if [[ ! -f "$env_file" ]]; then
     printf 'KORDI_DEBUG_API_PORT=17081\n'
     printf 'KORDI_DEBUG_MINIO_PORT=19000\n'
     printf 'KORDI_DEBUG_MINIO_CONSOLE_PORT=19001\n'
+    printf 'KORDI_DEBUG_MAILPIT_UI_PORT=18025\n'
     printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)"
     printf 'REDIS_PASSWORD=%s\n' "$(openssl rand -hex 24)"
     printf 'MINIO_ROOT_USER=kordi-debug\n'
@@ -34,6 +35,7 @@ if [[ ! -f "$env_file" ]]; then
     printf 'KORDI_CLOUD_RUNNER_TOKEN=%s\n' "$(openssl rand -hex 32)"
     printf 'KORDI_OMP_ROUTE_WORKER_TOKEN=%s\n' "$(openssl rand -hex 32)"
     printf 'KORDI_CHAT_SYNC_CURSOR_SECRET=%s\n' "$(openssl rand -hex 32)"
+    printf 'KORDI_AUTH_EMAIL_CODE_SECRET=%s\n' "$(openssl rand -hex 32)"
     printf 'KORDI_OAUTH_GITHUB_CLIENT_ID=\n'
     printf 'KORDI_OAUTH_GITHUB_CLIENT_SECRET=\n'
     printf 'KORDI_OAUTH_GOOGLE_CLIENT_ID=\n'
@@ -77,6 +79,13 @@ if ! grep -q '^KORDI_OMP_ROUTE_WORKER_TOKEN=' "$env_file"; then
   echo "[kordi-debug] Added an isolated OMP route worker token to the existing deploy/dev/.env"
 fi
 
+if ! grep -Eq '^KORDI_AUTH_EMAIL_CODE_SECRET=.+' "$env_file"; then
+  umask 077
+  printf 'KORDI_AUTH_EMAIL_CODE_SECRET=%s\n' "$(openssl rand -hex 32)" >>"$env_file"
+  chmod 600 "$env_file"
+  echo "[kordi-debug] Added an isolated sign-up email code secret to the existing deploy/dev/.env"
+fi
+
 # Compose gives the parent shell precedence over --env-file. Clear every
 # server-side credential that this stack interpolates so a maintainer's
 # production environment cannot silently override the isolated dev file.
@@ -85,6 +94,9 @@ unset MINIO_ROOT_USER MINIO_ROOT_PASSWORD
 unset KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY KORDI_CLOUD_RUNNER_TOKEN
 unset KORDI_OMP_ROUTE_WORKER_TOKEN
 unset KORDI_CHAT_SYNC_CURSOR_SECRET
+unset KORDI_AUTH_SMTP_HOST KORDI_AUTH_SMTP_PORT KORDI_AUTH_SMTP_SECURITY
+unset KORDI_AUTH_SMTP_USERNAME KORDI_AUTH_SMTP_PASSWORD KORDI_AUTH_SMTP_FROM
+unset KORDI_AUTH_EMAIL_CODE_SECRET
 unset KORDI_SYSTEM_AGENT_ENABLED KORDI_SYSTEM_AGENT_GROUP_CHAT_ENABLED
 unset GOOGLE_APPLICATION_CREDENTIALS KORDI_SERVICE_VERTEX_PROJECT KORDI_SERVICE_VERTEX_LOCATION
 unset KORDI_SUPPORT_PROVIDER KORDI_SUPPORT_VERTEX_MODEL

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+import { findPrivateIdentifiers } from './lib/private-identifiers.mjs';
+
 const scriptPath = new URL('../bridges/cloud-server/deploy/sync-and-build.sh', import.meta.url);
 const bootstrapScriptPath = new URL('../bridges/cloud-server/deploy/k3s/bootstrap-product-host.sh', import.meta.url);
 const installK3sScriptPath = new URL('../bridges/cloud-server/deploy/k3s/install-k3s.sh', import.meta.url);
@@ -185,7 +187,8 @@ test('cloud server manifest targets the hosted product public base', async () =>
   for (const port of [1420, 1422, 1482, 1484, 1486]) {
     assert.match(manifest, new RegExp(`http://127\\.0\\.0\\.1:${port}`));
   }
-  assert.doesNotMatch(manifest, /https:\/\/korde-product-cloud\.35\.188\.85\.31\.sslip\.io/);
+  assert.doesNotMatch(manifest, /\.(?:sslip|nip)\.io\b/);
+  assert.deepEqual(findPrivateIdentifiers(manifest), [], 'the manifest must not name a former host');
   assert.match(manifest, /KORDI_LIVEKIT_URL[\s\S]*name: kordi-livekit[\s\S]*key: url/);
   for (const name of [
     'KORDI_APNS_ENVIRONMENT',

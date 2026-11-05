@@ -374,7 +374,7 @@ async fn another_mac_publishing_the_same_project_never_drops_this_macs_sessions(
             "/v1/cloud/auth/signup",
             Body::from(
                 signup_email_fixture::with_proof(json!({
-                    "email": email, "password": "correct horse", "displayName": "Owner",
+                    "email": email, "password": TEST_PASSWORD, "displayName": "Owner",
                     "avatarSeed": "agent_runtime_avatar",
                 }))
                 .await
@@ -389,7 +389,7 @@ async fn another_mac_publishing_the_same_project_never_drops_this_macs_sessions(
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/login",
-            Body::from(json!({"email": email, "password": "correct horse"}).to_string()),
+            Body::from(json!({"email": email, "password": TEST_PASSWORD}).to_string()),
         ))
         .await
         .unwrap();

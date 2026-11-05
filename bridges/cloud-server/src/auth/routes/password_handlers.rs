@@ -1,8 +1,13 @@
 use super::*;
+mod existing_account;
 #[cfg(test)]
 mod legacy_signup_tests;
 mod login;
 mod signup_avatar;
+use existing_account::{
+    add_password_to_existing_account, email_in_use, existing_email_account,
+    PasswordForExistingAccount,
+};
 pub(super) use login::login;
 use signup_avatar::{apply_deferred_signup_avatar, deferred_signup_avatar_bytes, signup_avatar};
 
@@ -78,27 +83,41 @@ pub(super) async fn signup(
     let pool = state.db_pool();
 
     // The partial unique index on LOWER(primary_email) remains the backstop.
-    let existing: Option<(String,)> =
-        match query_as("SELECT account_id FROM cloud_accounts WHERE LOWER(primary_email) = $1")
-            .bind(&normalized_email)
-            .fetch_optional(pool)
-            .await
-        {
-            Ok(value) => value,
-            Err(_) => {
-                return err(
-                    "server_error",
-                    "Database error.",
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                );
+    let existing = match existing_email_account(pool, &normalized_email).await {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    if let Some(existing) = existing {
+        // An account created through Google or GitHub gains a password once
+        // the emailed code proves the address; it never gets a twin account.
+        return match email_proof {
+            Some((email_service, verification_id, verification_code))
+                if existing.accepts_password() =>
+            {
+                add_password_to_existing_account(PasswordForExistingAccount {
+                    state: &state,
+                    rate_limiter: &rate_limiter,
+                    hasher_config: *hasher_config.as_ref(),
+                    peer_ip,
+                    account_id: &existing.account_id,
+                    normalized_email: &normalized_email,
+                    password: &req.password,
+                    display_name: display_name.as_deref(),
+                    registration: &registration,
+                    email_service,
+                    verification_id,
+                    verification_code,
+                })
+                .await
             }
+            _ => email_in_use(),
         };
-    if existing.is_some() {
-        return err(
-            "email_in_use",
-            "An account with this email already exists.",
-            StatusCode::CONFLICT,
-        );
     }
 
     let password_hash = match tokio::task::spawn_blocking({

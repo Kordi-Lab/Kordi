@@ -29,7 +29,13 @@ ALLOWED = {'MIT', 'MIT-0', 'Apache-2.0', 'ISC', 'BSD-1-Clause', 'BSD-2-Clause',
            'BSD-3-Clause', '0BSD', 'Zlib', 'Unlicense', 'CC0-1.0', 'CC-BY-4.0',
            'MPL-2.0', 'LGPL-3.0-or-later', 'LGPL-2.1-or-later', 'LGPL-2.1-only', 'LGPL-2.0-only',
            'Unicode-3.0', 'CDLA-Permissive-2.0', 'BSL-1.0', 'BlueOak-1.0.0',
-           'Python-2.0', 'WTFPL', 'LLVM-exception'}
+           'Python-2.0', 'WTFPL', 'LLVM-exception', 'AGPL-3.0-or-later'}
+# Licenses accepted only for separately built service images, never for code
+# linked into Kordi's own binaries.
+IMAGE_ONLY = {'AGPL-3.0-or-later'}
+# Service images built from upstream source: (Dockerfile, ARG prefix, Go module).
+SOURCE_IMAGES = [('deploy/minio/Dockerfile.server', 'MINIO', 'github.com/minio/minio'),
+                 ('deploy/minio/Dockerfile.client', 'MC', 'github.com/minio/mc')]
 
 
 def digest(data):
@@ -86,7 +92,8 @@ def local_notices(directory):
 
 
 def record(ecosystem, name, version, license_id, source, notices, authors=None):
-    spdx_ids(license_id)
+    if IMAGE_ONLY.intersection(spdx_ids(license_id)) and ecosystem != 'container':
+        raise ValueError('License is accepted only for separate service images: ' + name)
     return {'ecosystem': ecosystem, 'name': name, 'version': version,
             'license': license_id, 'source': source, 'notices': notices,
             'authors': authors or [],
@@ -198,12 +205,40 @@ def swift_packages():
     return result
 
 
+def container_packages():
+    """Upstream source pinned by the Dockerfiles of separately built images."""
+    result = []
+    for dockerfile, prefix, module in SOURCE_IMAGES:
+        text = (ROOT / dockerfile).read_text()
+        release, version = (re.search(rf'^ARG {prefix}_{name}=(\S+)$', text, re.M).group(1)
+                            for name in ('RELEASE', 'MODULE'))
+        info = json.loads(get(f'https://proxy.golang.org/{module}/@v/{version}.info'))
+        revision = info['Origin']['Hash']
+        if info['Version'] != version or not revision.startswith(version.rsplit('-', 1)[1]):
+            raise ValueError('Go proxy disagrees with the pinned module: ' + dockerfile)
+        repository = module.removeprefix('github.com/')
+        url = f'https://codeload.github.com/{repository}/tar.gz/{revision}'
+        top = f'{repository.split("/")[1]}-{revision}/'
+        # Top-level notices only; the image itself also carries CREDITS with the
+        # notices of every bundled Go dependency.
+        notices = [(name, content) for name, content in archive_notices(get(url))
+                   if name in (top + 'LICENSE', top + 'NOTICE')]
+        if len(notices) != 2:
+            raise ValueError('Missing upstream LICENSE or NOTICE: ' + module)
+        result.append(record('container', module, release, 'AGPL-3.0-or-later', url, notices))
+        result[-1]['revision'] = revision
+        result[-1]['scope'] = (f'Built from this exact commit by {dockerfile} into a separate service '
+                               'image, not linked into Kordi. The image carries LICENSE, NOTICE and '
+                               'CREDITS (Go dependency notices) under /usr/share/licenses.')
+    return result
+
+
 def main():
     rows = json.loads(command('node', 'scripts/licenses/locked.mjs'))
     print(f'Collecting {len(rows)} exact npm archives', flush=True)
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         packages = list(pool.map(npm_package, rows))
-    packages += rust_packages() + go_packages() + swift_packages()
+    packages += rust_packages() + go_packages() + swift_packages() + container_packages()
     runtime = json.loads((ROOT / 'shared/omp-runtime/package.json').read_text())['packageManager'].removeprefix('bun@')
     bun_url = f'https://raw.githubusercontent.com/oven-sh/bun/bun-v{runtime}/LICENSE.md'
     packages.append(record('runtime', 'Bun', runtime, 'MIT AND LGPL-2.0-only AND LGPL-2.1-only',
@@ -236,6 +271,7 @@ def main():
              'app/ios/Kordi.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved',
              'shared/omp-runtime/package.json', 'legal/runtime-sources.json', 'legal/native/archive-evidence.json', 'legal/public-contact-hashes.json']
     paths += ['app/desktop/package.json', 'legal/runtime-relink-verification.json', 'legal/runtime-bundle-review.json']
+    paths += [dockerfile for dockerfile, _, _ in SOURCE_IMAGES]
     paths += [str(p.relative_to(ROOT)) for p in sorted((ROOT / 'legal/native').iterdir()) if p.is_file() and str(p.relative_to(ROOT)) not in paths]
     paths += [str(p.relative_to(ROOT)) for p in sorted((ROOT / 'legal/runtime-patches').glob('*.patch'))]
     catalog = {'schemaVersion': 1, 'scope': 'Conservative lock inventory, including build, test and optional dependencies; not a shipped-code SBOM.',

@@ -1,5 +1,7 @@
-/* Browser sign-in wait screen (CloudStartingScreen while OAuth is pending). */
-.app-cloud-starting-screen {
+/* Browser sign-in wait screen (CloudStartingScreen while OAuth is pending,
+   and CloudBrowserSignInPage while the account sign-in page is open). */
+.app-cloud-starting-screen,
+.app-cloud-browser-signin {
   --app-cloud-signin-ring-track: oklch(1 0 0 / 0.08);
   --app-cloud-signin-ring-arc: oklch(0.78 0.10 212);
   --app-cloud-signin-mark-bg: oklch(1 0 0 / 0.06);
@@ -9,7 +11,8 @@
   --app-cloud-signin-action-text: rgb(203 213 225);
 }
 
-.kordi-app.theme-light .app-cloud-starting-screen {
+.kordi-app.theme-light .app-cloud-starting-screen,
+.kordi-app.theme-light .app-cloud-browser-signin {
   --app-cloud-signin-ring-track: rgba(100, 116, 139, 0.16);
   --app-cloud-signin-ring-arc: oklch(0.56 0.13 232);
   --app-cloud-signin-mark-bg: #fff;
@@ -154,6 +157,281 @@
   }
 
   .app-cloud-starting-screen-oauth .app-cloud-starting-content {
+    animation: none;
+  }
+}
+
+/* Browser sign-in welcome screen (CloudBrowserSignInPage). */
+.app-cloud-browser-signin {
+  --app-kordi-bird: #f4ede1;
+  --app-kordi-bird-cut: #0d0f13;
+}
+
+/* The frame covers exactly the visible window: while the gate is up the web
+ * view extends past every window edge. The top inset clears the title bar;
+ * the larger bottom inset lifts the group just above center. */
+.app-cloud-browser-signin,
+.app-cloud-login-surface > .app-cloud-login-page.app-cloud-browser-signin {
+  position: fixed;
+  top: var(--app-gate-crop-y, 0px);
+  left: var(--app-gate-crop-x, 0px);
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  width: var(--app-gate-window-width, calc(100vw - 2 * var(--app-gate-crop-x, 0px)));
+  height: var(--app-gate-window-height, calc(100vh - 2 * var(--app-gate-crop-y, 0px)));
+  box-sizing: border-box;
+  padding: 52px 24px 76px;
+  /* The window has a fixed size and the content fits, so it never scrolls. */
+  overflow: hidden;
+}
+
+/* The old in-app form gives every panel a tall minimum height; the welcome
+ * group is only as tall as its content so the frame can center it. */
+.app-cloud-login-panel.app-cloud-welcome {
+  min-height: 0;
+}
+
+.app-cloud-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 320px;
+  text-align: center;
+}
+
+.app-cloud-welcome-title {
+  margin: 18px 0 0;
+  color: var(--utility-foreground);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.app-cloud-welcome-subtitle {
+  margin: 8px 0 0;
+  color: var(--app-cloud-signin-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* Errors on the welcome window are plain text: no box. */
+.app-cloud-welcome-error {
+  width: 100%;
+  margin: 18px 0 0;
+  color: var(--app-cloud-login-danger-text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.app-cloud-welcome-actions {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  max-width: 304px;
+  margin-top: 28px;
+}
+
+/* The bird's wing gap is cut out of the body, so it shows the window behind. */
+.app-kordi-flying-bird-cutout .app-kordi-flying-bird-wing {
+  stroke: none;
+}
+
+.app-kordi-flying-bird-cutout .app-kordi-flying-bird-wing-cut {
+  fill: #000;
+  stroke: #000;
+}
+
+.kordi-app.theme-light .app-cloud-browser-signin {
+  --app-kordi-bird: #1f1a17;
+  --app-kordi-bird-cut: rgb(241 245 249);
+}
+
+/* Frosted window: no veil, so text carries its own contrast. */
+.app-cloud-login-shell[data-frosted="true"] .app-cloud-browser-signin {
+  --app-cloud-signin-muted: rgb(214 220 230);
+  --app-cloud-signin-action-text: rgb(236 240 246);
+  --app-cloud-frosted-text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+}
+
+.kordi-app.theme-light.app-cloud-login-shell[data-frosted="true"] .app-cloud-browser-signin {
+  --app-cloud-signin-muted: rgb(51 65 85);
+  --app-cloud-signin-action-text: rgb(30 41 59);
+  --app-cloud-frosted-text-shadow: 0 1px 1px rgb(255 255 255 / 0.45);
+}
+
+.app-cloud-login-shell[data-frosted="true"] :is(
+  .app-cloud-welcome-title,
+  .app-cloud-welcome-subtitle,
+  .app-cloud-welcome-link,
+  .app-cloud-browser-signin-title,
+  .app-cloud-signin-action
+) {
+  text-shadow: var(--app-cloud-frosted-text-shadow);
+}
+
+.app-cloud-login-shell[data-frosted="true"] .app-cloud-welcome-link {
+  color: var(--app-cloud-signin-muted);
+}
+
+.app-cloud-login-shell[data-frosted="true"] .app-cloud-welcome-link:hover {
+  color: var(--utility-foreground);
+}
+
+.app-cloud-welcome-bird {
+  width: 64px;
+  height: 64px;
+}
+
+.app-cloud-signin-mark .app-cloud-browser-signin-bird {
+  width: 30px;
+  height: 30px;
+}
+
+.app-cloud-browser-signin .app-kordi-flying-bird-body {
+  animation: none;
+}
+
+.app-cloud-browser-signin .app-kordi-flying-bird-wing {
+  animation: none;
+  transform: rotate(-24deg);
+}
+
+.app-cloud-welcome-secondary {
+  border-color: var(--app-cloud-login-inner-border);
+  background: var(--app-cloud-login-raised-bg);
+  color: var(--utility-foreground);
+}
+
+.app-cloud-welcome-secondary:hover {
+  border-color: var(--app-cloud-login-border);
+}
+
+.app-cloud-login-submit:focus-visible,
+.app-cloud-welcome-secondary:focus-visible,
+.app-cloud-welcome-link:focus-visible {
+  outline: 2px solid var(--app-cloud-login-focus-border);
+  outline-offset: 2px;
+}
+
+.app-cloud-welcome-link {
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--utility-muted-text, var(--app-cloud-signin-muted));
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 140ms var(--app-motion-ease);
+}
+
+.app-cloud-welcome-link:hover {
+  color: var(--utility-foreground);
+}
+
+.app-cloud-browser-signin-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: min(100% - 48px, 380px);
+  text-align: center;
+  animation: app-cloud-signin-enter 320ms var(--app-motion-ease) both;
+}
+
+.app-cloud-browser-signin-title {
+  margin: 22px 0 0;
+  color: var(--utility-foreground);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.35;
+}
+
+/* Focused by script so screen readers land on the wait screen; not a control. */
+.app-cloud-browser-signin-title:focus {
+  outline: none;
+}
+
+.app-cloud-signin-action:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.app-cloud-browser-signin-paste {
+  display: grid;
+  gap: 8px;
+  width: min(320px, 100%);
+  margin-top: 28px;
+}
+
+.app-cloud-browser-signin-paste-row {
+  display: flex;
+  gap: 8px;
+}
+
+.app-cloud-browser-signin-paste-input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--app-cloud-login-border);
+  border-radius: 999px;
+  background: var(--app-cloud-login-input-bg);
+  color: var(--utility-foreground);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.app-cloud-browser-signin-paste-input:focus {
+  border-color: var(--app-cloud-login-focus-border);
+  box-shadow: 0 0 0 3px var(--app-cloud-login-focus-ring);
+}
+
+.app-cloud-browser-signin-paste-input[aria-invalid="true"] {
+  border-color: var(--app-cloud-login-danger-border);
+}
+
+.app-cloud-browser-signin-paste-submit {
+  height: 40px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-cloud-browser-signin-paste-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.app-cloud-browser-signin-paste-error {
+  margin: 0;
+  color: var(--app-cloud-login-danger-text);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.app-cloud-browser-signin-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 22px;
+  display: flex;
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-cloud-browser-signin-content {
     animation: none;
   }
 }

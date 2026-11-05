@@ -14,7 +14,11 @@ COPY app ./app
 COPY bridges ./bridges
 COPY shared ./shared
 
-RUN cargo build --release -p kordi-cloud-agent-runner
+# The development Compose stack passes KORDI_DEVELOPMENT_BUILD=1 so the runner
+# accepts the host-local sandbox backend. Hosted release images leave it empty,
+# so they keep refusing KORDI_CLOUD_SANDBOX_BACKEND=local.
+ARG KORDI_DEVELOPMENT_BUILD=
+RUN KORDI_DEVELOPMENT_BUILD="$KORDI_DEVELOPMENT_BUILD" cargo build --release -p kordi-cloud-agent-runner
 
 # Build the same pinned standalone OMP worker used by the Mac sidecar. OMP is
 # the default engine; KORDI_CLOUD_AGENT_ENGINE=rust is an explicit rollback.

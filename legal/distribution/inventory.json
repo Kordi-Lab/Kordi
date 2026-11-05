@@ -19909,6 +19909,48 @@
       ]
     },
     {
+      "ecosystem": "container",
+      "name": "github.com/minio/mc",
+      "version": "RELEASE.2024-11-21T17-21-54Z",
+      "license": "AGPL-3.0-or-later",
+      "source": "https://codeload.github.com/minio/mc/tar.gz/1681e4497c09d7438a34e846f76dbde972ab7daf",
+      "authors": [],
+      "evidence": "upstream-notices",
+      "revision": "1681e4497c09d7438a34e846f76dbde972ab7daf",
+      "scope": "Built from this exact commit by deploy/minio/Dockerfile.client into a separate service image, not linked into Kordi. The image carries LICENSE, NOTICE and CREDITS (Go dependency notices) under /usr/share/licenses.",
+      "notices": [
+        {
+          "file": "mc-1681e4497c09d7438a34e846f76dbde972ab7daf/LICENSE",
+          "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+        },
+        {
+          "file": "mc-1681e4497c09d7438a34e846f76dbde972ab7daf/NOTICE",
+          "sha256": "56635f1740e8c33231e76ba8fbe098e7e9cc95d28b7b4abb98fed6270405810e"
+        }
+      ]
+    },
+    {
+      "ecosystem": "container",
+      "name": "github.com/minio/minio",
+      "version": "RELEASE.2024-12-18T13-15-44Z",
+      "license": "AGPL-3.0-or-later",
+      "source": "https://codeload.github.com/minio/minio/tar.gz/16f8cf1c52f0a77eeb8f7565aaf7f7df12454583",
+      "authors": [],
+      "evidence": "upstream-notices",
+      "revision": "16f8cf1c52f0a77eeb8f7565aaf7f7df12454583",
+      "scope": "Built from this exact commit by deploy/minio/Dockerfile.server into a separate service image, not linked into Kordi. The image carries LICENSE, NOTICE and CREDITS (Go dependency notices) under /usr/share/licenses.",
+      "notices": [
+        {
+          "file": "minio-16f8cf1c52f0a77eeb8f7565aaf7f7df12454583/LICENSE",
+          "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+        },
+        {
+          "file": "minio-16f8cf1c52f0a77eeb8f7565aaf7f7df12454583/NOTICE",
+          "sha256": "e74f1fdf2e9de7b4efc317bee3333ed26454f24fd147527707fe4185b706703a"
+        }
+      ]
+    },
+    {
       "ecosystem": "go",
       "name": "cel.dev/expr",
       "version": "v0.15.0",
