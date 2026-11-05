@@ -308,4 +308,13 @@ struct ModelPresentationTests {
         #expect(AgentModelPresentation.shortName("anthropic/claude-fable-5-1") == "Claude Fable 5.1")
         #expect(AgentModelPresentation.shortName("custom/research-model") == "research-model")
     }
+
+    @Test func composerChipShowsPlaceholderUntilAProviderIsConnected() {
+        let none = AgentModelPresentation.chipLabels(model: "openai-codex/gpt-6.1-sol", thinking: "medium", hasProvider: false)
+        #expect(none.model == "--")
+        #expect(none.effort == "--")
+        let connected = AgentModelPresentation.chipLabels(model: "openai-codex/gpt-6.1-sol", thinking: "medium", hasProvider: true)
+        #expect(connected.model == "6.1 Sol")
+        #expect(connected.effort == "Medium")
+    }
 }

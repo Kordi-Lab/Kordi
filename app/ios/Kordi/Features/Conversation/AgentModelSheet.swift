@@ -605,6 +605,15 @@ enum AgentModelPresentation {
         if value.isEmpty || ["default", "auto", "thinking"].contains(value) { return "Default" }
         return value == "xhigh" ? "Extra high" : value.capitalized
     }
+
+    /// Composer chip text while no provider account is connected, so no model is named.
+    static let noModelPlaceholder = "--"
+
+    /// The composer chip's model and effort text; without a connected provider there is no usable model.
+    static func chipLabels(model: String, thinking: String, hasProvider: Bool) -> (model: String, effort: String) {
+        guard hasProvider else { return (noModelPlaceholder, noModelPlaceholder) }
+        return (shortName(model), effort(thinking))
+    }
 }
 
 private struct AgentEffortSlider: View {

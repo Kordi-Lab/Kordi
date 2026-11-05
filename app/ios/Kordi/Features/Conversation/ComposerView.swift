@@ -1181,11 +1181,16 @@ struct ComposerView: View {
         let unavailable = route.defaultAuthChoice?.nonEmpty.map { choice in
             !model.authenticationSnapshots(for: route.defaultAuthProvider ?? "").contains { $0.authChoice == choice }
         } ?? false
+        // No connected account means no usable model: the chip shows a placeholder, not a default model.
+        let noProvider = !unavailable && !model.hasConfiguredProviderAuthentication
+        let chip = AgentModelPresentation.chipLabels(
+            model: route.defaultModel ?? "", thinking: route.thinking ?? "default", hasProvider: !noProvider
+        )
         return HStack(alignment: .center, spacing: 0) {
             Button {
                 showAgentModelPicker()
             } label: {
-                Text(unavailable ? "Account unavailable" : AgentModelPresentation.shortName(route.defaultModel ?? ""))
+                Text(unavailable ? "Account unavailable" : chip.model)
                     .font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
                     .truncationMode(.middle)
                     .contentTransition(reduceMotion ? .identity : .opacity)
@@ -1193,7 +1198,8 @@ struct ComposerView: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("Select model")
-            .accessibilityValue(unavailable ? "Account unavailable" : AgentModelPresentation.name(route.defaultModel ?? ""))
+            .accessibilityValue(unavailable ? "Account unavailable"
+                : noProvider ? "No model available" : AgentModelPresentation.name(route.defaultModel ?? ""))
             .accessibilityIdentifier("composer-model-picker")
             Button {
                 dismissExpressivePicker()
@@ -1204,14 +1210,14 @@ struct ComposerView: View {
                     isAgentModelPickerPresented = true
                 }
             } label: {
-                Text(AgentModelPresentation.effort(route.thinking ?? "default")).lineLimit(1)
+                Text(chip.effort).lineLimit(1)
                     .contentTransition(reduceMotion ? .identity : .opacity)
                     .font(.subheadline).foregroundStyle(.secondary)
                     .padding(.leading, 2).frame(height: sendButtonDiameter)
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("Adjust effort")
-            .accessibilityValue(AgentModelPresentation.effort(route.thinking ?? "default"))
+            .accessibilityValue(noProvider ? "No model available" : chip.effort)
             .accessibilityIdentifier("composer-effort-picker")
         }
         .buttonStyle(.plain)
@@ -1219,6 +1225,7 @@ struct ComposerView: View {
         .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: route.defaultModel)
         .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: route.thinking)
         .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: unavailable)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: noProvider)
     }
 
     private func dismissAgentModelPicker() {
