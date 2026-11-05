@@ -16,7 +16,7 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use uuid::Uuid;
 
-use super::handlers::{lock_for_change, Tx};
+use super::handlers::{configured_refusal, lock_for_change, Tx};
 use super::policy::{manages_content, PolicyError};
 use super::selection::is_member_owner_violation;
 use super::{bad_request, err, server_error, ApiError};
@@ -58,7 +58,9 @@ fn owner_not_member() -> ApiError {
 }
 
 /// Locks both organizations in id order, so two opposite transfers cannot
-/// deadlock, and requires the caller to manage each.
+/// deadlock, and requires the caller to manage each. Organizations from the
+/// admission file follow their own rules, so content does not move in or out
+/// of them here.
 async fn lock_managed(
     tx: &mut Tx<'_>,
     account_id: &str,
@@ -70,11 +72,16 @@ async fn lock_managed(
     } else {
         (target, source)
     };
+    let mut configured = false;
     for organization_id in [first, second] {
-        let (_, role, _) = lock_for_change(tx, organization_id, account_id).await?;
+        let (_, role, from_file) = lock_for_change(tx, organization_id, account_id).await?;
         if !manages_content(role) {
             return Err(PolicyError::NotManager.into());
         }
+        configured |= from_file;
+    }
+    if configured {
+        return Err(configured_refusal());
     }
     Ok(())
 }

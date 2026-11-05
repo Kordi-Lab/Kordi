@@ -151,6 +151,48 @@ async fn sync_sets_the_owner_eligibility_rule_from_the_file() {
 }
 
 #[tokio::test]
+async fn an_expired_membership_the_sweep_missed_starts_again() {
+    let Some(pool) = pool().await else { return };
+    let (member, _) = signed_in(&pool, "adm_revive").await;
+    let id = format!("t-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]);
+    let synced = parse(&sample_file(&id), "[]")
+        .unwrap()
+        .sync_configured(&pool)
+        .await
+        .unwrap();
+    let organization_id = synced.organizations[0].organization_id.clone();
+    sqlx_core::query::query(
+        "INSERT INTO cloud_organization_members (organization_id, account_id, role, expires_at) \
+         VALUES ($1, $2, 'admin', now() - interval '1 minute')",
+    )
+    .bind(&organization_id)
+    .bind(&member)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    assert!(super::store::add_member(&mut tx, &organization_id, &member)
+        .await
+        .unwrap());
+    assert!(
+        !super::store::add_member(&mut tx, &organization_id, &member)
+            .await
+            .unwrap()
+    );
+    tx.commit().await.unwrap();
+    let (role, ends): (String, Option<chrono::DateTime<chrono::Utc>>) = query_as(
+        "SELECT role, expires_at FROM cloud_organization_members \
+         WHERE organization_id = $1 AND account_id = $2",
+    )
+    .bind(&organization_id)
+    .bind(&member)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!((role.as_str(), ends), ("member", None));
+}
+
+#[tokio::test]
 async fn sync_is_idempotent_and_keeps_configured_admins_in_step() {
     let Some(pool) = pool().await else { return };
     let (admin, _) = signed_in(&pool, "adm_sync").await;

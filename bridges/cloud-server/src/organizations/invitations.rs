@@ -282,13 +282,12 @@ pub(super) async fn accept(
 ) -> Response {
     let result: Result<String, ApiError> = async {
         let mut tx = state.db_pool().begin().await.map_err(|_| server_error())?;
-        let row: Option<(String, String, Option<DateTime<Utc>>)> = query_as(
-            "SELECT i.organization_id, i.role, i.membership_expires_at \
+        let row: Option<(String, String, Option<DateTime<Utc>>, bool)> = query_as(
+            "SELECT i.organization_id, i.role, i.membership_expires_at, o.config_id IS NOT NULL \
              FROM cloud_organization_invitations i \
              JOIN cloud_organizations o ON o.organization_id = i.organization_id \
              WHERE i.invitation_id = $1 AND i.invitee_account_id = $2 \
                AND i.status = 'pending' AND i.expires_at > now() AND o.kind = 'team' \
-               AND o.config_id IS NULL \
                AND (i.membership_expires_at IS NULL OR i.membership_expires_at > now()) \
                AND EXISTS ( \
                  SELECT 1 FROM cloud_organization_members inviter \
@@ -304,7 +303,10 @@ pub(super) async fn accept(
         .fetch_optional(&mut *tx)
         .await
         .map_err(|_| server_error())?;
-        let (organization_id, role, ends) = row.ok_or_else(invitation_not_found)?;
+        let (organization_id, role, ends, configured) = row.ok_or_else(invitation_not_found)?;
+        if configured {
+            return Err(configured_refusal());
+        }
         query(
             "INSERT INTO cloud_organization_members \
                  (organization_id, account_id, role, expires_at) VALUES ($1, $2, $3, $4) \

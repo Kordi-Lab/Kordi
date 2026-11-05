@@ -300,7 +300,9 @@ pub(super) async fn apply_evidence(
     })
 }
 
-/// Adds a plain membership; returns whether it was new.
+/// Adds a plain membership; returns whether it was new. A membership whose
+/// end date passed (migration 0168) but that the sweep has not removed yet
+/// counts as gone, so it starts again as a lasting plain membership.
 pub(super) async fn add_member(
     tx: &mut Tx<'_>,
     organization_id: &str,
@@ -308,7 +310,9 @@ pub(super) async fn add_member(
 ) -> Result<bool, sqlx_core::Error> {
     let result = query(
         "INSERT INTO cloud_organization_members (organization_id, account_id, role) \
-         VALUES ($1, $2, 'member') ON CONFLICT (organization_id, account_id) DO NOTHING",
+         VALUES ($1, $2, 'member') ON CONFLICT (organization_id, account_id) \
+         DO UPDATE SET role = 'member', expires_at = NULL, joined_at = now() \
+         WHERE cloud_organization_members.expires_at <= now()",
     )
     .bind(organization_id)
     .bind(account_id)

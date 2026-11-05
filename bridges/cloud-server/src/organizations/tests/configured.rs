@@ -93,7 +93,28 @@ async fn configured_organizations_take_no_invitations_or_setting_changes() {
     .unwrap();
     let sam_token = token_for(&pool, &sam).await;
     let accept = format!("/v1/cloud/organization-invitations/{invitation}/accept");
-    assert_eq!(send(&app, "POST", &accept, &sam_token, None).await.0, 404);
+    let (status, body) = send(&app, "POST", &accept, &sam_token, None).await;
+    assert_eq!((status, body["errorCode"].as_str()), (409, configured));
+
+    // Content does not move in or out of it through the transfer route.
+    let alex_home = super::personal_organization(&pool, &alex).await;
+    let agent_id = format!("agent_cfg_{}", Uuid::new_v4().simple());
+    query(
+        "INSERT INTO cloud_agent_definitions (agent_id, owner_account_id, name, role, \
+          system_prompt, created_at, updated_at, avatar_source, avatar_style, avatar_seed, \
+          avatar_renderer_version, avatar_version, avatar_updated_at) \
+         VALUES ($1, $2, 'Helper', 'helper', 'Help.', now()::text, now()::text, 'generated', \
+                 'thumbs', $1, 'fixture', 1, now()::text)",
+    )
+    .bind(&agent_id)
+    .bind(&alex)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let transfer = format!("{ORGS}/{alex_home}/transfers");
+    let body = json!({"kind": "agent", "id": agent_id, "targetOrganizationId": organization});
+    let (status, answer) = send(&app, "POST", &transfer, &alex_token, Some(body)).await;
+    assert_eq!((status, answer["errorCode"].as_str()), (409, configured));
 
     // Leaving goes through admission, which keeps the configured admin.
     let leave = format!("{ORGS}/{organization}/leave");
