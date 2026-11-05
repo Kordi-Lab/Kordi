@@ -18,8 +18,8 @@ const MAX_TOKEN_BYTES: usize = 8 * 1024;
 /// Allowed clock difference, in seconds.
 const LEEWAY_SECONDS: i64 = 60;
 /// Longest token lifetime accepted, in seconds. Identity tokens from the
-/// metadata server live one hour; projected tokens are usually as short.
-const MAX_LIFETIME_SECONDS: i64 = 24 * 60 * 60;
+/// metadata server live one hour; a projected token should be as short.
+const MAX_LIFETIME_SECONDS: i64 = 2 * 60 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenError {

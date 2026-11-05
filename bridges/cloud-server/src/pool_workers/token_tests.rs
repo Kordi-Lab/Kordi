@@ -44,6 +44,7 @@ fn claims_that_do_not_match_are_refused() {
             json!({"exp": NOW + 3 * 24 * 3600}),
             TokenError::LifetimeTooLong,
         ),
+        (json!({"exp": NOW + 3 * 3600}), TokenError::LifetimeTooLong),
         (json!({"exp": "soon"}), TokenError::Malformed),
         (json!({"sub": ""}), TokenError::Malformed),
     ];

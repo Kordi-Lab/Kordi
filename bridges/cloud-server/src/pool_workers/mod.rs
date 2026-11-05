@@ -30,14 +30,22 @@ use crate::cloud_agent_runtime::runs::error_response;
 use crate::resource_pools::{Executor, ResourcePool, ResourcePools};
 use crate::server::ServerState;
 
+pub use maintenance::{maintain, spawn_maintenance};
+
 mod keys;
+mod maintenance;
 pub mod store;
 #[cfg(test)]
 pub(crate) mod test_signer;
 pub mod token;
 
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
+/// JSON escaping can make a 1 MiB reply up to six times longer on the wire.
+const MAX_COMPLETE_BODY_BYTES: usize = 6 * MAX_RESPONSE_BYTES + 64 * 1024;
 const MAX_ID_CHARS: usize = 64;
+/// Requests allowed per pool in each [`RATE_WINDOW`].
+const RATE_LIMIT: u32 = 600;
+const RATE_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub fn routes(state: Arc<ServerState>) -> Router {
     Router::new()
@@ -52,7 +60,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         )
         .route(
             "/v1/cloud/pool-workers/runs/:run_id/complete",
-            post(complete).layer(DefaultBodyLimit::max(MAX_RESPONSE_BYTES + 4096)),
+            post(complete).layer(DefaultBodyLimit::max(MAX_COMPLETE_BODY_BYTES)),
         )
         .route("/v1/cloud/pool-workers/runs/:run_id/fail", post(fail))
         .with_state(state)
@@ -87,12 +95,34 @@ fn unauthorized() -> Response {
     )
 }
 
-fn pool_not_found() -> Response {
+fn rate_limited() -> Response {
     error_response(
-        "pool_not_found",
-        "No pool with a worker has this id.",
-        StatusCode::NOT_FOUND,
+        "rate_limited",
+        "Too many pool worker requests. Try again shortly.",
+        StatusCode::TOO_MANY_REQUESTS,
     )
+}
+
+/// Counts a request for `pool_id` and says whether it is within the pool's
+/// rate. Unknown pool ids share one counter, so they cannot grow the table.
+fn within_rate(pool_id: Option<&str>) -> bool {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::Instant;
+    static WINDOWS: OnceLock<Mutex<HashMap<String, (Instant, u32)>>> = OnceLock::new();
+    let mut windows = WINDOWS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let now = Instant::now();
+    let window = windows
+        .entry(pool_id.unwrap_or("").to_string())
+        .or_insert((now, 0));
+    if now.duration_since(window.0) >= RATE_WINDOW {
+        *window = (now, 0);
+    }
+    window.1 += 1;
+    window.1 <= RATE_LIMIT
 }
 
 fn pool_stopped() -> Response {
@@ -147,7 +177,7 @@ struct Authorized {
 
 /// Checks the identity token against `pool_id`'s configured worker identity.
 /// A token for another pool, an unknown pool, or a pool that executes in
-/// the control plane is refused.
+/// the control plane is refused alike, so pool ids cannot be probed.
 async fn authorize(
     state: &ServerState,
     headers: &HeaderMap,
@@ -155,7 +185,7 @@ async fn authorize(
     worker_id: &str,
 ) -> Result<Authorized, Response> {
     let Some(system_agent) = state.system_agent() else {
-        return Err(pool_not_found());
+        return Err(unauthorized());
     };
     if !valid_id(pool_id) || !valid_id(worker_id) {
         return Err(error_response(
@@ -165,12 +195,15 @@ async fn authorize(
         ));
     }
     let pools = system_agent.config().resource_pools();
-    let Some(pool) = pools
+    let pool = pools
         .by_id(pool_id)
         .filter(|pool| pool.executor() == Executor::PoolWorker)
-        .cloned()
-    else {
-        return Err(pool_not_found());
+        .cloned();
+    if !within_rate(pool.as_ref().map(ResourcePool::id)) {
+        return Err(rate_limited());
+    }
+    let Some(pool) = pool else {
+        return Err(unauthorized());
     };
     let Some(token) = bearer(headers) else {
         return Err(unauthorized());
@@ -240,22 +273,23 @@ async fn lease(
 }
 
 /// Authorizes a request about one run and checks the worker's lease on it.
+/// With `spend`, the lease token is used up in the same statement (complete
+/// and fail), so a replayed or concurrent call finds no lease.
 async fn held_run(
     state: &ServerState,
     headers: &HeaderMap,
     run_id: &str,
     input: &RunRequest,
+    spend: bool,
 ) -> Result<(Authorized, store::HeldRun), Response> {
     let auth = authorize(state, headers, &input.pool_id, &input.worker_id).await?;
-    match store::held(
-        state.db_pool(),
-        run_id,
-        auth.pool.id(),
-        &input.worker_id,
-        &input.lease_token,
-    )
-    .await
-    {
+    let (db, pool_id) = (state.db_pool(), auth.pool.id());
+    let found = if spend {
+        store::take(db, run_id, pool_id, &input.worker_id, &input.lease_token).await
+    } else {
+        store::held(db, run_id, pool_id, &input.worker_id, &input.lease_token).await
+    };
+    match found {
         Ok(Some(held)) => Ok((auth, held)),
         Ok(None) => Err(run_not_found()),
         Err(error) => Err(server_error("check a lease", error)),
@@ -268,7 +302,7 @@ async fn heartbeat(
     Path(run_id): Path<String>,
     Json(input): Json<RunRequest>,
 ) -> Response {
-    let (auth, held) = match held_run(&state, &headers, &run_id, &input).await {
+    let (auth, held) = match held_run(&state, &headers, &run_id, &input, false).await {
         Ok(found) => found,
         Err(response) => return response,
     };
@@ -291,7 +325,7 @@ async fn plan_card(
     Path(run_id): Path<String>,
     Json(input): Json<RunRequest>,
 ) -> Response {
-    let (auth, held) = match held_run(&state, &headers, &run_id, &input).await {
+    let (auth, held) = match held_run(&state, &headers, &run_id, &input, false).await {
         Ok(found) => found,
         Err(response) => return response,
     };
@@ -317,7 +351,20 @@ async fn complete(
     Path(run_id): Path<String>,
     Json(input): Json<RunRequest>,
 ) -> Response {
-    let (auth, held) = match held_run(&state, &headers, &run_id, &input).await {
+    // A malformed body leaves the lease alone, so the worker can still
+    // report the run as failed.
+    let Some(text) = input
+        .response_text
+        .clone()
+        .filter(|text| text.len() <= MAX_RESPONSE_BYTES)
+    else {
+        return error_response(
+            "invalid_pool_worker_request",
+            "responseText is required and at most 1 MiB.",
+            StatusCode::BAD_REQUEST,
+        );
+    };
+    let (auth, held) = match held_run(&state, &headers, &run_id, &input, true).await {
         Ok(found) => found,
         Err(response) => return response,
     };
@@ -329,18 +376,28 @@ async fn complete(
         }
         return pool_stopped();
     }
-    let Some(text) = input
-        .response_text
-        .filter(|text| text.len() <= MAX_RESPONSE_BYTES)
-    else {
-        return error_response(
-            "invalid_pool_worker_request",
-            "responseText is required and at most 1 MiB.",
-            StatusCode::BAD_REQUEST,
-        );
-    };
-    if let Err(error) = store::complete(db, &run_id, &held.runner_id, &text).await {
-        return server_error("complete a run", error);
+    match store::complete(db, &run_id, &held.runner_id, &text).await {
+        Ok(true) => {}
+        Ok(false) => {
+            // The feature no longer wanted this run's result; end the run
+            // rather than leave it to lapse.
+            if let Err(error) = store::fail(
+                db,
+                &run_id,
+                Some(&held.runner_id),
+                "pool_worker_result_ignored",
+            )
+            .await
+            {
+                return server_error("fail an ignored run", error);
+            }
+            return error_response(
+                "run_not_completed",
+                "The run could not take this result.",
+                StatusCode::CONFLICT,
+            );
+        }
+        Err(error) => return server_error("complete a run", error),
     }
     let response_message_id: Option<String> = sqlx_core::query_scalar::query_scalar(
         "SELECT response_message_id FROM cloud_agent_fallback_runs WHERE run_id = $1",
@@ -375,7 +432,7 @@ async fn fail(
             StatusCode::BAD_REQUEST,
         );
     }
-    let (_, held) = match held_run(&state, &headers, &run_id, &input).await {
+    let (_, held) = match held_run(&state, &headers, &run_id, &input, true).await {
         Ok(found) => found,
         Err(response) => return response,
     };
@@ -385,28 +442,7 @@ async fn fail(
     }
 }
 
-/// Fails pool worker runs that can no longer finish; see [`store::expire`].
-pub async fn expire_runs(state: &ServerState) {
-    let Some(system_agent) = state.system_agent() else {
-        return;
-    };
-    let pools = system_agent.config().resource_pools();
-    if let Err(error) = store::expire(state.db_pool(), &pools).await {
-        eprintln!("[pool-workers] Expiring runs failed: {error}");
-    }
-}
-
-/// Whether any pool of the current snapshot runs on a worker.
-pub fn any_worker_pool(state: &ServerState) -> bool {
-    state.system_agent().is_some_and(|system_agent| {
-        system_agent
-            .config()
-            .resource_pools()
-            .pools()
-            .iter()
-            .any(|pool| pool.executor() == Executor::PoolWorker)
-    })
-}
-
+#[cfg(test)]
+mod lifecycle_tests;
 #[cfg(test)]
 mod tests;

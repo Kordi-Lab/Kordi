@@ -189,4 +189,49 @@ async fn grounding_runs_of_a_worker_pool_are_tagged_for_its_worker() {
             .unwrap()
             .is_none()
     );
+
+    // The pool's worker leases it with the Grounding prompt and fails it;
+    // a claimed run's count stays used.
+    use crate::pool_workers::store;
+    let pools = config.resource_pools();
+    let leased = store::lease(&pool, &pools, &worker_id, "worker-a")
+        .await
+        .unwrap()
+        .expect("the worker leases the Grounding run");
+    assert_eq!(leased.run_id, run_id);
+    assert_eq!(leased.feature, "grounding");
+    assert_eq!(leased.prompt, "Synthetic evidence.");
+    assert_eq!(leased.system_prompt, "Synthetic instructions.");
+    let held = store::take(&pool, &run_id, &worker_id, "worker-a", &leased.lease_token)
+        .await
+        .unwrap()
+        .expect("the lease is held");
+    store::fail(
+        &pool,
+        &run_id,
+        Some(&held.runner_id),
+        "pool_worker_run_failed",
+    )
+    .await
+    .unwrap();
+    let (status, settled): (String, String) = query_as(
+        "SELECT run.status, reservation.state FROM cloud_agent_fallback_runs run
+         JOIN cloud_resource_pool_reservations reservation ON reservation.run_id = run.run_id
+         WHERE run.run_id = $1",
+    )
+    .bind(&run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap_or_else(|_| ("missing".into(), "missing".into()));
+    // Unlimited pools keep no reservation; then only the status is checked.
+    if status != "missing" {
+        assert_eq!((status.as_str(), settled.as_str()), ("failed", "consumed"));
+    }
+    let (status,): (String,) =
+        query_as("SELECT status FROM cloud_agent_fallback_runs WHERE run_id = $1")
+            .bind(&run_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(status, "failed");
 }

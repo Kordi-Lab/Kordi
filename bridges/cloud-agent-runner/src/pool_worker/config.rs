@@ -171,10 +171,10 @@ impl PoolWorkerConfig {
             (base_url, credential)
         };
         let worker_id = match read("ID") {
-            Some(value) if is_identifier(&value, 128) => value,
+            Some(value) if is_identifier(&value, 64) => value,
             Some(_) => {
                 return Err(invalid(
-                    "KORDI_POOL_WORKER_ID must be 1-128 letters, digits, '.', '_' or '-'",
+                    "KORDI_POOL_WORKER_ID must be 1-64 letters, digits, '.', '_' or '-'",
                 ))
             }
             None => format!("pool-worker-{}", uuid::Uuid::new_v4().simple()),

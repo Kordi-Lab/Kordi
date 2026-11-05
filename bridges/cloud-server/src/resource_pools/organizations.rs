@@ -27,6 +27,8 @@ pub struct ConfiguredBindings {
     pub organizations: Vec<(String, String)>,
     /// The pool for personal organizations, which must be the default pool.
     pub personal_pool: Option<String>,
+    /// Configuration ids of disabled organizations: their work is refused.
+    pub disabled: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -72,8 +74,8 @@ pub(super) fn load_file(path: &str) -> Result<ConfiguredBindings, ResourcePoolCo
     parse(&fs::read_to_string(path).map_err(|_| unreadable())?)
 }
 
-/// Reads the pool bindings of an organizations file. A disabled organization
-/// and one without a pool are not bound.
+/// Reads the pool bindings of an organizations file. An organization without
+/// a pool is not bound; a disabled one is listed so its work is refused.
 pub(super) fn parse(text: &str) -> Result<ConfiguredBindings, ResourcePoolConfigError> {
     let file: OrganizationsFile = serde_json::from_str(text).map_err(|error| {
         ResourcePoolConfigError::new(format!(
@@ -108,7 +110,9 @@ pub(super) fn parse(text: &str) -> Result<ConfiguredBindings, ResourcePoolConfig
             )));
         }
         let disabled = entry.state.as_deref().map(str::trim) == Some("disabled");
-        if let Some(pool) = entry.pool.filter(|_| !disabled) {
+        if disabled {
+            bindings.disabled.push(id.to_string());
+        } else if let Some(pool) = entry.pool {
             bindings
                 .organizations
                 .push((id.to_string(), pool.trim().to_string()));

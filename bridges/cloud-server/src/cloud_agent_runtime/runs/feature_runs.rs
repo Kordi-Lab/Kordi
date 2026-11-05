@@ -15,10 +15,14 @@ pub(super) async fn complete(
 ) -> RunResult<bool> {
     if run_id.starts_with(crate::digest::RUN_PREFIX) {
         crate::digest::complete(pool, run_id, runner_id, response_text).await?;
-    } else if run_id.starts_with(crate::system_agent::RUN_PREFIX) {
-        crate::system_agent::store::complete(pool, run_id, runner_id, response_text).await?;
-    } else if run_id.starts_with(crate::common_ground::RUN_PREFIX) {
-        crate::common_ground::complete(pool, run_id, runner_id, response_text).await?;
+    } else if run_id.starts_with(crate::system_agent::RUN_PREFIX)
+        || run_id.starts_with(crate::common_ground::RUN_PREFIX)
+    {
+        // These features ignore a reply for a run that is no longer the
+        // runner's to finish; say so instead of reporting success.
+        if !crate::pool_workers::store::complete(pool, run_id, runner_id, response_text).await? {
+            return Err(super::RunError::NotFound);
+        }
     } else if run_id.starts_with(crate::proactive::RUN_PREFIX) {
         crate::proactive::complete(pool, run_id, runner_id, response_text).await?;
     } else if run_id.starts_with(crate::personal_agent::RUN_PREFIX) {

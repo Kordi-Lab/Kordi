@@ -11,6 +11,12 @@
 //! changing, and, while a configured organization does not exist yet, about
 //! once a minute so its binding applies once it is created. The emergency
 //! stop therefore takes effect within seconds of the file being written.
+//!
+//! A file is remembered as seen by the state it had before it was read, so a
+//! file still being written is read again once the write finishes. When the
+//! database cannot be reached to look up configured organizations, the files
+//! still apply (a stop is never held back) with the bindings found last
+//! time, and the lookup is retried on every check.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex, RwLock};
@@ -49,6 +55,10 @@ struct Inner {
 struct ReloadState {
     fingerprint: Fingerprint,
     unresolved: usize,
+    /// Configuration ids and the organization ids found for them last time.
+    found: Vec<(String, String)>,
+    /// The last lookup failed; retry on the next check.
+    lookup_failed: bool,
 }
 
 impl std::fmt::Debug for ResourcePoolRegistry {
@@ -100,7 +110,7 @@ impl ResourcePoolRegistry {
                 base,
                 state: Mutex::new(ReloadState {
                     fingerprint,
-                    unresolved: 0,
+                    ..ReloadState::default()
                 }),
             }),
         }
@@ -146,13 +156,25 @@ impl ResourcePoolRegistry {
     }
 
     /// Reads both files again and swaps in the result once it is valid.
-    /// On error nothing changes. `get` reads environment variables.
+    /// On an invalid file nothing changes. `get` reads environment
+    /// variables. Either way the files count as seen in the state they had
+    /// before this read.
     pub async fn reload_with(
         &self,
         db: &PgPool,
         get: impl FnMut(&str) -> Option<String>,
     ) -> Result<Arc<ResourcePools>, ResourcePoolConfigError> {
-        let fingerprint = fingerprint(&self.files());
+        let before = fingerprint(&self.files());
+        let result = self.load(db, get).await;
+        self.lock_state().fingerprint = before;
+        result
+    }
+
+    async fn load(
+        &self,
+        db: &PgPool,
+        get: impl FnMut(&str) -> Option<String>,
+    ) -> Result<Arc<ResourcePools>, ResourcePoolConfigError> {
         let pools = match (&self.inner.pool_file, &self.inner.base) {
             (Some(path), _) => config::load_file(path, get)?,
             (None, Some(base)) => base.clone(),
@@ -163,22 +185,45 @@ impl ResourcePoolRegistry {
             None => ConfiguredBindings::default(),
         };
         configured.validate(&pools)?;
-        let (bindings, unresolved) =
-            resolve_configuration_ids(db, &configured)
-                .await
-                .map_err(|_| {
-                    ResourcePoolConfigError::new("configured organizations could not be looked up")
-                })?;
-        let pools = Arc::new(pools.with_bindings(bindings)?);
+        let found = match lookup_configuration_ids(db, &configured).await {
+            Ok(Some(found)) => {
+                self.lock_state().lookup_failed = false;
+                found
+            }
+            Ok(None) => {
+                return Err(ResourcePoolConfigError::new(
+                    "organization bindings in the organizations file need configured organizations (cloud_organizations.config_id); this database has none",
+                ))
+            }
+            Err(error) => {
+                eprintln!(
+                    "[resource-pools] Could not look up configured organizations; keeping the bindings found last time: {error}"
+                );
+                let mut state = self.lock_state();
+                state.lookup_failed = true;
+                state.found.clone()
+            }
+        };
+        let (bindings, blocked, unresolved) = apply_found(&configured, &found);
+        let pools = Arc::new(pools.with_bindings(bindings)?.with_blocked(blocked));
         *self
             .inner
             .current
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = pools.clone();
         let mut state = self.lock_state();
-        state.fingerprint = fingerprint;
         state.unresolved = unresolved;
+        state.found = found;
         Ok(pools)
+    }
+
+    /// Whether the watcher should reload on this check.
+    fn due(&self, signalled: bool, ticks: u32) -> bool {
+        let state = self.lock_state();
+        let retry = state.lookup_failed
+            || (ticks.is_multiple_of(RESOLVE_EVERY_TICKS) && state.unresolved > 0);
+        drop(state);
+        signalled || retry || self.changed()
     }
 
     pub async fn reload(&self, db: &PgPool) -> Result<Arc<ResourcePools>, ResourcePoolConfigError> {
@@ -202,21 +247,16 @@ impl ResourcePoolRegistry {
                     _ = next_signal(&mut hangup) => true,
                 };
                 ticks = ticks.wrapping_add(1);
-                let retry =
-                    ticks.is_multiple_of(RESOLVE_EVERY_TICKS) && self.lock_state().unresolved > 0;
-                if !(signalled || retry || self.changed()) {
+                if !self.due(signalled, ticks) {
                     continue;
                 }
+                // A rejected file is reported once: it counts as seen until
+                // it changes again.
                 match self.reload(&db).await {
                     Ok(pools) => log_pools("Reloaded resource pools", &pools),
-                    Err(error) => {
-                        // Remember the files as seen so a broken file is
-                        // reported once, not every few seconds.
-                        self.lock_state().fingerprint = fingerprint(&self.files());
-                        eprintln!(
-                            "[resource-pools] Reload rejected; keeping the previous configuration: {error}"
-                        );
-                    }
+                    Err(error) => eprintln!(
+                        "[resource-pools] Reload rejected; keeping the previous configuration: {error}"
+                    ),
                 }
             }
         })
@@ -271,16 +311,23 @@ fn fingerprint(files: &[Option<&str>]) -> Fingerprint {
         .collect()
 }
 
-/// Organization ids for the configured bindings that exist on this server,
-/// and how many configuration ids do not exist yet. Before admission from
-/// configuration is installed there is no `config_id` column, and nothing
-/// resolves.
-async fn resolve_configuration_ids(
+/// Configuration ids and organization ids for the organizations the file
+/// names that exist on this server. `None` when the file binds or disables
+/// organizations but the database has no configured organizations at all
+/// (admission from configuration is not installed): those bindings cannot
+/// be honoured, so the configuration is refused rather than ignored.
+async fn lookup_configuration_ids(
     db: &PgPool,
     configured: &ConfiguredBindings,
-) -> Result<(Vec<(String, String)>, usize), sqlx_core::Error> {
-    if configured.organizations.is_empty() {
-        return Ok((Vec::new(), 0));
+) -> Result<Option<Vec<(String, String)>>, sqlx_core::Error> {
+    let ids: Vec<String> = configured
+        .organizations
+        .iter()
+        .map(|(id, _)| id.clone())
+        .chain(configured.disabled.iter().cloned())
+        .collect();
+    if ids.is_empty() {
+        return Ok(Some(Vec::new()));
     }
     let has_column: bool = query_scalar(
         "SELECT EXISTS (SELECT 1 FROM information_schema.columns
@@ -290,29 +337,40 @@ async fn resolve_configuration_ids(
     .fetch_one(db)
     .await?;
     if !has_column {
-        return Ok((Vec::new(), configured.organizations.len()));
+        // Disabled organizations cannot exist without the column either.
+        return Ok(configured.organizations.is_empty().then(Vec::new));
     }
-    let ids: Vec<String> = configured
-        .organizations
-        .iter()
-        .map(|(id, _)| id.clone())
-        .collect();
-    let found: Vec<(String, String)> = query_as(
-        "SELECT config_id, organization_id FROM cloud_organizations WHERE config_id = ANY($1)",
-    )
-    .bind(&ids)
-    .fetch_all(db)
-    .await?;
+    query_as("SELECT config_id, organization_id FROM cloud_organizations WHERE config_id = ANY($1)")
+        .bind(&ids)
+        .fetch_all(db)
+        .await
+        .map(Some)
+}
+
+/// Bindings (organization id, pool id), blocked organization ids, and how
+/// many bound configuration ids have no organization yet.
+fn apply_found(
+    configured: &ConfiguredBindings,
+    found: &[(String, String)],
+) -> (Vec<(String, String)>, Vec<String>, usize) {
+    let organization = |config_id: &str| {
+        found
+            .iter()
+            .find(|(id, _)| id == config_id)
+            .map(|(_, organization_id)| organization_id.clone())
+    };
     let bindings: Vec<(String, String)> = configured
         .organizations
         .iter()
-        .filter_map(|(config_id, pool)| {
-            let (_, organization_id) = found.iter().find(|(id, _)| id == config_id)?;
-            Some((organization_id.clone(), pool.clone()))
-        })
+        .filter_map(|(config_id, pool)| Some((organization(config_id)?, pool.clone())))
+        .collect();
+    let blocked = configured
+        .disabled
+        .iter()
+        .filter_map(|config_id| organization(config_id))
         .collect();
     let unresolved = configured.organizations.len() - bindings.len();
-    Ok((bindings, unresolved))
+    (bindings, blocked, unresolved)
 }
 
 #[cfg(unix)]

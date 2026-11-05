@@ -22,21 +22,21 @@ use crate::resource_pools::{test_provider, ResourcePool, ResourcePoolRegistry, R
 use crate::server::ServerState;
 use crate::system_agent::pool_tests::{config_with, group_chat, say, sweep, team};
 
-struct Fixture {
-    db: PgPool,
-    app: Router,
-    registry: ResourcePoolRegistry,
-    system_agent: String,
-    jordan: String,
-    team: String,
-    shared: String,
-    partner: String,
-    other: String,
-    partner_signer: TestSigner,
-    other_signer: TestSigner,
+pub(super) struct Fixture {
+    pub(super) db: PgPool,
+    pub(super) app: Router,
+    pub(super) registry: ResourcePoolRegistry,
+    pub(super) system_agent: String,
+    pub(super) jordan: String,
+    pub(super) team: String,
+    pub(super) shared: String,
+    pub(super) partner: String,
+    pub(super) other: String,
+    pub(super) partner_signer: TestSigner,
+    pub(super) other_signer: TestSigner,
 }
 
-fn pools(
+pub(super) fn pools(
     fixture_ids: (&str, &str, &str),
     team: &str,
     signers: (&TestSigner, &TestSigner),
@@ -55,7 +55,7 @@ fn pools(
     .unwrap()
 }
 
-async fn fixture() -> Fixture {
+pub(super) async fn fixture() -> Fixture {
     let db = test_db().await;
     let suffix = Uuid::new_v4().simple().to_string();
     let (system_agent, jordan) = (format!("system-agent-{suffix}"), format!("jordan-{suffix}"));
@@ -99,7 +99,12 @@ async fn fixture() -> Fixture {
     }
 }
 
-async fn call(app: &Router, path: &str, token: Option<&str>, body: Value) -> (StatusCode, Value) {
+pub(super) async fn call(
+    app: &Router,
+    path: &str,
+    token: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
     let mut request = Request::builder()
         .method("POST")
         .uri(path)
@@ -123,7 +128,12 @@ async fn call(app: &Router, path: &str, token: Option<&str>, body: Value) -> (St
     )
 }
 
-async fn lease(f: &Fixture, pool: &str, signer: &TestSigner, worker: &str) -> (StatusCode, Value) {
+pub(super) async fn lease(
+    f: &Fixture,
+    pool: &str,
+    signer: &TestSigner,
+    worker: &str,
+) -> (StatusCode, Value) {
     call(
         &f.app,
         "/v1/cloud/pool-workers/lease",
@@ -133,7 +143,12 @@ async fn lease(f: &Fixture, pool: &str, signer: &TestSigner, worker: &str) -> (S
     .await
 }
 
-async fn run_call(f: &Fixture, run_id: &str, action: &str, body: Value) -> (StatusCode, Value) {
+pub(super) async fn run_call(
+    f: &Fixture,
+    run_id: &str,
+    action: &str,
+    body: Value,
+) -> (StatusCode, Value) {
     call(
         &f.app,
         &format!("/v1/cloud/pool-workers/runs/{run_id}/{action}"),
@@ -144,7 +159,7 @@ async fn run_call(f: &Fixture, run_id: &str, action: &str, body: Value) -> (Stat
 }
 
 /// The one System agent run queued for `chat`.
-async fn queued_run(f: &Fixture, chat: Uuid) -> String {
+pub(super) async fn queued_run(f: &Fixture, chat: Uuid) -> String {
     say(&f.db, &f.jordan, chat, "Dinner Friday at 7?").await;
     assert_eq!(
         sweep(
@@ -165,7 +180,7 @@ async fn queued_run(f: &Fixture, chat: Uuid) -> String {
     .unwrap()
 }
 
-async fn team_chat(f: &Fixture) -> Uuid {
+pub(super) async fn team_chat(f: &Fixture) -> Uuid {
     let chat = group_chat(&f.db, &f.jordan, &f.system_agent).await;
     query("UPDATE cloud_chat_conversations SET organization_id = $2 WHERE conversation_id = $1")
         .bind(chat)
@@ -176,7 +191,7 @@ async fn team_chat(f: &Fixture) -> Uuid {
     chat
 }
 
-async fn status_of(db: &PgPool, run_id: &str) -> (String, Option<String>) {
+pub(super) async fn status_of(db: &PgPool, run_id: &str) -> (String, Option<String>) {
     query_as("SELECT status, error_code FROM cloud_agent_fallback_runs WHERE run_id = $1")
         .bind(run_id)
         .fetch_one(db)
@@ -248,7 +263,7 @@ async fn a_worker_pool_run_waits_for_its_own_worker_and_its_reply_is_applied() {
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     let (status, _) = lease(&f, &f.shared, &f.partner_signer, "worker-a").await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "pools cannot be probed");
 
     // The pool's own worker leases it and gets only the model input.
     let (status, body) = lease(&f, &f.partner, &f.partner_signer, "worker-a").await;
@@ -432,7 +447,7 @@ async fn worker_failures_and_unleased_runs_end_the_run() {
     let waiting = queued_run(&f, chat).await;
     query("UPDATE cloud_agent_fallback_runs SET created_at = $2 WHERE run_id = $1")
         .bind(&waiting)
-        .bind((chrono::Utc::now() - chrono::Duration::minutes(30)).to_rfc3339())
+        .bind((chrono::Utc::now() - chrono::Duration::minutes(20)).to_rfc3339())
         .execute(&f.db)
         .await
         .unwrap();

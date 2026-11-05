@@ -4,7 +4,9 @@
 //! `jwks_uri` of the issuer's OpenID configuration. Fetched key sets are
 //! cached for an hour; a token signed by a key the cache does not know
 //! refetches at most once a minute, so rotated keys are picked up quickly and
-//! forged key ids cannot make the server fetch on every request.
+//! forged key ids cannot make the server fetch on every request. A failed
+//! fetch is remembered for half a minute, and only one fetch per key set runs
+//! at a time, so an issuer outage does not turn every request into a fetch.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -17,6 +19,7 @@ use crate::resource_pools::WorkerIdentity;
 
 const CACHE_FOR: Duration = Duration::from_secs(60 * 60);
 const REFETCH_AFTER: Duration = Duration::from_secs(60);
+const FAILURE_CACHE_FOR: Duration = Duration::from_secs(30);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
 
@@ -27,32 +30,56 @@ pub enum KeyError {
 }
 
 struct Entry {
-    keys: Arc<KeySet>,
+    /// `None` after a failed fetch.
+    keys: Option<Arc<KeySet>>,
     fetched_at: Instant,
+}
+
+/// How long fetched keys and failures are kept.
+#[derive(Debug, Clone, Copy)]
+pub struct Timing {
+    pub cache_for: Duration,
+    pub refetch_after: Duration,
+    pub failure_cache_for: Duration,
+}
+
+impl Default for Timing {
+    fn default() -> Self {
+        Self {
+            cache_for: CACHE_FOR,
+            refetch_after: REFETCH_AFTER,
+            failure_cache_for: FAILURE_CACHE_FOR,
+        }
+    }
 }
 
 /// Fetched key sets by URL.
 pub struct KeyCache {
     client: reqwest::Client,
+    timing: Timing,
     entries: Mutex<HashMap<String, Entry>>,
+    /// Held while fetching, so concurrent misses wait for one fetch.
+    fetching: tokio::sync::Mutex<()>,
 }
 
 impl KeyCache {
-    fn new() -> Self {
+    pub fn new(timing: Timing) -> Self {
         Self {
             client: reqwest::Client::builder()
                 .timeout(FETCH_TIMEOUT)
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .unwrap_or_default(),
+            timing,
             entries: Mutex::new(HashMap::new()),
+            fetching: tokio::sync::Mutex::new(()),
         }
     }
 
     /// The process-wide cache.
     pub fn shared() -> &'static Self {
         static CACHE: OnceLock<KeyCache> = OnceLock::new();
-        CACHE.get_or_init(Self::new)
+        CACHE.get_or_init(|| Self::new(Timing::default()))
     }
 
     /// The keys for `identity`. With `refresh`, a cached key set older than
@@ -69,9 +96,26 @@ impl KeyCache {
             .jwks_uri
             .clone()
             .unwrap_or_else(|| format!("issuer:{}", identity.issuer));
-        if let Some(keys) = self.cached(&cache_key, refresh) {
-            return Ok(keys);
+        if let Some(cached) = self.cached(&cache_key, refresh) {
+            return cached;
         }
+        let _fetching = self.fetching.lock().await;
+        // Another request may have fetched while this one waited.
+        if let Some(cached) = self.cached(&cache_key, refresh) {
+            return cached;
+        }
+        let fetched = self.fetch_keys(identity).await;
+        self.lock().insert(
+            cache_key,
+            Entry {
+                keys: fetched.as_ref().ok().cloned(),
+                fetched_at: Instant::now(),
+            },
+        );
+        fetched
+    }
+
+    async fn fetch_keys(&self, identity: &WorkerIdentity) -> Result<Arc<KeySet>, KeyError> {
         let uri = match &identity.jwks_uri {
             Some(uri) => uri.clone(),
             None => self.discover(&identity.issuer).await?,
@@ -80,13 +124,6 @@ impl KeyCache {
         if keys.is_empty() {
             return Err(KeyError::Unavailable);
         }
-        self.lock().insert(
-            cache_key,
-            Entry {
-                keys: keys.clone(),
-                fetched_at: Instant::now(),
-            },
-        );
         Ok(keys)
     }
 
@@ -96,12 +133,19 @@ impl KeyCache {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    fn cached(&self, key: &str, refresh: bool) -> Option<Arc<KeySet>> {
+    /// A cached answer still in date: keys, or a recent failure.
+    fn cached(&self, key: &str, refresh: bool) -> Option<Result<Arc<KeySet>, KeyError>> {
         let entries = self.lock();
         let entry = entries.get(key)?;
         let age = entry.fetched_at.elapsed();
-        let fresh = age < CACHE_FOR && !(refresh && age >= REFETCH_AFTER);
-        fresh.then(|| entry.keys.clone())
+        let timing = self.timing;
+        match &entry.keys {
+            Some(keys) => {
+                let fresh = age < timing.cache_for && !(refresh && age >= timing.refetch_after);
+                fresh.then(|| Ok(keys.clone()))
+            }
+            None => (age < timing.failure_cache_for).then_some(Err(KeyError::Unavailable)),
+        }
     }
 
     async fn discover(&self, issuer: &str) -> Result<String, KeyError> {
@@ -141,3 +185,7 @@ impl KeyCache {
         serde_json::from_slice(&body).map_err(|_| KeyError::Unavailable)
     }
 }
+
+#[cfg(test)]
+#[path = "keys_tests.rs"]
+mod tests;

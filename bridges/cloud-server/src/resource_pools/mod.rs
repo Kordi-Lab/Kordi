@@ -16,7 +16,7 @@
 //! and claims only the runs tagged with its pool id. See
 //! `docs/development/resource-pools.md`.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 
 use crate::system_agent::SystemAgentProviderAuth;
@@ -336,6 +336,9 @@ pub struct ResourcePools {
     pools: Vec<ResourcePool>,
     default_index: usize,
     bindings: HashMap<String, usize>,
+    /// Organizations whose configuration disables them: no pool admits
+    /// their work.
+    blocked: HashSet<String>,
 }
 
 impl ResourcePools {
@@ -346,6 +349,7 @@ impl ResourcePools {
             pools: vec![pool],
             default_index: 0,
             bindings: HashMap::new(),
+            blocked: HashSet::new(),
         }
     }
 
@@ -389,6 +393,7 @@ impl ResourcePools {
             pools,
             default_index,
             bindings: bound,
+            blocked: HashSet::new(),
         })
     }
 
@@ -429,6 +434,18 @@ impl ResourcePools {
             ENV_DEFAULT_POOL_ID,
             PoolProvider::new(auth.clone()),
         ))
+    }
+
+    /// Refuses all work of `organizations`, such as organizations the
+    /// organizations file disables.
+    pub fn with_blocked(mut self, organizations: impl IntoIterator<Item = String>) -> Self {
+        self.blocked.extend(organizations);
+        self
+    }
+
+    /// Whether any work of `organization_id` may be admitted.
+    pub fn admits(&self, organization_id: Option<&str>) -> bool {
+        organization_id.is_none_or(|id| !self.blocked.contains(id))
     }
 
     pub fn default_pool(&self) -> &ResourcePool {
