@@ -36,7 +36,7 @@ enum KordiPreviewModePersistence {
     private static let launchArguments: Set<String> = [
         "--preview-launching", "--preview-data", "--preview-background-stop", "--preview-markdown",
         "--preview-native-design", "--preview-native-agent", "--preview-native-thread", "--preview-native-samples",
-        "--preview-login", "--preview-signup", "--preview-account", "--preview-devices", "--preview-memory",
+        "--preview-login", "--preview-signup", "--preview-email-sign-in", "--preview-account", "--preview-devices", "--preview-memory",
         "--preview-authentication", "--preview-authentication-detail", "--preview-codex-device-login",
         "--preview-contacts", "--preview-new-chat", "--preview-add-contact", "--preview-companion-panel",
         "--preview-companion-return", "--preview-contact-chat", "--preview-direct-call", "--preview-group-call",
@@ -321,9 +321,10 @@ final class AppModel: ObservableObject {
     /// request fails, which keeps the Memory entry hidden.
     @Published private(set) var memoryCapabilities: CloudAuthCapabilities?
 
-    private let api: CloudAPIClient
+    let api: CloudAPIClient
     private let oauth: CloudOAuthSession
-    private let keychain: KeychainSessionStore
+    let keychain: KeychainSessionStore
+    let browserSignIn: AppSignInController
     private let shareCredentialStore: ShareExtensionCredentialStore
     private let cache: LocalMessageStore?
     private let wireCache: CloudWireCache
@@ -421,6 +422,7 @@ final class AppModel: ObservableObject {
     ) {
         self.api = api
         self.oauth = CloudOAuthSession(api: api)
+        self.browserSignIn = AppSignInController(api: api, keychain: keychain)
         self.keychain = keychain
         self.shareCredentialStore = shareCredentialStore
         self.cache = cache ?? (try? LocalMessageStore())
@@ -441,7 +443,7 @@ final class AppModel: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--preview-launching") {
             // Keep the initial phase so the network-free launch surface remains visible.
         } else if ProcessInfo.processInfo.arguments.contains("--preview-login")
-            || ProcessInfo.processInfo.arguments.contains("--preview-signup") {
+            || ["--preview-signup", "--preview-email-sign-in"].contains(where: ProcessInfo.processInfo.arguments.contains) {
             phase = .signedOut
         } else if previewMode && !previewLaunchFlow {
             installPreviewData()
@@ -469,7 +471,7 @@ final class AppModel: ObservableObject {
             return
         }
         do {
-            guard let savedToken = try keychain.loadToken() else {
+            guard let savedToken = try await browserSessionTokenForLaunch(keychain.loadToken()) else {
                 phase = .signedOut
                 return
             }
@@ -751,6 +753,7 @@ final class AppModel: ObservableObject {
 
     func signOut() async {
         digestWarmup.reset()
+        let endedBrowserSignIn = await browserSignIn.endForSignOut()
         let oldToken = token
         let oldAccountId = account?.accountId
         if let oldToken { await CommonGroundNearbyLocator.shared.signOut(api: api, token: oldToken) }
@@ -878,7 +881,7 @@ final class AppModel: ObservableObject {
         if !previewMode { try? shareCredentialStore.delete() }
         phase = .signedOut
         await DigestCalendarService.clearReminders()
-        if let oldToken { try? await api.logout(token: oldToken) }
+        await endSignIn(token: oldToken, browserSignIn: endedBrowserSignIn)
     }
 
     /// Returns whether this request applied a current account/contact directory.
@@ -1050,6 +1053,7 @@ final class AppModel: ObservableObject {
     }
 
     func appDidBecomeActive() async {
+        await refreshBrowserSessionIfNeeded()
         guard phase == .signedIn, !previewMode, let token else { return }
         Task { await refreshConnectorsCapability() }
         scheduleDigestWarmup()
@@ -8111,7 +8115,19 @@ final class AppModel: ObservableObject {
         lastMessageSyncAt = Date()
     }
 
-    private func completeAuthentication(_ response: CloudAuthResponse) async throws {
+    /// Adopts a refreshed browser sign-in token while the same account is signed in.
+    /// Realtime keeps the token it connected with, so it reconnects.
+    func applyRefreshedSession(token next: String, expiresAt: String, accountId: String) {
+        guard phase == .signedIn, account?.accountId == accountId, token != next else { return }
+        try? shareCredentialStore.save(ShareExtensionCredential(token: next, accountID: accountId, expiresAt: expiresAt))
+        token = next
+        presencePublisher.start(token: next)
+        cloudRealtimeTask?.cancel()
+        cloudRealtimeTask = nil
+        startCloudSync(resetCursor: false)
+    }
+
+    func completeAuthentication(_ response: CloudAuthResponse) async throws {
         try keychain.saveToken(response.session.token)
         try? shareCredentialStore.save(ShareExtensionCredential(
             token: response.session.token,
@@ -8151,26 +8167,6 @@ final class AppModel: ObservableObject {
         ))
         scheduleExpressiveMediaLibrarySync()
         await refreshWorkspace()
-    }
-
-    private func userFacing(_ error: Error, fallback: String) -> String {
-        if let error = error as? CloudAPIError {
-            switch error.code {
-            case "invalid_email": return "That email address looks malformed."
-            case "weak_password": return error.message.nonEmpty ?? KordiLoginCopy.weakPasswordMessage
-            case "email_in_use": return "An account with that email already exists. Try logging in instead."
-            case "invalid_credentials": return "Email or password is incorrect."
-            case "rate_limited": return "Too many attempts. Wait a moment, then try again."
-            case "invalid_session", "account_missing": return "Your session expired. Sign in again."
-            case "network_error": return "Kordi Cloud is unavailable. Check your connection and try again."
-            case "proxy_unreachable": return error.message.nonEmpty ?? "Kordi can't reach this network's proxy. Check the proxy settings or connect to another network."
-            case "invalid_redirect": return "This Kordi build is not yet allowed to finish social sign-in."
-            case "oauth_not_configured": return "This sign-in provider is temporarily unavailable."
-            case "device_review_required": return "Approve this device from another device first."
-            default: return error.message.nonEmpty ?? fallback
-            }
-        }
-        return error.localizedDescription.nonEmpty ?? fallback
     }
 
     private func authenticationUserFacing(_ error: Error, fallback: String) -> String {

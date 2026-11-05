@@ -6,6 +6,7 @@ struct KeychainSessionStore {
     private let service: String
     private let developmentDefaults: UserDefaults
     private let account = "cloud-session-token"
+    private let appSignInAccount = "cloud-app-sign-in"
     private let deviceIdentityAccount = "cloud-device-identity-p256"
 
     init(
@@ -17,8 +18,38 @@ struct KeychainSessionStore {
     }
 
     func loadToken() throws -> String? {
+        try loadData(account: account).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
+    func saveToken(_ token: String) throws {
+        try saveData(Data(token.utf8), account: account)
+    }
+
+    /// Removes the session token and, with it, any browser sign-in credential,
+    /// so every sign-out path also drops the refresh token.
+    func deleteToken() throws {
+        try deleteData(account: appSignInAccount)
+        try deleteData(account: account)
+    }
+
+    func loadAppSignInCredential() throws -> AppSignInCredential? {
+        guard let data = try loadData(account: appSignInAccount) else { return nil }
+        return try? JSONDecoder().decode(AppSignInCredential.self, from: data)
+    }
+
+    func saveAppSignInCredential(_ credential: AppSignInCredential) throws {
+        try saveData(JSONEncoder().encode(credential), account: appSignInAccount)
+    }
+
+    func deleteAppSignInCredential() throws {
+        try deleteData(account: appSignInAccount)
+    }
+
+    private func loadData(account: String) throws -> Data? {
         #if BETA && targetEnvironment(simulator)
-        return developmentDefaults.string(forKey: defaultsKey(for: account))
+        // Older Beta Simulator builds stored the session token as a string.
+        let key = defaultsKey(for: account)
+        return developmentDefaults.data(forKey: key) ?? developmentDefaults.string(forKey: key).map { Data($0.utf8) }
         #else
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -30,19 +61,18 @@ struct KeychainSessionStore {
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data = result as? Data, let token = String(data: data, encoding: .utf8) else {
+        guard status == errSecSuccess, let data = result as? Data else {
             throw KeychainError(status: status)
         }
-        return token
+        return data
         #endif
     }
 
-    func saveToken(_ token: String) throws {
+    private func saveData(_ data: Data, account: String) throws {
         #if BETA && targetEnvironment(simulator)
-        developmentDefaults.set(token, forKey: defaultsKey(for: account))
+        developmentDefaults.set(data, forKey: defaultsKey(for: account))
         #else
-        guard let data = token.data(using: .utf8) else { return }
-        try? deleteToken()
+        try? deleteData(account: account)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -55,7 +85,7 @@ struct KeychainSessionStore {
         #endif
     }
 
-    func deleteToken() throws {
+    private func deleteData(account: String) throws {
         #if BETA && targetEnvironment(simulator)
         developmentDefaults.removeObject(forKey: defaultsKey(for: account))
         #else

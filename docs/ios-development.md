@@ -113,8 +113,9 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-data` | Complete signed-in Contact chat flow |
 | `--preview-agent-page` | Agents root tab (combine with preview data) |
 | `--preview-personal-agent` | Personal agent section with three sample agents, unread outreach messages with source chips, and an empty session; combine with `--preview-data --preview-agent-page` |
-| `--preview-login` | Email and social login |
-| `--preview-signup` | Account creation |
+| `--preview-login` | Welcome screen with Log in and Sign up (browser sign-in) |
+| `--preview-email-sign-in` | Email and social login form, the fallback for servers without browser sign-in |
+| `--preview-signup` | Account creation in the email form |
 | `--preview-contacts` | Contacts and requests |
 | `--preview-new-chat` | New-chat sheet |
 | `--preview-add-contact` | Add-contact search inside the new-chat sheet |
