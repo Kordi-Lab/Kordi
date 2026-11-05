@@ -292,7 +292,7 @@ async fn materialize_avatar_mutation(
 ) -> Result<(), Box<Response>> {
     crate::avatars::assets::materialize_legacy_avatar_mutation(
         state.db_pool(),
-        state.s3(),
+        state.object_store(),
         owner_account_id,
         entity_type,
         entity_id,

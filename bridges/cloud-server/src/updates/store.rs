@@ -1,4 +1,7 @@
+mod backends;
 mod sources;
+
+pub use backends::GcsReleaseStore;
 
 use std::fmt;
 use std::pin::Pin;
@@ -20,6 +23,8 @@ use super::model::{ChannelPointer, ReleaseAsset, ReleaseManifest, UnpublishedCha
 
 pub const MAX_RELEASE_METADATA_BYTES: usize = 1024 * 1024;
 const PRESIGNED_REQUEST_TTL: Duration = Duration::from_secs(2 * 60);
+/// Release bucket used when no bucket name is configured.
+pub const DEFAULT_RELEASE_BUCKET: &str = "kordi-releases";
 
 #[derive(Clone)]
 pub struct ReleaseStoreConfig {
@@ -44,8 +49,10 @@ impl fmt::Debug for ReleaseStoreConfig {
 impl ReleaseStoreConfig {
     pub fn from_env() -> Option<Self> {
         let endpoint = Url::parse(&non_empty_env("KORDI_RELEASE_S3_ENDPOINT")?).ok()?;
-        let bucket = non_empty_env("KORDI_RELEASE_S3_BUCKET")?;
-        if bucket != "kordi-releases" {
+        let bucket = non_empty_env("KORDI_OBJECT_STORAGE_RELEASES_BUCKET")
+            .or_else(|| non_empty_env("KORDI_RELEASE_S3_BUCKET"))
+            .unwrap_or_else(|| DEFAULT_RELEASE_BUCKET.to_string());
+        if !crate::object_storage::valid_bucket_name(&bucket) {
             return None;
         }
         Some(Self {
@@ -362,57 +369,13 @@ impl MinioReleaseStore {
 #[async_trait]
 impl ReleaseStoreBackend for MinioReleaseStore {
     async fn get_metadata(&self, key: &str, max_bytes: usize) -> Result<Bytes, ReleaseStoreError> {
-        let response = self
-            .client
-            .get(self.get_url(key)?)
-            .send()
-            .await
-            .map_err(|_| ReleaseStoreError::Unavailable)?;
-        if response.status() == reqwest::StatusCode::NOT_FOUND {
-            return Err(ReleaseStoreError::NotFound);
-        }
-        if !response.status().is_success() {
-            return Err(ReleaseStoreError::Unavailable);
-        }
-        if response
-            .content_length()
-            .is_some_and(|size| size > max_bytes as u64)
-        {
-            return Err(ReleaseStoreError::MetadataTooLarge);
-        }
-        collect_bounded_metadata(
-            response
-                .bytes_stream()
-                .map(|chunk| chunk.map_err(|_| ReleaseStoreError::Unavailable)),
-            max_bytes,
-        )
-        .await
+        let response = self.client.get(self.get_url(key)?).send().await;
+        backends::metadata_from_response(response, max_bytes).await
     }
 
     async fn head_object(&self, key: &str) -> Result<u64, ReleaseStoreError> {
-        let response = self
-            .client
-            .head(self.head_url(key)?)
-            .send()
-            .await
-            .map_err(|_| ReleaseStoreError::Unavailable)?;
-        if response.status() == reqwest::StatusCode::NOT_FOUND {
-            return Err(ReleaseStoreError::NotFound);
-        }
-        if !response.status().is_success() {
-            return Err(ReleaseStoreError::Unavailable);
-        }
-        let content_lengths = response.headers().get_all(reqwest::header::CONTENT_LENGTH);
-        let mut values = content_lengths.iter();
-        let value = values.next().ok_or(ReleaseStoreError::Unavailable)?;
-        if values.next().is_some() {
-            return Err(ReleaseStoreError::Unavailable);
-        }
-        let value = value.to_str().map_err(|_| ReleaseStoreError::Unavailable)?;
-        if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-            return Err(ReleaseStoreError::Unavailable);
-        }
-        value.parse().map_err(|_| ReleaseStoreError::Unavailable)
+        let response = self.client.head(self.head_url(key)?).send().await;
+        backends::size_from_head_response(response)
     }
 
     async fn stream_object(
@@ -422,49 +385,8 @@ impl ReleaseStoreBackend for MinioReleaseStore {
     ) -> Result<ReleaseObjectStream, ReleaseStoreError> {
         let mut request = self.client.get(self.get_url(key)?);
         if let Some(range) = byte_range {
-            request = request.header(
-                reqwest::header::RANGE,
-                format!("bytes={}-{}", range.start, range.end_inclusive),
-            );
+            request = request.header(reqwest::header::RANGE, backends::range_header(range));
         }
-        let response = request
-            .send()
-            .await
-            .map_err(|_| ReleaseStoreError::Unavailable)?;
-        if response.status() == reqwest::StatusCode::NOT_FOUND {
-            return Err(ReleaseStoreError::NotFound);
-        }
-        let expected_status = if byte_range.is_some() {
-            reqwest::StatusCode::PARTIAL_CONTENT
-        } else {
-            reqwest::StatusCode::OK
-        };
-        if response.status() != expected_status {
-            return Err(ReleaseStoreError::Unavailable);
-        }
-        if let Some(range) = byte_range {
-            let expected = format!(
-                "bytes {}-{}/{}",
-                range.start, range.end_inclusive, range.complete_length
-            );
-            if response
-                .headers()
-                .get(reqwest::header::CONTENT_RANGE)
-                .and_then(|value| value.to_str().ok())
-                != Some(expected.as_str())
-            {
-                return Err(ReleaseStoreError::Unavailable);
-            }
-        }
-        let size_bytes = response
-            .content_length()
-            .ok_or(ReleaseStoreError::Unavailable)?;
-        let body = response
-            .bytes_stream()
-            .map(|chunk| chunk.map_err(|_| ReleaseStoreError::Unavailable));
-        Ok(ReleaseObjectStream {
-            size_bytes,
-            body: Box::pin(body),
-        })
+        backends::stream_from_response(request.send().await, byte_range)
     }
 }

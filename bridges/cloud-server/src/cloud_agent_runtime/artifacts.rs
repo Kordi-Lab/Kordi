@@ -8,7 +8,7 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-use crate::attachments::{presign_upload_url, S3Config};
+use crate::object_storage::ObjectStore;
 
 mod messages;
 
@@ -182,40 +182,24 @@ async fn run_for_export(
 }
 
 pub(crate) async fn upload_object(
-    s3: &S3Config,
+    store: &ObjectStore,
     object_key: &str,
     content_type: &str,
     bytes: Vec<u8>,
 ) -> Result<(), ExportArtifactError> {
-    let url = presign_upload_url(s3, object_key).map_err(|_| ExportArtifactError {
-        code: "server_error",
-        message: "Could not sign artifact upload.",
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-    })?;
-    let resp = reqwest::Client::new()
-        .put(url.to_string())
-        .header(reqwest::header::CONTENT_TYPE, content_type)
-        .body(bytes)
-        .send()
+    store
+        .put(object_key, Some(content_type), bytes::Bytes::from(bytes))
         .await
         .map_err(|_| ExportArtifactError {
             code: "server_error",
-            message: "Could not upload artifact bytes.",
-            status: StatusCode::BAD_GATEWAY,
-        })?;
-    if !resp.status().is_success() {
-        return Err(ExportArtifactError {
-            code: "server_error",
             message: "Object storage rejected artifact bytes.",
             status: StatusCode::BAD_GATEWAY,
-        });
-    }
-    Ok(())
+        })
 }
 
 pub async fn export_run_artifact(
     pool: &PgPool,
-    s3: &S3Config,
+    store: &ObjectStore,
     run_id: &str,
     runner_id: &str,
     input: ExportArtifactRequest,
@@ -266,7 +250,7 @@ pub async fn export_run_artifact(
     let object_key = format!("attachments/{owner_account_id}/{attachment_id}");
     let now = Utc::now().to_rfc3339();
 
-    upload_object(s3, &object_key, &content_type, bytes).await?;
+    upload_object(store, &object_key, &content_type, bytes).await?;
 
     query("INSERT INTO cloud_attachments (attachment_id, owner_account_id, object_key, size_bytes, content_type, sha256_hex, created_at, finalized_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)")
         .bind(&attachment_id)

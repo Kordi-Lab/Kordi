@@ -7,7 +7,7 @@ use super::*;
 
 pub async fn backfill_inline_avatars(
     pool: &PgPool,
-    s3: &S3Config,
+    store: &ObjectStore,
 ) -> Result<AvatarBackfillSummary, AvatarAssetError> {
     let mut summary = AvatarBackfillSummary::default();
     let accounts: Vec<(String, String)> = query_as(
@@ -17,7 +17,7 @@ pub async fn backfill_inline_avatars(
     .fetch_all(pool)
     .await?;
     for (account_id, legacy) in accounts {
-        match migrate_one(pool, s3, &account_id, "human", &account_id, &legacy).await {
+        match migrate_one(pool, store, &account_id, "human", &account_id, &legacy).await {
             Ok(true) => summary.migrated += 1,
             Ok(false) => summary.skipped += 1,
             Err(_) => summary.failed += 1,
@@ -30,7 +30,7 @@ pub async fn backfill_inline_avatars(
     .fetch_all(pool)
     .await?;
     for (owner_account_id, agent_id, legacy) in agents {
-        match migrate_one(pool, s3, &owner_account_id, "agent", &agent_id, &legacy).await {
+        match migrate_one(pool, store, &owner_account_id, "agent", &agent_id, &legacy).await {
             Ok(true) => summary.migrated += 1,
             Ok(false) => summary.skipped += 1,
             Err(_) => summary.failed += 1,
@@ -41,7 +41,7 @@ pub async fn backfill_inline_avatars(
 
 async fn migrate_one(
     pool: &PgPool,
-    s3: &S3Config,
+    store: &ObjectStore,
     owner_account_id: &str,
     entity_type: &str,
     entity_id: &str,
@@ -51,7 +51,7 @@ async fn migrate_one(
         return Ok(false);
     };
     let marker =
-        store_avatar_asset(pool, s3, owner_account_id, entity_type, entity_id, bytes).await?;
+        store_avatar_asset(pool, store, owner_account_id, entity_type, entity_id, bytes).await?;
     let mut transaction = pool.begin().await?;
     let result = if entity_type == "human" {
         query(

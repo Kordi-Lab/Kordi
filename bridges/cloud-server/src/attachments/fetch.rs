@@ -4,9 +4,8 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use futures_util::StreamExt;
 
-use super::presign_download_url;
 use super::response::err;
-use super::routes::s3_or_503;
+use super::routes::store_or_503;
 use crate::server::ServerState;
 
 /// Fetches the object at `object_key` from private object storage. Answers
@@ -17,15 +16,7 @@ pub(crate) async fn fetch_attachment_bytes(
     object_key: &str,
     max_bytes: usize,
 ) -> Result<Vec<u8>, Box<Response>> {
-    let s3 = s3_or_503(state).map_err(|response| *response)?;
-    let url = presign_download_url(s3, object_key).map_err(|error| {
-        eprintln!("[attachments] presign fetch: {error}");
-        err(
-            "server_error",
-            "Could not sign download URL.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        )
-    })?;
+    let store = store_or_503(state).map_err(|response| *response)?;
     let bad_gateway = || {
         err(
             "server_error",
@@ -33,14 +24,10 @@ pub(crate) async fn fetch_attachment_bytes(
             StatusCode::BAD_GATEWAY,
         )
     };
-    let response = reqwest::Client::new()
-        .get(url.to_string())
-        .send()
-        .await
-        .map_err(|error| {
-            eprintln!("[attachments] fetch request failed: {error}");
-            bad_gateway()
-        })?;
+    let response = store.get(object_key, None).await.map_err(|error| {
+        eprintln!("[attachments] fetch request failed: {error}");
+        bad_gateway()
+    })?;
     if !response.status().is_success() {
         eprintln!("[attachments] fetch failed: {}", response.status());
         return Err(Box::new(bad_gateway()));

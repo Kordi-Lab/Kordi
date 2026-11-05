@@ -8,7 +8,7 @@ use axum::Extension;
 
 use super::access::attachment_access_row;
 use super::response::err;
-use super::{presign_download_url, routes::s3_or_503};
+use super::routes::store_or_503;
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
 
@@ -29,7 +29,7 @@ pub(super) async fn stream_attachment_content(
     attachment_id: &str,
     request_headers: &HeaderMap,
 ) -> Response {
-    let s3 = match s3_or_503(state) {
+    let store = match store_or_503(state) {
         Ok(value) => value,
         Err(resp) => return *resp,
     };
@@ -40,26 +40,10 @@ pub(super) async fn stream_attachment_content(
             Err(resp) => return *resp,
         };
 
-    let url = match presign_download_url(s3, &object_key) {
-        Ok(value) => value,
-        Err(error) => {
-            eprintln!("[attachments] presign content download: {error}");
-            return err(
-                "server_error",
-                "Could not sign download URL.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    };
-
-    let mut object_request = reqwest::Client::new().get(url.to_string());
-    if let Some(value) = request_headers
+    let range = request_headers
         .get(header::RANGE)
-        .and_then(|value| value.to_str().ok())
-    {
-        object_request = object_request.header(reqwest::header::RANGE, value);
-    }
-    let object_response = match object_request.send().await {
+        .and_then(|value| value.to_str().ok());
+    let object_response = match store.get(&object_key, range).await {
         Ok(resp)
             if resp.status().is_success()
                 || resp.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE =>

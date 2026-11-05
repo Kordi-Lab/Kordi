@@ -1,4 +1,4 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -11,11 +11,10 @@ use sha2::{Digest, Sha256};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 
-use super::s3_or_503;
+use super::store_or_503;
 use crate::attachments::content_type::{
     detected_supported_content_type, normalized_verified_content_type,
 };
-use crate::attachments::presign_upload_part_url;
 use crate::attachments::response::{boxed_err, err};
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
@@ -67,11 +66,6 @@ pub struct MultipartStatusResponse {
     sha256_hex: Option<String>,
     #[serde(rename = "finalizedAt")]
     finalized_at: Option<String>,
-}
-
-fn object_store_client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(reqwest::Client::new)
 }
 
 fn expected_part_count(total_size: i64, chunk_size: i64) -> i32 {
@@ -183,7 +177,7 @@ pub async fn upload_multipart_part(
     Path((attachment_id, part_number)): Path<(String, i32)>,
     bytes: Bytes,
 ) -> Response {
-    let s3 = match s3_or_503(&state) {
+    let store = match store_or_503(&state) {
         Ok(value) => value,
         Err(response) => return *response,
     };
@@ -262,7 +256,7 @@ pub async fn upload_multipart_part(
         }
     }
 
-    let s3_part_number = match u16::try_from(part_number) {
+    let storage_part_number = match u16::try_from(part_number) {
         Ok(value) => value,
         Err(_) => {
             return err(
@@ -272,43 +266,15 @@ pub async fn upload_multipart_part(
             )
         }
     };
-    let upload_url = match presign_upload_part_url(s3, &row.0, s3_part_number, &row.2) {
+    let etag = match store
+        .upload_part(&row.0, &row.2, storage_part_number, bytes)
+        .await
+    {
         Ok(value) => value,
         Err(_) => {
             return err(
                 "server_error",
-                "Could not sign attachment part.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-    let upload_response = match object_store_client()
-        .put(upload_url)
-        .body(bytes)
-        .send()
-        .await
-    {
-        Ok(response) if response.status().is_success() => response,
-        _ => {
-            return err(
-                "server_error",
                 "Could not store attachment part.",
-                StatusCode::BAD_GATEWAY,
-            )
-        }
-    };
-    let etag = match upload_response
-        .headers()
-        .get(reqwest::header::ETAG)
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && value.len() <= 256)
-    {
-        Some(value) => value.to_string(),
-        None => {
-            return err(
-                "server_error",
-                "Object storage did not confirm the attachment part.",
                 StatusCode::BAD_GATEWAY,
             )
         }

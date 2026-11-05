@@ -91,45 +91,15 @@ pub(super) async fn read(
         ));
     }
     let source:(String,Option<String>)=query_as("SELECT object_key,sha256_hex FROM cloud_attachments WHERE attachment_id=$1 AND finalized_at IS NOT NULL").bind(attachment).fetch_one(pool).await?;
-    let config = state.s3().ok_or(RunError::ContextUnavailable(
+    let store = state.object_store().ok_or(RunError::ContextUnavailable(
         "Attachment storage is unavailable.",
     ))?;
-    let url = crate::attachments::presign_download_url(config, &source.0)
-        .map_err(|_| RunError::ContextUnavailable("Attachment download could not be prepared."))?;
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|_| RunError::ContextUnavailable("Attachment download is unavailable."))?;
-    let mut download = client.get(url.to_string()).send().await.map_err(|_| {
-        RunError::ContextUnavailable("Attachment download failed. Retry reading the attachment.")
-    })?;
-    if !download.status().is_success() {
-        return Err(RunError::ContextUnavailable(
-            "Attachment content is unavailable.",
-        ));
-    }
-    if download
-        .content_length()
-        .is_some_and(|len| len > max as u64)
-    {
-        return Err(RunError::ContextUnavailable(
-            "Image exceeds 4 MiB. Use a smaller image.",
-        ));
-    }
-    let mut bytes = Vec::new();
-    while let Some(chunk) = download
-        .chunk()
-        .await
-        .map_err(|_| RunError::ContextUnavailable("Attachment download was interrupted."))?
-    {
-        if bytes.len() + chunk.len() > max {
-            return Err(RunError::ContextUnavailable(
-                "Image exceeds 4 MiB. Use a smaller image.",
-            ));
-        }
-        bytes.extend_from_slice(&chunk);
-    }
+    let bytes = tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        read_bounded_image(store, &source.0, max),
+    )
+    .await
+    .map_err(|_| RunError::ContextUnavailable("Attachment download was interrupted."))??;
     let content=tokio::task::spawn_blocking(move || kordi_tools::image_input::static_image_content(&bytes)).await
         .map_err(|_|RunError::ContextUnavailable("Image decoding failed."))?
         .map_err(|_|RunError::ContextUnavailable("This image is corrupt, animated, unsupported, or exceeds decoding limits. Use a static PNG, JPEG, WebP, or GIF."))?;
@@ -169,4 +139,38 @@ pub(super) async fn read(
     }
     response["media"] = json!([content]);
     Ok(response)
+}
+
+async fn read_bounded_image(
+    store: &crate::object_storage::ObjectStore,
+    object_key: &str,
+    max: usize,
+) -> RunResult<Vec<u8>> {
+    let too_large = || RunError::ContextUnavailable("Image exceeds 4 MiB. Use a smaller image.");
+    let mut download = store.get(object_key, None).await.map_err(|_| {
+        RunError::ContextUnavailable("Attachment download failed. Retry reading the attachment.")
+    })?;
+    if !download.status().is_success() {
+        return Err(RunError::ContextUnavailable(
+            "Attachment content is unavailable.",
+        ));
+    }
+    if download
+        .content_length()
+        .is_some_and(|len| len > max as u64)
+    {
+        return Err(too_large());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = download
+        .chunk()
+        .await
+        .map_err(|_| RunError::ContextUnavailable("Attachment download was interrupted."))?
+    {
+        if bytes.len() + chunk.len() > max {
+            return Err(too_large());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
 }

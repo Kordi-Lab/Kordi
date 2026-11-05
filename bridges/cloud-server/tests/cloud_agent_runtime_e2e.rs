@@ -381,6 +381,10 @@ mod context_media;
 #[path = "cloud_agent_runtime_e2e/object_store.rs"]
 mod object_store;
 use object_store::*;
+#[path = "cloud_agent_runtime_e2e/gcs_attachments.rs"]
+mod gcs_attachments;
+#[path = "support/gcs_mock.rs"]
+mod gcs_mock;
 
 #[path = "cloud_agent_runtime_e2e/artifacts.rs"]
 mod artifacts;

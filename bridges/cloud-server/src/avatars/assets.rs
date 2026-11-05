@@ -11,8 +11,8 @@ use sqlx_core::query::query;
 use sqlx_postgres::{PgPool, Postgres};
 use tokio::sync::Semaphore;
 
-use crate::attachments::{presign_upload_url, S3Config};
 use crate::avatars::AvatarMutationRequest;
+use crate::object_storage::ObjectStore;
 
 mod backfill;
 mod routes;
@@ -205,7 +205,7 @@ pub fn normalize_avatar(bytes: &[u8]) -> Result<NormalizedAvatar, AvatarAssetErr
 
 pub async fn store_avatar_asset(
     pool: &PgPool,
-    s3: &S3Config,
+    store: &ObjectStore,
     owner_account_id: &str,
     entity_type: &str,
     entity_id: &str,
@@ -228,17 +228,14 @@ pub async fn store_avatar_asset(
     let object_prefix = format!("avatars/{entity_type}/{entity_id}/{asset_id}");
     for (size, variant) in &normalized.variants {
         let object_key = format!("{object_prefix}/{size}.jpg");
-        let url = presign_upload_url(s3, &object_key).map_err(|_| AvatarAssetError::ObjectStore)?;
-        let response = object_store_client()
-            .put(url.to_string())
-            .header(reqwest::header::CONTENT_TYPE, "image/jpeg")
-            .body(variant.clone())
-            .send()
+        store
+            .put(
+                &object_key,
+                Some("image/jpeg"),
+                bytes::Bytes::from(variant.clone()),
+            )
             .await
             .map_err(|_| AvatarAssetError::ObjectStore)?;
-        if !response.status().is_success() {
-            return Err(AvatarAssetError::ObjectStore);
-        }
     }
     query(
         "INSERT INTO cloud_avatar_assets \
@@ -262,7 +259,7 @@ pub async fn store_avatar_asset(
 
 pub async fn materialize_legacy_avatar_mutation(
     pool: &PgPool,
-    s3: Option<&S3Config>,
+    store: Option<&ObjectStore>,
     owner_account_id: &str,
     entity_type: &str,
     entity_id: &str,
@@ -277,9 +274,10 @@ pub async fn materialize_legacy_avatar_mutation(
     let Some(bytes) = legacy_avatar_data(value)? else {
         return Ok(());
     };
-    let s3 = s3.ok_or(AvatarAssetError::Unavailable)?;
-    mutation.uploaded_asset =
-        Some(store_avatar_asset(pool, s3, owner_account_id, entity_type, entity_id, bytes).await?);
+    let store = store.ok_or(AvatarAssetError::Unavailable)?;
+    mutation.uploaded_asset = Some(
+        store_avatar_asset(pool, store, owner_account_id, entity_type, entity_id, bytes).await?,
+    );
     Ok(())
 }
 
@@ -330,11 +328,6 @@ fn valid_asset_id(value: &str) -> bool {
     value.strip_prefix("ava_").is_some_and(|suffix| {
         suffix.len() == 32 && suffix.bytes().all(|byte| byte.is_ascii_hexdigit())
     })
-}
-
-fn object_store_client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(reqwest::Client::new)
 }
 
 fn avatar_transform_semaphore() -> &'static Arc<Semaphore> {

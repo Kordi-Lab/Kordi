@@ -5,21 +5,17 @@ use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use chrono::Utc;
-use rusty_s3::actions::CreateMultipartUpload;
 use serde::{Deserialize, Serialize};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 
-use super::{load_upload, object_store_client};
+use super::load_upload;
 use crate::attachments::response::{boxed_err, err};
-use crate::attachments::{
-    presign_abort_multipart_url, presign_create_multipart_url, MAX_ATTACHMENT_SIZE_BYTES,
-    MULTIPART_CHUNK_SIZE,
-};
+use crate::attachments::{MAX_ATTACHMENT_SIZE_BYTES, MULTIPART_CHUNK_SIZE};
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
 
-use super::super::s3_or_503;
+use super::super::store_or_503;
 
 const STALE_UPLOAD_HOURS: i64 = 24;
 const STALE_UPLOAD_BATCH: i64 = 20;
@@ -63,18 +59,11 @@ async fn abort_object_store_upload(
     object_key: &str,
     upload_id: &str,
 ) -> Result<(), ()> {
-    let s3 = state.s3().ok_or(())?;
-    let url = presign_abort_multipart_url(s3, object_key, upload_id).map_err(|_| ())?;
-    let response = object_store_client()
-        .delete(url)
-        .send()
+    let store = state.object_store().ok_or(())?;
+    store
+        .abort_multipart(object_key, upload_id)
         .await
-        .map_err(|_| ())?;
-    if response.status().is_success() || response.status() == reqwest::StatusCode::NOT_FOUND {
-        Ok(())
-    } else {
-        Err(())
-    }
+        .map_err(|_| ())
 }
 
 async fn cleanup_stale_uploads(state: Arc<ServerState>) {
@@ -113,7 +102,7 @@ pub async fn initiate_multipart(
     Extension(session): Extension<CloudSession>,
     Json(request): Json<MultipartInitiateRequest>,
 ) -> Response {
-    let s3 = match s3_or_503(&state) {
+    let store = match store_or_503(&state) {
         Ok(value) => value,
         Err(response) => return *response,
     };
@@ -167,42 +156,12 @@ pub async fn initiate_multipart(
 
     let attachment_id = format!("att_{}", uuid::Uuid::new_v4().simple());
     let object_key = format!("attachments/{}/{}", session.account_id, attachment_id);
-    let create_url = match presign_create_multipart_url(s3, &object_key) {
+    let upload_id = match store.create_multipart(&object_key).await {
         Ok(value) => value,
         Err(_) => {
             return err(
                 "server_error",
                 "Could not start attachment upload.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-    let create_response = match object_store_client().post(create_url).send().await {
-        Ok(response) if response.status().is_success() => response,
-        _ => {
-            return err(
-                "server_error",
-                "Could not start attachment upload.",
-                StatusCode::BAD_GATEWAY,
-            )
-        }
-    };
-    let create_body = match create_response.bytes().await {
-        Ok(value) => value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not read object storage response.",
-                StatusCode::BAD_GATEWAY,
-            )
-        }
-    };
-    let upload_id = match CreateMultipartUpload::parse_response(&create_body) {
-        Ok(value) => value.upload_id().to_string(),
-        Err(_) => {
-            return err(
-                "server_error",
-                "Object storage returned an invalid upload response.",
                 StatusCode::BAD_GATEWAY,
             )
         }

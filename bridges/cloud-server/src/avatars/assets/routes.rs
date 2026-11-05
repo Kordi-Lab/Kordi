@@ -9,7 +9,6 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::*;
-use crate::attachments::presign_download_url;
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
 
@@ -49,7 +48,7 @@ pub async fn upload_avatar_asset(
             );
         }
     }
-    let Some(s3) = state.s3() else {
+    let Some(store) = state.object_store() else {
         return asset_error(
             StatusCode::SERVICE_UNAVAILABLE,
             "avatar_storage_unavailable",
@@ -58,7 +57,7 @@ pub async fn upload_avatar_asset(
     };
     match store_avatar_asset(
         state.db_pool(),
-        s3,
+        store,
         &session.account_id,
         entity_type,
         entity_id,
@@ -123,15 +122,11 @@ pub async fn render_uploaded_avatar(
     let Some((object_prefix,)) = row else {
         return not_found();
     };
-    let Some(s3) = state.s3() else {
+    let Some(store) = state.object_store() else {
         return unavailable();
     };
     let object_key = format!("{object_prefix}/{size}.jpg");
-    let url = match presign_download_url(s3, &object_key) {
-        Ok(value) => value,
-        Err(_) => return unavailable(),
-    };
-    let object = match object_store_client().get(url.to_string()).send().await {
+    let object = match store.get(&object_key, None).await {
         Ok(value) if value.status().is_success() => value,
         _ => return not_found(),
     };

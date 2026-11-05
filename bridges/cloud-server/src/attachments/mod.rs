@@ -1,16 +1,16 @@
 //! Attachment metadata and private object-storage transport.
 //!
-//! The bytes themselves live in S3-compatible object storage (MinIO in
-//! the kordi-cloud namespace). The Cloud server signs short-lived internal
-//! URLs and proxies authenticated desktop transfers so MinIO never needs a
-//! public port. The `cloud_attachments` row tracks ownership and finalized
-//! metadata.
+//! The bytes themselves live in private object storage (see
+//! [`crate::object_storage`]): an S3-compatible store such as MinIO, or Google
+//! Cloud Storage. The Cloud server proxies authenticated desktop transfers so
+//! the store never needs a public endpoint. The `cloud_attachments` row
+//! tracks ownership and finalized metadata.
 //!
 //! # Lifecycle
 //!
 //! Small compatibility callers use initiate plus a single proxied PUT.
-//! Composer files use S3 multipart upload through bounded authenticated part
-//! requests, with status, resume, complete, and cancel endpoints. Only after
+//! Composer files use multipart upload (S3 multipart, or composed part
+//! objects on GCS) through bounded authenticated part requests, with status, resume, complete, and cancel endpoints. Only after
 //! object storage confirms completion do we stamp `finalized_at`.
 //!
 //! Each proxied request is bounded to one part. This keeps memory independent
@@ -58,7 +58,14 @@ impl S3Config {
     pub fn from_env() -> Option<Self> {
         let endpoint_raw = std::env::var("S3_ENDPOINT").ok()?;
         let endpoint = Url::parse(&endpoint_raw).ok()?;
-        let bucket = std::env::var("S3_BUCKET").ok()?;
+        let bucket = ["KORDI_OBJECT_STORAGE_ATTACHMENTS_BUCKET", "S3_BUCKET"]
+            .into_iter()
+            .find_map(|name| {
+                std::env::var(name)
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            })?;
         let access_key = std::env::var("S3_ACCESS_KEY").ok()?;
         let secret_key = std::env::var("S3_SECRET_KEY").ok()?;
         let region = std::env::var("S3_REGION").unwrap_or_else(|_| "us-east-1".to_string());

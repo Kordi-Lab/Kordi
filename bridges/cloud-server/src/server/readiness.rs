@@ -2,10 +2,6 @@
 use super::ServerState;
 use crate::auth::rate_limit::CloudRateLimiter;
 use axum::{http::StatusCode, Json};
-use rusty_s3::{
-    actions::{HeadBucket, S3Action},
-    Bucket, Credentials, UrlStyle,
-};
 use std::{sync::Arc, time::Duration};
 
 pub(super) async fn ready(
@@ -20,33 +16,10 @@ pub(super) async fn ready(
                 .is_ok()
         };
         let storage = async {
-            let Some(config) = state.s3() else {
-                return false;
-            };
-            let Ok(bucket) = Bucket::new(
-                config.endpoint.clone(),
-                UrlStyle::Path,
-                config.bucket.clone(),
-                config.region.clone(),
-            ) else {
-                return false;
-            };
-            let credentials =
-                Credentials::new(config.access_key.clone(), config.secret_key.clone());
-            let url = HeadBucket::new(&bucket, Some(&credentials)).sign(Duration::from_secs(30));
-            // Do not follow redirects with signed requests or log their URLs.
-            let Ok(client) = reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::none())
-                .timeout(Duration::from_secs(2))
-                .build()
-            else {
-                return false;
-            };
-            client
-                .head(url)
-                .send()
-                .await
-                .is_ok_and(|reply| reply.status().is_success())
+            match state.object_store() {
+                Some(store) => store.ready(Duration::from_secs(2)).await,
+                None => false,
+            }
         };
         let (db, nats, redis, s3) = tokio::join!(
             database,

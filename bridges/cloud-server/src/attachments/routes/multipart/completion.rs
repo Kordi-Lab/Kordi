@@ -9,13 +9,12 @@ use serde::Deserialize;
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 
-use super::{expected_part_count, expected_part_size, load_upload, object_store_client};
+use super::{expected_part_count, expected_part_size, load_upload};
 use crate::attachments::response::err;
-use crate::attachments::{presign_complete_multipart, presign_head_url};
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
 
-use super::super::{s3_or_503, AttachmentSummary};
+use super::super::{store_or_503, AttachmentSummary};
 
 #[derive(Debug, Deserialize)]
 pub struct MultipartCompleteRequest {
@@ -30,22 +29,13 @@ fn valid_sha256(value: &str) -> Option<String> {
 }
 
 async fn completed_object_has_size(state: &ServerState, object_key: &str, size_bytes: i64) -> bool {
-    let Some(s3) = state.s3() else {
+    let Some(store) = state.object_store() else {
         return false;
     };
-    let Ok(url) = presign_head_url(s3, object_key) else {
-        return false;
-    };
-    let Ok(response) = object_store_client().head(url).send().await else {
-        return false;
-    };
-    response.status().is_success()
-        && response
-            .headers()
-            .get(reqwest::header::CONTENT_LENGTH)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<i64>().ok())
-            == Some(size_bytes)
+    store
+        .size(object_key)
+        .await
+        .is_ok_and(|size| i64::try_from(size).ok() == Some(size_bytes))
 }
 
 pub async fn complete_multipart(
@@ -54,7 +44,7 @@ pub async fn complete_multipart(
     Path(attachment_id): Path<String>,
     Json(request): Json<MultipartCompleteRequest>,
 ) -> Response {
-    let s3 = match s3_or_503(&state) {
+    let store = match store_or_503(&state) {
         Ok(value) => value,
         Err(response) => return *response,
     };
@@ -119,23 +109,14 @@ pub async fn complete_multipart(
         );
     }
     let etags = parts.iter().map(|part| part.2.clone()).collect::<Vec<_>>();
-    let (complete_url, complete_body) = match presign_complete_multipart(s3, &row.0, &row.2, &etags)
+    // A retried completion may find the upload already assembled, so the
+    // stored object's size decides success rather than this response.
+    if let Err(error) = store
+        .complete_multipart(&row.0, &row.2, &etags, row.5.as_deref())
+        .await
     {
-        Ok(value) => value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not sign attachment completion.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-    let _ = object_store_client()
-        .post(complete_url)
-        .header(reqwest::header::CONTENT_TYPE, "application/xml")
-        .body(complete_body)
-        .send()
-        .await;
+        eprintln!("[attachments] complete multipart: {error}");
+    }
     if !completed_object_has_size(&state, &row.0, row.4).await {
         return err(
             "server_error",

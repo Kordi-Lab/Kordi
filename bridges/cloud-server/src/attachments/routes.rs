@@ -19,9 +19,16 @@ use crate::attachments::content_type::{
 };
 use crate::attachments::preview::{normalize_preview_url, preview_content_response};
 use crate::attachments::response::{boxed_err, err};
-use crate::attachments::{presign_download_url, presign_upload_url, url_expires_at, S3Config};
+use crate::attachments::url_expires_at;
 use crate::auth::routes::CloudSession;
+use crate::object_storage::ObjectStore;
 use crate::server::ServerState;
+
+/// Path of an authenticated attachment route on this server, used in place
+/// of a presigned URL when the backend cannot sign one.
+fn attachment_route(attachment_id: &str, action: &str) -> String {
+    format!("/v1/cloud/attachments/{attachment_id}/{action}")
+}
 
 #[derive(Debug, Serialize)]
 pub struct InitiateResponse {
@@ -87,8 +94,8 @@ pub struct UpdatePreviewResponse {
     pub updated_links: u64,
 }
 
-pub(super) fn s3_or_503(state: &ServerState) -> Result<&S3Config, Box<Response>> {
-    state.s3().ok_or_else(|| {
+pub(crate) fn store_or_503(state: &ServerState) -> Result<&ObjectStore, Box<Response>> {
+    state.object_store().ok_or_else(|| {
         boxed_err(
             "attachments_unavailable",
             "Object storage is not configured on this server.",
@@ -99,14 +106,16 @@ pub(super) fn s3_or_503(state: &ServerState) -> Result<&S3Config, Box<Response>>
 
 /// `POST /v1/cloud/attachments/initiate`
 ///
-/// Creates a `cloud_attachments` row and returns a presigned PUT URL.
-/// Object key is derived as `attachments/<owner>/<attachment_id>` so
-/// listing-by-prefix is straightforward when GC arrives later.
+/// Creates a `cloud_attachments` row and returns an upload URL: a presigned
+/// PUT URL on S3 backends, or the authenticated `/upload` route of this
+/// server on GCS, which needs no signing key. Object key is derived as
+/// `attachments/<owner>/<attachment_id>` so listing-by-prefix is
+/// straightforward when GC arrives later.
 pub async fn initiate(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Response {
-    let s3 = match s3_or_503(&state) {
+    let store = match store_or_503(&state) {
         Ok(value) => value,
         Err(resp) => return *resp,
     };
@@ -136,23 +145,16 @@ pub async fn initiate(
         );
     }
 
-    let upload_url = match presign_upload_url(s3, &object_key) {
-        Ok(value) => value,
-        Err(error) => {
-            eprintln!("[attachments] presign upload: {error}");
-            return err(
-                "server_error",
-                "Could not sign upload URL.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    };
+    let upload_url = store
+        .direct_upload_url(&object_key)
+        .map(|url| url.to_string())
+        .unwrap_or_else(|| attachment_route(&attachment_id, "upload"));
     let expires_at = url_expires_at(SystemTime::now()).to_rfc3339();
 
     Json(InitiateResponse {
         attachment_id,
         object_key,
-        upload_url: upload_url.to_string(),
+        upload_url,
         expires_at,
     })
     .into_response()
@@ -160,9 +162,8 @@ pub async fn initiate(
 
 /// `PUT /v1/cloud/attachments/:attachment_id/upload`
 ///
-/// Proxies bytes through the cloud server into the configured object store.
-/// Presigned URLs stay internal to the cluster, so desktop clients don't need
-/// direct network access to MinIO.
+/// Proxies bytes through the cloud server into the configured object store,
+/// so desktop clients never need network access to the store itself.
 pub async fn upload(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -170,7 +171,7 @@ pub async fn upload(
     headers: HeaderMap,
     bytes: Bytes,
 ) -> Response {
-    let s3 = match s3_or_503(&state) {
+    let store = match store_or_503(&state) {
         Ok(value) => value,
         Err(resp) => return *resp,
     };
@@ -202,17 +203,6 @@ pub async fn upload(
         return err("not_found", "Attachment not found.", StatusCode::NOT_FOUND);
     }
 
-    let upload_url = match presign_upload_url(s3, &object_key) {
-        Ok(value) => value,
-        Err(error) => {
-            eprintln!("[attachments] presign proxy upload: {error}");
-            return err(
-                "server_error",
-                "Could not sign upload URL.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    };
     let content_type = headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
@@ -231,24 +221,11 @@ pub async fn upload(
         }
     }
 
-    let mut req = reqwest::Client::new()
-        .put(upload_url.to_string())
-        .body(bytes.clone());
-    if let Some(value) = content_type.as_deref() {
-        req = req.header(reqwest::header::CONTENT_TYPE, value);
-    }
-    match req.send().await {
-        Ok(resp) if resp.status().is_success() => {}
-        Ok(resp) => {
-            eprintln!("[attachments] proxy upload failed: {}", resp.status());
-            return err(
-                "server_error",
-                "Could not upload attachment.",
-                StatusCode::BAD_GATEWAY,
-            );
-        }
+    let size_bytes = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
+    match store.put(&object_key, content_type.as_deref(), bytes).await {
+        Ok(()) => {}
         Err(error) => {
-            eprintln!("[attachments] proxy upload request failed: {error}");
+            eprintln!("[attachments] proxy upload failed: {error}");
             return err(
                 "server_error",
                 "Could not upload attachment.",
@@ -258,7 +235,6 @@ pub async fn upload(
     }
 
     let now = Utc::now().to_rfc3339();
-    let size_bytes = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
     if query(
         "UPDATE cloud_attachments \
          SET size_bytes = $1, content_type = $2, detected_content_type = $3, finalized_at = $4 \
@@ -374,17 +350,18 @@ pub async fn finalize(
 
 /// `GET /v1/cloud/attachments/:attachment_id/download-url`
 ///
-/// Returns a presigned GET URL. The attachment owner can always request
-/// one; recipients can request one once the attachment is linked to a
-/// cloud message addressed to them. This route is kept for compatibility;
-/// desktop previews use `/content` so object storage can remain private to
-/// the cluster.
+/// Returns a download URL: a presigned GET URL on S3 backends, or this
+/// server's authenticated `/content` route on GCS. The attachment owner can
+/// always request one; recipients can request one once the attachment is
+/// linked to a cloud message addressed to them. This route is kept for
+/// compatibility; desktop previews use `/content` so object storage can
+/// remain private.
 pub async fn download_url(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Path(attachment_id): Path<String>,
 ) -> Response {
-    let s3 = match s3_or_503(&state) {
+    let store = match store_or_503(&state) {
         Ok(value) => value,
         Err(resp) => return *resp,
     };
@@ -395,21 +372,14 @@ pub async fn download_url(
             Err(resp) => return *resp,
         };
 
-    let url = match presign_download_url(s3, &object_key) {
-        Ok(value) => value,
-        Err(error) => {
-            eprintln!("[attachments] presign download: {error}");
-            return err(
-                "server_error",
-                "Could not sign download URL.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    };
+    let download_url = store
+        .direct_download_url(&object_key)
+        .map(|url| url.to_string())
+        .unwrap_or_else(|| attachment_route(&attachment_id, "content"));
 
     Json(DownloadResponse {
         attachment_id,
-        download_url: url.to_string(),
+        download_url,
         expires_at: url_expires_at(SystemTime::now()).to_rfc3339(),
     })
     .into_response()

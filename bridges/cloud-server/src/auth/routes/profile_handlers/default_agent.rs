@@ -17,7 +17,7 @@ pub(super) async fn materialize_default_agent_avatar_mutation(
     };
     crate::avatars::assets::materialize_legacy_avatar_mutation(
         state.db_pool(),
-        state.s3(),
+        state.object_store(),
         account_id,
         "agent",
         &default_agent_id(account_id),

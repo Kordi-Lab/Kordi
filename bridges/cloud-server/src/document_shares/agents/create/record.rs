@@ -167,7 +167,7 @@ async fn store_attachment(
             Err(ToolError::Server)
         };
     }
-    let Some(s3) = state.s3() else {
+    let Some(store) = state.object_store() else {
         eprintln!("[documents] create_document: object storage is not configured");
         return Err(ToolError::Server);
     };
@@ -176,7 +176,7 @@ async fn store_attachment(
     let sha256_hex = format!("{:x}", Sha256::digest(&bytes));
     let object_key = format!("attachments/{owner_account_id}/{attachment_id}");
     crate::cloud_agent_runtime::artifacts::upload_object(
-        s3,
+        store,
         &object_key,
         document.content_type,
         bytes,

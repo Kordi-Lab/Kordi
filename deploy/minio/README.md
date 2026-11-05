@@ -49,6 +49,46 @@ license under `/usr/share/licenses/minio` or `/usr/share/licenses/mc`, and
   `minio-mc.oci.tar` next to the application archives. `scripts/vps-deploy.py
   apply` stops before changing anything if they are not imported.
 
+## Storage backends
+
+The Cloud server reaches object storage through one interface with two
+backends. `KORDI_OBJECT_STORAGE_BACKEND` selects it:
+
+- `s3` (default): an S3-compatible store such as the MinIO images above,
+  configured with `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, optional
+  `S3_REGION`, and the release reader's `KORDI_RELEASE_S3_*` values.
+- `gcs`: Google Cloud Storage through its JSON API. The server takes an OAuth
+  access token for the machine's own service account from the instance
+  metadata server, caches it until shortly before it expires, and never logs
+  it. No service account key or HMAC key is involved, so this works where key
+  creation is disabled by policy.
+
+| Variable | Meaning |
+| --- | --- |
+| `KORDI_OBJECT_STORAGE_BACKEND` | `s3` (default) or `gcs`. |
+| `KORDI_OBJECT_STORAGE_ATTACHMENTS_BUCKET` | Bucket for attachments, avatars, agent artifacts, and shared documents. Required for `gcs`; for `s3` it overrides `S3_BUCKET`. |
+| `KORDI_OBJECT_STORAGE_RELEASES_BUCKET` | Private desktop release bucket. For `s3` it overrides `KORDI_RELEASE_S3_BUCKET`, and the default stays `kordi-releases`. For `gcs` it must be set to serve releases, because bucket names are global. |
+| `KORDI_OBJECT_STORAGE_GCS_ENDPOINT` | JSON API origin. Default `https://storage.googleapis.com`. |
+| `KORDI_OBJECT_STORAGE_GCS_TOKEN_URL` | Token endpoint. Default is the metadata server; tests point it at a local stand-in. |
+
+On `gcs`, the machine's service account needs object read and write access on
+both buckets and permission to read bucket metadata, which the readiness
+check uses. Both buckets stay private.
+
+Behavior is the same on both backends: every transfer goes through the
+authenticated Cloud API, which enforces the per-file limits. Multipart
+attachment uploads keep their resumable part contract. On `gcs` each part is
+a temporary object under `multipart-uploads/`, and completion composes the
+parts into the final object pinned to the generations recorded for them, then
+removes the temporary objects. Two compatibility endpoints return links: the
+`uploadUrl` from `POST /v1/cloud/attachments/initiate` and the `downloadUrl`
+from `GET /v1/cloud/attachments/:id/download-url`. On `s3` they are presigned
+URLs as before; on `gcs` they are the server's own `/upload` and `/content`
+routes, so no signing key is needed.
+
+`bridges/cloud-server/tests/gcs_object_store.rs` covers the `gcs` backend
+against a local stand-in of the token endpoint and JSON API.
+
 ## Checks
 
 - `scripts/minio-images.test.mjs` fails if any file references the registries

@@ -39,12 +39,12 @@ pub(super) async fn apply_deferred_signup_avatar(
     now: &str,
     bytes: Option<Vec<u8>>,
 ) {
-    let (Some(bytes), Some(s3)) = (bytes, state.s3()) else {
+    let (Some(bytes), Some(store)) = (bytes, state.object_store()) else {
         return;
     };
     let pool = state.db_pool();
     let Ok(marker) = crate::avatars::assets::store_avatar_asset(
-        pool, s3, account_id, "human", account_id, bytes,
+        pool, store, account_id, "human", account_id, bytes,
     )
     .await
     else {

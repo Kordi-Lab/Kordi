@@ -385,14 +385,14 @@ async fn export_runner_artifact(
             StatusCode::BAD_REQUEST,
         );
     };
-    let Some(s3) = state.s3() else {
+    let Some(store) = state.object_store() else {
         return error_response(
             "attachments_unavailable",
             "Object storage is not configured on this server.",
             StatusCode::SERVICE_UNAVAILABLE,
         );
     };
-    match export_run_artifact(state.db_pool(), s3, &run_id, &runner_id, input).await {
+    match export_run_artifact(state.db_pool(), store, &run_id, &runner_id, input).await {
         Ok(artifact) => (
             StatusCode::CREATED,
             Json(ExportArtifactEnvelope { artifact }),

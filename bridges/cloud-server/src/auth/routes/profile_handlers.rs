@@ -38,7 +38,7 @@ pub(super) async fn update_me(
     if let Some(mutation) = avatar_mutation.as_mut() {
         if let Err(error) = crate::avatars::assets::materialize_legacy_avatar_mutation(
             pool,
-            state.s3(),
+            state.object_store(),
             &session.account_id,
             "human",
             &session.account_id,

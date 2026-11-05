@@ -13,12 +13,11 @@ use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, RateLimite
 use crate::calls::{CallMediaConfig, CallMediaConfigError};
 use crate::events::{EventBus, EventBusError};
 use crate::notifications::{PushNotificationConfigError, PushNotificationService};
+use crate::object_storage::ObjectStore;
 use crate::pg::{init_pool, PgPoolError};
 use crate::support::{PendingSupportConfig, SupportConfigError, SupportService};
 use crate::system_agent::{PendingSystemAgentConfig, SystemAgentConfigError, SystemAgentService};
-use crate::updates::store::{
-    MinioReleaseStore, ReleaseCatalogStore, ReleaseStoreConfig, ReleaseStoreError,
-};
+use crate::updates::store::ReleaseCatalogStore;
 
 mod admission_state;
 mod logging;
@@ -33,7 +32,7 @@ pub struct ServerState {
     pool: PgPool,
     events: EventBus,
     chat_sync_wakes: Arc<crate::chat_sync::realtime::ChatSyncWakeHub>,
-    s3: Option<S3Config>,
+    object_store: Option<ObjectStore>,
     release_store: Option<ReleaseCatalogStore>,
     support: Option<SupportService>,
     system_agent: Option<SystemAgentService>,
@@ -53,7 +52,7 @@ impl ServerState {
             pool,
             events,
             chat_sync_wakes: crate::chat_sync::realtime::ChatSyncWakeHub::new(),
-            s3: None,
+            object_store: None,
             release_store: None,
             support: None,
             system_agent: None,
@@ -66,8 +65,13 @@ impl ServerState {
         }
     }
 
-    pub fn with_s3(mut self, s3: S3Config) -> Self {
-        self.s3 = Some(s3);
+    /// Uses an S3-compatible attachment store.
+    pub fn with_s3(self, s3: S3Config) -> Self {
+        self.with_object_store(ObjectStore::s3(s3))
+    }
+
+    pub fn with_object_store(mut self, store: ObjectStore) -> Self {
+        self.object_store = Some(store);
         self
     }
 
@@ -155,8 +159,9 @@ impl ServerState {
         &self.chat_sync_wakes
     }
 
-    pub fn s3(&self) -> Option<&S3Config> {
-        self.s3.as_ref()
+    /// The attachment object store, when one is configured.
+    pub fn object_store(&self) -> Option<&ObjectStore> {
+        self.object_store.as_ref()
     }
 
     pub fn release_store(&self) -> Option<&ReleaseCatalogStore> {
@@ -323,11 +328,14 @@ pub async fn run(
     if std::env::var("KORDI_REQUIRE_CORE_SERVICES").as_deref() == Ok("true")
         && (nats_url.is_none()
             || redis_url.is_none()
-            || S3Config::from_env().is_none()
+            || !matches!(
+                crate::object_storage::attachment_store_from_env(),
+                Ok(Some(_))
+            )
             || signup_email.is_none())
     {
         return Err(RunError::Configuration(
-            "Hosted deployment requires NATS, Redis, S3, and signup email configuration",
+            "Hosted deployment requires NATS, Redis, object storage, and signup email configuration",
         ));
     }
     let admission =
@@ -428,35 +436,8 @@ pub async fn run(
     } else {
         println!("Kordi System agent is disabled");
     }
-    if let Some(s3) = S3Config::from_env() {
-        println!(
-            "Kordi cloud server attachment store at {} (bucket={})",
-            s3.endpoint, s3.bucket
-        );
-        state = state.with_s3(s3);
-    } else {
-        println!(
-            "Kordi cloud server starting without S3 (attachments disabled — set S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY)"
-        );
-    }
-    if let Some(config) = ReleaseStoreConfig::from_env() {
-        match MinioReleaseStore::new(config) {
-            Ok(backend) => {
-                println!("Kordi cloud server release store configured (bucket=kordi-releases)");
-                state = state.with_release_store(ReleaseCatalogStore::new(Arc::new(backend)));
-            }
-            Err(ReleaseStoreError::Unavailable) => {
-                println!("Kordi cloud server release store is unavailable");
-            }
-            Err(_) => {
-                println!("Kordi cloud server release store configuration was rejected");
-            }
-        }
-    } else {
-        println!(
-            "Kordi cloud server starting without desktop release storage (set KORDI_RELEASE_S3_ENDPOINT, KORDI_RELEASE_S3_BUCKET, KORDI_RELEASE_S3_ACCESS_KEY, KORDI_RELEASE_S3_SECRET_KEY)"
-        );
-    }
+    state =
+        crate::object_storage::configure_object_storage(state).map_err(RunError::Configuration)?;
     let state = Arc::new(state);
     workers::spawn_background_workers(&state, database_url, &rate_limiter);
     let sweeper_state = state.clone();
