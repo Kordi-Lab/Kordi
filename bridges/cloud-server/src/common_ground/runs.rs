@@ -57,7 +57,8 @@ pub(super) async fn insert(
             .fetch_optional(&mut **tx)
             .await?,
         };
-    let pool = service.resource_pools().resolve(organization_id.as_deref());
+    let pools = service.resource_pools();
+    let pool = pools.resolve(organization_id.as_deref());
     let admission = usage::reserve(
         tx,
         &usage::Request {
@@ -91,6 +92,8 @@ pub(super) async fn insert(
     .bind(organization_id.as_deref())
     .execute(&mut **tx)
     .await?;
+    // A pool worker pool's run waits for that pool's own worker.
+    crate::pool_workers::store::tag_run(tx, run.run_id, pool, Feature::Grounding).await?;
     Ok(true)
 }
 

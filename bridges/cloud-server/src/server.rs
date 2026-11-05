@@ -258,6 +258,7 @@ pub fn router_with_shared_rate_limiter(
         )
         .merge(crate::digest::routes(state.clone()))
         .merge(crate::plan_cards::routes(state.clone()))
+        .merge(crate::pool_workers::routes(state.clone()))
         .merge(crate::projects::routes(state.clone()))
         .merge(crate::support::routes(state.clone()))
         .merge(crate::updates::routes::routes(state.clone()))
@@ -414,23 +415,16 @@ pub async fn run(
             "Kordi System agent configured as {} ({})",
             system_agent_config.name, system_agent_config.account_id
         );
-        // Pool ids and limits only; providers and keys are never printed.
-        let pools = system_agent_config.resource_pools();
-        println!(
-            "Kordi resource pools: {} (default {})",
-            pools
-                .pools()
-                .iter()
-                .map(|pool| pool.summary())
-                .collect::<Vec<_>>()
-                .join(", "),
-            pools.default_pool().id()
-        );
-        if let Err(error) =
-            crate::resource_pools::warn_unknown_organizations(state.db_pool(), pools).await
-        {
-            eprintln!("[resource-pools] Could not check bound organizations: {error}");
-        }
+        crate::resource_pools::registry::start(
+            system_agent_config.resource_pool_registry(),
+            state.db_pool(),
+        )
+        .await
+        .map_err(|error| {
+            RunError::SystemAgent(crate::system_agent::SystemAgentConfigError::ResourcePools(
+                error,
+            ))
+        })?;
         state = state.with_system_agent(SystemAgentService::new(system_agent_config));
     } else {
         println!("Kordi System agent is disabled");

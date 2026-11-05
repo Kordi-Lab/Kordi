@@ -72,7 +72,7 @@ fn a_pool_file_defines_providers_limits_and_bindings() {
     let pools = parse_value(&two_pools()).expect("valid pool file");
     let shared = pools.default_pool();
     assert_eq!(shared.id(), "shared");
-    let provider = shared.provider(Feature::SystemAgent);
+    let provider = shared.provider(Feature::SystemAgent).unwrap();
     assert_eq!(provider.auth().provider(), "openrouter");
     assert_eq!(
         provider.auth().base_url(),
@@ -91,7 +91,7 @@ fn a_pool_file_defines_providers_limits_and_bindings() {
     );
     // Grounding shares the System agent provider unless the pool names one.
     assert_eq!(
-        shared.provider(Feature::Grounding).auth().model(),
+        shared.provider(Feature::Grounding).unwrap().auth().model(),
         "vendor/synthetic-model"
     );
     assert_eq!(shared.limits().system_agent_runs_per_conversation, Some(3));
@@ -100,11 +100,15 @@ fn a_pool_file_defines_providers_limits_and_bindings() {
 
     let partner = pools.by_id("partner").unwrap();
     assert_eq!(
-        partner.provider(Feature::SystemAgent).auth().provider(),
+        partner
+            .provider(Feature::SystemAgent)
+            .unwrap()
+            .auth()
+            .provider(),
         "openai"
     );
     assert_eq!(
-        partner.provider(Feature::Grounding).auth().model(),
+        partner.provider(Feature::Grounding).unwrap().auth().model(),
         "partner-small-model"
     );
     assert_eq!(partner.limits().grounding_runs_per_person, Some(5));
@@ -158,6 +162,7 @@ fn api_keys_can_come_from_a_file() {
             .by_id("partner")
             .unwrap()
             .provider(Feature::SystemAgent)
+            .unwrap()
             .auth()
             .api_key(),
         PARTNER_KEY
@@ -177,7 +182,10 @@ fn error_for(edit: impl FnOnce(&mut Value)) -> String {
 #[test]
 fn invalid_files_fail_with_a_clear_message() {
     let cases: Vec<(Edit, &str)> = vec![
-        (Box::new(|f| f["version"] = json!(2)), "version must be 1"),
+        (
+            Box::new(|f| f["version"] = json!(3)),
+            "version must be 1 or 2",
+        ),
         (Box::new(|f| f["pools"] = json!([])), "at least one pool"),
         (
             Box::new(|f| f["defaultPool"] = json!("missing")),
@@ -323,19 +331,19 @@ fn without_a_pool_file_one_unlimited_pool_reproduces_the_system_agent_provider()
         PendingSystemAgentConfig::from_lookup(|key| values.get(key).map(|v| v.to_string()))
             .unwrap()
             .unwrap();
-    let pools = &config.resource_pools;
+    let pools = config.resource_pools.current();
     assert_eq!(pools.pools().len(), 1);
     let pool = pools.default_pool();
     assert_eq!(pool.id(), "default");
     assert_eq!(pool.limits(), &crate::resource_pools::PoolLimits::default());
     assert!(!pool.is_stopped());
     for feature in [Feature::SystemAgent, Feature::Grounding] {
-        let auth = pool.provider(feature).auth();
+        let auth = pool.provider(feature).unwrap().auth();
         assert_eq!(auth.api_key(), "synthetic-env-key");
         assert_eq!(auth.model(), "env-model");
         assert_eq!(auth.base_url(), "https://models.example.test/v1");
         assert_eq!(auth.provider(), "openai");
-        assert!(pool.provider(feature).headers().is_empty());
+        assert!(pool.provider(feature).unwrap().headers().is_empty());
     }
     assert_eq!(pools.resolve(Some("org_any")).id(), "default");
 }
@@ -349,7 +357,7 @@ fn a_pool_file_supplies_the_system_agent_provider() {
         .expect("the System agent runs on the default pool");
     assert_eq!(config.provider_auth.model(), "vendor/synthetic-model");
     assert_eq!(config.provider_auth.api_key(), SHARED_KEY);
-    assert_eq!(config.resource_pools.pools().len(), 2);
+    assert_eq!(config.resource_pools.current().pools().len(), 2);
     // The switch still turns the System agent off.
     let off = PendingSystemAgentConfig::from_lookup_with_pools(
         |key| (key == "KORDI_SYSTEM_AGENT_ENABLED").then(|| "false".to_string()),

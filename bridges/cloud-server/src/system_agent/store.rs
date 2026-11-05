@@ -223,7 +223,7 @@ async fn enqueue(
     // The conversation's resource pool admits the pass, or it stays silent.
     let (resource_pool, organization_id) = limits::pool_for(&mut tx, config, candidate).await?;
     let organization_id = organization_id.as_deref();
-    if !limits::admit(&mut tx, resource_pool, organization_id, &run_id, candidate)
+    if !limits::admit(&mut tx, &resource_pool, organization_id, &run_id, candidate)
         .await?
         .admitted()
     {
@@ -251,6 +251,9 @@ async fn enqueue(
     .bind(organization_id)
     .execute(&mut *tx)
     .await?;
+    // A pool worker pool's run waits for that pool's own worker.
+    crate::pool_workers::store::tag_run(&mut tx, &run_id, &resource_pool, Feature::SystemAgent)
+        .await?;
     tx.commit().await?;
     Ok(true)
 }
