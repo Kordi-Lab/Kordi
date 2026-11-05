@@ -33,7 +33,22 @@ type InvitationState =
   | { status: 'loading'; summary: null; message: '' }
   | { status: 'ready' | 'joining'; summary: InvitationSummary; message: '' }
   | { status: 'joined'; summary: InvitationSummary; message: string }
-  | { status: 'error'; summary: InvitationSummary | null; message: string };
+  | { status: 'error'; summary: InvitationSummary | null; message: string; retryable: boolean };
+
+/** Only a failure to reach Kordi can be fixed by trying again. */
+function isRetryableInvitationError(error: unknown) {
+  if (!(error instanceof CloudAuthError)) return false;
+  return error.code === 'network_error' || error.code === 'rate_limited' || error.status === 0 || error.status >= 500;
+}
+
+function errorState(summary: InvitationSummary | null, error: unknown): InvitationState {
+  return {
+    status: 'error',
+    summary,
+    message: groupInvitationErrorMessage(error),
+    retryable: isRetryableInvitationError(error),
+  };
+}
 
 function groupInvitationErrorMessage(error: unknown) {
   if (error instanceof CloudAuthError) {
@@ -90,7 +105,6 @@ export function GroupInvitationDialog({
 }: GroupInvitationDialogProps) {
   const client = useMemo(() => injectedClient ?? defaultCloudAuthClient(), [injectedClient]);
   const dialogRef = useRef<HTMLElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const primaryActionRef = useRef<HTMLButtonElement>(null);
   const [state, setState] = useState<InvitationState>(() => (pendingInvitation
@@ -104,7 +118,7 @@ export function GroupInvitationDialog({
         if (isActive()) setState({ status: 'ready', summary: summaryFromPreview(preview), message: '' });
       })
       .catch((error: unknown) => {
-        if (isActive()) setState({ status: 'error', summary: null, message: groupInvitationErrorMessage(error) });
+        if (isActive()) setState(errorState(null, error));
       });
   }, [client, invitationToken]);
 
@@ -119,6 +133,8 @@ export function GroupInvitationDialog({
       ? document.activeElement
       : null;
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Focus rings show only once the user moves focus with the keyboard.
+      if (event.key === 'Tab') dialogRef.current?.setAttribute('data-keyboard-nav', 'true');
       if (event.key === 'Escape') {
         event.preventDefault();
         onDismiss();
@@ -148,7 +164,9 @@ export function GroupInvitationDialog({
         first?.focus();
       }
     };
-    queueMicrotask(() => closeButtonRef.current?.focus());
+    // Both modes open with focus on the primary action (the dialog itself
+    // while the deep-link preview loads), without a visible ring.
+    queueMicrotask(() => (primaryActionRef.current ?? dialogRef.current)?.focus());
     document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true);
@@ -190,7 +208,7 @@ export function GroupInvitationDialog({
       });
       onJoined(result);
     } catch (error) {
-      setState({ status: 'error', summary, message: groupInvitationErrorMessage(error) });
+      setState(errorState(summary, error));
     }
   };
 
@@ -198,8 +216,12 @@ export function GroupInvitationDialog({
   const memberLabel = summary
     ? `${summary.memberCount} ${summary.memberCount === 1 ? 'member' : 'members'}`
     : '';
-  const canRetryPreview = state.status === 'error' && !summary;
-  const primaryLabel = state.status === 'joined' ? 'Open group' : canRetryPreview ? 'Try again' : 'Join';
+  const failed = state.status === 'error';
+  const finalError = failed && !state.retryable;
+  const canRetryPreview = failed && state.retryable && !summary;
+  const primaryLabel = state.status === 'joined'
+    ? 'Open group'
+    : finalError ? 'Close' : failed ? 'Try again' : 'Join';
 
   return (
     <div
@@ -217,7 +239,8 @@ export function GroupInvitationDialog({
         aria-labelledby="group-invitation-title"
         aria-describedby="group-invitation-description"
         aria-busy={state.status === 'loading' || state.status === 'joining'}
-        className="app-transient-surface app-frosted-popover w-full max-w-[340px] rounded-[18px] border p-4 shadow-[var(--app-shadow-float)]"
+        onPointerDown={() => dialogRef.current?.removeAttribute('data-keyboard-nav')}
+        className="app-group-invitation-dialog app-transient-surface app-frosted-popover w-full max-w-[340px] rounded-[18px] border p-4 shadow-[var(--app-shadow-float)]"
       >
         <div className="flex items-start justify-between gap-3">
           <span
@@ -227,7 +250,6 @@ export function GroupInvitationDialog({
             <Users className="h-5 w-5" aria-hidden="true" />
           </span>
           <button
-            ref={closeButtonRef}
             type="button"
             className="app-button-quiet app-transient-muted grid h-7 w-7 place-items-center rounded-[9px] p-0"
             aria-label="Dismiss group invitation"
@@ -254,26 +276,28 @@ export function GroupInvitationDialog({
         {state.message ? (
           <p
             id={summary ? undefined : 'group-invitation-description'}
-            role={state.status === 'error' ? 'alert' : 'status'}
-            className={`mt-3 rounded-[10px] px-3 py-2 text-[11px] leading-4 ${
-              state.status === 'error'
-                ? 'bg-rose-500/10 text-[color:var(--app-transient-danger-text)]'
-                : 'bg-emerald-500/10 text-emerald-600'
-            }`}
+            role={failed && !finalError ? 'alert' : 'status'}
+            className={finalError
+              ? 'mt-2 text-[11.5px] leading-4 text-[color:var(--app-transient-text)]'
+              : `mt-3 rounded-[10px] px-3 py-2 text-[11px] leading-4 ${
+                failed
+                  ? 'bg-rose-500/10 text-[color:var(--app-transient-danger-text)]'
+                  : 'bg-emerald-500/10 text-emerald-600'
+              }`}
           >
             {state.message}
           </p>
         ) : null}
 
         {state.status === 'loading' ? null : (
-          <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+          <div className={`mt-4 grid gap-2 ${finalError ? 'grid-cols-1' : 'grid-cols-[1fr_auto]'}`}>
             <button
               ref={primaryActionRef}
               type="button"
               className="app-button-primary inline-flex h-9 items-center justify-center rounded-[10px] text-[12px] font-medium disabled:opacity-70"
               disabled={state.status === 'joining'}
               onClick={() => {
-                if (state.status === 'joined') onDismiss();
+                if (state.status === 'joined' || finalError) onDismiss();
                 else if (canRetryPreview) retryPreview();
                 else void joinGroup();
               }}
@@ -282,13 +306,15 @@ export function GroupInvitationDialog({
                 <><LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> Joining…</>
               ) : primaryLabel}
             </button>
-            <button
-              type="button"
-              className="app-button-quiet h-9 rounded-[10px] px-3 text-[12px]"
-              onClick={onDismiss}
-            >
-              Not now
-            </button>
+            {finalError ? null : (
+              <button
+                type="button"
+                className="app-button-quiet h-9 rounded-[10px] px-3 text-[12px]"
+                onClick={onDismiss}
+              >
+                Not now
+              </button>
+            )}
           </div>
         )}
       </section>

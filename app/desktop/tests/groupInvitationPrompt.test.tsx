@@ -161,7 +161,9 @@ test('Join shows the full-group message from the server', async () => {
     await waitForReactCondition(() => dialogs(host).length === 1, 'pending dialog should show');
     await act(async () => { button(host, 'Join')?.click(); });
     await flush();
-    assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /This group is full\./);
+    assert.match(host.querySelector('[role="status"]')?.textContent ?? '', /This group is full\./);
+    assert.ok(button(host, 'Close'), 'a full group can only be closed');
+    assert.equal(button(host, 'Join'), undefined);
   });
 });
 
