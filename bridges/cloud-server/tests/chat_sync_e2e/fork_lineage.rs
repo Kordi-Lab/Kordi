@@ -12,6 +12,7 @@ async fn private_agent_fork_preserves_lineage_on_bootstrap_and_retry() {
         shared_title: None,
         client_session_id: id.into(),
         member_account_ids: vec![],
+        organization_id: None,
     };
     store::create_conversation(&pool, &owner, request(&parent_id))
         .await

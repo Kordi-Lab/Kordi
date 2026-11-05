@@ -167,6 +167,26 @@ async fn create_task(
             StatusCode::BAD_REQUEST,
         );
     }
+    use crate::organizations::selection::{for_new_content, SelectionError};
+    let requested = input.organization_id.as_deref();
+    match for_new_content(state.db_pool(), &session.account_id, requested).await {
+        Ok(_) => {}
+        Err(SelectionError::NotMember) => {
+            return error_response(
+                "organization_forbidden",
+                "You are not a member of that organization.",
+                StatusCode::FORBIDDEN,
+            )
+        }
+        Err(SelectionError::Database(err)) => {
+            eprintln!("[scheduled_tasks] check organization: {err}");
+            return error_response(
+                "server_error",
+                "Could not create scheduled task.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
     if input.target_runtime == ScheduledTaskTargetRuntime::Cloud {
         if let Some(response) = charge_agent_run(&rate_limiter, &session.account_id).await {
             return response;

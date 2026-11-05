@@ -35,6 +35,8 @@ export type ChatSyncConversation = {
   origin?: 'grounding' | null;
   /** Set on an owned agent's personal session (`kind: 'ai'`), naming that agent. */
   personal_agent?: { agent_id: string } | null;
+  /** The owning team organization; absent for personal conversations and on older servers. */
+  organization?: { organization_id: string; name: string } | null;
   forked_from_session_id?: string | null;
   forked_from_message_id?: string | null;
   latest_message_sequence: number;
@@ -122,5 +124,7 @@ export type ChatSyncConversationInput = {
   accountId?: string | null;
   replaceMembers?: boolean;
   sourceGroupSpaceId?: string;
+  /** Keep a new conversation in the personal organization, whatever is selected. */
+  personalOrganization?: boolean;
 };
 export type CloudThreadRead = { root_message_id: string; root_client_message_id: string; last_read_sequence: number };

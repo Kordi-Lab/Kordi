@@ -2737,7 +2737,7 @@ struct ConversationView: View {
         case .agent:
             agentHeaderStatus
         case .group:
-            "\(max(2, conversation.groupParticipants.count)) participants"
+            ConversationOrganizationLabel.groupStatus(for: conversation)
         case .person:
             if conversation.representsKordiSupport {
                 "Official Kordi support"

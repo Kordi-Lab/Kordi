@@ -1,3 +1,5 @@
+import { organizationIdField } from '@/features/organizations/organizationStore';
+
 export type ScheduledTaskSchedule =
   | { kind: 'once'; at: string }
   | { kind: 'daily'; time: string; timezone?: string };
@@ -77,7 +79,7 @@ export async function listScheduledTaskRuns(config: ScheduledTasksClientConfig, 
 export async function createScheduledTask(config: ScheduledTasksClientConfig, input: CreateScheduledTaskInput): Promise<ScheduledTask> {
   const result = await requestJson<{ task: ScheduledTask }>(config, '/v1/cloud/scheduled-tasks', {
     method: 'POST',
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, ...organizationIdField() }),
   });
   return result.task;
 }

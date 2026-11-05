@@ -137,3 +137,58 @@ async fn upgrade_from_161_adds_personal_organizations_and_ownership() {
         "a personal organization has only its owner"
     );
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_165_adds_organization_selection() {
+    let pool = fixture(165).await;
+    seed_owned_rows(&pool, "owner", "fixture-owner").await;
+    let before = organization_snapshot(&pool).await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+
+    assert_eq!(
+        misattributed(&pool)
+            .await
+            .iter()
+            .map(|(_, n)| n)
+            .sum::<i64>(),
+        0
+    );
+    let (rule, expiring, invitations): (i64, i64, i64) = query_as(
+        "SELECT (SELECT count(*) FROM cloud_organizations WHERE member_owned_content), \
+                (SELECT count(*) FROM cloud_organization_members WHERE expires_at IS NOT NULL), \
+                (SELECT count(*) FROM cloud_organization_invitations)",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!((rule, expiring, invitations), (0, 0, 0));
+    let mut after = organization_snapshot(&pool).await;
+    for organization in after["organizations"].as_array_mut().unwrap() {
+        organization
+            .as_object_mut()
+            .unwrap()
+            .remove("member_owned_content");
+    }
+    for member in after["members"].as_array_mut().unwrap() {
+        member.as_object_mut().unwrap().remove("expires_at");
+    }
+    assert_eq!(
+        after, before,
+        "existing organizations and members are unchanged"
+    );
+
+    // A run queued after the upgrade is still charged to the agent owner.
+    seed_owned_rows(&pool, "later", "fixture-peer").await;
+    assert_eq!(
+        misattributed(&pool)
+            .await
+            .iter()
+            .map(|(_, n)| n)
+            .sum::<i64>(),
+        0
+    );
+}

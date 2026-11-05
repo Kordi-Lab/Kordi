@@ -112,6 +112,7 @@ async fn direct_person_creation_uses_one_server_owned_identity() {
             shared_title: None,
             client_session_id: "session:direct-person:stale:first".to_string(),
             member_account_ids: vec![peer.clone()],
+            organization_id: None,
         },
     )
     .await
@@ -130,6 +131,7 @@ async fn direct_person_creation_uses_one_server_owned_identity() {
             shared_title: None,
             client_session_id: "session:direct-person:stale:second".to_string(),
             member_account_ids: vec![owner.clone()],
+            organization_id: None,
         },
     )
     .await
@@ -147,6 +149,7 @@ async fn direct_person_creation_uses_one_server_owned_identity() {
                 shared_title: Some("Obsolete seed".to_string()),
                 client_session_id: "session:seed:obsolete-direct".to_string(),
                 member_account_ids: vec![peer],
+                organization_id: None,
             },
         )
         .await,
@@ -169,6 +172,7 @@ async fn message_sync_is_idempotent_ordered_and_convergent_across_members() {
         shared_title: Some("Initial title".to_string()),
         client_session_id: direct_person_session_id(&owner, &peer),
         member_account_ids: vec![peer.clone()],
+        organization_id: None,
     };
     let created = store::create_conversation(&pool, &owner, create_request.clone())
         .await
@@ -201,6 +205,7 @@ async fn message_sync_is_idempotent_ordered_and_convergent_across_members() {
             shared_title: Some("Initial title".to_string()),
             client_session_id: created.value.legacy_session_id.clone().unwrap(),
             member_account_ids: vec![owner.clone()],
+            organization_id: None,
         },
     )
     .await
@@ -432,6 +437,7 @@ async fn retention_advances_the_cursor_floor_before_replay_rows_are_deleted() {
             shared_title: None,
             client_session_id: direct_person_session_id(&owner, &peer),
             member_account_ids: vec![peer.clone()],
+            organization_id: None,
         },
     )
     .await

@@ -13,6 +13,7 @@ import {
 import type { CanonicalAvatarMutation } from './canonicalAvatar';
 import { avatarDataUrlBlob } from './canonicalAvatar';
 import { cloudFetchImpl } from './cloudTransport';
+import { organizationIdField } from '@/features/organizations/organizationStore';
 
 export type CloudAgentAccessScope = 'private' | 'participant_conversations';
 export type CloudAgentStatus = 'active' | 'archived';
@@ -153,7 +154,11 @@ export class CloudAgentsClient {
     const body = await this.send<CloudAgentEnvelope>('/v1/cloud/agents', {
       method: 'POST',
       headers: this.authHeaders(token),
-      body: JSON.stringify({ ...cloudAgentRequestBody(input), ...(pendingAvatar ? { avatarMutation: undefined } : {}) }),
+      body: JSON.stringify({
+        ...cloudAgentRequestBody(input),
+        ...organizationIdField(),
+        ...(pendingAvatar ? { avatarMutation: undefined } : {}),
+      }),
     }, 'Could not create Agent.');
     const agent = normalizeCloudAgentDefinition(body.agent);
     if (!agent) throw new CloudAuthError('unknown', 'Agent response was invalid.', 0);

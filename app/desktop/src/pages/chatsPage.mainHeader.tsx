@@ -15,6 +15,7 @@ import type {
 import { useCloudCallContext } from '@/features/cloud/useCloudCallContext';
 import { PersonalAgentHeaderTitle } from '@/features/personalAgent/PersonalAgentHeaderTitle';
 import { usePersonalAgentForConversation } from '@/features/personalAgent/personalAgentStore';
+import { useGroupOrganizationName } from '@/features/organizations/conversationOrganization';
 
 type MainHeaderRename = {
   enabled: boolean;
@@ -195,13 +196,22 @@ export function MainChatHeader({
       <CompanionToolbar {...companion} />
     </div>
   );
+  const organizationName = useGroupOrganizationName(conversation.canonicalSessionId || conversation.id);
   // A personal session's header includes its own inline status.
-  const hasMetadata = !personalAgent && Boolean(metadata.subtitle || metadata.forkSourceSessionId);
+  const hasMetadata = !personalAgent && Boolean(organizationName || metadata.subtitle || metadata.forkSourceSessionId);
   const metadataRow = hasMetadata ? (
     <div
       className="app-chat-pane-metadata-row flex min-w-0 items-center gap-1 text-[11px] leading-5 text-slate-400"
       data-chat-session-metadata="true"
     >
+      {organizationName ? (
+        <span data-chat-session-organization="true" className="max-w-[12rem] shrink-0 truncate" title={organizationName}>
+          {organizationName}
+        </span>
+      ) : null}
+      {organizationName && (metadata.subtitle || metadata.forkSourceSessionId) ? (
+        <span className="shrink-0 opacity-50" aria-hidden="true">·</span>
+      ) : null}
       {metadata.subtitle ? (
         <span
           data-chat-session-subtitle="true"

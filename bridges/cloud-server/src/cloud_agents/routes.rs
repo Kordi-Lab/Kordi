@@ -172,6 +172,15 @@ async fn create_agent(
     Extension(session): Extension<CloudSession>,
     Json(mut input): Json<CreateCloudAgentRequest>,
 ) -> Response {
+    if let Err(response) = check_organization(
+        &state,
+        &session.account_id,
+        input.organization_id.as_deref(),
+    )
+    .await
+    {
+        return response;
+    }
     let agent_id = format!("cloud_agent_{}", uuid::Uuid::new_v4().simple());
     if let Some(mutation) = input.avatar_mutation.as_mut() {
         if let Err(response) =
@@ -192,6 +201,29 @@ async fn create_agent(
     {
         Ok(agent) => (StatusCode::CREATED, Json(CloudAgentEnvelope { agent })).into_response(),
         Err(err) => store_error_response("create", err),
+    }
+}
+
+/// Refuses an organization the caller does not belong to before anything is
+/// written; the database refuses one too.
+async fn check_organization(
+    state: &ServerState,
+    account_id: &str,
+    requested: Option<&str>,
+) -> Result<(), Response> {
+    use crate::organizations::selection::{for_new_content, SelectionError};
+    match for_new_content(state.db_pool(), account_id, requested).await {
+        Ok(_) => Ok(()),
+        Err(SelectionError::NotMember) => Err(error_response(
+            "organization_forbidden",
+            "You are not a member of that organization.",
+            StatusCode::FORBIDDEN,
+        )),
+        Err(SelectionError::Database(_)) => Err(error_response(
+            "server_error",
+            "Could not check the organization.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )),
     }
 }
 

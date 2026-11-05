@@ -48,6 +48,7 @@ async fn individual_photos_have_independent_reactions_and_deletions() {
             shared_title: None,
             client_session_id: direct_person_session_id(&owner, &peer),
             member_account_ids: vec![peer.clone()],
+            organization_id: None,
         },
     )
     .await
@@ -252,6 +253,7 @@ async fn unchanged_edits_do_not_restore_the_senders_hidden_photo() {
             shared_title: None,
             client_session_id: direct_person_session_id(&owner, &peer),
             member_account_ids: vec![peer],
+            organization_id: None,
         },
     )
     .await
@@ -315,6 +317,7 @@ async fn globally_removing_the_last_visible_photo_hides_empty_private_projection
             shared_title: None,
             client_session_id: direct_person_session_id(&owner, &peer),
             member_account_ids: vec![peer.clone()],
+            organization_id: None,
         },
     )
     .await

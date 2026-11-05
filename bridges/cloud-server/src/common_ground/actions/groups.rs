@@ -241,6 +241,7 @@ async fn create(
             shared_title: None,
             client_session_id: group_space_id.clone(),
             member_account_ids: added.clone(),
+            organization_id: None,
         },
         name,
     )

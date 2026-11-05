@@ -13,6 +13,7 @@ import {
 import { ChatSyncState } from './chatSyncState';
 import type { ChatSyncConversationInput, ChatSyncConversation, ChatSyncMessage, ChatSyncPreferences } from './chatSyncTypes';
 import { isRetryableCloudDeliveryError } from './cloudAuthError';
+import { chatSyncOrganizationField } from '@/features/organizations/organizationStore';
 import { completeChatSyncOutbox, dueChatSyncOutbox, enqueueChatSyncOutbox, failChatSyncOutbox } from '@/lib/desktopChatSync';
 
 export class ChatSyncConversationClient {
@@ -83,6 +84,9 @@ export class ChatSyncConversationClient {
           shared_title: input.sharedTitle?.trim() || null,
           client_session_id: sessionId,
           member_account_ids: memberAccountIds,
+          // Channels inherit their group space's organization.
+          ...(path === '/v2/chat/conversations' && !input.personalOrganization
+            ? chatSyncOrganizationField(kind, accountId) : {}),
         }),
       },
       'Could not open the reliable chat conversation.',

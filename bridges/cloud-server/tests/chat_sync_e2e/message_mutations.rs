@@ -15,6 +15,7 @@ async fn message_edits_and_both_deletion_scopes_converge() {
             shared_title: None,
             client_session_id: direct_person_session_id(&owner, &peer),
             member_account_ids: vec![peer.clone()],
+            organization_id: None,
         },
     )
     .await
@@ -139,6 +140,7 @@ async fn group_message_edit_fanout_reaches_every_recipient() {
             shared_title: Some("Mutation group".to_string()),
             client_session_id: format!("session:group:mutation:{}", Uuid::now_v7()),
             member_account_ids: members,
+            organization_id: None,
         },
     )
     .await

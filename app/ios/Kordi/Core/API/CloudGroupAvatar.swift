@@ -60,6 +60,8 @@ struct CloudChatConversation: Codable, Hashable {
     var origin: String? = nil
     /// Set on an owned agent's personal session (#2091).
     var personalAgent: CloudPersonalAgentBinding? = nil
+    /// The team organization; absent for personal conversations and older servers.
+    var organization: CloudConversationOrganization? = nil
     let forkedFromSessionId: String?
     let forkedFromMessageId: String?
     let latestMessageSequence: Int64
@@ -69,7 +71,7 @@ struct CloudChatConversation: Codable, Hashable {
     let preferences: CloudChatPreferences
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, version, members, preferences
+        case id, kind, version, members, preferences, organization
         case sharedTitle = "shared_title"
         case createdByAccountId = "created_by_account_id"
         case legacySessionId = "legacy_session_id"

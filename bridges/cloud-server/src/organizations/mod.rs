@@ -3,25 +3,32 @@
 //! only member and the owner; a team organization can have many members.
 //!
 //! Database triggers create each account's personal organization
-//! (migration 0162) and stamp new owned records with it (0163). This module
-//! serves reads and the owner/admin membership changes. Every handler runs
-//! behind the cloud session middleware, and an organization the caller does
-//! not belong to answers 404, as if it did not exist.
+//! (migration 0162), stamp new owned records with it (0163), refuse an
+//! organization the content owner does not belong to, and apply the
+//! member-owned-content rule (0166). This module serves reads, invitations,
+//! leaving, settings, content transfers, and the owner/admin membership
+//! changes. Every handler runs behind the cloud session middleware, and an
+//! organization the caller does not belong to answers 404, as if it did not
+//! exist.
 
 use std::sync::Arc;
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Serialize;
 
 use crate::server::ServerState;
 
 mod handlers;
+mod invitations;
 mod policy;
+pub mod selection;
+mod settings;
 #[cfg(test)]
 mod tests;
+mod transfers;
 
 pub use policy::{MembershipChange, OrganizationRole, PolicyError};
 
@@ -30,15 +37,43 @@ pub fn routes() -> Router<Arc<ServerState>> {
         .route("/v1/cloud/organizations", get(handlers::list_organizations))
         .route(
             "/v1/cloud/organizations/:organization_id",
-            get(handlers::get_organization),
+            get(handlers::get_organization).patch(settings::update_organization),
         )
         .route(
             "/v1/cloud/organizations/:organization_id/members",
-            get(handlers::list_members).post(handlers::add_member),
+            get(handlers::list_members),
         )
         .route(
             "/v1/cloud/organizations/:organization_id/members/:account_id",
             axum::routing::patch(handlers::update_member).delete(handlers::remove_member),
+        )
+        .route(
+            "/v1/cloud/organizations/:organization_id/leave",
+            post(settings::leave),
+        )
+        .route(
+            "/v1/cloud/organizations/:organization_id/invitations",
+            get(invitations::list_for_organization).post(invitations::invite),
+        )
+        .route(
+            "/v1/cloud/organizations/:organization_id/invitations/:invitation_id",
+            delete(invitations::revoke),
+        )
+        .route(
+            "/v1/cloud/organizations/:organization_id/transfers",
+            post(transfers::transfer),
+        )
+        .route(
+            "/v1/cloud/organization-invitations",
+            get(invitations::list_mine),
+        )
+        .route(
+            "/v1/cloud/organization-invitations/:invitation_id/accept",
+            post(invitations::accept),
+        )
+        .route(
+            "/v1/cloud/organization-invitations/:invitation_id/decline",
+            post(invitations::decline),
         )
 }
 
@@ -55,6 +90,10 @@ pub struct OrganizationSummary {
     pub role: OrganizationRole,
     pub member_count: i64,
     pub created_at: String,
+    /// Content here must be owned by a member (the owner-eligibility rule).
+    pub member_owned_content: bool,
+    /// When the caller's own membership ends; `None` for a lasting one.
+    pub membership_expires_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -64,6 +103,7 @@ pub struct OrganizationMember {
     pub display_name: Option<String>,
     pub role: OrganizationRole,
     pub joined_at: String,
+    pub membership_expires_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -105,6 +145,10 @@ fn not_found() -> ApiError {
         "Organization not found.",
         StatusCode::NOT_FOUND,
     )
+}
+
+fn bad_request(code: &'static str, message: &'static str) -> ApiError {
+    err(code, message, StatusCode::BAD_REQUEST)
 }
 
 fn server_error() -> ApiError {
