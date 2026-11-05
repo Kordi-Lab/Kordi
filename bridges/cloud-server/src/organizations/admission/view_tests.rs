@@ -90,3 +90,37 @@ fn non_members_see_pending_lapsed_join_or_not_open() {
         AdmissionState::Unavailable
     );
 }
+
+#[test]
+fn rejected_and_removed_callers_see_only_paths_that_work() {
+    let org = organization(|_| {});
+    let rejected = CallerFacts {
+        request_status: Some("rejected".into()),
+        ..Default::default()
+    };
+    let state = caller_state(&org, &rejected, now());
+    assert_eq!(state.state, AdmissionState::Rejected);
+    assert!(!state.options.join_request);
+    let removed = CallerFacts {
+        lapsed_at: Some(now()),
+        lapse_reason: Some("removed".into()),
+        ..Default::default()
+    };
+    let state = caller_state(&org, &removed, now());
+    assert_eq!(state.state, AdmissionState::Lapsed);
+    assert!(!state.options.email_code);
+    assert!(state.options.join_request);
+}
+
+#[test]
+fn only_overdue_memberships_are_expired_on_read() {
+    let org = organization(|_| {});
+    assert!(!is_due(&org, &member_verified(10), now()));
+    assert!(is_due(&org, &member_verified(200), now()));
+    let approved = CallerFacts {
+        source: Some("join_request".into()),
+        expires_at: Some(now() - Duration::minutes(1)),
+        ..member_verified(1)
+    };
+    assert!(is_due(&org, &approved, now()));
+}

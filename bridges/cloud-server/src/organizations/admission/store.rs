@@ -8,15 +8,27 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::{PgPool, Postgres};
 
-use super::claim::{decide, Decision, PriorAdmission, SignInEvidence};
-use super::config::{ConfiguredOrganization, OrganizationAdmission};
+use super::claim::{decide, proves_email, Decision, PriorAdmission, SignInEvidence};
+use super::config::{ConfiguredOrganization, OrganizationAdmission, DEFAULT_RETENTION_DAYS};
 
-pub(super) type Tx<'a> = sqlx_core::transaction::Transaction<'a, Postgres>;
+pub(crate) type Tx<'a> = sqlx_core::transaction::Transaction<'a, Postgres>;
 
 impl OrganizationAdmission {
+    /// Startup sync: [`Self::sync_configured`], then every organization
+    /// dropped from the file is retired. Idempotent, so every replica may
+    /// run it.
+    pub async fn sync(self, pool: &PgPool) -> Result<Self, sqlx_core::Error> {
+        let mut synced = self.sync_configured(pool).await?;
+        synced.orphaned = orphaned_ids(pool, &synced).await?;
+        for organization_id in &synced.orphaned {
+            retire_orphan(pool, organization_id).await?;
+        }
+        Ok(synced)
+    }
+
     /// Creates or updates one team organization per configured id and keeps
-    /// configured admins in step. Idempotent, so every replica may run it.
-    pub async fn sync(mut self, pool: &PgPool) -> Result<Self, sqlx_core::Error> {
+    /// configured admins in step.
+    pub async fn sync_configured(mut self, pool: &PgPool) -> Result<Self, sqlx_core::Error> {
         for org in &mut self.organizations {
             let (organization_id,): (String,) = query_as(
                 "INSERT INTO cloud_organizations (organization_id, name, kind, config_id) \
@@ -37,43 +49,113 @@ impl OrganizationAdmission {
     }
 }
 
-/// Grants admin to every configured admin with an account and takes the
-/// flag from accounts no longer listed. A former admin keeps a plain
-/// membership only while an admission record still backs it.
-async fn sync_admins(pool: &PgPool, org: &ConfiguredOrganization) -> Result<(), sqlx_core::Error> {
-    let mut tx = pool.begin().await?;
-    let listed: Vec<(String,)> = query_as(
-        "SELECT account_id FROM cloud_accounts \
-         WHERE account_id = ANY($1) \
-            OR (lower(primary_email) = ANY($2) AND primary_email_verified_at IS NOT NULL)",
+/// Database organizations whose configuration id is not in `admission`.
+pub(super) async fn orphaned_ids(
+    pool: &PgPool,
+    admission: &OrganizationAdmission,
+) -> Result<Vec<String>, sqlx_core::Error> {
+    let configured: Vec<&str> = admission
+        .organizations
+        .iter()
+        .map(|o| o.id.as_str())
+        .collect();
+    let rows: Vec<(String,)> = query_as(
+        "SELECT organization_id FROM cloud_organizations \
+         WHERE config_id IS NOT NULL AND NOT (config_id = ANY($1)) ORDER BY organization_id",
     )
-    .bind(&org.admins.account_ids)
-    .bind(&org.admins.emails)
+    .bind(&configured)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
+/// Ends every admitted membership and configured admin of an organization
+/// no longer in the file, and purges its join requests after the default
+/// retention. Running it again only purges.
+pub(super) async fn retire_orphan(
+    pool: &PgPool,
+    organization_id: &str,
+) -> Result<(), sqlx_core::Error> {
+    let mut tx = pool.begin().await?;
+    query(
+        "UPDATE cloud_organization_members SET configured_admin = false, \
+           configured_admin_email = NULL WHERE organization_id = $1 AND configured_admin",
+    )
+    .bind(organization_id)
+    .execute(&mut *tx)
+    .await?;
+    query(
+        "UPDATE cloud_organization_admissions \
+         SET lapsed_at = now(), lapse_reason = 'organization_removed' \
+         WHERE organization_id = $1 AND lapsed_at IS NULL",
+    )
+    .bind(organization_id)
+    .execute(&mut *tx)
+    .await?;
+    let members: Vec<(String,)> = query_as(
+        "SELECT account_id FROM cloud_organization_members \
+         WHERE organization_id = $1 AND role <> 'owner'",
+    )
+    .bind(organization_id)
     .fetch_all(&mut *tx)
     .await?;
-    let listed: Vec<String> = listed.into_iter().map(|(id,)| id).collect();
-    for account_id in &listed {
-        grant_admin(&mut tx, &org.organization_id, account_id).await?;
+    for (account_id,) in &members {
+        end_membership(&mut tx, organization_id, account_id).await?;
     }
-    query(
-        "DELETE FROM cloud_organization_members m \
-         WHERE m.organization_id = $1 AND m.configured_admin AND NOT (m.account_id = ANY($2)) \
-           AND NOT EXISTS (SELECT 1 FROM cloud_organization_admissions a \
-                           WHERE a.organization_id = m.organization_id \
-                             AND a.account_id = m.account_id AND a.lapsed_at IS NULL)",
+    purge_requests(&mut tx, organization_id, DEFAULT_RETENTION_DAYS).await?;
+    tx.commit().await
+}
+
+/// Grants admin to listed account ids with an account. Admins listed by
+/// email are granted only at a qualifying sign-in (see
+/// [`ensure_configured_admin`]) and stay while their granting email is
+/// listed. A disabled organization has no configured admins. Delisted
+/// admins keep a plain membership only while an admission backs it.
+async fn sync_admins(pool: &PgPool, org: &ConfiguredOrganization) -> Result<(), sqlx_core::Error> {
+    let open = org.state.admits();
+    let (ids, emails) = if open {
+        (org.admins.account_ids.clone(), org.admins.emails.clone())
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    let mut tx = pool.begin().await?;
+    let existing: Vec<(String,)> =
+        query_as("SELECT account_id FROM cloud_accounts WHERE account_id = ANY($1)")
+            .bind(&ids)
+            .fetch_all(&mut *tx)
+            .await?;
+    for (account_id,) in &existing {
+        grant_admin(&mut tx, &org.organization_id, account_id, None).await?;
+    }
+    let delisted: Vec<(String, String, bool)> = query_as(
+        "SELECT m.account_id, m.role, EXISTS (SELECT 1 FROM cloud_organization_admissions a \
+                  WHERE a.organization_id = m.organization_id \
+                    AND a.account_id = m.account_id AND a.lapsed_at IS NULL) \
+         FROM cloud_organization_members m \
+         WHERE m.organization_id = $1 AND m.configured_admin \
+           AND NOT (m.account_id = ANY($2)) \
+           AND NOT (m.configured_admin_email IS NOT NULL AND m.configured_admin_email = ANY($3))",
     )
     .bind(&org.organization_id)
-    .bind(&listed)
-    .execute(&mut *tx)
+    .bind(&ids)
+    .bind(&emails)
+    .fetch_all(&mut *tx)
     .await?;
-    query(
-        "UPDATE cloud_organization_members SET configured_admin = false, role = 'member' \
-         WHERE organization_id = $1 AND configured_admin AND NOT (account_id = ANY($2))",
-    )
-    .bind(&org.organization_id)
-    .bind(&listed)
-    .execute(&mut *tx)
-    .await?;
+    for (account_id, role, backed) in delisted {
+        query(
+            "UPDATE cloud_organization_members SET configured_admin = false, \
+               configured_admin_email = NULL, \
+               role = CASE WHEN role = 'owner' THEN 'owner' ELSE 'member' END \
+             WHERE organization_id = $1 AND account_id = $2",
+        )
+        .bind(&org.organization_id)
+        .bind(&account_id)
+        .execute(&mut *tx)
+        .await?;
+        if !backed && role != "owner" {
+            end_membership(&mut tx, &org.organization_id, &account_id).await?;
+        }
+    }
     tx.commit().await
 }
 
@@ -81,35 +163,48 @@ async fn grant_admin(
     tx: &mut Tx<'_>,
     organization_id: &str,
     account_id: &str,
+    by_email: Option<&str>,
 ) -> Result<(), sqlx_core::Error> {
     query(
-        "INSERT INTO cloud_organization_members (organization_id, account_id, role, configured_admin) \
-         VALUES ($1, $2, 'admin', true) \
+        "INSERT INTO cloud_organization_members \
+           (organization_id, account_id, role, configured_admin, configured_admin_email) \
+         VALUES ($1, $2, 'admin', true, $3) \
          ON CONFLICT (organization_id, account_id) DO UPDATE SET configured_admin = true, \
+           configured_admin_email = COALESCE(EXCLUDED.configured_admin_email, \
+                                             cloud_organization_members.configured_admin_email), \
            role = CASE WHEN cloud_organization_members.role = 'owner' THEN 'owner' ELSE 'admin' END",
     )
     .bind(organization_id)
     .bind(account_id)
+    .bind(by_email)
     .execute(&mut **tx)
     .await?;
     Ok(())
 }
 
-/// Grants admin when the account is listed by id or by one of its verified
-/// emails, so an admin who signs up after startup is recognized.
+/// Grants admin when the account is listed by id, or by an email that this
+/// sign-in proved under the organization's own rules (an email code, or an
+/// auto-join method with its hosted-domain rule). Disabled organizations
+/// have no configured admins.
 pub(super) async fn ensure_configured_admin(
     pool: &PgPool,
     org: &ConfiguredOrganization,
     account_id: &str,
-    verified_email: Option<&str>,
+    evidence: &SignInEvidence<'_>,
 ) -> Result<(), sqlx_core::Error> {
-    let listed = org.admins.account_ids.iter().any(|id| id == account_id)
-        || verified_email.is_some_and(|email| org.admins.emails.iter().any(|e| e == email));
-    if !listed {
+    if !org.state.admits() {
+        return Ok(());
+    }
+    let by_id = org.admins.account_ids.iter().any(|id| id == account_id);
+    let by_email = evidence
+        .email
+        .filter(|email| org.admins.emails.iter().any(|e| e == email))
+        .filter(|_| proves_email(org, evidence));
+    if !by_id && by_email.is_none() {
         return Ok(());
     }
     let mut tx = pool.begin().await?;
-    grant_admin(&mut tx, &org.organization_id, account_id).await?;
+    grant_admin(&mut tx, &org.organization_id, account_id, by_email).await?;
     tx.commit().await
 }
 
@@ -120,6 +215,8 @@ pub enum VerifyOutcome {
     Ignored,
     /// Another account holds an active membership with this email.
     EmailInUse,
+    /// An admin removed the account; only a join request admits it again.
+    Removed,
 }
 
 /// Applies `evidence` to `org` for `account_id`: joins, renews, or does
@@ -131,31 +228,35 @@ pub(super) async fn apply_evidence(
     evidence: &SignInEvidence<'_>,
 ) -> Result<VerifyOutcome, sqlx_core::Error> {
     let mut tx = pool.begin().await?;
-    let prior: Option<(Option<chrono::DateTime<Utc>>,)> = query_as(
-        "SELECT lapsed_at FROM cloud_organization_admissions \
+    let prior: Option<(Option<String>,)> = query_as(
+        "SELECT lapse_reason FROM cloud_organization_admissions \
          WHERE organization_id = $1 AND account_id = $2 FOR UPDATE",
     )
     .bind(&org.organization_id)
     .bind(account_id)
     .fetch_optional(&mut *tx)
     .await?;
-    let recorded = if prior.is_some() {
-        PriorAdmission::Recorded
-    } else {
-        PriorAdmission::None
+    let recorded = match prior {
+        None => PriorAdmission::None,
+        Some((Some(reason),)) if reason == "removed" => PriorAdmission::Removed,
+        Some(_) => PriorAdmission::Recorded,
     };
+    if recorded == PriorAdmission::Removed {
+        return Ok(VerifyOutcome::Removed);
+    }
     if decide(org, evidence, recorded) == Decision::Ignore {
         return Ok(VerifyOutcome::Ignored);
     }
     let email = evidence.email.unwrap_or_default();
+    let key = org.email_key(email);
     let in_use: Option<(i32,)> = query_as(
         "SELECT 1 FROM cloud_organization_admissions \
          WHERE organization_id = $1 AND account_id <> $2 AND source = 'domain_claim' \
-           AND lapsed_at IS NULL AND lower(verified_email) = $3",
+           AND lapsed_at IS NULL AND email_key = $3",
     )
     .bind(&org.organization_id)
     .bind(account_id)
-    .bind(email)
+    .bind(&key)
     .fetch_optional(&mut *tx)
     .await?;
     if in_use.is_some() {
@@ -163,17 +264,20 @@ pub(super) async fn apply_evidence(
     }
     query(
         "INSERT INTO cloud_organization_admissions \
-         (organization_id, account_id, source, verified_email, verification_method, verified_at) \
-         VALUES ($1, $2, 'domain_claim', $3, $4, now()) \
+         (organization_id, account_id, source, verified_email, email_key, verification_method, \
+          verified_at) \
+         VALUES ($1, $2, 'domain_claim', $3, $5, $4, now()) \
          ON CONFLICT (organization_id, account_id) DO UPDATE SET \
            source = 'domain_claim', verified_email = EXCLUDED.verified_email, \
+           email_key = EXCLUDED.email_key, \
            verification_method = EXCLUDED.verification_method, verified_at = now(), \
-           expires_at = NULL, lapsed_at = NULL, lapse_reason = NULL",
+           expires_at = NULL, approved_by_account_id = NULL, lapsed_at = NULL, lapse_reason = NULL",
     )
     .bind(&org.organization_id)
     .bind(account_id)
     .bind(email)
     .bind(evidence.method.as_str())
+    .bind(&key)
     .execute(&mut *tx)
     .await?;
     let inserted = add_member(&mut tx, &org.organization_id, account_id).await?;
@@ -211,6 +315,11 @@ pub(super) async fn expire_due(
     only: Option<&str>,
 ) -> Result<Vec<String>, sqlx_core::Error> {
     let mut tx = pool.begin().await?;
+    // Month arithmetic follows the session time zone; pin it so every
+    // replica computes the same due time.
+    query("SET LOCAL TimeZone = 'UTC'")
+        .execute(&mut *tx)
+        .await?;
     let lapsed: Vec<(String,)> = query_as(
         "UPDATE cloud_organization_admissions SET lapsed_at = now(), \
            lapse_reason = CASE WHEN expires_at IS NOT NULL AND expires_at <= now() \
@@ -235,11 +344,51 @@ pub(super) async fn expire_due(
     Ok(lapsed)
 }
 
+/// Removal through the members API of an organization from the file: the
+/// admission lapses (`removed`), so the account no longer holds its verified
+/// email and does not rejoin automatically; an approved join request admits
+/// it again. Configured admins are managed by the file only.
+pub(crate) async fn remove_admitted_member(
+    tx: &mut Tx<'_>,
+    organization_id: &str,
+    account_id: &str,
+) -> Result<(), crate::organizations::ApiError> {
+    let server_error = |_| crate::organizations::server_error();
+    let (configured_admin,): (bool,) = query_as(
+        "SELECT configured_admin FROM cloud_organization_members \
+         WHERE organization_id = $1 AND account_id = $2",
+    )
+    .bind(organization_id)
+    .bind(account_id)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(server_error)?;
+    if configured_admin {
+        return Err(crate::organizations::err(
+            "configured_admin",
+            "This admin is set by deployment configuration.",
+            axum::http::StatusCode::CONFLICT,
+        ));
+    }
+    query(
+        "UPDATE cloud_organization_admissions SET lapsed_at = now(), lapse_reason = 'removed' \
+         WHERE organization_id = $1 AND account_id = $2",
+    )
+    .bind(organization_id)
+    .bind(account_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(server_error)?;
+    end_membership(tx, organization_id, account_id)
+        .await
+        .map_err(server_error)
+}
+
 /// The one place an admitted membership ends. Configured admins keep their
 /// membership. Content ownership rules that follow membership (for example
 /// moving an owner's records back to their personal organization) belong
 /// here, inside the same transaction.
-pub(super) async fn end_membership(
+pub(crate) async fn end_membership(
     tx: &mut Tx<'_>,
     organization_id: &str,
     account_id: &str,
@@ -271,20 +420,37 @@ pub(super) async fn purge_join_requests(
     pool: &PgPool,
     org: &ConfiguredOrganization,
 ) -> Result<u64, sqlx_core::Error> {
+    let mut tx = pool.begin().await?;
+    let deleted = purge_requests(&mut tx, &org.organization_id, org.request_retention_days).await?;
+    tx.commit().await?;
+    Ok(deleted)
+}
+
+async fn purge_requests(
+    tx: &mut Tx<'_>,
+    organization_id: &str,
+    retention_days: u32,
+) -> Result<u64, sqlx_core::Error> {
     let result = query(
         "DELETE FROM cloud_organization_join_requests \
          WHERE organization_id = $1 AND created_at <= now() - make_interval(days => $2::int)",
     )
-    .bind(&org.organization_id)
-    .bind(org.request_retention_days as i32)
-    .execute(pool)
+    .bind(organization_id)
+    .bind(retention_days as i32)
+    .execute(&mut **tx)
     .await?;
     Ok(result.rows_affected())
 }
 
 /// One sweep over every configured organization, disabled ones included, so
-/// a membership never outlives its verification.
+/// a membership never outlives its verification, and over organizations
+/// removed from the file.
 pub async fn sweep(pool: &PgPool, admission: &OrganizationAdmission) {
+    for organization_id in &admission.orphaned {
+        if let Err(error) = retire_orphan(pool, organization_id).await {
+            eprintln!("[organization admission] retire {organization_id}: {error}");
+        }
+    }
     for org in &admission.organizations {
         if let Err(error) = expire_due(pool, org, None).await {
             eprintln!("[organization admission] expire {}: {error}", org.id);

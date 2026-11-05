@@ -16,6 +16,8 @@ use crate::common_ground::tests::db_fixture::{pool, send, signed_in};
 use crate::events::EventBus;
 use crate::server::ServerState;
 
+mod admins;
+mod guards;
 mod join_requests;
 mod reverify;
 
@@ -107,7 +109,7 @@ pub(super) async fn harness_on(
     edit(&mut file["organizations"][0]);
     let admission = parse(&file, &serde_json::to_string(admins).unwrap())
         .unwrap()
-        .sync(&pool)
+        .sync_configured(&pool)
         .await
         .unwrap();
     let sender = Arc::new(CapturingSender(Mutex::new(None)));
@@ -133,12 +135,16 @@ async fn sync_is_idempotent_and_keeps_configured_admins_in_step() {
     let admins = serde_json::to_string(&[&admin]).unwrap();
     let first = parse(&sample_file(&id), &admins)
         .unwrap()
-        .sync(&pool)
+        .sync_configured(&pool)
         .await
         .unwrap();
     let mut renamed = sample_file(&id);
     renamed["organizations"][0]["displayName"] = "Example Research Group".into();
-    let second = parse(&renamed, &admins).unwrap().sync(&pool).await.unwrap();
+    let second = parse(&renamed, &admins)
+        .unwrap()
+        .sync_configured(&pool)
+        .await
+        .unwrap();
     let organization_id = &first.organizations[0].organization_id;
     assert!(organization_id.starts_with("org_"));
     assert_eq!(organization_id, &second.organizations[0].organization_id);
@@ -158,7 +164,11 @@ async fn sync_is_idempotent_and_keeps_configured_admins_in_step() {
     );
 
     // Dropped from the variable and never admitted otherwise: removed.
-    parse(&renamed, "[]").unwrap().sync(&pool).await.unwrap();
+    parse(&renamed, "[]")
+        .unwrap()
+        .sync_configured(&pool)
+        .await
+        .unwrap();
     let left: Option<(String,)> = query_as(
         "SELECT role FROM cloud_organization_members WHERE organization_id = $1 AND account_id = $2",
     )
@@ -339,25 +349,4 @@ async fn an_organization_email_code_joins_once_per_email() {
         (409, Some("organization_email_in_use"))
     );
     assert_eq!(h.role(&sam).await, None);
-}
-
-#[tokio::test]
-async fn a_configured_admin_email_is_recognized_at_sign_in() {
-    let Some(pool) = pool().await else { return };
-    let (admin, _) = signed_in(&pool, "adm_late").await;
-    let email = format!("{admin}@example.test");
-    let h = harness_on(
-        pool,
-        |o| o["admission"]["claimedDomains"] = serde_json::json!(["other.test"]),
-        &[&email],
-    )
-    .await;
-    assert_eq!(
-        h.role(&admin).await,
-        None,
-        "the primary email is not verified yet"
-    );
-    h.sign_in(&admin, SignInMethod::Github, &email, true, None)
-        .await;
-    assert_eq!(h.role(&admin).await.as_deref(), Some("admin"));
 }

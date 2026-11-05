@@ -76,6 +76,7 @@ pub(super) fn organization(
         auto_join_methods: admission.auto_join_methods,
         reverify_interval_months: admission.reverify_interval_months,
         google_sign_in_reverifies: admission.google_sign_in_reverifies,
+        strip_subaddress: admission.strip_subaddress.unwrap_or(true),
         join_requests,
         request_retention_days,
         membership: org.membership,
@@ -90,7 +91,7 @@ fn join_requests(
 ) -> Result<(Option<JoinRequestPolicy>, u32), String> {
     let Approval::OrganizationAdmins = file.approval;
     let approved_membership_expiry = match &file.approved_membership_expiry {
-        Value::Null => ApprovedMembershipExpiry::Never,
+        Value::Null => ApprovedMembershipExpiry::SetByApprover,
         Value::String(s) if s == "set_by_approver" => ApprovedMembershipExpiry::SetByApprover,
         Value::Number(n) => match n.as_u64() {
             Some(days @ 1..=3650) => ApprovedMembershipExpiry::Days(days as u32),
@@ -244,4 +245,33 @@ fn valid_domain(value: &str) -> bool {
                     .bytes()
                     .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
         })
+}
+
+/// Second-level labels that registries commonly sell under, so a two-label
+/// domain starting with one (such as `ac.` or `co.` followed by a country
+/// code) is likely a public suffix.
+const REGISTRY_LABELS: [&str; 10] = [
+    "ac", "co", "com", "edu", "gov", "net", "org", "sch", "ltd", "mil",
+];
+
+/// Warnings for valid but risky values: a `subdomains` claim on what looks
+/// like a public suffix would admit every institution under it.
+pub(super) fn warnings(org: &ConfiguredOrganization) -> Vec<String> {
+    if org.claim.domain_match != DomainMatch::Subdomains {
+        return Vec::new();
+    }
+    org.claim
+        .domains
+        .iter()
+        .filter(|domain| {
+            let labels: Vec<&str> = domain.split('.').collect();
+            labels.len() == 2 && REGISTRY_LABELS.contains(&labels[0])
+        })
+        .map(|domain| {
+            format!(
+                "{FILE_ENV}: organization `{}` claims `{domain}` with subdomains; it looks like a public suffix",
+                org.id
+            )
+        })
+        .collect()
 }

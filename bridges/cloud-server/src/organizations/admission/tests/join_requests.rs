@@ -160,8 +160,9 @@ async fn a_rejected_request_blocks_another_until_purged() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(h.role(&applicant).await, None);
     let entry = h.entry(&token).await;
-    assert_eq!(entry["admission"], "join", "{entry}");
+    assert_eq!(entry["admission"], "rejected", "{entry}");
     assert_eq!(entry["joinRequest"]["status"], "rejected");
+    assert_eq!(entry["joinOptions"]["joinRequest"], false);
     let (status, _) = send(&h.app, "POST", &submit, &token, Some(request)).await;
     assert_eq!(status, 409);
 }

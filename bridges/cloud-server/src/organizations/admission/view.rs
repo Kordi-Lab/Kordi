@@ -19,6 +19,9 @@ pub enum AdmissionState {
     Join,
     /// The caller's join request awaits an admin.
     Pending,
+    /// An admin rejected the caller's request; another is possible once the
+    /// request is purged after the retention period.
+    Rejected,
     Member,
     /// A member whose verification is due soon.
     Reverify,
@@ -38,6 +41,7 @@ pub struct CallerFacts {
     pub verified_at: Option<DateTime<Utc>>,
     pub expires_at: Option<DateTime<Utc>>,
     pub lapsed_at: Option<DateTime<Utc>>,
+    pub lapse_reason: Option<String>,
     /// Status of the caller's open join request (`pending` or `rejected`).
     pub request_status: Option<String>,
 }
@@ -57,14 +61,27 @@ pub struct CallerState {
     pub reverify_by: Option<DateTime<Utc>>,
 }
 
-pub fn join_options(org: &ConfiguredOrganization) -> JoinOptions {
+/// The join paths that would succeed for the caller: a removed member
+/// rejoins only by request, and a rejected request blocks another.
+pub fn join_options(org: &ConfiguredOrganization, facts: &CallerFacts) -> JoinOptions {
     let open = org.state.admits();
+    let removed = facts.lapse_reason.as_deref() == Some("removed");
     JoinOptions {
         email_code: open
+            && !removed
             && org.auto_joins(SignInMethod::EmailCode)
             && !org.claim.domains.is_empty(),
-        join_request: open && org.join_requests.is_some(),
+        join_request: open && org.join_requests.is_some() && facts.request_status.is_none(),
     }
+}
+
+/// Whether the caller's membership is past its verification or approval
+/// and must be expired before it is shown.
+pub fn is_due(org: &ConfiguredOrganization, facts: &CallerFacts, now: DateTime<Utc>) -> bool {
+    facts.is_member
+        && facts.lapsed_at.is_none()
+        && (facts.expires_at.is_some_and(|at| at <= now)
+            || reverify_by(org, facts).is_some_and(|at| at <= now))
 }
 
 pub fn reverify_by(org: &ConfiguredOrganization, facts: &CallerFacts) -> Option<DateTime<Utc>> {
@@ -80,7 +97,7 @@ pub fn caller_state(
     facts: &CallerFacts,
     now: DateTime<Utc>,
 ) -> CallerState {
-    let options = join_options(org);
+    let options = join_options(org, facts);
     let reverify_by = reverify_by(org, facts).filter(|_| facts.lapsed_at.is_none());
     let state = if facts.is_member {
         match reverify_by {
@@ -93,6 +110,8 @@ pub fn caller_state(
         AdmissionState::NotOpen
     } else if facts.request_status.as_deref() == Some("pending") {
         AdmissionState::Pending
+    } else if facts.request_status.as_deref() == Some("rejected") {
+        AdmissionState::Rejected
     } else if facts.lapsed_at.is_some() {
         AdmissionState::Lapsed
     } else if options.email_code || options.join_request {

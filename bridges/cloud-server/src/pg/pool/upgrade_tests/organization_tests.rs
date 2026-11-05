@@ -137,3 +137,66 @@ async fn upgrade_from_161_adds_personal_organizations_and_ownership() {
         "a personal organization has only its owner"
     );
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_166_adds_organization_admission() {
+    let pool = fixture(166).await;
+    execute(&pool, "INSERT INTO cloud_organizations(organization_id,name,kind,created_by_account_id) VALUES('org_fixture_team','Team','team','fixture-owner')").await;
+    execute(&pool, "INSERT INTO cloud_organization_members(organization_id,account_id,role) VALUES('org_fixture_team','fixture-owner','owner'),('org_fixture_team','fixture-peer','member')").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+
+    // Existing members keep their roles and are not configured admins.
+    let members: Vec<(String, String, bool, Option<String>)> = query_as(
+        "SELECT account_id, role, configured_admin, configured_admin_email \
+         FROM cloud_organization_members WHERE organization_id = 'org_fixture_team' \
+         ORDER BY account_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        members,
+        vec![
+            ("fixture-owner".into(), "owner".into(), false, None),
+            ("fixture-peer".into(), "member".into(), false, None),
+        ]
+    );
+    let config_ids: Vec<(Option<String>,)> =
+        query_as("SELECT DISTINCT config_id FROM cloud_organizations")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(config_ids, vec![(None,)]);
+    // A configuration id belongs to a team organization only.
+    assert!(
+        query("UPDATE cloud_organizations SET config_id = 'example' WHERE kind = 'personal'")
+            .execute(&pool)
+            .await
+            .is_err()
+    );
+    query("UPDATE cloud_organizations SET config_id = 'example' WHERE organization_id = 'org_fixture_team'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    for table in [
+        "cloud_organization_admissions",
+        "cloud_organization_join_requests",
+        "cloud_organization_email_codes",
+    ] {
+        let (count,): (i64,) = query_as(&format!("SELECT count(*) FROM {table}"))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 0, "{table}");
+    }
+    let hosted: Vec<(Option<String>,)> =
+        query_as("SELECT hosted_domain FROM cloud_account_identities")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert!(hosted.iter().all(|(hd,)| hd.is_none()));
+}

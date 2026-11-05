@@ -419,8 +419,8 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
     ),
     migration!(165, "browser sign-in for apps", "0165_browser_sign_in.sql"),
     migration!(
-        166,
+        167,
         "organization admission",
-        "0166_organization_admission.sql"
+        "0167_organization_admission.sql"
     ),
 ];

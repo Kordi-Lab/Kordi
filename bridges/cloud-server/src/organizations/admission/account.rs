@@ -19,7 +19,7 @@ use super::config::{
     ConfiguredOrganization, EntryPage, JoinRequestField, OrganizationState, SignInMethod,
 };
 use super::store::{apply_evidence, expire_due, VerifyOutcome};
-use super::view::{caller_state, AdmissionState, CallerFacts, JoinOptions};
+use super::view::{caller_state, is_due, AdmissionState, CallerFacts, JoinOptions};
 use super::{error, not_configured};
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, EMAIL_VERIFICATION_LIMIT};
 use crate::auth::routes::CloudSession;
@@ -63,18 +63,17 @@ type FactsRow = (
     Option<DateTime<Utc>>,
     Option<String>,
     Option<String>,
+    Option<String>,
     Option<DateTime<Utc>>,
 );
 
-async fn configured_view<'a>(
+async fn load_facts(
     pool: &PgPool,
-    org: &'a ConfiguredOrganization,
+    org: &ConfiguredOrganization,
     account_id: &str,
-) -> Result<ConfiguredView<'a>, sqlx_core::Error> {
-    // A membership past its verification ends before it is shown.
-    expire_due(pool, org, Some(account_id)).await?;
+) -> Result<(CallerFacts, Option<OpenRequest>), sqlx_core::Error> {
     let row: FactsRow = query_as(
-        "SELECT m.role, a.source, a.verified_at, a.expires_at, a.lapsed_at, \
+        "SELECT m.role, a.source, a.verified_at, a.expires_at, a.lapsed_at, a.lapse_reason, \
                 r.request_id, r.status, r.created_at \
          FROM (SELECT 1) one \
          LEFT JOIN cloud_organization_members m \
@@ -88,16 +87,26 @@ async fn configured_view<'a>(
     .bind(account_id)
     .fetch_one(pool)
     .await?;
-    let (role, source, verified_at, expires_at, lapsed_at, request_id, status, created_at) = row;
+    let (
+        role,
+        source,
+        verified_at,
+        expires_at,
+        lapsed_at,
+        lapse_reason,
+        request_id,
+        status,
+        created_at,
+    ) = row;
     let facts = CallerFacts {
         is_member: role.is_some(),
         source,
         verified_at,
         expires_at,
         lapsed_at,
+        lapse_reason,
         request_status: status.clone(),
     };
-    let caller = caller_state(org, &facts, Utc::now());
     let join_request = match (request_id, status, created_at) {
         (Some(request_id), Some(status), Some(created_at)) => Some(OpenRequest {
             request_id,
@@ -106,6 +115,23 @@ async fn configured_view<'a>(
         }),
         _ => None,
     };
+    Ok((facts, join_request))
+}
+
+async fn configured_view<'a>(
+    pool: &PgPool,
+    org: &'a ConfiguredOrganization,
+    account_id: &str,
+) -> Result<ConfiguredView<'a>, sqlx_core::Error> {
+    let now = Utc::now();
+    let (mut facts, mut join_request) = load_facts(pool, org, account_id).await?;
+    // A membership past its verification ends before it is shown; reads
+    // write only then, and the hourly sweep handles everyone else.
+    if is_due(org, &facts, now) {
+        expire_due(pool, org, Some(account_id)).await?;
+        (facts, join_request) = load_facts(pool, org, account_id).await?;
+    }
+    let caller = caller_state(org, &facts, now);
     Ok(ConfiguredView {
         id: &org.id,
         organization_id: &org.organization_id,
@@ -323,6 +349,14 @@ pub(super) async fn verify_email_code(
     match apply_evidence(pool, org, &session.account_id, &evidence).await {
         Ok(VerifyOutcome::Joined | VerifyOutcome::Renewed) => {}
         Ok(VerifyOutcome::Ignored) => return email_not_claimed().into_response(),
+        Ok(VerifyOutcome::Removed) => {
+            return error(
+                "membership_removed",
+                "An admin removed you from this organization. Send a join request instead.",
+                StatusCode::FORBIDDEN,
+            )
+            .into_response()
+        }
         Ok(VerifyOutcome::EmailInUse) => {
             return error(
                 "organization_email_in_use",

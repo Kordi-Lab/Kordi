@@ -156,7 +156,10 @@ fn approved_membership_expiry_forms() {
                 .approved_membership_expiry
         })
     };
-    assert_eq!(expiry(json!(null)), Ok(ApprovedMembershipExpiry::Never));
+    assert_eq!(
+        expiry(json!(null)),
+        Ok(ApprovedMembershipExpiry::SetByApprover)
+    );
     assert_eq!(expiry(json!(90)), Ok(ApprovedMembershipExpiry::Days(90)));
     assert!(expiry(json!("forever")).is_err());
     assert!(expiry(json!(0)).is_err());
@@ -188,4 +191,30 @@ fn admins_come_from_the_named_variable_and_are_never_echoed() {
     disabled["organizations"][0]["state"] = json!("disabled");
     let parsed = OrganizationAdmission::parse(&disabled.to_string(), |_| None).unwrap();
     assert!(parsed.organizations[0].admins.account_ids.is_empty());
+}
+
+#[test]
+fn email_keys_strip_subaddresses_by_default() {
+    let org = super::super::test_support::organization(|_| {});
+    assert!(org.strip_subaddress);
+    assert_eq!(org.email_key(" Lab+A@Example.test "), "lab@example.test");
+    assert_eq!(org.email_key("lab@example.test"), "lab@example.test");
+    let literal = super::super::test_support::organization(|o| {
+        o["admission"]["stripSubaddress"] = json!(false)
+    });
+    assert_eq!(
+        literal.email_key("Lab+A@example.test"),
+        "lab+a@example.test"
+    );
+}
+
+#[test]
+fn subdomain_claims_on_public_suffixes_warn() {
+    let mut file = sample_file("example-research");
+    file["organizations"][0]["admission"]["domainMatch"] = json!("subdomains");
+    file["organizations"][0]["admission"]["claimedDomains"] = json!(["ac.test", "example.test"]);
+    let admission = parse(&file, "[]").unwrap();
+    assert_eq!(admission.warnings.len(), 1, "{:?}", admission.warnings);
+    assert!(admission.warnings[0].contains("ac.test"));
+    assert!(parse(&sample_file("x"), "[]").unwrap().warnings.is_empty());
 }

@@ -84,6 +84,7 @@ tests=(
   personal_agent_tests::upgrade_from_156_adds_personal_agents
   personal_agent_tests::upgrade_from_157_indexes_personal_agent_reads
   organization_tests::upgrade_from_161_adds_personal_organizations_and_ownership
+  organization_tests::upgrade_from_166_adds_organization_admission
 )
 index=0
 for test_name in "${tests[@]}"; do

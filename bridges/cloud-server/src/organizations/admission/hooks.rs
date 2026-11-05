@@ -17,8 +17,7 @@ pub async fn record_sign_in(
     evidence: SignInEvidence<'_>,
 ) {
     for org in &admission.organizations {
-        let verified_email = evidence.email.filter(|_| evidence.email_verified);
-        if let Err(error) = ensure_configured_admin(pool, org, account_id, verified_email).await {
+        if let Err(error) = ensure_configured_admin(pool, org, account_id, &evidence).await {
             eprintln!(
                 "[organization admission] admin check for {}: {error}",
                 org.id

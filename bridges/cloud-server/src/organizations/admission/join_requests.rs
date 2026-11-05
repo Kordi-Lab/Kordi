@@ -271,17 +271,27 @@ pub(super) struct ApproveRequest {
     expires_at: Option<String>,
 }
 
-/// The membership expiry for an approval under `policy`, or the error.
+/// When a membership approved now ends under `policy`, or the error. An
+/// approval always ends: without an approver's `expiresAt` the
+/// re-verification interval applies, and without one `expiresAt` is required.
 pub fn approved_expiry(
     policy: ApprovedMembershipExpiry,
     requested: Option<&str>,
+    interval_months: Option<u32>,
     now: DateTime<Utc>,
-) -> Result<Option<DateTime<Utc>>, ApiError> {
+) -> Result<DateTime<Utc>, ApiError> {
     let invalid = |message: &'static str| error("invalid_expiry", message, StatusCode::BAD_REQUEST);
     match (policy, requested) {
-        (ApprovedMembershipExpiry::Never, None) => Ok(None),
-        (ApprovedMembershipExpiry::Days(days), None) => Ok(Some(now + Duration::days(days.into()))),
-        (ApprovedMembershipExpiry::SetByApprover, None) => Ok(None),
+        (ApprovedMembershipExpiry::Days(days), None) => Ok(now + Duration::days(days.into())),
+        (ApprovedMembershipExpiry::SetByApprover, None) => interval_months
+            .and_then(|months| now.checked_add_months(chrono::Months::new(months)))
+            .ok_or_else(|| {
+                error(
+                    "expiry_required",
+                    "Give expiresAt: this organization has no default membership period.",
+                    StatusCode::BAD_REQUEST,
+                )
+            }),
         (ApprovedMembershipExpiry::SetByApprover, Some(value)) => {
             let at = DateTime::parse_from_rfc3339(value)
                 .map_err(|_| invalid("expiresAt must be an RFC 3339 time."))?
@@ -291,7 +301,7 @@ pub fn approved_expiry(
                     "expiresAt must be in the future and within ten years.",
                 ));
             }
-            Ok(Some(at))
+            Ok(at)
         }
         (_, Some(_)) => Err(invalid("This organization sets membership expiry itself.")),
     }
@@ -355,11 +365,12 @@ async fn decide(
         .ok_or_else(requests_closed)?;
     let now = Utc::now();
     let expires_at = match &approval {
-        Some(body) => approved_expiry(
+        Some(body) => Some(approved_expiry(
             policy.approved_membership_expiry,
             body.expires_at.as_deref(),
+            org.reverify_interval_months,
             now,
-        )?,
+        )?),
         None => None,
     };
     let mut tx = state.db_pool().begin().await.map_err(|_| server_error())?;

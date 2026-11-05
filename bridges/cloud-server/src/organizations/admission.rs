@@ -72,15 +72,19 @@ pub async fn load(pool: &sqlx_postgres::PgPool) -> Result<OrganizationAdmission,
         .await
         .map_err(|error| leak(format!("sync configured organizations: {error}")))?;
     println!(
-        "Kordi configured organizations: {}",
-        admission.organizations.len()
+        "Kordi configured organizations: {} (removed from the file: {})",
+        admission.organizations.len(),
+        admission.orphaned.len()
     );
+    for warning in &admission.warnings {
+        eprintln!("[organization admission] warning: {warning}");
+    }
     Ok(admission)
 }
 
 /// Expires lapsed memberships and purges old join requests every hour.
 pub fn spawn(state: Arc<ServerState>) {
-    if state.organization_admission().is_empty() {
+    if !state.organization_admission().needs_sweep() {
         return;
     }
     tokio::spawn(async move {

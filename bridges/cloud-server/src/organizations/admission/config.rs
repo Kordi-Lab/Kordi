@@ -70,12 +70,13 @@ enum Approval {
     OrganizationAdmins,
 }
 
-/// When a membership approved from a join request ends.
+/// When a membership approved from a join request ends. Approved
+/// memberships always end: there is no "never".
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ApprovedMembershipExpiry {
-    /// `null`: approved memberships do not expire.
-    Never,
-    /// `"set_by_approver"`: the approver may give an `expiresAt`.
+    /// `"set_by_approver"` or `null` (undecided): the approver may give an
+    /// `expiresAt`; otherwise the re-verification interval applies, and
+    /// without one the approver must give it.
     SetByApprover,
     /// A whole number: this many days after approval.
     Days(u32),
@@ -118,6 +119,8 @@ struct AdmissionFile {
     auto_join_methods: Vec<SignInMethod>,
     reverify_interval_months: Option<u32>,
     google_sign_in_reverifies: bool,
+    /// Optional; defaults to true.
+    strip_subaddress: Option<bool>,
     join_requests: JoinRequestsFile,
 }
 
@@ -202,6 +205,9 @@ pub struct ConfiguredOrganization {
     pub auto_join_methods: Vec<SignInMethod>,
     pub reverify_interval_months: Option<u32>,
     pub google_sign_in_reverifies: bool,
+    /// Treat `local+tag@domain` as `local@domain` when checking that one
+    /// inbox admits one account.
+    pub strip_subaddress: bool,
     /// `None` when join requests are disabled.
     pub join_requests: Option<JoinRequestPolicy>,
     /// Join requests older than this are deleted, enabled or not.
@@ -215,6 +221,19 @@ impl ConfiguredOrganization {
     pub fn auto_joins(&self, method: SignInMethod) -> bool {
         self.auto_join_methods.contains(&method)
     }
+
+    /// The inbox an email reaches, for the one-account-per-inbox rule:
+    /// lowercase, and without a `+tag` when `stripSubaddress` is on.
+    pub fn email_key(&self, email: &str) -> String {
+        let email = email.trim().to_ascii_lowercase();
+        match email.rsplit_once('@') {
+            Some((local, domain)) if self.strip_subaddress => {
+                let local = local.split_once('+').map_or(local, |(base, _)| base);
+                format!("{local}@{domain}")
+            }
+            _ => email,
+        }
+    }
 }
 
 /// The parsed admission file. The default has no configured organization,
@@ -223,6 +242,11 @@ impl ConfiguredOrganization {
 pub struct OrganizationAdmission {
     pub personal_pool: Option<String>,
     pub organizations: Vec<ConfiguredOrganization>,
+    /// Database organizations with a configuration id no longer in the
+    /// file, filled by startup sync. They are swept as removed.
+    pub orphaned: Vec<String>,
+    /// Startup warnings about risky but valid values.
+    pub warnings: Vec<String>,
 }
 
 impl OrganizationAdmission {
@@ -272,10 +296,18 @@ impl OrganizationAdmission {
             }
             organizations.push(org);
         }
+        let warnings = organizations.iter().flat_map(parse::warnings).collect();
         Ok(Self {
             personal_pool,
             organizations,
+            orphaned: Vec::new(),
+            warnings,
         })
+    }
+
+    /// Whether the sweep has anything to do.
+    pub fn needs_sweep(&self) -> bool {
+        !self.organizations.is_empty() || !self.orphaned.is_empty()
     }
 
     pub fn is_empty(&self) -> bool {

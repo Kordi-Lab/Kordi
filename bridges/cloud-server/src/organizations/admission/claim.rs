@@ -22,6 +22,9 @@ pub enum PriorAdmission {
     None,
     /// Admitted before; the membership may be current or lapsed.
     Recorded,
+    /// An admin removed the member: only an approved join request admits
+    /// the account again.
+    Removed,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,23 +63,16 @@ pub fn decide(
     evidence: &SignInEvidence<'_>,
     prior: PriorAdmission,
 ) -> Decision {
-    if !org.state.admits() || !evidence.email_verified || !org.auto_joins(evidence.method) {
-        return Decision::Ignore;
-    }
-    let Some(email) = evidence.email else {
-        return Decision::Ignore;
-    };
-    if !org.claim.covers_email(email) {
+    if prior == PriorAdmission::Removed
+        || !org.auto_joins(evidence.method)
+        || !proves_email(org, evidence)
+        || !evidence
+            .email
+            .is_some_and(|email| org.claim.covers_email(email))
+    {
         return Decision::Ignore;
     }
     if evidence.method == SignInMethod::Google {
-        if org.claim.require_google_hosted_domain
-            && !evidence
-                .hosted_domain
-                .is_some_and(|hd| org.claim.covers(hd))
-        {
-            return Decision::Ignore;
-        }
         // Without `googleSignInReverifies`, Google admits only a first join;
         // renewing or returning after a lapse needs another method.
         if prior == PriorAdmission::Recorded && !org.google_sign_in_reverifies {
@@ -84,6 +80,27 @@ pub fn decide(
         }
     }
     Decision::Verify
+}
+
+/// Whether `evidence` proves its email under `org`'s rules: verified, the
+/// organization open, and either an inbox code or an auto-join method whose
+/// Google hosted-domain rule holds. Configured admins listed by email are
+/// recognized only with such proof.
+pub fn proves_email(org: &ConfiguredOrganization, evidence: &SignInEvidence<'_>) -> bool {
+    if !org.state.admits() || !evidence.email_verified || evidence.email.is_none() {
+        return false;
+    }
+    match evidence.method {
+        SignInMethod::EmailCode => true,
+        SignInMethod::Google => {
+            org.auto_joins(SignInMethod::Google)
+                && (!org.claim.require_google_hosted_domain
+                    || evidence
+                        .hosted_domain
+                        .is_some_and(|hd| org.claim.covers(hd)))
+        }
+        SignInMethod::Github => org.auto_joins(SignInMethod::Github),
+    }
 }
 
 #[cfg(test)]

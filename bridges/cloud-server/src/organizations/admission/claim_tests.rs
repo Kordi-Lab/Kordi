@@ -161,3 +161,33 @@ fn google_renews_only_when_configured_to() {
         Decision::Verify
     );
 }
+
+#[test]
+fn proof_of_an_email_follows_the_organizations_rules() {
+    let org = organization(|_| {});
+    assert!(proves_email(&org, &evidence(EmailCode, ALEX, true, None)));
+    assert!(proves_email(
+        &org,
+        &evidence(Google, ALEX, true, Some("example.test"))
+    ));
+    assert!(!proves_email(&org, &evidence(Google, ALEX, true, None)));
+    assert!(!proves_email(&org, &evidence(Github, ALEX, true, None)));
+    assert!(!proves_email(&org, &evidence(EmailCode, ALEX, false, None)));
+    let disabled = organization(|o| o["state"] = json!("disabled"));
+    assert!(!proves_email(
+        &disabled,
+        &evidence(EmailCode, ALEX, true, None)
+    ));
+}
+
+#[test]
+fn a_removed_member_is_never_readmitted_by_sign_in() {
+    let org = organization(|_| {});
+    for method in [Google, EmailCode] {
+        let proof = evidence(method, ALEX, true, Some("example.test"));
+        assert_eq!(
+            decide(&org, &proof, PriorAdmission::Removed),
+            Decision::Ignore
+        );
+    }
+}

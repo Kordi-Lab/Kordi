@@ -27,9 +27,11 @@ END;
 $$;
 
 -- Admins named by the admission file. Startup and sign-in keep this flag in
--- step with the file; members without it are managed through the API.
+-- step with the file. An admin listed by email records the email that a
+-- qualifying sign-in proved, so the grant lasts only while it is listed.
 ALTER TABLE cloud_organization_members
-    ADD COLUMN IF NOT EXISTS configured_admin BOOLEAN NOT NULL DEFAULT false;
+    ADD COLUMN IF NOT EXISTS configured_admin BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS configured_admin_email TEXT;
 
 -- The Google hosted domain (`hd`) from the provider's ID token at the last
 -- sign-in. NULL for other providers and personal Google accounts.
@@ -47,6 +49,9 @@ CREATE TABLE IF NOT EXISTS cloud_organization_admissions (
     source                 TEXT NOT NULL
         CHECK (source IN ('domain_claim', 'join_request')),
     verified_email         TEXT,
+    -- The inbox the email reaches (lowercase, without a +tag when the
+    -- organization strips subaddresses), for one account per inbox.
+    email_key              TEXT,
     verification_method    TEXT
         CHECK (verification_method IN ('google', 'email_code', 'github')),
     verified_at            TIMESTAMPTZ NOT NULL,
@@ -55,17 +60,19 @@ CREATE TABLE IF NOT EXISTS cloud_organization_admissions (
         REFERENCES cloud_accounts (account_id) ON DELETE SET NULL,
     lapsed_at              TIMESTAMPTZ,
     lapse_reason           TEXT
-        CHECK (lapse_reason IN ('reverification_due', 'approval_expired')),
+        CHECK (lapse_reason IN (
+            'reverification_due', 'approval_expired', 'removed', 'organization_removed'
+        )),
     PRIMARY KEY (organization_id, account_id),
     CONSTRAINT cloud_organization_admissions_lapse_check
         CHECK ((lapsed_at IS NULL) = (lapse_reason IS NULL))
 );
 
--- One active domain-claim membership per verified email and organization,
--- so one inbox cannot admit several accounts.
+-- One active domain-claim membership per inbox and organization, so one
+-- inbox cannot admit several accounts.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_organization_admissions_email
-    ON cloud_organization_admissions (organization_id, lower(verified_email))
-    WHERE source = 'domain_claim' AND lapsed_at IS NULL AND verified_email IS NOT NULL;
+    ON cloud_organization_admissions (organization_id, email_key)
+    WHERE source = 'domain_claim' AND lapsed_at IS NULL AND email_key IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_cloud_organization_admissions_due
     ON cloud_organization_admissions (organization_id, verified_at)

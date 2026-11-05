@@ -47,18 +47,22 @@ fn approval_expiry_follows_the_policy() {
     let later = (now + Duration::days(30)).to_rfc3339();
     let past = (now - Duration::days(1)).to_rfc3339();
     use ApprovedMembershipExpiry::*;
-    assert_eq!(approved_expiry(Never, None, now).unwrap(), None);
-    assert!(approved_expiry(Never, Some(&later), now).is_err());
     assert_eq!(
-        approved_expiry(Days(90), None, now).unwrap(),
-        Some(now + Duration::days(90))
+        approved_expiry(Days(90), None, Some(6), now).unwrap(),
+        now + Duration::days(90)
     );
-    assert!(approved_expiry(Days(90), Some(&later), now).is_err());
-    assert_eq!(approved_expiry(SetByApprover, None, now).unwrap(), None);
+    assert!(approved_expiry(Days(90), Some(&later), Some(6), now).is_err());
+    // Without an approver's date the re-verification interval applies.
     assert_eq!(
-        approved_expiry(SetByApprover, Some(&later), now).unwrap(),
-        Some(now + Duration::days(30))
+        approved_expiry(SetByApprover, None, Some(6), now).unwrap(),
+        Utc.with_ymd_and_hms(2030, 7, 1, 0, 0, 0).unwrap()
     );
-    assert!(approved_expiry(SetByApprover, Some(&past), now).is_err());
-    assert!(approved_expiry(SetByApprover, Some("tomorrow"), now).is_err());
+    let required = approved_expiry(SetByApprover, None, None, now).unwrap_err();
+    assert_eq!(required.code, "expiry_required");
+    assert_eq!(
+        approved_expiry(SetByApprover, Some(&later), None, now).unwrap(),
+        now + Duration::days(30)
+    );
+    assert!(approved_expiry(SetByApprover, Some(&past), Some(6), now).is_err());
+    assert!(approved_expiry(SetByApprover, Some("tomorrow"), Some(6), now).is_err());
 }

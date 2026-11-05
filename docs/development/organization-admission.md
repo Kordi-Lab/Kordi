@@ -24,29 +24,38 @@ limit falls back to a bounded server default, never to unlimited.
 | `organizations[].id` | Configuration id, 1-63 lowercase letters, digits or hyphens. Startup creates or updates one team organization per id (`cloud_organizations.config_id`). |
 | `displayName` | Organization name, at most 120 characters; updated on every start. |
 | `state` | `disabled`: no domain claim, no auto-join, no join requests. `interim` and `active`: admission works. |
-| `pool`, `targetPool` | Pool bindings, carried for pool work. Admission does not read them. |
+| `pool`, `targetPool` | Pool bindings, carried for pool work. Admission does not read them, and does not enforce that work bound to a missing pool is rejected: that belongs to the resource pool and pool worker changes. |
 | `admission.claimedDomains` | Lowercase domains, at most 20. |
 | `admission.domainMatch` | `exact` (the domain only) or `subdomains` (the domain and its subdomains; lookalike domains never match). |
 | `admission.requireGoogleHostedDomain` | Google sign-in also needs the ID token's `hd` in a claimed domain. |
 | `admission.autoJoinMethods` | Which verified evidence joins: `google`, `email_code`, `github`. GitHub joins only when listed. |
 | `admission.reverifyIntervalMonths` | 1-120, or `null` for no re-verification. |
 | `admission.googleSignInReverifies` | Whether a qualifying Google sign-in renews a membership. When `false`, Google joins only an account never admitted before; renewing needs an email code. |
+| `admission.stripSubaddress` | Optional, default `true`: `local+tag@domain` counts as `local@domain` for the one-account-per-inbox rule. |
 | `admission.joinRequests.enabled` | Whether accounts may ask to join. |
 | `admission.joinRequests.approval` | Must be `organization_admins` (owners and admins of the organization). |
 | `admission.joinRequests.fields[]` | Up to 10 fields: `key` (letters, digits, underscores), `label`, `required` (`null` = not required), `maxLength` (1-4000, `null` = 1000). |
 | `admission.joinRequests.retentionDays` | 1-365; requests and their field values are deleted this long after submission. Required while enabled; `null` while disabled purges after 30 days. |
-| `admission.joinRequests.approvedMembershipExpiry` | `null` (approved memberships do not expire), `"set_by_approver"` (approval may give `expiresAt`), or a number of days (1-3650). |
+| `admission.joinRequests.approvedMembershipExpiry` | `"set_by_approver"` or `null` (undecided): the approver may give `expiresAt`, otherwise the membership ends after `reverifyIntervalMonths`, and without an interval `expiresAt` is required. A number (1-3650) sets that many days. Approved memberships always end. |
 | `membership.requireMemberOwner`, `outsidersAllowed`, `workEndBoundSeconds` | Carried for ownership and pool work; admission does not enforce them. |
-| `adminsEnv` | Name of an environment variable holding a JSON array of admins: account ids (`acct_…`) or emails. Required for `interim` and `active`; the value is never logged. |
+| `adminsEnv` | Name of an environment variable holding a JSON array of admins: account ids (`acct_…`, the stronger option) or emails. Required for `interim` and `active`; the value is never logged. |
 | `entryPage.title`, `summary`, `joinLabel`, `notOpenText` | Copy for the account page. |
 
 ## Admins
 
-Startup grants `admin` to every listed account id and to accounts whose
-verified primary email is listed (`cloud_organization_members.configured_admin`).
-A listed email that signs up later becomes admin at its next verified sign-in.
-An account dropped from the list loses the flag, and its membership unless an
-admission still backs it. Configured admins never lapse.
+Startup grants `admin` to every listed account id
+(`cloud_organization_members.configured_admin`). A listed email is granted
+only at a sign-in that proves it under the organization's own rules: an
+email code, or an auto-join method that passes the hosted-domain rule (so
+GitHub, or Google without a matching `hd`, does not count unless the rules
+admit it). The grant records that email and lasts while it is listed.
+Account ids are the stronger option because they do not depend on email
+proof.
+
+A disabled organization has no configured admins. An account dropped from
+the list loses the flag, and its membership unless an admission still backs
+it; owners keep their role. Configured admins never lapse and cannot be
+removed through the members API.
 
 ## Domain claims
 
@@ -67,7 +76,8 @@ email itself:
 Evidence admits when the organization is not `disabled`, the email is
 verified, its domain is claimed, the method is in `autoJoinMethods`, and for
 Google the `hd` rule holds. Unverified or forged emails never join. One
-active domain-claim membership per email and organization.
+active domain-claim membership per inbox and organization (see
+`stripSubaddress`).
 
 A sign-in hook never fails a sign-in: errors are logged and nothing is
 granted.
@@ -81,13 +91,28 @@ granted.
 (domain claims) or `expires_at` passes (approvals): the record keeps
 `lapsed_at` and `lapse_reason`, the membership row is removed, and an
 `organization.membership_lapsed` audit event is written. A worker sweeps
-hourly; the account endpoint also expires the caller's due memberships
-before answering. All memberships end in `store::end_membership`, the one
+hourly; the account endpoint also expires the caller's membership when it
+is due before answering, and otherwise only reads. Due times are computed in
+UTC. All memberships end in `store::end_membership`, the one
 place for rules that follow a membership's end, such as moving owned content
 back to the owner's personal organization.
 
-Removing a domain-claim member through the members API does not block them:
-their next qualifying sign-in joins again.
+## Members API on configured organizations
+
+The generic members routes cannot add members to an organization from the
+file or change roles there (`409 configured_organization`): membership comes
+from admission and admins from the file. Removing a member lapses their
+admission (`removed`) and frees their verified email; sign-in does not bring
+them back, and only an approved join request admits them again.
+
+## Organizations removed from the file
+
+At startup, organizations with a configuration id no longer in the file are
+retired: every admission lapses (`organization_removed`), every membership
+except owners ends, configured admins lose their flag, and join requests are
+purged after 30 days. The hourly sweep repeats this, also when the file is
+unset. Adding the id back reopens it; former members join again by the
+normal rules.
 
 ## API
 
@@ -104,8 +129,10 @@ All routes need a cloud session.
 | `POST /v1/cloud/organizations/:organizationId/join-requests/:requestId/reject` | Rejects. A rejected request blocks another until it is purged. |
 
 `admission` is one of `not_open` (disabled; show `notOpenText`), `join`,
-`pending`, `member`, `reverify` (a member within 30 days of `reverifyBy`),
+`pending`, `rejected` (another request is possible once this one is
+purged), `member`, `reverify` (a member within 30 days of `reverifyBy`),
 `lapsed`, or `unavailable` (open, but no join path for the caller).
+`joinOptions` lists only paths that would succeed for the caller.
 
 Errors: `404 organization_not_found`, `409 organization_not_open`,
 `403 email_code_not_accepted`, `403 email_not_claimed`, `400 invalid_email`,
@@ -113,12 +140,17 @@ Errors: `404 organization_not_found`, `409 organization_not_open`,
 `409 join_requests_closed`, `400 invalid_join_request`, `409 already_member`,
 `409 join_request_exists`, `403 organization_forbidden`,
 `404 join_request_not_found`, `400 invalid_expiry`, `400 invalid_body`,
-`429 rate_limited`, `503 email_delivery_unavailable`.
+`400 expiry_required`, `403 membership_removed`,
+`409 configured_organization`, `409 configured_admin`, `429 rate_limited`,
+`503 email_delivery_unavailable`.
+
+Startup warns when a `subdomains` claim looks like a public suffix (for
+example a two-label domain starting with `ac.` or `co.`).
 
 ## Schema
 
-Migration 0166 adds `cloud_organizations.config_id` (unique, team only),
-`cloud_organization_members.configured_admin`,
+Migration 0167 adds `cloud_organizations.config_id` (unique, team only),
+`cloud_organization_members.configured_admin` and `configured_admin_email`,
 `cloud_account_identities.hosted_domain`, `cloud_organization_admissions`,
 `cloud_organization_join_requests`, and `cloud_organization_email_codes`
 (same rules as the account email codes).
