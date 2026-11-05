@@ -20,7 +20,10 @@ use super::addressing;
 use super::cards::{mark_card_seen, sync_card_messages};
 use super::config::SystemAgentConfig;
 use super::input::{build_input, Candidate};
+use super::limits;
 use super::mentions::{encode_system_agent_message_with_mentions, resolve_mentions};
+use crate::resource_pools::usage::{settle, Settlement};
+use crate::resource_pools::Feature;
 
 pub use super::retry::{fail, release_stale_runs};
 
@@ -217,21 +220,35 @@ async fn enqueue(
     if reserved.rows_affected() == 0 {
         return Ok(false);
     }
+    // The conversation's resource pool admits the pass, or it stays silent.
+    let (resource_pool, organization_id) = limits::pool_for(&mut tx, config, candidate).await?;
+    let organization_id = organization_id.as_deref();
+    if !limits::admit(&mut tx, resource_pool, organization_id, &run_id, candidate)
+        .await?
+        .admitted()
+    {
+        tx.rollback().await?;
+        limits::stay_silent(pool, candidate, &input).await?;
+        return Ok(false);
+    }
     let now = Utc::now().to_rfc3339();
+    // The run belongs to the conversation's organization, not the System
+    // agent's own.
     query(
         "INSERT INTO cloud_agent_fallback_runs (
              run_id, idempotency_key, request_message_id, session_id, owner_account_id,
              requester_account_id, status, prompt, system_prompt, runtime_route_json,
-             created_at, updated_at, run_trigger, connector_audience
-         ) VALUES ($1, $1, $1, $2, $3, $3, 'queued', $4, $5, $6, $7, $7, 'background', 'shared')",
+             created_at, updated_at, run_trigger, connector_audience, organization_id
+         ) VALUES ($1, $1, $1, $2, $3, $3, 'queued', $4, $5, $6, $7, $7, 'background', 'shared', $8)",
     )
     .bind(&run_id)
     .bind(&candidate.legacy_session_id)
     .bind(&config.account_id)
     .bind(input.to_string())
     .bind(&config.system_prompt)
-    .bind(config.model_routing())
+    .bind(resource_pool.routing(Feature::SystemAgent))
     .bind(&now)
+    .bind(organization_id)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -320,7 +337,7 @@ async fn post_text(
 /// keeps picking a chat while a due reminder is unmarked, so waiting for the
 /// model to list it in `hooksHandled` would rerun the chat every tick until the
 /// plan starts.
-fn offered_reminders(input: &Value) -> Value {
+pub(super) fn offered_reminders(input: &Value) -> Value {
     let mut hooks = json!({});
     for key in input["hooks"]
         .as_array()
@@ -385,6 +402,7 @@ pub async fn complete(
     .bind(&now)
     .execute(&mut *tx)
     .await?;
+    settle(&mut tx, run_id, Settlement::Consumed).await?;
     // The System agent saw the card as its input showed it; its own tool calls
     // are recorded as they happen, so votes cast during the run still wake the
     // next sweep.

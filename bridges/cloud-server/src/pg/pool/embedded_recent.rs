@@ -418,9 +418,10 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0164_organization_ownership_indexes.sql"
     ),
     migration!(165, "browser sign-in for apps", "0165_browser_sign_in.sql"),
+    migration!(166, "resource pool usage", "0166_resource_pool_usage.sql"),
     migration!(
-        166,
+        168,
         "organization selection",
-        "0166_organization_selection.sql"
+        "0168_organization_selection.sql"
     ),
 ];

@@ -1,7 +1,7 @@
 # Organizing Kordi memory along the Human Context Protocol
 
 Status: proposal, 2026-10-21. Tracks
-[#1977](https://github.com/Kordi-Lab/Kordi/issues/1977). Builds on
+[#1977](https://github.com/Kordi-AI/Kordi/issues/1977). Builds on
 [issue-1710-memory-controls.md](issue-1710-memory-controls.md) and
 [../common-ground.md](../common-ground.md).
 

@@ -1,0 +1,36 @@
+{
+  "kind": "systemAgent",
+  "id": "organizer-cancels",
+  "description": "The organizer calls a confirmed picnic off.",
+  "title": "Weekend",
+  "members": [
+    {"key": "maya", "name": "Maya Chen"},
+    {"key": "jordan", "name": "Jordan Lee"},
+    {"key": "riya", "name": "Riya Shah"}
+  ],
+  "card": {
+    "organizer": "maya", "title": "Picnic at Riverside Park", "state": "confirmed",
+    "startAt": "{{d+4}}T12:00:00+00:00", "location": "Riverside Park"
+  },
+  "turns": [
+    {
+      "messages": [
+        {"from": "maya", "text": "Bad news, the park is closed for maintenance that day. Let's call off the picnic.", "minutesAgo": 3},
+        {"from": "jordan", "text": "aw ok, next time", "minutesAgo": 2}
+      ],
+      "expect": {
+        "reply": "message",
+        "allowedActions": ["cancel"],
+        "requiredActions": ["cancel"],
+        "card": {"state": ["canceled"], "sameCard": true}
+      },
+      "stub": [
+        {"toolCalls": [{
+          "action": "cancel", "eventId": "$eventId", "revision": "$revision",
+          "canceledBy": "$member:maya", "reason": "The park is closed that day."
+        }]},
+        {"final": {"message": "Maya called off the picnic, so I canceled the card.", "hooksHandled": []}}
+      ]
+    }
+  ]
+}

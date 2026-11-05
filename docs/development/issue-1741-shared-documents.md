@@ -1,6 +1,6 @@
 # Issue 1741: Shared documents
 
-Status: implementation contract, 2026-10-11. Tracks [#1741](https://github.com/Kordi-Lab/Kordi/issues/1741). The approved preview is in `docs/design-previews/shared-documents/`.
+Status: implementation contract, 2026-10-11. Tracks [#1741](https://github.com/Kordi-AI/Kordi/issues/1741). The approved preview is in `docs/design-previews/shared-documents/`.
 
 ## Summary
 
