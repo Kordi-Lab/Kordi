@@ -244,10 +244,23 @@ async fn lease(
         Ok(auth) => auth,
         Err(response) => return *response,
     };
-    // The worker is running: covered members' work may route to its pool.
+    // The worker is running: every replica may route covered members' work
+    // to its pool. A failed write only delays that.
     if let Some(system_agent) = state.system_agent() {
-        let registry = system_agent.config().resource_pool_registry();
-        registry.worker_sightings().note(auth.pool.id());
+        let sightings = system_agent
+            .config()
+            .resource_pool_registry()
+            .worker_sightings();
+        let noted = match state.db_pool().acquire().await {
+            Ok(mut conn) => sightings.note(&mut conn, auth.pool.id()).await,
+            Err(error) => Err(error),
+        };
+        if let Err(error) = noted {
+            eprintln!(
+                "[pool-workers] Could not note a worker of pool {}: {error}",
+                auth.pool.id()
+            );
+        }
     }
     if auth.pool.is_stopped() {
         return pool_stopped();

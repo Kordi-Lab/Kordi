@@ -2,7 +2,7 @@
 //! database tests are ignored by default; run them with a task-owned
 //! PostgreSQL in `DATABASE_URL`.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use chrono::Utc;
 use sqlx_core::query::query;
@@ -203,15 +203,20 @@ async fn an_unavailable_covering_pool_falls_back_to_the_default_pool() {
         "shared",
         "no worker was ever seen"
     );
-    sightings.note_at(&worker_pool, Instant::now() - Duration::from_secs(180));
+    seen_ago(&p.db, &worker_pool, 180).await;
     assert_eq!(
-        routed(&p.db, &workers, &sightings, &p.member).await,
+        routed(&p.db, &workers, &WorkerSightings::default(), &p.member).await,
         "shared",
         "the worker was last seen too long ago"
     );
-    sightings.note(&worker_pool);
+    // A worker noted by another replica counts here too.
+    let mut conn = p.db.acquire().await.unwrap();
+    WorkerSightings::default()
+        .note(&mut conn, &worker_pool)
+        .await
+        .unwrap();
     assert_eq!(
-        routed(&p.db, &workers, &sightings, &p.member).await,
+        routed(&p.db, &workers, &WorkerSightings::default(), &p.member).await,
         worker_pool
     );
 }
@@ -258,18 +263,63 @@ async fn the_first_joined_available_covering_organization_serves() {
     );
 }
 
-#[test]
-fn sightings_expire() {
-    let sightings = WorkerSightings::default();
-    assert!(!sightings.seen_within("pool-a", WORKER_SEEN_WINDOW));
-    sightings.note("pool-a");
-    assert!(sightings.seen_within("pool-a", WORKER_SEEN_WINDOW));
-    assert!(!sightings.seen_within("pool-b", WORKER_SEEN_WINDOW));
-    sightings.note_at(
-        "pool-a",
-        Instant::now() - WORKER_SEEN_WINDOW - Duration::from_secs(1),
-    );
-    assert!(!sightings.seen_within("pool-a", WORKER_SEEN_WINDOW));
+/// Records in the database that `pool_id`'s worker was seen `seconds` ago.
+async fn seen_ago(db: &PgPool, pool_id: &str, seconds: i32) {
+    query(
+        "INSERT INTO cloud_pool_worker_sightings (pool_id, last_seen_at)
+         VALUES ($1, now() - make_interval(secs => $2))
+         ON CONFLICT (pool_id) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at",
+    )
+    .bind(pool_id)
+    .bind(seconds)
+    .execute(db)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires a task-owned PostgreSQL database in DATABASE_URL"]
+async fn sightings_are_shared_between_processes() {
+    let db = test_db().await;
+    let pool_id = format!("worker-{}", Uuid::new_v4().simple());
+    let mut conn = db.acquire().await.unwrap();
+    // Two replicas: one receives the worker's lease requests, one routes.
+    let (leasing, routing) = (WorkerSightings::default(), WorkerSightings::default());
+    assert!(!routing
+        .seen_within(&mut conn, &pool_id, WORKER_SEEN_WINDOW)
+        .await
+        .unwrap());
+    leasing.note(&mut conn, &pool_id).await.unwrap();
+    // The routing replica reuses its read for a few seconds, then sees it.
+    assert!(!routing
+        .seen_within(&mut conn, &pool_id, WORKER_SEEN_WINDOW)
+        .await
+        .unwrap());
+    let later = WorkerSightings::default();
+    assert!(later
+        .seen_within(&mut conn, &pool_id, WORKER_SEEN_WINDOW)
+        .await
+        .unwrap());
+
+    // Writes are throttled per process: a second note right away writes
+    // nothing, so an old row stays old for other replicas.
+    seen_ago(&db, &pool_id, 180).await;
+    leasing.note(&mut conn, &pool_id).await.unwrap();
+    assert!(leasing
+        .seen_within(&mut conn, &pool_id, WORKER_SEEN_WINDOW)
+        .await
+        .unwrap());
+    let other = WorkerSightings::default();
+    assert!(!other
+        .seen_within(&mut conn, &pool_id, WORKER_SEEN_WINDOW)
+        .await
+        .unwrap());
+    // A process that has not written lately writes at once.
+    other.note(&mut conn, &pool_id).await.unwrap();
+    assert!(WorkerSightings::default()
+        .seen_within(&mut conn, &pool_id, Duration::from_secs(5))
+        .await
+        .unwrap());
 }
 
 #[test]

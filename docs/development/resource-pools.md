@@ -237,10 +237,11 @@ Members are never left without replies: a covering pool that cannot take a
 run now is skipped for the next covering organization, then the default
 pool. A pool cannot take a run when it is `stopped`, or when it is a
 `pool_worker` pool whose worker has not asked for a run (a lease request)
-within the last two minutes. The server notes each authenticated lease
-request in memory; after a restart a pool worker pool counts as unseen until
-its worker's next lease request, which a running worker makes every poll
-interval. Work in the covering organization's own conversations has no such
+within the last two minutes. Every replica records authenticated lease
+requests in `cloud_pool_worker_sightings` (at most once per pool every 20
+seconds per process) and reads it when routing through a cache of at most
+10 seconds, so every replica sees a worker whichever replica it polls. Ages
+use the database clock. Work in the covering organization's own conversations has no such
 fallback, as before.
 
 A covered run counts against the covering pool's limits
@@ -399,7 +400,8 @@ Migration 0166 adds `cloud_resource_pool_usage`
 `cloud_resource_pool_reservations` (one row per admitted run). Migration 0169
 adds `cloud_pool_worker_runs` (the pool tag of each pool worker run, and the
 worker, lease token hash and lease count of its current lease, deleted
-once the run ends).
+once the run ends). Migration 0176 adds `cloud_pool_worker_sightings` (when
+each pool's worker last asked for a run, one row per pool).
 
 ## Tests
 

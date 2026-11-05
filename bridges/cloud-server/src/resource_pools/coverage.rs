@@ -11,57 +11,24 @@
 //! organization id).
 //!
 //! A covering pool that cannot serve right now (stopped, or a `pool_worker`
-//! pool whose worker has not asked for a run within [`WORKER_SEEN_WINDOW`])
+//! pool whose worker has not asked any replica for a run within
+//! [`WORKER_SEEN_WINDOW`]; see [`super::sightings`])
 //! is skipped for the next covering organization, then the default pool, so
 //! members are never left without replies. Work of the covering
 //! organization's own conversations is routed as before, without that
 //! fallback. A covering pool's daily limits count covered runs like any
 //! other; a used-up limit is not a reason to fall back.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use sqlx_core::query_scalar::query_scalar;
 use sqlx_postgres::PgConnection;
 
+pub use super::sightings::WorkerSightings;
 use super::{Executor, ResourcePool, ResourcePools};
 
 /// A pool worker that asked for a run this recently counts as running.
 pub const WORKER_SEEN_WINDOW: Duration = Duration::from_secs(120);
-
-/// When each pool's worker last asked for a run, in this server process.
-/// Only authenticated workers are noted, so it holds at most one entry per
-/// configured pool. After a restart a pool counts as unseen until its
-/// worker's next lease request.
-#[derive(Debug, Default)]
-pub struct WorkerSightings {
-    seen: Mutex<HashMap<String, Instant>>,
-}
-
-impl WorkerSightings {
-    /// Notes that `pool_id`'s worker asked for a run now.
-    pub fn note(&self, pool_id: &str) {
-        self.note_at(pool_id, Instant::now());
-    }
-
-    pub(crate) fn note_at(&self, pool_id: &str, at: Instant) {
-        self.lock().insert(pool_id.to_string(), at);
-    }
-
-    /// Whether `pool_id`'s worker asked for a run within `window`.
-    pub fn seen_within(&self, pool_id: &str, window: Duration) -> bool {
-        self.lock()
-            .get(pool_id)
-            .is_some_and(|seen| seen.elapsed() <= window)
-    }
-
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Instant>> {
-        self.seen
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-}
 
 impl ResourcePools {
     /// Marks `organizations` as covering their members' personal work. Only
@@ -83,10 +50,20 @@ impl ResourcePools {
 
 /// Whether `pool` can take a run now: not stopped, and for a pool worker
 /// pool, its worker was seen recently.
-pub fn available(pool: &ResourcePool, sightings: &WorkerSightings) -> bool {
-    !pool.is_stopped()
-        && (pool.executor() == Executor::ControlPlane
-            || sightings.seen_within(pool.id(), WORKER_SEEN_WINDOW))
+pub async fn available(
+    conn: &mut PgConnection,
+    pool: &ResourcePool,
+    sightings: &WorkerSightings,
+) -> sqlx_core::Result<bool> {
+    if pool.is_stopped() {
+        return Ok(false);
+    }
+    if pool.executor() == Executor::ControlPlane {
+        return Ok(true);
+    }
+    sightings
+        .seen_within(conn, pool.id(), WORKER_SEEN_WINDOW)
+        .await
 }
 
 /// The pools of the covering organizations that the owner of the personal
@@ -137,12 +114,12 @@ pub async fn route(
     sightings: &WorkerSightings,
     organization_id: Option<&str>,
 ) -> sqlx_core::Result<ResourcePool> {
-    let covering = covering_pools(conn, pools, organization_id).await?;
-    let pool = covering
-        .into_iter()
-        .find(|pool| available(pool, sightings))
-        .unwrap_or_else(|| pools.resolve(organization_id));
-    Ok(pool.clone())
+    for pool in covering_pools(&mut *conn, pools, organization_id).await? {
+        if available(&mut *conn, pool, sightings).await? {
+            return Ok(pool.clone());
+        }
+    }
+    Ok(pools.resolve(organization_id).clone())
 }
 
 /// Whether `pool_id` may still serve a run charged to `organization_id`:

@@ -395,7 +395,6 @@ async fn covering_follows_the_organizations_file_across_reloads() {
         ("team-a".to_string(), "org_team_a".to_string()),
         ("team-b".to_string(), "org_team_b".to_string()),
     ];
-    registry.worker_sightings().note("partner");
     let pools = registry.reload_with(&offline_db(), env).await.unwrap();
     // A disabled organization covers nobody.
     assert_eq!(
@@ -405,12 +404,6 @@ async fn covering_follows_the_organizations_file_across_reloads() {
     write(json!(false));
     let pools = registry.reload_with(&offline_db(), env).await.unwrap();
     assert!(pools.covering_organizations().is_empty());
-    assert!(
-        registry
-            .worker_sightings()
-            .seen_within("partner", super::super::coverage::WORKER_SEEN_WINDOW),
-        "worker sightings survive a reload"
-    );
     // Covering needs a pool to cover with.
     let error = organizations::parse(
         &json!({"organizations": [{"id": "team-c", "pool": null, "coversMembersPersonalWork": true}]})

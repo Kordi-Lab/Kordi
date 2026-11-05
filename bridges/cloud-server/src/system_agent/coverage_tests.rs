@@ -37,10 +37,14 @@ async fn a_covered_members_personal_chat_uses_the_sponsor_pool_and_its_worker() 
         ..PoolLimits::default()
     });
     let config = config_with(&system_agent, sponsored(&sponsor, limited, true));
+    let mut conn = db.acquire().await.unwrap();
     config
         .resource_pool_registry()
         .worker_sightings()
-        .note(&sponsor_pool);
+        .note(&mut conn, &sponsor_pool)
+        .await
+        .unwrap();
+    drop(conn);
 
     let chats = [
         group_chat(&db, &member, &system_agent).await,
@@ -83,6 +87,14 @@ async fn a_covered_members_personal_chat_uses_the_sponsor_pool_and_its_worker() 
 
     // Without a recently seen worker the member's next chat uses the
     // default pool.
+    sqlx_core::query::query(
+        "UPDATE cloud_pool_worker_sightings SET last_seen_at = now() - interval '3 minutes'
+         WHERE pool_id = $1",
+    )
+    .bind(&sponsor_pool)
+    .execute(&db)
+    .await
+    .unwrap();
     let unseen = config_with(&system_agent, (*config.resource_pools()).clone());
     let next = group_chat(&db, &member, &system_agent).await;
     say(&db, &member, next, "Lunch tomorrow?").await;

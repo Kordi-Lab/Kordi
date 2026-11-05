@@ -25,6 +25,7 @@ mod config;
 pub mod coverage;
 mod organizations;
 pub mod registry;
+mod sightings;
 pub mod usage;
 mod worker;
 
