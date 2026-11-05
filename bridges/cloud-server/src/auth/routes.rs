@@ -59,6 +59,7 @@ use crate::avatars::{
 use crate::server::ServerState;
 
 mod account_email_handlers;
+mod account_security_handlers;
 mod app_invitation_handlers;
 mod app_sign_in_handlers;
 mod contact_acceptance;
@@ -418,15 +419,19 @@ pub fn routes_with_shared_rate_limiter(
             "/v1/cloud/agent-runs/omp-state",
             get(get_omp_state_count).delete(clear_omp_state),
         )
-        .layer(Extension(app_clients))
+        .layer(Extension(app_clients.clone()))
         .layer(Extension(rate_limiter.clone()))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,
         ))
         .with_state(state.clone());
+    // Account pages on the web call these with the session cookie.
     let account = crate::organizations::admission::account_routes()
+        .merge(account_security_handlers::routes())
+        .layer(Extension(app_clients))
         .layer(Extension(rate_limiter.clone()))
+        .layer(Extension(hasher_config))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             web_session_handlers::cloud_or_web_session_middleware,

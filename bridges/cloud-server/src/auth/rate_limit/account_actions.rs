@@ -59,6 +59,23 @@ pub const EMAIL_VERIFICATION_LIMIT: AccountActionLimit = AccountActionLimit {
     window: Duration::from_secs(60 * 60),
 };
 
+/// Changes on the account security page: sign-outs, password, email change,
+/// and provider unlinking share this budget.
+pub const ACCOUNT_SECURITY_CHANGE_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "account-security-change",
+    limit: 30,
+    window: Duration::from_secs(60 * 60),
+};
+
+/// Proofs for account security changes: current-password checks, emailed
+/// codes, and guesses at those codes. The code store separately limits sends
+/// and guesses per code; this bounds the account as a whole.
+pub const ACCOUNT_SECURITY_PROOF_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "account-security-proof",
+    limit: 20,
+    window: Duration::from_secs(60 * 60),
+};
+
 /// Agent runs a requester starts. Every user-triggered path that queues an
 /// agent run, now or on a schedule, charges this budget through
 /// [`CloudRateLimiter::observe_agent_run`]: run claims, subsession messages

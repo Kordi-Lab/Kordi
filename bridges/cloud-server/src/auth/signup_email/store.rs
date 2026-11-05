@@ -74,16 +74,30 @@ impl From<sqlx_core::Error> for SignupCodeError {
     }
 }
 
+/// What a code sent to a signed-in account proves. Each purpose has its own
+/// table, so a code for one purpose can never be spent on another.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AccountCodePurpose {
+    /// The account can read its own primary email.
+    VerifyPrimaryEmail,
+    /// The account can read the new address it wants as its primary email.
+    ChangeEmail,
+    /// The account holder can read the primary email right now, for a
+    /// sensitive change on an account without a password.
+    Reauthenticate,
+}
+
 /// Which code table a challenge lives in. Signup challenges are keyed by the
 /// email being claimed; account challenges are keyed by the signed-in account
-/// and also record the primary email the code was sent to. Both share every
-/// expiry, guess, cooldown, and send budget rule.
+/// and also record the email the code was sent to. All share every expiry,
+/// guess, cooldown, and send budget rule.
 #[derive(Clone, Copy)]
 enum CodeScope<'a> {
     Signup {
         email: &'a str,
     },
     Account {
+        purpose: AccountCodePurpose,
         account_id: &'a str,
         email: &'a str,
     },
@@ -98,7 +112,11 @@ impl<'a> CodeScope<'a> {
     fn table(self) -> &'static str {
         match self {
             Self::Signup { .. } => "cloud_signup_email_codes",
-            Self::Account { .. } => "cloud_account_email_codes",
+            Self::Account { purpose, .. } => match purpose {
+                AccountCodePurpose::VerifyPrimaryEmail => "cloud_account_email_codes",
+                AccountCodePurpose::ChangeEmail => "cloud_account_email_change_codes",
+                AccountCodePurpose::Reauthenticate => "cloud_account_reauth_codes",
+            },
             Self::Organization { .. } => "cloud_organization_email_codes",
         }
     }
@@ -142,7 +160,30 @@ pub(crate) async fn request_account_email_code(
     account_id: &str,
     email: &str,
 ) -> Result<SignupCodeChallenge, SignupCodeError> {
-    request_code(pool, service, CodeScope::Account { account_id, email }).await
+    request_account_code(
+        pool,
+        service,
+        AccountCodePurpose::VerifyPrimaryEmail,
+        account_id,
+        email,
+    )
+    .await
+}
+
+/// Sends a code for `purpose` to `email` on behalf of the signed-in account.
+pub(crate) async fn request_account_code(
+    pool: &PgPool,
+    service: &SignupEmailService,
+    purpose: AccountCodePurpose,
+    account_id: &str,
+    email: &str,
+) -> Result<SignupCodeChallenge, SignupCodeError> {
+    let scope = CodeScope::Account {
+        purpose,
+        account_id,
+        email,
+    };
+    request_code(pool, service, scope).await
 }
 
 /// The caller commits failed guesses and consumes successful codes with account creation.
@@ -166,14 +207,35 @@ pub(crate) async fn consume_account_email_code(
     id: &str,
     code: &str,
 ) -> Result<(), SignupCodeError> {
-    consume_code(
+    consume_account_code(
         tx,
         service,
-        CodeScope::Account { account_id, email },
+        AccountCodePurpose::VerifyPrimaryEmail,
+        account_id,
+        email,
         id,
         code,
     )
     .await
+}
+
+/// Consumes a code for `purpose` that was sent to `email`. The caller commits
+/// failed guesses and consumes a successful code together with its change.
+pub(crate) async fn consume_account_code(
+    tx: &mut Transaction<'_, Postgres>,
+    service: &SignupEmailService,
+    purpose: AccountCodePurpose,
+    account_id: &str,
+    email: &str,
+    id: &str,
+    code: &str,
+) -> Result<(), SignupCodeError> {
+    let scope = CodeScope::Account {
+        purpose,
+        account_id,
+        email,
+    };
+    consume_code(tx, service, scope, id, code).await
 }
 
 /// Sends a code proving that the signed-in account can read `email`, an
@@ -228,7 +290,12 @@ async fn request_code(
     // row lock so a failed delivery can hand the charge back. The transaction
     // ends before the code is sent.
     let mut tx = pool.begin().await?;
-    if let CodeScope::Account { account_id, .. } = scope {
+    if let CodeScope::Account {
+        purpose: AccountCodePurpose::VerifyPrimaryEmail,
+        account_id,
+        ..
+    } = scope
+    {
         // Serializes with verification, which holds this row for update, so no
         // send is charged for an account that has just been verified. The
         // lock ends with this transaction, before the code is sent.

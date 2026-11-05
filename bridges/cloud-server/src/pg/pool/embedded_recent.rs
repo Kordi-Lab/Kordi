@@ -430,4 +430,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0168_organization_selection.sql"
     ),
     migration!(169, "pool worker runs", "0169_pool_worker_runs.sql"),
+    migration!(
+        170,
+        "account security email codes",
+        "0170_account_security_codes.sql"
+    ),
 ];
