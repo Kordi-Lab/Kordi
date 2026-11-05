@@ -1,16 +1,16 @@
 import { ChevronRight } from 'lucide-react';
 
+import { BuildScreen } from './BuildScreen';
 import { profileDesign, type CgCardDesign } from './cardDesign';
 import { peopleCount, roomTitle, topicCount } from './format';
 import type { CgHost } from './host';
 import { PairCodePanel } from './PairCodePanel';
-import { UnbuiltCardRow } from './UnbuiltCardRow';
 import { CgAvatar, CgNotice, CgScore, CgTag } from './parts';
 import { CardGlyph, CardSwatch } from './ProfileCard';
 import { personTitle } from './profiles';
-import { currentProfile, hasAnyCard, type CgState, type CommonGroundStore } from './store';
+import { currentProfile, type CgState, type CommonGroundStore } from './store';
 import { CG_TOPIC_SECTIONS, type CgRoomSummary } from './types';
-import { ownerIsCurrent } from './wallet';
+import { buildScreenKey, ownerIsCurrent, selectedCardUnbuilt } from './wallet';
 
 /** The first run: one suggested card, or the current profile, with Build. */
 export function EmptyWallet({ state, store }: { state: CgState; store: CommonGroundStore }) {
@@ -44,14 +44,13 @@ function RoomRow({ room, state, store }: { room: CgRoomSummary; state: CgState; 
   );
 }
 
-/** Your card: the swatch, the name and its topics; the chevron opens the card page, or Build when it has none. */
+/** Your card: the swatch, the name and its topics; the chevron opens the card page. */
 function YourCard({ state, store }: { state: CgState; store: CommonGroundStore }) {
   const ready = ownerIsCurrent(state);
   const card = ready ? state.owner?.card : null;
   const profile = currentProfile(state);
   const design: CgCardDesign = profile ? profileDesign(profile) : 'work';
   const name = profile?.name ?? 'Your card';
-  if ((ready && !card) || profile?.hasCard === false) return <UnbuiltCardRow state={state} store={store} />;
   const topics = card ? CG_TOPIC_SECTIONS.flatMap(([key]) => card[key]) : [];
   return (
     <div className="cg-panel cg-yours" aria-busy={!ready}>
@@ -68,7 +67,10 @@ function YourCard({ state, store }: { state: CgState; store: CommonGroundStore }
 }
 
 export function HomeScreen({ state, store, host }: { state: CgState; store: CommonGroundStore; host?: CgHost }) {
-  if (!hasAnyCard(state)) return <EmptyWallet state={state} store={store} />;
+  if (selectedCardUnbuilt(state)) {
+    // Build opens in place; the help demo has no host and keeps the empty card.
+    return host ? <BuildScreen key={buildScreenKey(state)} state={state} store={store} host={host} /> : <EmptyWallet state={state} store={store} />;
+  }
   return (
     <div className="cg-home">
       <h2 className="cg-msec">Your card</h2>

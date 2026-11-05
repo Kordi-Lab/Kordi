@@ -3,6 +3,7 @@
 // which refreshes whatever the top screen is waiting on and returns the delay
 // before the next refresh, or null when nothing is pending.
 
+import { emptySourcesMessage } from './buildRequest';
 import { CommonGroundError, commonGroundErrorCode, commonGroundErrorMessage, isRouteMissing, type CommonGroundClient } from './client';
 import type { CgProfileMemory } from './profiles';
 import * as pairOps from './storePairing';
@@ -100,7 +101,6 @@ export function roomClosed(state: CgState, code: string): boolean {
 }
 
 const BUILD_ERRORS: Record<string, string> = {
-  common_ground_no_sources: 'Turn on a source first.',
   common_ground_build_in_progress: 'Your card is already being built.',
 };
 
@@ -267,6 +267,9 @@ export class CommonGroundStore {
       this.set({ notice: 'Could not build your card. Try again.' });
     } else if (owner.card && this.top().name === 'build') {
       this.home();
+    } else if (owner.card && this.top().name === 'home') {
+      // Built in place on Home: the rooms and recent people it skipped while empty.
+      void this.loadActivity();
     }
   }
 
@@ -278,6 +281,7 @@ export class CommonGroundStore {
         this.applyOwner(await this.client.build(request, this.state.profileId));
       } catch (error) {
         const code = commonGroundErrorCode(error);
+        if (code === 'common_ground_no_sources') throw new CommonGroundError(emptySourcesMessage(request), 409, code);
         if (code && BUILD_ERRORS[code]) throw new CommonGroundError(BUILD_ERRORS[code], 409, code);
         throw error;
       }
