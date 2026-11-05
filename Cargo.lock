@@ -3996,6 +3996,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "kordi-system-agent-eval"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "kordi-cloud-agent-runner",
+ "kordi-cloud-server",
+ "regex",
+ "serde",
+ "serde_json",
+ "sqlx-core",
+ "sqlx-postgres",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "kordi-tools"
 version = "0.0.18"
 dependencies = [

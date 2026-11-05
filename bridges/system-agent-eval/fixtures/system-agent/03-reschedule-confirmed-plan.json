@@ -1,0 +1,47 @@
+{
+  "kind": "systemAgent",
+  "id": "reschedule-confirmed-plan",
+  "description": "The organizer moves a confirmed dinner by an hour; the same card is revised.",
+  "title": "Dinner crew",
+  "members": [
+    {"key": "maya", "name": "Maya Chen"},
+    {"key": "jordan", "name": "Jordan Lee"},
+    {"key": "riya", "name": "Riya Shah"}
+  ],
+  "history": [
+    {"from": "maya", "text": "Dinner {{d+3:long}} at 7pm at Luigi's?", "minutesAgo": 300},
+    {"from": "jordan", "text": "I'm in", "minutesAgo": 290},
+    {"from": "system", "text": "Dinner is now fixed.", "minutesAgo": 289}
+  ],
+  "card": {
+    "organizer": "maya", "title": "Dinner at Luigi's", "state": "confirmed",
+    "startAt": "{{d+3}}T19:00:00+00:00", "location": "Luigi's"
+  },
+  "turns": [
+    {
+      "messages": [
+        {"from": "maya", "text": "Can we push dinner to 8pm instead? Same place.", "minutesAgo": 2}
+      ],
+      "expect": {
+        "reply": "any",
+        "allowedActions": ["propose", "rsvp", "confirm"],
+        "requiredActions": ["propose"],
+        "card": {
+          "state": ["awaiting_confirmation", "confirmed"],
+          "startAt": "{{d+3}}T20:00:00+00:00",
+          "locationIncludes": ["luigi"],
+          "sameCard": true
+        }
+      },
+      "stub": [
+        {"toolCalls": [{
+          "action": "propose", "conversationId": "$conversationId", "existingEventId": "$eventId",
+          "existingRevision": "$revision", "title": "Dinner at Luigi's", "state": "awaitingConfirmation",
+          "startAt": "{{d+3}}T20:00:00+00:00", "location": "Luigi's",
+          "participants": "$participants:maya", "sourceMessageIds": "$newMessageIds"
+        }]},
+        {"final": {"message": "I moved dinner to 8pm on the same card. Check it still works for you.", "hooksHandled": []}}
+      ]
+    }
+  ]
+}
