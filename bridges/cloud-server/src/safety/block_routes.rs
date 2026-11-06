@@ -20,6 +20,7 @@ use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
 use super::blocks::lock_pair;
+use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, BLOCK_CHANGE_LIMIT};
 use crate::auth::routes::{delete_contact_pair, err, write_audit, CloudSession};
 use crate::chat_sync::store::{append_user_sync_events_in_transaction, StoreError};
 use crate::server::ServerState;
@@ -326,12 +327,30 @@ pub(super) async fn list_blocks(
     }
 }
 
+/// Charges one block or unblock to [`BLOCK_CHANGE_LIMIT`].
+async fn over_budget(limiter: &CloudRateLimiter, account_id: &str) -> Option<Response> {
+    match limiter
+        .observe_account_limit(BLOCK_CHANGE_LIMIT, account_id)
+        .await
+    {
+        RateLimitDecision::Limited { retry_after } => Some(super::routes::limited(
+            retry_after,
+            "You've changed a lot of blocks recently. Try again later.",
+        )),
+        RateLimitDecision::Allowed => None,
+    }
+}
+
 /// `PUT /v1/cloud/blocks/:account_id`: blocks an account. Idempotent.
 pub(super) async fn block_account(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Path(account_id): Path<String>,
 ) -> Response {
+    if let Some(limited) = over_budget(&rate_limiter, &session.account_id).await {
+        return limited;
+    }
     match block_account_for(&state, &session, &account_id).await {
         Ok(outcome) => Json(BlockResponse {
             block: outcome.block,
@@ -347,8 +366,12 @@ pub(super) async fn block_account(
 pub(super) async fn unblock_account(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Path(account_id): Path<String>,
 ) -> Response {
+    if let Some(limited) = over_budget(&rate_limiter, &session.account_id).await {
+        return limited;
+    }
     let target = account_id.trim().to_string();
     let pool = state.db_pool();
     match remove_block(pool, &session.account_id, &target).await {

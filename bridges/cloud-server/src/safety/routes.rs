@@ -76,6 +76,14 @@ fn report_error(failure: ReportError) -> Response {
     }
 }
 
+pub(super) fn limited(retry_after: std::time::Duration, message: &'static str) -> Response {
+    let mut response = err("rate_limited", message, StatusCode::TOO_MANY_REQUESTS);
+    if let Ok(value) = retry_after.as_secs().max(1).to_string().parse() {
+        response.headers_mut().insert("Retry-After", value);
+    }
+    response
+}
+
 #[derive(Serialize)]
 struct ReportResponse {
     report: ReportReceipt,
@@ -128,21 +136,23 @@ async fn create_report(
         Ok(None) => {}
         Err(error) => return server_error("find report", &error),
     }
+    // Evidence checks run before the budget, so a refused report costs
+    // nothing.
+    let prepared = match reports::prepare(state.db_pool(), &session.account_id, &report).await {
+        Ok(prepared) => prepared,
+        Err(error) => return report_error(error),
+    };
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
         .observe_account_limit(REPORT_SUBMIT_LIMIT, &session.account_id)
         .await
     {
-        let mut response = err(
-            "rate_limited",
+        return limited(
+            retry_after,
             "You've sent a lot of reports recently. Try again later.",
-            StatusCode::TOO_MANY_REQUESTS,
         );
-        if let Ok(value) = retry_after.as_secs().max(1).to_string().parse() {
-            response.headers_mut().insert("Retry-After", value);
-        }
-        return response;
     }
-    let stored = match reports::create(state.db_pool(), &session.account_id, &report).await {
+    let stored = match reports::store(state.db_pool(), &session.account_id, &report, prepared).await
+    {
         Ok(stored) => stored,
         Err(error) => return report_error(error),
     };
