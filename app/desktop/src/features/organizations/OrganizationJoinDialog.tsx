@@ -2,6 +2,7 @@ import { Search, X } from 'lucide-react';
 import { useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
 import { AppDialog } from '@/components/ui/dialog';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { JoinableOrganization, JoinableOrganizations } from './organizationJoinClient';
 
 export type OrganizationJoinActions = {
@@ -167,7 +168,7 @@ function OrganizationJoinRow({
           </button>
         </form>
       ) : null}
-      {error ? <p className="org-join-error" role="alert">{error}</p> : null}
+      {error ? <ErrorLine className="ml-[42px]">{error}</ErrorLine> : null}
     </li>
   );
 }

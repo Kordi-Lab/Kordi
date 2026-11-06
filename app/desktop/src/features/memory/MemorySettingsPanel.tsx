@@ -2,6 +2,7 @@ import { HelpImportExample } from '@/features/onboarding/HelpEmptyExample';
 import { useCallback, useEffect, useId, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
 import {
   AppDialog,
   AppDialogActions,
@@ -150,14 +151,12 @@ export function MemorySettingsPanel({
       <p className="sr-only" aria-live="polite">{statusMessage}</p>
 
       {error ? (
-        <div className="app-error-text mb-4 flex items-center justify-between gap-3 rounded-[12px] bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100" role="alert">
-          <span>{error}</span>
-          {!hasLoaded ? (
-            <Button type="button" variant="quiet" className="h-7 shrink-0 rounded-lg px-3 text-[12px]" disabled={isLoading} onClick={() => { void refresh(); }}>
-              Try again
-            </Button>
-          ) : null}
-        </div>
+        <ErrorLine
+          className="mt-0 mb-4"
+          action={hasLoaded ? null : { label: 'Try again', onClick: () => { void refresh(); }, disabled: isLoading }}
+        >
+          {hasLoaded ? error : withoutTryAgain(error)}
+        </ErrorLine>
       ) : null}
 
       {!hasLoaded || !settings ? (

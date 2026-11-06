@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { AppDialog, AppDialogActions, AppDialogTitle } from '@/components/ui/dialog';
 import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { cn } from '@/lib/utils';
@@ -114,7 +115,7 @@ export function ReportDialog({ target, canBlock, onSubmit, onDismiss, initialSta
           </div>
         ) : null}
         {error ? (
-          <p role="alert" className="app-error-text m-0 text-[12px] leading-5 text-[color:var(--app-transient-danger-text)]">{error}</p>
+          <ErrorLine className="mt-0">{error}</ErrorLine>
         ) : null}
         <AppDialogActions className="mt-2">
           <Button type="button" variant="quiet" className="rounded-full px-4" disabled={sending} onClick={onDismiss}>Cancel</Button>

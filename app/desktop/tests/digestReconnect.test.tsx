@@ -35,6 +35,6 @@ async function headerFor(digest: DigestResponse) {
 
 test('a refused sign-in names the account to reconnect', async () => {
   assert.match(await headerFor(rejected('reconnect-brief', 'anthropic', true)), /Updated .* · Reconnect Claude · Open settings/);
-  assert.match(await headerFor(rejected('reconnect-empty', 'openai-codex', false)), /^Reconnect OpenAI · Open settings$/);
+  assert.match(await headerFor(rejected('reconnect-empty', 'openai-codex', false)), /^Reconnect OpenAI\s*·\s*Open settings$/);
   assert.match(await headerFor(rejected('reconnect-unknown', null, true)), /Provider sign-in didn't work · Open settings/);
 });

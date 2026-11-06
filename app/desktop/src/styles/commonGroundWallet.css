@@ -92,8 +92,7 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 }
 .cg-paircode .cg-digits input:focus { border-color: var(--app-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 22%, transparent); }
 .cg-paircode .cg-digits input:disabled { opacity: 0.5; }
-.cg-paircode .cg-digits.is-missing input { border-color: var(--app-transient-danger-text, oklch(58% 0.2 27)); background: color-mix(in srgb, var(--app-transient-danger-text, oklch(58% 0.2 27)) 10%, transparent); }
-.cg-pair-error { margin-top: -4px; padding: 0 14px 10px 48px; color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 11px; }
+.cg-paircode .cg-digits.is-missing input { border-color: var(--app-error-text); background: color-mix(in srgb, var(--app-error-text) 10%, transparent); }
 
 /* Pair: the row above Pair code; its popover shows your code and takes theirs. */
 .cg-pair-open { width: 100%; border: 0; border-radius: 9px 9px 0 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
@@ -112,8 +111,6 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .cg-pair-copy svg { width: 14px; height: 14px; }
 .cg-pair-copy:hover:not(:disabled) { background: var(--cg-fill); color: var(--utility-foreground); }
 .cg-pair-sub { margin-top: 2px; color: var(--utility-muted-text); font-size: 11px; font-variant-numeric: tabular-nums; }
-.cg-pair-sub.is-error { color: var(--app-transient-danger-text, oklch(58% 0.2 27)); text-align: center; }
-.cg-pair-retry { margin-left: 6px; padding: 0; border: 0; background: none; color: var(--app-accent); font: inherit; font-weight: 600; cursor: pointer; }
 .cg-pair-their { margin-top: 16px; border-top: 0.5px solid var(--cg-line); }
 .cg-pair-their .cg-pop-label { display: block; }
 .cg-pair-field { display: flex; align-items: center; gap: 8px; }
@@ -144,7 +141,6 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .cg-pop-card:hover { opacity: 0.85; }
 .cg-pop-card.is-on { opacity: 1; box-shadow: 0 0 0 2px var(--app-main-bg), 0 0 0 4px var(--app-accent), inset 0 0 0 0.5px var(--edge); }
 .cg-pop-pick { margin-left: 4px; font-size: 12px; font-weight: 600; }
-.cg-pop-error { margin-top: 10px; color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 11px; }
 .cg-pop-foot { display: flex; justify-content: flex-end; margin-top: 16px; }
 .cg-code-big { display: flex; justify-content: center; gap: 8px; margin: 6px 0 12px; }
 .cg-code-big span { display: grid; width: 50px; height: 60px; place-items: center; border-radius: 10px; background: var(--cg-fill); font: 600 30px ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
@@ -198,7 +194,6 @@ button.cg-mrow:hover { background: var(--cg-fill); }
   background: var(--app-main-bg); color: var(--utility-foreground); font: inherit; font-size: 12px; outline: none;
 }
 .cg-cardpage-fields .cg-cardpage-name-in { font-size: 15px; font-weight: 650; }
-.cg-cardpage-error { color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 11px; }
 .cg-cardpage-fields input:focus { border-color: var(--app-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 22%, transparent); }
 .cg-cardpage .cg-msec { margin-top: 18px; }
 

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { ChevronLeft } from 'lucide-react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { KordiFlyingBird } from '@/features/cloud/KordiFlyingBird';
 import { GroupAvatar } from '@/kordi-app/components/GroupAvatar';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
@@ -149,7 +150,7 @@ export function CgIcon({ children, tone = 'accent' }: { children: ReactNode; ton
 }
 
 export function CgNotice({ text }: { text: string | null }) {
-  return text ? <div className="cg-notice" role="alert">{text}</div> : null;
+  return text ? <ErrorLine className="mt-2.5">{text}</ErrorLine> : null;
 }
 
 export function CgScore({ score }: { score: number | null | undefined }) {

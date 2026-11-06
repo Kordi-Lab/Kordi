@@ -166,8 +166,6 @@ button.cg-tag-text { cursor: pointer; }
 .cg-progress.is-inline .cg-mark { width: 20px; height: 20px; }
 
 
-.cg-notice { margin-top: 10px; color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 12.5px; }
-.cg-actions-end .cg-notice { margin: 0 0 4px; }
 .cg-hint { margin-top: 8px; color: var(--utility-muted-text); font-size: 12px; text-align: center; }
 .cg-next-step { margin: 14px 2px 0; color: var(--utility-muted-text); }
 

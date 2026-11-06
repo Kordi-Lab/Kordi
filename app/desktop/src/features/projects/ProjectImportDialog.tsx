@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { ArrowLeft, Check, ChevronRight, Folder, FolderOpen, GitBranch, LoaderCircle, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { AppDialog } from '@/components/ui/dialog';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
 import { desktopProjectImportApi, githubRepositoryFromInput, type GithubRepository, type ProjectImportApi } from './projectImportApi';
 
 export function ProjectImportDialog({ onClose, onImported, api = desktopProjectImportApi, preview = false }: {
@@ -39,6 +40,7 @@ export function ProjectImportDialog({ onClose, onImported, api = desktopProjectI
     return () => { canceled = true; };
   }, [api, page, refresh, source]);
 
+  const reloadRepositories = () => { setLoading(true); setLoadError(''); setPage(1); setRefresh((current) => current + 1); };
   const chooseFolder = async (destination: 'new' | 'local' | 'github') => {
     setBusy(true); setError('');
     try {
@@ -89,8 +91,8 @@ export function ProjectImportDialog({ onClose, onImported, api = desktopProjectI
         <label className="chat-project-path-label">Folder path<input autoFocus value={folder} disabled={locked} onChange={(event) => setFolder(event.target.value)} placeholder="Choose a folder or enter its path" /></label>
       </> : <>
         <div className="chat-project-repo-search"><Search size={15} /><input autoFocus disabled={locked} aria-label="Search repositories or paste a GitHub URL" placeholder="Search repositories or paste a GitHub URL" value={query} onChange={(event) => { setQuery(event.target.value); setSelection(''); }} /></div>
-        <div className="chat-project-subheading"><span>{githubRepositoryFromInput(query) ? 'Repository from URL' : preview ? 'Demo repositories' : 'Your GitHub repositories'}</span><button type="button" disabled={loading || locked} aria-label="Refresh repositories" onClick={() => { setLoading(true); setLoadError(''); setPage(1); setRefresh((current) => current + 1); }}><RefreshCw size={13} /></button></div>
-        {loadError ? <p role="status" className="chat-project-load-error">{loadError}</p> : null}
+        <div className="chat-project-subheading"><span>{githubRepositoryFromInput(query) ? 'Repository from URL' : preview ? 'Demo repositories' : 'Your GitHub repositories'}</span><button type="button" disabled={loading || locked} aria-label="Refresh repositories" onClick={reloadRepositories}><RefreshCw size={13} /></button></div>
+        {loadError ? <ErrorLine className="mt-0 mb-2" role="status" action={{ label: 'Try again', onClick: reloadRepositories, disabled: loading || locked }}>{withoutTryAgain(loadError)}</ErrorLine> : null}
         <div className="chat-project-source-list">
           {githubRepositoryFromInput(query) ? <button type="button" disabled={locked} aria-pressed="true"><GitBranch size={16} /><span>{repository}</span><Check size={16} /></button> : matches.map((repo) =>
             <button type="button" key={repo.fullName} disabled={locked} aria-pressed={selection === repo.fullName} onClick={() => setSelection(repo.fullName)}><GitBranch size={17} /><span><strong>{repo.fullName}</strong><small>{[repo.description, repo.language, repo.private ? 'Private' : null].filter(Boolean).join(' · ')}</small></span>{selection === repo.fullName ? <Check size={16} /> : null}</button>,
@@ -102,7 +104,7 @@ export function ProjectImportDialog({ onClose, onImported, api = desktopProjectI
       </>}
       <button type="submit" className="chat-project-primary" disabled={busy || !canSubmit}>{busy ? <><LoaderCircle size={14} className="animate-spin" />{source === 'new' && !imported ? 'Creating project…' : source === 'github' && !imported ? 'Cloning repository…' : 'Adding project…'}</> : imported ? 'Retry opening project' : source === 'new' ? 'Create project' : 'Add project'}</button>
     </form>}
-    {error ? <p role="alert" className="chat-project-import-error">{error}</p> : null}
+    {error ? <ErrorLine className="mt-2.5">{error}</ErrorLine> : null}
     {preview ? <p className="chat-project-disclaimer">Demo preview · Project imports are simulated.</p> : null}
   </AppDialog>;
 }

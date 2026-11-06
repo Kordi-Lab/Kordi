@@ -1,6 +1,7 @@
 import { useId, useRef } from 'react';
 import { FilePlus2, Paperclip } from 'lucide-react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { Message, SessionArtifact } from '@/kordi-app/types';
 
 import { ADD_DOCUMENT_ACCEPT } from './chatDocuments';
@@ -50,7 +51,7 @@ export function ChatDocumentEntries({ conversationId, messages, artifacts, ...ov
       </div>
       <p id={formatHelpId} className="app-text-muted mt-1 px-2 text-[11px]">Markdown and HTML documents</p>
       {entries.error ? (
-        <div role="alert" className="app-error-text mt-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{entries.error}</div>
+        <ErrorLine className="mt-2 px-2">{entries.error}</ErrorLine>
       ) : null}
     </div>
   );

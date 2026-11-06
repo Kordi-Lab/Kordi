@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
 import { settingsType } from '@/kordi-app/components/settingsType';
 import { cn } from '@/lib/utils';
 
@@ -121,9 +122,12 @@ export function CloudUsagePanel({
       </div>
 
       {error ? (
-        <div className="app-error-text mt-4 rounded-[12px] bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100" role="alert">
-          {error}
-        </div>
+        <ErrorLine
+          className="mt-4"
+          action={{ label: 'Try again', onClick: () => { void refresh(); }, disabled: isLoading }}
+        >
+          {withoutTryAgain(error)}
+        </ErrorLine>
       ) : null}
 
       {isLoading && organizations.length === 0 ? (

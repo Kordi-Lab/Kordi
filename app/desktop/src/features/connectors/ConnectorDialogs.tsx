@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import {
   AppDialog,
   AppDialogActions,
@@ -34,7 +35,7 @@ const auditDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medi
 const dialogText = 'text-[color:var(--app-transient-text)]';
 const dialogMuted = 'text-[color:var(--app-transient-muted-text)]';
 const dialogSubtle = 'text-[color:var(--app-transient-subtle-text)]';
-const dialogDanger = 'text-[color:var(--app-transient-danger-text)]';
+const dialogFailure = 'text-[color:var(--app-error-text)]';
 
 function auditTimeLabel(value: string): string {
   const date = new Date(value);
@@ -171,9 +172,6 @@ export function ConnectorDialogs({
           <AppDialogDescription id={`${idPrefix}-audit-description`}>
             Every read and act call your agents made, newest first.
           </AppDialogDescription>
-          {dialog.error ? (
-            <p className={cn('m-0 mt-3 text-[12px]', dialogDanger)} role="alert">{dialog.error}</p>
-          ) : null}
           {dialog.entries === null ? (
             <p className={cn('m-0 mt-4 text-[12px]', dialogMuted)} role="status">Loading activity…</p>
           ) : dialog.entries.length === 0 ? (
@@ -190,7 +188,7 @@ export function ConnectorDialogs({
                     <Badge inDialog tone={entry.group === 'act' ? 'amber' : 'muted'}>{entry.group === 'act' ? 'Act' : 'Read'}</Badge>
                     <span className={cn(
                       'text-[11px]',
-                      entry.outcome === 'denied' || entry.outcome === 'blocked_background' || entry.outcome === 'failed' ? dialogDanger : dialogMuted,
+                      entry.outcome === 'denied' || entry.outcome === 'blocked_background' || entry.outcome === 'failed' ? dialogFailure : dialogMuted,
                     )}
                     >
                       {outcomeLabels[entry.outcome]}
@@ -201,6 +199,7 @@ export function ConnectorDialogs({
               ))}
             </ol>
           )}
+          {dialog.error ? <ErrorLine className="mt-3">{dialog.error}</ErrorLine> : null}
           <AppDialogActions>
             <Button className="rounded-full px-4" autoFocus onClick={closeDialog}>Done</Button>
           </AppDialogActions>

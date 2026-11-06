@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LogOut, Pencil, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { settingsType } from '@/kordi-app/components/settingsType';
 import { cn } from '@/lib/utils';
 
@@ -247,9 +248,7 @@ export function CloudDevicesPanel({
       </div>
 
       {error ? (
-        <div className="app-error-text mt-4 rounded-[12px] bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100" role="alert">
-          {error}
-        </div>
+        <ErrorLine className="mt-4">{error}</ErrorLine>
       ) : null}
 
       {isLoading && devices.length === 0 ? (

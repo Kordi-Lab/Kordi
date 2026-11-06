@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom';
 import { Film, ImagePlus, Search, Smile, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
@@ -315,9 +316,7 @@ export function ComposerExpressivePicker({
               </div>
 
               {mediaError ? (
-                <div className="app-expressive-picker-inline-error" role="alert">
-                  {mediaError}
-                </div>
+                <ErrorLine className="mt-0">{mediaError}</ErrorLine>
               ) : null}
 
               {matchingLibrary.length > 0 ? (

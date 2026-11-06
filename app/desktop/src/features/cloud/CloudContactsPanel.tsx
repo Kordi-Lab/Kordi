@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
+
 import {
   CloudAuthClient,
   CloudAuthError,
@@ -212,9 +214,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
         </form>
 
         {lookup.kind === 'error' ? (
-          <div role="alert" className="app-error-text mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-200">
-            {lookup.message}
-          </div>
+          <ErrorLine className="mt-3">{lookup.message}</ErrorLine>
         ) : null}
 
         {lookup.kind === 'found' ? (
@@ -265,9 +265,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
           </div>
           <div className="mt-2 grid gap-2">
             {loadError ? (
-              <div role="alert" className="app-error-text rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-200">
-                {loadError}
-              </div>
+              <ErrorLine className="mt-0">{loadError}</ErrorLine>
             ) : null}
             {contacts && contacts.length === 0 ? (
               <div className="app-transient-row app-transient-muted rounded-xl border px-3 py-3 text-[12px]">

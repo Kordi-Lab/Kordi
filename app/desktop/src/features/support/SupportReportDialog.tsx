@@ -8,6 +8,7 @@ import {
   AppDialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type {
   CloudSupportTicketInput,
   CloudSupportTicketResult,
@@ -354,9 +355,7 @@ export function SupportReportDialog({
                 />
               </div>
 
-              <div className="app-error-text mt-3 min-h-4 text-[11px] leading-4" aria-live="polite">
-                {error}
-              </div>
+              {error ? <ErrorLine className="mt-3">{error}</ErrorLine> : null}
             </div>
 
             <AppDialogActions className="app-transient-divider mt-0 shrink-0 border-t px-4 py-3">

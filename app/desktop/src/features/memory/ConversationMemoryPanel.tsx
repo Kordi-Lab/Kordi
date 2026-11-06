@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
+
 import { isMemoryForConversation, type ConversationMemoryScopes } from './conversationMemory';
 import { MemoryList } from './MemoryList';
 import type { MemoryClient } from './memoryClient';
@@ -60,7 +62,7 @@ export function ConversationMemoryPanel({
   return (
     <section aria-label="Memory" data-conversation-memory className="app-detail-section">
       {error ? (
-        <p role="alert" className="app-error-text m-0 py-2 text-[12px] leading-5">{error}</p>
+        <ErrorLine className="m-0 py-2">{error}</ErrorLine>
       ) : lessons === null || scopes === null ? (
         <p role="status" className="m-0 py-2 app-inspector-subtext">Loading memory…</p>
       ) : (

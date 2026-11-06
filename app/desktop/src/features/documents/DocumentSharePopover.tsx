@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { AppDialog, AppDialogActions, AppDialogDescription, AppDialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 
 import type { DocumentShare } from './documentShareTypes';
 import { DocumentSwitch } from './DocumentSwitch';
@@ -133,7 +134,7 @@ export function DocumentSharePopover({
           <span className="app-document-share-label">Show in Finder</span>
         </button>
       ) : null}
-      {error ? <div className="app-document-share-error" role="alert">{error}</div> : null}
+      {error ? <ErrorLine className="m-0 px-2.5 py-1.5">{error}</ErrorLine> : null}
 
       {confirmOff ? (
         <AppDialog titleId="document-link-off-title" descriptionId="document-link-off-description" onDismiss={() => setConfirmOff(false)} busy={busy}>

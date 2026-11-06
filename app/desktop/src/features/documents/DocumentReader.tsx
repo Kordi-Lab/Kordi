@@ -2,6 +2,7 @@ import { LoaderCircle } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 
 import { DocumentBlockAnnotations, type DocumentBlockThreadProps } from './DocumentBlock';
@@ -253,7 +254,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
           shared={blockShared}
         />
       ) : null}
-      {reader.actionError && !shareOpen ? <div className="app-document-error" role="alert">{reader.actionError}</div> : null}
+      {reader.actionError && !shareOpen ? <ErrorLine className="app-document-error">{reader.actionError}</ErrorLine> : null}
       {reader.saveNotice ? (
         <div className="app-document-toast" role="status">{reader.saveNotice}</div>
       ) : null}
