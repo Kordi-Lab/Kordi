@@ -129,7 +129,7 @@ function LiveChatTurnCardView({
 
           {showLiveProgress || hasOrderedContent || hasTimelineActivity || hasAssistant ? (
             <TurnProgress turn={visibleTurn}
-              renderTool={tool => <ToolActivityRow key={tool.id} tool={tool} onOpenFile={onOpenArtifact} />}
+              renderTool={tool => <ToolActivityRow key={tool.id} tool={tool} stateKey={`turn:${visibleTurn.id}:tool:${tool.id}`} onOpenFile={onOpenArtifact} />}
               trailing={cardCollaborationStop && onStopCollaborationAgentRequest ? (
                 <CollaborationAgentStopButton request={cardCollaborationStop} onStop={onStopCollaborationAgentRequest} />
               ) : cardStopAvailable ? <TurnStopButton onStop={onStopActiveTurn} /> : null}

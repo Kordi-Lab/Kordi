@@ -166,7 +166,7 @@ test('ordered commentary keeps disclosures open through streaming and completion
   await page.goto('/tests/visual/processingTrajectory.html?ordered=1&count=2&phase=6');
   await page.locator('.app-turn-worked-header').click();
   const header = await page.locator('.app-turn-worked-header').elementHandle();
-  const first = page.locator('.app-tool-input-details > button').first();
+  const first = page.locator('.app-tool-activity-toggle').first();
   await expect(page.getByText('I will inspect the example before making a change.')).toBeVisible();
   await first.focus();
   await page.keyboard.press('Enter');
@@ -197,6 +197,8 @@ test('ordered activity opens output directly and local files in reusable side-pa
   await page.goto('/tests/visual/processingTrajectory.html?ordered=1&count=0&phase=7');
   await page.locator('.app-turn-worked-header').click();
   await expect(page.getByRole('button', { name: 'Details', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Synthetic result', { exact: true })).toHaveCount(0);
+  await page.locator('.app-tool-activity-toggle').first().click();
   await expect(page.getByText('Synthetic result', { exact: true })).toBeVisible();
   await expect(page.locator('.app-ordered-turn-surface')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await page.getByRole('button', { name: 'example.ts', exact: true }).click();
@@ -336,9 +338,9 @@ test('live progress starts as one line and unfolds recorded activity in order', 
   const sequence = await page.locator('.app-turn-trajectory > div').allTextContents();
   expect(sequence).toEqual([
     'I will inspect the example before making a change.',
-    expect.stringContaining('Synthetic result'),
+    expect.stringContaining('example.ts'),
     'The example needs one change. I will apply it now.',
-    expect.stringContaining('Updated the example.'),
+    expect.stringContaining('updated.ts'),
   ]);
   await page.getByRole('button', { name: 'Reasoning', exact: true }).click();
   await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
