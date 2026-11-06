@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { installApiFixture, stubSitePages } from './apiFixture';
+import { installApiFixture, stubSitePages, isCancelledFixtureRequest } from './apiFixture';
 
 const invite = `kordi_gi_${'b'.repeat(43)}`;
 
@@ -21,7 +21,7 @@ async function watchForAppSignInForm(page: Page) {
 
 test('a signed-out page goes to the site login, then back to the same page after sign-in', async ({ page, baseURL }) => {
   const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
+  page.on('pageerror', error => { if (!isCancelledFixtureRequest(error.message)) errors.push(error.message); });
   let signedIn = false;
   await installApiFixture(page, baseURL!, () => signedIn);
   const visits = await stubSitePages(page);

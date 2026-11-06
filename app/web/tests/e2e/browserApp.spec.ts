@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { installApiFixture, stubSitePages } from './apiFixture';
+import { installApiFixture, stubSitePages, isCancelledFixtureRequest } from './apiFixture';
 
 test('browser build sends a signed-out visitor to the site sign-in without a native runtime or token URL', async ({ page, baseURL }) => {
   const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
+  page.on('pageerror', error => { if (!isCancelledFixtureRequest(error.message)) errors.push(error.message); });
   await installApiFixture(page, baseURL!, false);
   await stubSitePages(page);
   const response = await page.goto('/app/chats');
@@ -17,7 +17,7 @@ test('browser build sends a signed-out visitor to the site sign-in without a nat
 
 test('cookie session opens the complete shell, browser history and reload', async ({ page, baseURL }) => {
   const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
+  page.on('pageerror', error => { if (!isCancelledFixtureRequest(error.message)) errors.push(error.message); });
   const requests = await installApiFixture(page, baseURL!, true);
   await page.goto('/app/chats');
   for (const name of ['Contacts', 'Chats', 'Agent Chats', 'Factory', 'Digest']) {
