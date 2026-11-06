@@ -1,7 +1,7 @@
 # Historical design records
 
-The specifications in this directory document designs at the time they were
-proposed. They are retained for engineering history and are not the current
+Historical design specifications are kept outside the publishable source tree.
+They described designs at the time they were proposed and are not the current
 product architecture or an executable backlog. Historical implementation
 plans have been removed from the publishable source tree.
 
