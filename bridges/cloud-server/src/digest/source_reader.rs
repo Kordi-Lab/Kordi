@@ -30,6 +30,7 @@ const SOURCE_FROM: &str = " FROM cloud_chat_messages m
  LEFT JOIN cloud_default_agent_profiles profile ON profile.owner_account_id=m.sender_account_id
  LEFT JOIN cloud_agent_fallback_runs source_run ON source_run.response_message_id=m.message_id::text AND source_run.owner_account_id=m.sender_account_id
  WHERE m.deleted_at IS NULL
+ AND sender.ai_consent_status<>'declined'
  AND NOT EXISTS (SELECT 1 FROM cloud_chat_message_visibility v WHERE v.account_id=$1 AND v.message_id=m.message_id)
  AND NOT EXISTS (SELECT 1 FROM cloud_account_session_visibility v WHERE v.account_id=$1 AND v.session_id=COALESCE(c.legacy_session_id,c.conversation_id::text) AND (v.hidden_at IS NOT NULL OR v.deleted_at IS NOT NULL))";
 

@@ -42,7 +42,11 @@ identifies the deleted person.
   organization. Other organizations lose the member; when the last owner
   goes, the longest-standing admin is promoted (migration 0168).
 - Plan cards and agent-session requests they made in conversations others
-  keep are kept from the stand-in.
+  keep, and comments they left on other people's documents (with the replies
+  to them), are kept from the stand-in.
+- Other people's digests built from their messages are cleared and rebuilt
+  without them, synced copies of emptied direct conversations are deleted,
+  and access waitlist requests under any of their emails are removed.
 
 Remaining members get `membership.updated` for each kept conversation and
 `message.updated` for up to 200 of its newest changed messages; older
@@ -51,11 +55,13 @@ gets `membership.removed`.
 
 ## Order of work
 
-1. Before the transaction, connectors are revoked at their providers while
-   their credentials still exist. Sign in with Apple revocation will be called
+1. A short transaction locks the account, checks that its password and email
+   are unchanged since the proof was checked, and spends an emailed code.
+   Then, outside any transaction, connectors are revoked at their providers
+   while their credentials still exist. Sign in with Apple revocation will be called
    from the same place (`account_deletion::prepare`). Failures are logged and
    never stop the deletion.
-2. One transaction locks the account, moves or deletes conversations, clears
+2. One transaction locks and checks the account again, moves or deletes conversations, clears
    rows that point at the account's attachments, sandboxes or personal
    organization, deletes records that have no foreign key
    (`cloud_audit_events`, `cloud_agent_omp_state`, `cloud_connector_audit`,
