@@ -201,7 +201,7 @@ test('recovery switches the token only when it still acts elsewhere', async () =
   assert.deepEqual(switched, ['org_team']);
 });
 
-test('selecting an organization switches the token first and keeps the selection when that fails', async () => {
+test('selecting an organization switches the token first and keeps the selection when that fails or is unsupported', async () => {
   signedIn();
   assert.equal(getOrganizationState().selectedOrganizationId, 'org_personal');
 
@@ -224,13 +224,40 @@ test('selecting an organization switches the token first and keeps the selection
   assert.deepEqual(switched, ['org_team']);
   assert.equal(getOrganizationState().selectedOrganizationId, 'org_team');
 
-  // A server without the exchange keeps the earlier behavior.
+  // A server without the exchange keeps the token in the team, so the
+  // selection stays there too: Personal work must not run on the team's pool.
   const unsupported = {
     loadSession: async () => ({ ...session, organizationId: 'org_team' }),
     switchSession: async (): Promise<StoredSession> => { throw new Error('unsupported'); },
   };
-  assert.equal(await switchOrganization('acct_a', 'org_personal', unsupported), true);
+  assert.equal(await switchOrganization('acct_a', 'org_personal', unsupported), false);
+  assert.equal(getOrganizationState().selectedOrganizationId, 'org_team');
+});
+
+test('selecting the organization the token already acts in needs no exchange', async () => {
+  signedIn('org_team');
+  const switched: string[] = [];
+  const deps = {
+    // A token without a recorded organization acts in the personal one.
+    loadSession: async () => session,
+    switchSession: async (organizationId: string): Promise<StoredSession> => {
+      switched.push(organizationId);
+      throw new Error('unsupported');
+    },
+  };
+  assert.equal(await switchOrganization('acct_a', 'org_personal', deps), true);
+  assert.deepEqual(switched, []);
   assert.equal(getOrganizationState().selectedOrganizationId, 'org_personal');
+});
+
+test('an unsupported alignment shows the token organization', async () => {
+  const storage = signedIn('org_personal');
+  await alignSessionOrganization('acct_a', {
+    loadSession: async () => ({ ...session, organizationId: 'org_team' }),
+    switchSession: async (): Promise<StoredSession> => { throw new Error('unsupported'); },
+  });
+  assert.equal(getOrganizationState().selectedOrganizationId, 'org_team');
+  assert.equal(storage.values.get(organizationSelectionKey('acct_a')), 'org_personal');
 });
 
 test('a failed alignment shows the token organization without changing the stored selection', async () => {

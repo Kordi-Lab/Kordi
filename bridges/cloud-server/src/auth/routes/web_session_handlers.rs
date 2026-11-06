@@ -192,6 +192,39 @@ pub(super) async fn authenticated_web_session(
         .map(|(session, _)| session)
 }
 
+/// The web session behind a page request's cookie, with the CSRF token a
+/// form on that page must send back, or `None` when signed out.
+pub(super) async fn signed_in_web_session(
+    state: &ServerState,
+    headers: &HeaderMap,
+) -> Option<(CloudSession, String)> {
+    let (session, token) = cookie_session(state, headers).await.ok()?;
+    Some((session, web_csrf_token(&token)))
+}
+
+/// The web session for a form POST from a server-rendered page: exact
+/// `Origin`, session cookie, and the CSRF token in the form field `csrf`.
+pub(super) async fn form_web_session(
+    state: &ServerState,
+    headers: &HeaderMap,
+    csrf: &str,
+) -> Result<CloudSession, Box<Response>> {
+    if !origin_is_public(headers) {
+        return Err(origin_error());
+    }
+    let token = cookie_value(headers, WEB_SESSION_COOKIE).ok_or_else(login_required)?;
+    if !constant_time_eq(csrf, &web_csrf_token(&token)) {
+        return Err(web_error(
+            StatusCode::FORBIDDEN,
+            "csrf_token_invalid",
+            "Reload the page and try again.",
+        ));
+    }
+    cookie_session(state, headers)
+        .await
+        .map(|(session, _)| session)
+}
+
 /// Account routes the kordi.ai pages call from the browser. A request with
 /// an `Authorization` header takes the app (bearer) path unchanged; any other
 /// request needs the web session cookie, and every state-changing method

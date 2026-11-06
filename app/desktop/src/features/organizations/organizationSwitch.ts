@@ -1,6 +1,7 @@
 // Keeps the session's access token in the selected organization. Selecting an
 // organization exchanges the token first and applies the selection only when
-// the exchange succeeds; a failed exchange keeps the old token and selection.
+// the exchange succeeds (or the token already acts there); a failed or
+// unsupported exchange keeps the old token and selection.
 // Never signs out, switches account, or touches local session data.
 import { loadSession, switchSessionOrganization, type StoredSession } from '@/features/cloud/session';
 import { getOrganizationState, selectOrganization } from './organizationStore';
@@ -16,10 +17,6 @@ const defaultDeps: OrganizationSwitchDeps = {
 };
 
 let latestSelection = 0;
-
-function errorCode(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /** The organization a session's token acts in; an unrecorded one is the personal organization. */
 export function tokenOrganizationId(session: StoredSession): string | null {
@@ -43,10 +40,11 @@ export async function switchOrganization(
   try {
     const session = await deps.loadSession();
     if (!session || session.accountId !== account) return false;
-    if (session.organizationId !== organizationId) await deps.switchSession(organizationId);
-  } catch (error) {
-    // A server without the exchange keeps the selection as before.
-    if (errorCode(error) !== 'unsupported') return false;
+    // The server charges work to the token's organization, so the selection
+    // follows the token: any failed exchange, `unsupported` included, keeps it.
+    if (tokenOrganizationId(session) !== organizationId) await deps.switchSession(organizationId);
+  } catch {
+    return false;
   }
   if (selection !== latestSelection) return false;
   selectOrganization(account, organizationId);
@@ -73,12 +71,12 @@ export async function alignSessionOrganization(
   } catch {
     return;
   }
-  if (!session || session.accountId !== account || session.organizationId === selected) return;
+  if (!session || session.accountId !== account) return;
+  const tokenOrganization = tokenOrganizationId(session);
+  if (tokenOrganization === selected) return;
   try {
     await deps.switchSession(selected);
-  } catch (error) {
-    if (errorCode(error) === 'unsupported') return;
-    const tokenOrganization = tokenOrganizationId(session);
+  } catch {
     if (!tokenOrganization || selection !== latestSelection) return;
     if (getOrganizationState().selectedOrganizationId !== selected) return;
     // No storage: the stored selection is tried again on the next start.
