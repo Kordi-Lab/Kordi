@@ -39,6 +39,8 @@ connectorEvents (and changes.connectorEvents) are recent read-only events from t
 memories lists durable facts worth remembering from the new messages, at most 3; leave it empty when nothing qualifies. Each memory: {"text":"one concise memory, max 500 characters","category":"general_preferences|goals_and_constraints|education_learner_profile|work_context|purchase_history_preferences|values_and_ethics|location_context|coordination_context|hcp-custom:task_lessons","confidence":"low|medium|high","scope":"conversation|group|global","sessionId":"the source messages' sessionId","sourceMessageIds":["exact message id"]}. Use global, without sessionId, only for preferences the viewer wants everywhere ("from now on", "always"). A fact the viewer states about themselves stays in the conversation it came from: scope conversation with that sessionId. Conversation and global memories need the viewer's own messages as sources, never another person's or an agent's. Something a group agreed on may be a group memory for that group's session only. Memories must not record health, finances, relationships, identity attributes, credentials, or other people's private details. The snapshot's memories are the viewer's saved memories: never save one that repeats or restates them; when a preference changes, save the corrected version."#;
 
 #[cfg(test)]
+mod ai_consent_tests;
+#[cfg(test)]
 mod calendar_capacity_tests;
 #[cfg(test)]
 mod calendar_tests;

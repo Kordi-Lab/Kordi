@@ -133,6 +133,9 @@ pub(super) async fn is_triage(
 
 /// Starts a quick check of the owner's marked messages, when one is due.
 pub async fn start(pool: &PgPool, account: &str) -> Result<()> {
+    if crate::ai_consent::is_declined(pool, account).await? {
+        return Ok(());
+    }
     type Row = (
         String,
         String,

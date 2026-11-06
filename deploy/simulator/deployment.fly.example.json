@@ -1,7 +1,7 @@
 {
   "actor_id": "synthetic-requester-01",
   "image": "registry.example.invalid/kordi/human-simulator-worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "api_base": "https://simulator.kordi.cloud/",
+  "api_base": "https://simulator.example.test/",
   "backend": {
     "type": "fly",
     "app": "human-simulator-test",

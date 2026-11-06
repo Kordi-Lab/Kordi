@@ -5,9 +5,6 @@
 //! subsequent turns of the rusqlite → sqlx port build on. The legacy
 //! rusqlite path under `crate::db_runner` + `crate::schema` stays in
 //! place during the migration; modules port one at a time.
-//!
-//! See `docs/superpowers/specs/2026-05-10-cloud-server-rusqlite-to-sqlx-port.md`
-//! for the multi-turn plan.
 
 pub mod pool;
 

@@ -357,3 +357,6 @@ mod member_tests;
 
 #[path = "context_media/unread_tests.rs"]
 mod unread_tests;
+
+#[path = "context_media/consent_tests.rs"]
+mod consent_tests;

@@ -87,6 +87,7 @@
 		2F8E87B5DA5D3D589D5D971B /* SessionDetailSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 656611314D66110242070726 /* SessionDetailSections.swift */; };
 		2FCD87F86002B097DC4048AE /* ThreadMessageHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D720EBECE49FE6CE5E068D8 /* ThreadMessageHeader.swift */; };
 		303D78FC14FA761AAC2831B0 /* CommonGroundWalletView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49AF5B6EA34A07100AE9668D /* CommonGroundWalletView.swift */; };
+		30696B7C5621B517E656FDAD /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 98B746A709C8518D3D87610C /* PrivacyInfo.xcprivacy */; };
 		30FEB1CDE761F765B910D3C2 /* ShareExtensionSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE75382D6C8FA0FC7A711C7 /* ShareExtensionSupport.swift */; };
 		310F19500E8F3D4B8A743C3F /* ThreadDatePresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4188889E4A4FB5D6B59560F6 /* ThreadDatePresentationTests.swift */; };
 		31C2168086204016839FC8AB /* CommonGroundProfileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C32CCFD675AE9F8FA81E8C4F /* CommonGroundProfileTests.swift */; };
@@ -758,6 +759,7 @@
 		97E9E1638C1F54B5AC299797 /* CommonGroundNearbyNeedTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundNearbyNeedTypes.swift; sourceTree = "<group>"; };
 		984BC333F4F3D18492F73B14 /* CommonGroundTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundTypes.swift; sourceTree = "<group>"; };
 		984CB21DF1BA4C396217B6BC /* MainNavigationHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainNavigationHost.swift; sourceTree = "<group>"; };
+		98B746A709C8518D3D87610C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		9924459336FA89A2D5AFE50C /* CloudAPIClient+CommonGround.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CloudAPIClient+CommonGround.swift"; sourceTree = "<group>"; };
 		9937A528C34DE6A3E1ADC0D5 /* AgentSubsessionStopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSubsessionStopTests.swift; sourceTree = "<group>"; };
 		9972C34D2BA3030E8FDE8F24 /* CommonGroundNearbyAlertRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundNearbyAlertRouting.swift; sourceTree = "<group>"; };
@@ -1586,6 +1588,7 @@
 			children = (
 				D754E3537F473F98052E1220 /* Info.plist */,
 				63AC02B591615C13AB59E1FE /* Kordi.entitlements */,
+				98B746A709C8518D3D87610C /* PrivacyInfo.xcprivacy */,
 			);
 			path = Supporting;
 			sourceTree = "<group>";
@@ -1840,6 +1843,7 @@
 			files = (
 				D6E3FF1559CAAAE57EDC446B /* Assets.xcassets in Resources */,
 				CD3C7A3CE21759DEED457B45 /* Distribution.xcassets in Resources */,
+				30696B7C5621B517E656FDAD /* PrivacyInfo.xcprivacy in Resources */,
 				BC01C5D7FB643F5F18C116FE /* blob-emoji in Resources */,
 				34D1737CBEFA979EC9353A72 /* digest in Resources */,
 				591D049BE5259BAF6555CCBC /* noto-emoji in Resources */,

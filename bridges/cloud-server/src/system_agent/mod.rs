@@ -61,6 +61,8 @@ pub(crate) fn test_service_account() -> &'static str {
 }
 
 #[cfg(test)]
+mod ai_consent_tests;
+#[cfg(test)]
 mod card_update_tests;
 #[cfg(test)]
 mod context_boundary_tests;

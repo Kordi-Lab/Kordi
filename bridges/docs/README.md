@@ -20,8 +20,6 @@ Use these documents when you need network, daemon, identity, privacy, or self-ho
 - [e2e-test-guide.md](e2e-test-guide.md)
 - [test-guide.md](test-guide.md)
 - [mac-pi-setup-guide.md](mac-pi-setup-guide.md)
-- [public-beta-plan.md](public-beta-plan.md)
-- [public-release-checklist.md](public-release-checklist.md)
 
 ## Related monorepo docs
 
