@@ -249,7 +249,7 @@ export function useCloudDirectAgentExecution({
           // A person the owner stopped from using their agents gets no answer.
           if (message.fromAccountId !== account.accountId) {
             const sessionToken = session.token;
-            const restricted = await agentRestrictedAccountIds({ token: async () => sessionToken });
+            const restricted = await agentRestrictedAccountIds({ token: () => Promise.resolve(sessionToken) });
             if (restricted.has(message.fromAccountId)) return;
           }
           const requestedRoute = cloudAgentRuntimeRouteForTargetCloudAgent({

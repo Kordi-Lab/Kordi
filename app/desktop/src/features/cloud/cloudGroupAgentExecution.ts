@@ -101,7 +101,7 @@ export async function respondToCloudGroupAgentMention(
   if (!session?.token) throw new Error('Not signed in.');
   // Someone the owner stopped from using their agents gets no answer here,
   // as on the cloud route, and their messages stay out of the context.
-  const restricted = await agentRestrictedAccountIds({ token: async () => session.token });
+  const restricted = await agentRestrictedAccountIds({ token: () => Promise.resolve(session.token) });
   if (restricted.has(message.senderAccountId)) { void runtime.syncDiff(); return; }
   throwIfCloudAgentTurnAborted(signal);
   const targetAccountIds = cloudGroupAgentResponseTargetAccountIds({
