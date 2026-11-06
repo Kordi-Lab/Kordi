@@ -233,3 +233,10 @@ button[data-attachment-file-chip]:hover:not(:disabled) .app-attachment-file-acti
   outline: 2px solid currentColor;
   outline-offset: 1px;
 }
+
+/* The quiet button color is unlayered and would win over a utility, so the
+   failed-message retry keeps the shared error color here. */
+.app-button-quiet[data-message-retry-button='true'],
+.app-button-quiet[data-message-retry-button='true']:hover {
+  color: var(--app-error-text);
+}
