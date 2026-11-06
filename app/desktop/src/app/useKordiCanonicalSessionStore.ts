@@ -37,6 +37,7 @@ import {
   createSingleFlightState,
   requestSingleFlightRun,
 } from '@/lib/singleFlight';
+import { carryDerivedCloudUnreadCounts } from '@/features/canonical/derivedCloudUnread';
 import {
   stripDerivedCloudUnreadCounts,
   uniqueStrings,
@@ -160,7 +161,9 @@ export function useKordiCanonicalSessionStore({
     const candidate = typeof action === 'function'
       ? action(current)
       : action;
-    const next = filterDeletedCanonicalStore(candidate, cloudMessageDeletions.ids(accountId));
+    const filtered = filterDeletedCanonicalStore(candidate, cloudMessageDeletions.ids(accountId));
+    const catalog = carryDerivedCloudUnreadCounts(current.catalog, filtered.catalog);
+    const next = catalog === filtered.catalog ? filtered : { ...filtered, catalog };
     if (Object.is(next, current)) return;
     storeRef.current = next;
     setStoreValue(next);

@@ -5,6 +5,7 @@ import type {
 } from '../src/kordi-app/types';
 import type { CloudMessage } from '../src/features/cloud/authClient';
 import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
+import { carryDerivedCloudUnreadCounts } from '../src/features/canonical/derivedCloudUnread';
 import {
   cloudOptimisticallyReadSessionIds,
   cloudUnreadCountsBySessionId,
@@ -72,8 +73,25 @@ test('unread reconciliation updates and clears only Cloud unread metadata', () =
   const cleared = patchCanonicalCloudUnreadCounts(unread, {});
   assert.deepEqual(
     cleared?.sessions[0]?.metadata,
-    { stable: true },
+    { stable: true, cloudUnreadCount: 0 },
   );
+  const neverUnread = stateWithUnread();
+  assert.equal(patchCanonicalCloudUnreadCounts(neverUnread, {}), neverUnread);
+});
+
+test('a catalog reload or replay result keeps the published unread count until reconciliation changes it', () => {
+  const published = patchCanonicalCloudUnreadCounts(stateWithUnread(), { 'session:one': 4 })!;
+  const reloaded = stateWithUnread();
+  const carried = carryDerivedCloudUnreadCounts(published, reloaded);
+  assert.deepEqual(carried?.sessions[0]?.metadata, { stable: true, cloudUnreadCount: 4 });
+  // Nothing to restore: the same object comes back.
+  const unchanged = stateWithUnread(4);
+  assert.equal(carryDerivedCloudUnreadCounts(published, unchanged), unchanged);
+  // Reconciliation clears with an explicit zero, which the carry respects.
+  const read = patchCanonicalCloudUnreadCounts(published, {})!;
+  assert.deepEqual(carryDerivedCloudUnreadCounts(published, read)?.sessions[0]?.metadata, { stable: true, cloudUnreadCount: 0 });
+  // A session the newer catalog dropped stays dropped.
+  assert.deepEqual(carryDerivedCloudUnreadCounts(published, { ...reloaded, sessions: [] })?.sessions, []);
 });
 
 test('unread reconciliation uses full history instead of the bounded renderer projection', () => {
