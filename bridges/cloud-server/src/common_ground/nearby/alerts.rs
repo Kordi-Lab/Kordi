@@ -5,7 +5,9 @@
 //! verdicts and matches are queued as runs; their completion marks the
 //! recipient dirty again.
 
-use sqlx_core::{query::query, query_as::query_as, transaction::Transaction};
+use sqlx_core::{
+    query::query, query_as::query_as, query_scalar::query_scalar, transaction::Transaction,
+};
 use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
@@ -107,12 +109,36 @@ async fn recipient(
             }
         }
         if !missing.is_empty() {
+            // The organization Nearby was turned on in, not the one selected now.
+            let organization = organization(pool, &recipient.account_id).await?;
             let pip = ctx.service;
-            matching::queue_matches(pool, pip, ctx.rate_limiter, &mine, &missing, None, None)
-                .await?;
+            matching::queue_matches(
+                pool,
+                pip,
+                ctx.rate_limiter,
+                &mine,
+                &missing,
+                None,
+                organization.as_deref(),
+            )
+            .await?;
         }
     }
     Ok(())
+}
+
+/// The organization the account turned Nearby on in, while it still belongs
+/// to it; `None` is the personal organization.
+async fn organization(pool: &PgPool, account: &str) -> sqlx_core::Result<Option<String>> {
+    let organization: Option<Option<String>> = query_scalar(
+        "SELECT CASE WHEN cloud_is_organization_member(organization_id, account_id)
+             THEN organization_id END
+         FROM cloud_common_ground_nearby WHERE account_id = $1",
+    )
+    .bind(account)
+    .fetch_optional(pool)
+    .await?;
+    Ok(organization.flatten())
 }
 
 /// An alert about to be queued.
