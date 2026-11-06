@@ -46,8 +46,10 @@ body[data-kordi-chat-theme='sand'],
   --app-palette-control: oklch(34% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.50);
   --app-palette-hover: oklch(38% calc(0.03 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.66);
   --app-palette-selected: oklch(35% calc(0.041 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.86);
-  --app-palette-border: oklch(85% calc(0.018 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.16);
-  --app-palette-divider: oklch(85% calc(0.018 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.10);
+  /* Tinted themes sit lines on tinted, translucent surfaces, so they need more
+   * alpha than Classic's neutral planes to read as clearly. Classic restores its own below. */
+  --app-palette-border: oklch(85% calc(0.018 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.18);
+  --app-palette-divider: oklch(85% calc(0.018 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.12);
   --app-palette-highlight: oklch(97% calc(0.008 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.09);
   --app-palette-shadow: 0 10px 28px oklch(12% calc(0.02 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.24);
   --app-palette-popup-shadow: 0 12px 32px oklch(10% calc(0.018 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.40);
@@ -70,10 +72,10 @@ body[data-kordi-chat-theme='sand'],
   --app-palette-composer-glass: oklch(98% calc(0.012 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.65);
   --app-palette-popup-glass: oklch(97% calc(0.015 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.94);
   --app-palette-control: oklch(93% calc(0.019 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.56);
-  --app-palette-hover: oklch(89% calc(0.027 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.62);
-  --app-palette-selected: oklch(89% calc(0.035 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.84);
-  --app-palette-border: oklch(36% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.15);
-  --app-palette-divider: oklch(36% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.10);
+  --app-palette-hover: oklch(88% calc(0.03 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.70);
+  --app-palette-selected: oklch(87% calc(0.04 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.88);
+  --app-palette-border: oklch(36% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.22);
+  --app-palette-divider: oklch(36% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.16);
   --app-palette-highlight: oklch(99% calc(0.004 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.70);
   --app-palette-shadow: 0 10px 28px oklch(28% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.075);
   --app-palette-popup-shadow: 0 12px 32px oklch(28% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.16);
@@ -90,6 +92,8 @@ body[data-kordi-chat-theme='classic'] :where(.kordi-app),
   --app-palette-control: rgba(255, 255, 255, 0.05);
   --app-palette-hover: rgba(255, 255, 255, 0.065);
   --app-palette-selected: rgba(255, 255, 255, 0.08);
+  --app-palette-border: oklch(85% 0 0 / 0.16);
+  --app-palette-divider: oklch(85% 0 0 / 0.10);
 }
 
 body[data-kordi-chat-theme='classic'].theme-light,
@@ -101,6 +105,8 @@ body[data-kordi-chat-theme='classic'] :where(.kordi-app.theme-light, .app-transi
   --app-palette-control: rgba(0, 0, 0, 0.035);
   --app-palette-hover: rgba(0, 0, 0, 0.045);
   --app-palette-selected: rgba(0, 0, 0, 0.06);
+  --app-palette-border: oklch(36% 0 0 / 0.15);
+  --app-palette-divider: oklch(36% 0 0 / 0.10);
 }
 
 body,
