@@ -1,5 +1,5 @@
 import type { CanonicalSessionState, ComposerQuoteState, DesktopChatState } from '@/kordi-app/types';
-import { fetchDesktopChatState } from '@/lib/desktop';
+import { fetchDesktopChatSessionDetail, fetchDesktopChatState } from '@/lib/desktop';
 import type { AttachmentItem } from '../composerController.types';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '../draftSessions';
 import { appendOptimisticOutboundMessage } from './optimistic';
@@ -53,20 +53,33 @@ export function shouldUseNoProviderSelfAgentShortcut({
   return !session || session.kind === 'self-agent';
 }
 
+function isTargetChatState(state: DesktopChatState | null, sessionId: string): state is DesktopChatState {
+  return Boolean(state && state.activeSessionId === sessionId && state.activeSession.id === sessionId);
+}
+
+/**
+ * The runtime state of the session a send targets, or null when this Mac
+ * cannot open a runtime copy of it. A session this profile never stored (one
+ * synced or migrated from another Mac) falls back to another session in the
+ * chat state until it is opened, so it is opened first, as selecting it does.
+ * Another session's state is never returned as the target's, and a session
+ * that cannot be opened does not stop the send: its own reply or failure
+ * shows on the message, never in the sidebar.
+ */
 export async function fetchMaterializedLocalChatTarget(
   sessionId: string,
   currentState: DesktopChatState | null,
+  readState: (sessionId: string) => Promise<DesktopChatState | null> = fetchDesktopChatState,
+  openSession: (sessionId: string) => Promise<unknown> = fetchDesktopChatSessionDetail,
 ) {
-  const currentRuntimeMatches = currentState?.activeSessionId === sessionId
-    && currentState.activeSession.id === sessionId;
-  if (currentRuntimeMatches) return null;
-  const materializedState = await fetchDesktopChatState(sessionId);
-  if (
-    !materializedState
-    || materializedState.activeSessionId !== sessionId
-    || materializedState.activeSession.id !== sessionId
-  ) {
-    throw new Error('Unable to load that Agent session. Try again.');
+  if (isTargetChatState(currentState, sessionId)) return null;
+  try {
+    const materializedState = await readState(sessionId);
+    if (isTargetChatState(materializedState, sessionId)) return materializedState;
+    await openSession(sessionId);
+    const openedState = await readState(sessionId);
+    return isTargetChatState(openedState, sessionId) ? openedState : null;
+  } catch {
+    return null;
   }
-  return materializedState;
 }

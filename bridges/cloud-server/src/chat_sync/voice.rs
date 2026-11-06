@@ -5,6 +5,14 @@ use serde_json::{json, Value};
 const LEGACY_FAILURE: &str = "Transcription unavailable.";
 const TRANSCRIPT_NOTE: &str = "[Voice transcript; audio was not provided. Tone, speaker identity, and background sounds are unknown.]";
 
+/// Both message metadata and finalized attachment metadata use this allowlist.
+pub fn supported_audio_mime_type(value: &str) -> bool {
+    matches!(
+        value,
+        "audio/mp4" | "audio/m4a" | "audio/x-m4a" | "audio/aac" | "audio/wav"
+    )
+}
+
 pub fn block(content: &Value) -> Option<&Value> {
     content["blocks"]
         .as_array()?
@@ -100,6 +108,28 @@ pub fn replace_body_text(content: &Value, text: String) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn voice_audio_formats_include_browser_pcm_but_reject_other_media() {
+        for mime in [
+            "audio/mp4",
+            "audio/m4a",
+            "audio/x-m4a",
+            "audio/aac",
+            "audio/wav",
+        ] {
+            assert!(super::supported_audio_mime_type(mime));
+        }
+        for mime in [
+            "text/html",
+            "image/png",
+            "video/mp4",
+            "application/octet-stream",
+            "audio/wav;script=x",
+            "",
+        ] {
+            assert!(!super::supported_audio_mime_type(mime));
+        }
+    }
     use super::*;
     fn voice(status: &str, text: &str) -> Value {
         json!({"type":"voice","mediaId":"audio-v1","transcript":text,

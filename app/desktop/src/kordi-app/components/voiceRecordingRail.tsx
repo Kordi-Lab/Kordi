@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { VoiceMessageRecorderState } from '@/features/chat/useVoiceMessageRecorder';
 import { cn } from '@/lib/utils';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { formatVoiceDuration, localVoiceSource } from './voiceAudioSource';
 import { VoiceWaveform } from './voiceWaveform';
 
@@ -32,7 +33,8 @@ export function VoiceRecordingRail({ state, onCancel, onSend, onRetry, onTrimRan
     : /Allow Kordi.*microphone/i.test(state.error ?? '') ? 'Allow microphone access in Settings'
     : failed ? state.attachment
       ? /trim/i.test(state.error ?? '') ? 'Trim failed · recording saved' : 'Send failed · recording saved'
-      : 'Could not start recording'
+      // Browser start errors are already one short line, such as a blocked permission.
+      : isBrowserAppRuntime() && state.error ? state.error : 'Could not start recording'
     : 'Ready to send';
 
   useEffect(() => {

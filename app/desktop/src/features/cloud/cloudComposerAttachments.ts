@@ -1,3 +1,5 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { browserAttachmentBlob } from '@web/runtime/browserAttachments';
 import type { LivePhoto, LivePhotoResource } from '@/features/chat/livePhotos';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
@@ -94,8 +96,9 @@ export async function uploadComposerAttachments({
       if (useNativeUpload) {
         summary = await nativeUpload({ path: attachment.path, contentType: mimeType });
       } else {
-        const bytes = await readAttachment(attachment.path);
-        const blob = new Blob([new Uint8Array(bytes)], mimeType ? { type: mimeType } : undefined);
+        const blob = isBrowserAppRuntime() && readAttachment === readDesktopChatAttachment
+          ? browserAttachmentBlob(attachment.path)
+          : new Blob([new Uint8Array(await readAttachment(attachment.path))], mimeType ? { type: mimeType } : undefined);
         previewUrl ??= kind === 'image'
           ? safeCloudAttachmentPreviewUrl(await createPreviewDataUrl(blob, {
             name: attachment.name,

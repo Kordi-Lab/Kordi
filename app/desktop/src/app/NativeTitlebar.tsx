@@ -9,6 +9,7 @@ export type NativeTitlebarActions = {
 };
 
 export function NativeTitlebar({
+  browser = false,
   windowTitle = 'Kordi',
   leftWorkspaceWidth,
   collapseChatSessions,
@@ -21,6 +22,7 @@ export function NativeTitlebar({
   companionLayout,
   detailRailWidth = 0,
 }: NativeTitlebarActions & {
+  browser?: boolean;
   titleHostRef?: Ref<HTMLDivElement>;
   actionsHostRef?: Ref<HTMLDivElement>;
   companionHostRef?: Ref<HTMLDivElement>;
@@ -32,18 +34,19 @@ export function NativeTitlebar({
 }) {
   return (
     <header
-      className="app-native-titlebar"
+      className={`app-native-titlebar${browser ? ' app-browser-toolbar' : ''}`}
       style={{ '--app-native-sidebar-width': leftWorkspaceWidth } as CSSProperties}
-      data-tauri-drag-region="true"
+      data-tauri-drag-region={browser ? undefined : true}
     >
-      <div className="app-native-titlebar-navigation" data-tauri-drag-region="true">
+      <div className="app-native-titlebar-navigation" data-tauri-drag-region={browser ? undefined : true}>
         {/* TODO: Add Back/Forward history controls before the sidebar toggle.
             Reserve space after the native traffic lights and increase the
             navigation track's minimum width so controls cannot overlap the
             title. Disable unavailable history directions and keep the folded
             sidebar free of a titlebar separator. */}
+        {browser ? <a className="app-browser-skip-link" href="#kordi-browser-main">Skip to content</a> : null}
         {onToggleSessionPanel && (
-          <button type="button" onClick={onToggleSessionPanel} aria-label={collapseChatSessions ? 'Show sidebar' : 'Hide sidebar'} title={collapseChatSessions ? 'Show sidebar' : 'Hide sidebar'} aria-expanded={!collapseChatSessions}>
+          <button type="button" onClick={onToggleSessionPanel} aria-label={collapseChatSessions ? 'Show sidebar' : 'Hide sidebar'} title={collapseChatSessions ? 'Show sidebar' : 'Hide sidebar'} aria-expanded={!collapseChatSessions} aria-controls={browser ? 'kordi-browser-sidebar' : undefined}>
             <PanelLeft aria-hidden="true">
               {collapseChatSessions
                 ? <path d="m14 9 3 3-3 3" />
@@ -58,7 +61,7 @@ export function NativeTitlebar({
           transitionDuration: `${companionLayout?.motionDuration ?? 0}ms`,
         } as CSSProperties}>
         <div className="app-native-titlebar-main">
-          <div ref={titleHostRef} className="app-native-titlebar-title" data-tauri-drag-region="true">
+          <div ref={titleHostRef} className="app-native-titlebar-title" data-tauri-drag-region={browser ? undefined : true}>
             <span className="app-native-titlebar-fallback" title={windowTitle}>{windowTitle}</span>
           </div>
           <div className="app-native-titlebar-actions">

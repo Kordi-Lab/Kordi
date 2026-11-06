@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Ban, Check, Flag, LoaderCircle, MessageCircle, Share, Trash2, X } from 'lucide-react';
+import { Check, LoaderCircle, MessageCircle, Share, Trash2, X } from 'lucide-react';
 
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import { useContactSafetyMenuItems } from '@/features/safety/contactSafetyMenuItems';
 import { defaultAgentDisplayName } from '@/lib/identityLabels';
 import { formatDesktopContactRequestTimeLabel } from '@/lib/time';
 import { IdentityAvatar } from '../components/IdentityAvatar';
@@ -18,6 +19,7 @@ import {
 import type { Contact, ContactRequest } from '../types';
 import { CopyButton, DetailHeader, DetailTile, DetailTiles, InfoCard, type InfoCardRow } from './ContactDetailParts';
 import { CommonGroundCard } from './ContactCommonGround';
+import { ContactPermissionsCard } from './ContactPermissionsSection';
 import { DeleteContactCard, SharedWithYouCard, SharedWithYouLoading } from './ContactProfileCards';
 import { contactProfileKind, formatContactSince, type ContactProfileKind } from './contactProfileHost';
 import { MenuTile, MuteTile, SettingsTile, ShareTile, type TileMenuItem } from './ContactProfileTiles';
@@ -29,7 +31,7 @@ import { useContactSharedPages } from './useContactSharedPages';
 
 type ContactDetailPaneProps = Pick<ContactsPageProps,
   | 'activeContact' | 'activeContactRequest' | 'onCloseOverlay' | 'onMessageContact' | 'onRemoveContact'
-  | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor'
+  | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor' | 'groupSpaces'
 > & {
   mode: 'contact' | 'request';
   requestActions: ContactRequestActions;
@@ -48,7 +50,7 @@ function kordiIdRow(handle: string): InfoCardRow {
 }
 
 type ContactDetailBodyProps = Pick<ContactsPageProps,
-  'onMessageContact' | 'onRemoveContact' | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor'
+  'onMessageContact' | 'onRemoveContact' | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor' | 'groupSpaces'
 > & {
   contact: Contact;
   onCloseOverlay: () => void;
@@ -74,6 +76,7 @@ function withProfilePresence(contact: Contact, state: ContactProfileState): Cont
 /** The contact profile: header, tiles, info card, shared and common ground cards, and Delete. */
 function ContactDetailBody({
   contact: row, onCloseOverlay, onMessageContact, onRemoveContact, contactProfileHost, contactMute, onOpenAgentSettings, sharedConversationFor,
+  groupSpaces,
 }: ContactDetailBodyProps) {
   const now = usePresenceNow();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -128,18 +131,19 @@ function ContactDetailBody({
   if (since) rows.push({ key: 'since', value: since, caption: 'Contact since' });
 
   const muted = contactMute?.isMuted(contact) ?? null;
+  const safetyItems = useContactSafetyMenuItems(kind === 'person' ? profile?.accountId ?? contactProfileHost?.accountIdFor(contact) : null, contact.name, onCloseOverlay);
   const deleteItem: TileMenuItem[] = canRemove
     ? [{ kind: 'item', key: 'delete', label: 'Delete contact', icon: <Trash2 className="h-4 w-4" aria-hidden="true" />, danger: true, onSelect: () => setIsConfirmOpen(true) }]
     : [];
   const menuItems: TileMenuItem[] = !rich ? deleteItem : kind === 'own-agent'
     ? [{ kind: 'item', key: 'share', label: 'Share', icon: <Share className="h-4 w-4" aria-hidden="true" />, disabled: true }]
     : [
-        { kind: 'item', key: 'block', label: 'Block', icon: <Ban className="h-4 w-4" aria-hidden="true" />, disabled: true },
-        { kind: 'item', key: 'report', label: 'Report', icon: <Flag className="h-4 w-4" aria-hidden="true" />, disabled: true },
+        ...safetyItems,
         ...(deleteItem.length ? [{ kind: 'separator' as const, key: 'sep' }, ...deleteItem] : []),
       ];
   const showMenu = menuItems.length > 0 && (rich ? kind !== 'system' : canRemove);
   const showShared = rich && (kind === 'person' || kind === 'agent');
+  const permissionsHost = contactProfileHost?.permissions;
 
   const submitRemoveContact = async () => {
     if (!canRemove || removeState === 'saving') return;
@@ -199,9 +203,13 @@ function ContactDetailBody({
           onOpenPage={shared.open}
           onOpenChat={openChat}
           onOpenGroup={contactProfileHost?.openGroup}
+          groupSpaces={groupSpaces}
         />
       ) : null}
       {profile?.commonGround ? <CommonGroundCard card={profile.commonGround} /> : null}
+      {permissionsHost && profile && kind === 'person' && profile.kind === 'person' && !profile.isSelf ? (
+        <ContactPermissionsCard accountId={profile.accountId} initial={profile.permissions} host={permissionsHost} />
+      ) : null}
       {canRemove ? (
         <DeleteContactCard
           confirmOpen={isConfirmOpen}
@@ -311,6 +319,7 @@ export function ContactDetailContent({
   contactMute,
   onOpenAgentSettings,
   sharedConversationFor,
+  groupSpaces,
   requestActions,
 }: ContactDetailPaneProps) {
   if (mode === 'request' && !activeContactRequest) return null;
@@ -337,6 +346,7 @@ export function ContactDetailContent({
           contactMute={contactMute}
           onOpenAgentSettings={onOpenAgentSettings}
           sharedConversationFor={sharedConversationFor}
+          groupSpaces={groupSpaces}
         />
       ) : activeContactRequest ? (
         <ContactRequestDetailBody request={activeContactRequest} requestActions={requestActions} />

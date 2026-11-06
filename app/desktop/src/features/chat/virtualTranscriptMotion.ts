@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { settledTranscriptRowSize, transcriptRowSizeClock } from './transcriptRowSizeMemory';
 
 type TranscriptVirtualizer = {
   options?: { scrollMargin?: number };
@@ -140,6 +141,47 @@ export function alignAndRevealMeasuredTranscriptRows({
   return animatedRows;
 }
 
+function measureTranscriptEntry({ enteredAt, gap, itemCount, sizeContainer, viewport, virtualizer }: {
+  enteredAt: number;
+  gap: number;
+  itemCount: number;
+  sizeContainer: HTMLDivElement | null;
+  viewport: HTMLDivElement | null;
+  virtualizer: TranscriptVirtualizer;
+}) {
+  const measuredItems = virtualizer.getVirtualItems();
+  const rowsByIndex = new Map(
+    [...(sizeContainer?.querySelectorAll<HTMLDivElement>('[data-transcript-window-item="true"]') ?? [])]
+      .map((row) => [Number(row.dataset.index), row]),
+  );
+  const allMountedRowsMeasured = measuredItems.length > 0 && measuredItems.every((item) => {
+    const row = rowsByIndex.get(item.index);
+    return Boolean(row && Math.abs(row.offsetHeight - item.size) <= 1);
+  });
+  const distanceFromBottom = viewport
+    ? viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
+    : Number.POSITIVE_INFINITY;
+  const atMeasuredTail = allMountedRowsMeasured
+    && rowsByIndex.has(itemCount - 1)
+    && distanceFromBottom <= Math.max(1, gap);
+  // Every mounted row already had this exact height before this entry began (an
+  // earlier visit): the layout is the settled one the reader last saw, so there
+  // is nothing left to wait for.
+  const rememberedLayout = atMeasuredTail && measuredItems.every((item) => {
+    const key = rowsByIndex.get(item.index)?.dataset.transcriptRowKey;
+    const remembered = key ? settledTranscriptRowSize(key, enteredAt) : undefined;
+    return remembered !== undefined && Math.abs(remembered - item.size) <= 1;
+  });
+  // Native scrollbar/inset changes can move both message edges without
+  // changing any row height. Include the shared horizontal geometry before
+  // revealing history, alongside the measured vertical tail.
+  const contentBounds = sizeContainer?.getBoundingClientRect();
+  const signature = viewport && contentBounds
+    ? `${viewport.scrollHeight}:${viewport.scrollTop}:${virtualizer.getTotalSize()}:${viewport.clientWidth}:${viewport.scrollLeft}:${contentBounds.left}:${contentBounds.width}`
+    : '';
+  return { atMeasuredTail, rememberedLayout, signature };
+}
+
 export function useStableTranscriptSessionReveal({
   gap,
   itemCount,
@@ -156,15 +198,31 @@ export function useStableTranscriptSessionReveal({
   virtualizer: TranscriptVirtualizer;
 }) {
   const hasItems = itemCount > 0;
-  const [reveal, setReveal] = useState({ sessionKey, hasItems, ready: false });
+  const [reveal, setReveal] = useState(() => ({ sessionKey, hasItems, ready: false, enteredAt: transcriptRowSizeClock() }));
   // Readiness belongs to this entry, not to a previously visited session key.
   // Reset during render so neither a rapid return nor empty-to-loaded hydration
   // can paint estimated positions before the layout effect starts measuring.
   if (reveal.sessionKey !== sessionKey || reveal.hasItems !== hasItems) {
-    setReveal({ sessionKey, hasItems, ready: false });
+    setReveal({ sessionKey, hasItems, ready: false, enteredAt: transcriptRowSizeClock() });
   }
+  const enteredAt = reveal.enteredAt;
   const frameRef = useRef<number | null>(null);
   const sessionRevealed = reveal.sessionKey === sessionKey && hasItems && reveal.hasItems && reveal.ready;
+
+  // A chat reopened at its remembered layout shows in the same commit that laid
+  // it out, so returning to a chat paints no hidden or half-placed frame. The
+  // check repeats whenever the mounted range or extent changes: the tail rows can
+  // mount in a follow-up layout pass once the virtualizer reads the restored offset.
+  const mountedRange = virtualizer.getVirtualItems();
+  const rangeKey = `${mountedRange[0]?.index ?? -1}:${mountedRange[mountedRange.length - 1]?.index ?? -1}:${virtualizer.getTotalSize()}`;
+  useLayoutEffect(() => {
+    if (sessionRevealed || itemCount === 0) return;
+    const entry = measureTranscriptEntry({
+      enteredAt, gap, itemCount, virtualizer,
+      sizeContainer: sizeContainerRef.current, viewport: viewportRef.current,
+    });
+    if (entry.rememberedLayout) setReveal({ sessionKey, hasItems: true, ready: true, enteredAt });
+  }, [enteredAt, gap, itemCount, rangeKey, sessionKey, sessionRevealed, sizeContainerRef, viewportRef, virtualizer]);
 
   useLayoutEffect(() => {
     if (sessionRevealed || itemCount === 0) return;
@@ -174,40 +232,18 @@ export function useStableTranscriptSessionReveal({
     let previousSignature = '';
     const revealWhenMeasured = () => {
       frameRef.current = null;
-      const viewport = viewportRef.current;
-      const sizeContainer = sizeContainerRef.current;
-      const measuredItems = virtualizer.getVirtualItems();
-      const rowsByIndex = new Map(
-        [...(sizeContainer?.querySelectorAll<HTMLDivElement>('[data-transcript-window-item="true"]') ?? [])]
-          .map((row) => [Number(row.dataset.index), row]),
-      );
-      const allMountedRowsMeasured = measuredItems.length > 0 && measuredItems.every((item) => {
-        const row = rowsByIndex.get(item.index);
-        return Boolean(row && Math.abs(row.offsetHeight - item.size) <= 1);
+      const { atMeasuredTail, rememberedLayout, signature } = measureTranscriptEntry({
+        enteredAt, gap, itemCount, virtualizer,
+        sizeContainer: sizeContainerRef.current, viewport: viewportRef.current,
       });
-      const distanceFromBottom = viewport
-        ? viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
-        : Number.POSITIVE_INFINITY;
-      // Native scrollbar/inset changes can move both message edges without
-      // changing any row height. Include the shared horizontal geometry before
-      // revealing history, alongside the measured vertical tail.
-      const contentBounds = sizeContainer?.getBoundingClientRect();
-      const signature = viewport && contentBounds
-        ? `${viewport.scrollHeight}:${viewport.scrollTop}:${virtualizer.getTotalSize()}:${viewport.clientWidth}:${viewport.scrollLeft}:${contentBounds.left}:${contentBounds.width}`
-        : '';
-      if (
-        allMountedRowsMeasured
-        && rowsByIndex.has(itemCount - 1)
-        && distanceFromBottom <= Math.max(1, gap)
-        && signature === previousSignature
-      ) {
+      if (atMeasuredTail && signature === previousSignature) {
         stableFrames += 1;
       } else {
         stableFrames = 0;
       }
       previousSignature = signature;
-      if (stableFrames >= 5 || --framesRemaining <= 0) {
-        setReveal({ sessionKey, hasItems: true, ready: true });
+      if (rememberedLayout || stableFrames >= 5 || --framesRemaining <= 0) {
+        setReveal({ sessionKey, hasItems: true, ready: true, enteredAt });
       } else {
         frameRef.current = window.requestAnimationFrame(revealWhenMeasured);
       }
@@ -216,7 +252,7 @@ export function useStableTranscriptSessionReveal({
     return () => {
       if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
     };
-  }, [gap, itemCount, sessionKey, sessionRevealed, sizeContainerRef, viewportRef, virtualizer]);
+  }, [enteredAt, gap, itemCount, sessionKey, sessionRevealed, sizeContainerRef, viewportRef, virtualizer]);
 
   return sessionRevealed;
 }

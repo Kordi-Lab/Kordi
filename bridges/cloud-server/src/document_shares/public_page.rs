@@ -33,7 +33,6 @@ fn homepage_url() -> String {
 }
 const KORDI_FAVICON_URL: &str = "/assets/favicon.png";
 
-const BRAND_MARK: &str = r#"<svg viewBox='64 58 384 384' aria-hidden='true'><mask id='kordi-bird-cut' maskUnits='userSpaceOnUse' x='-100' y='-100' width='712' height='712'><ellipse cx='262' cy='292' rx='150' ry='136' fill='#fff'/><path d='M400,342 C436,322 462,272 470,204 C448,236 420,244 386,218Z' fill='#fff' stroke='#fff' stroke-width='4' stroke-linejoin='round'/><circle cx='194' cy='266' r='17'/><path d='M269.6,333.2 C292,299.6 348,282 397.6,285.2 C381.6,325.2 336.8,357.2 288.8,355.6 C272.8,354 264.8,344.4 269.6,333.2Z'/></mask><g transform='translate(256,250) scale(0.94) translate(-270,-292)'><path d='M120,276 L82,294 L120,312Z' fill='currentColor' stroke='currentColor' stroke-width='12' stroke-linejoin='round'/><rect x='-100' y='-100' width='712' height='712' fill='currentColor' mask='url(#kordi-bird-cut)'/></g></svg>"#;
 const CALENDAR_ICON: &str = r#"<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>"#;
 const LOCK_ICON: &str = r#"<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>"#;
 const COMMENT_ICON: &str = r#"<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M12 8v5M9.5 10.5h5"/></svg>"#;
@@ -57,8 +56,8 @@ pub(crate) fn new_nonce() -> String {
 pub(crate) fn page_csp(nonce: &str) -> String {
     format!(
         "default-src 'none'; style-src 'nonce-{nonce}'; script-src 'nonce-{nonce}'; \
-         img-src https: data:; connect-src 'self'; frame-src 'self'; base-uri 'none'; \
-         form-action 'none'"
+         img-src https: data:; font-src 'self'; connect-src 'self'; frame-src 'self'; \
+         base-uri 'none'; form-action 'none'"
     )
 }
 
@@ -170,7 +169,7 @@ pub(crate) fn document_page(input: &PageInput<'_>, nonce: &str) -> String {
 <style nonce="{nonce}">{css}</style>
 </head>
 <body>
-<header class="webbar"><a class="brand" href="{home}" aria-label="Kordi home">{brand}Kordi</a><a class="open" href="{deep_link}">Open in Kordi</a></header>
+<header class="webbar"><a class="brand" href="{home}" aria-label="Kordi home">{brand}<span>kordi</span></a><a class="open" href="{deep_link}">Open in Kordi</a></header>
 <main class="wrap doc" id="doc" data-token="{token}">
 <h1>{title}</h1>
 <div class="meta"><span class="pill">{calendar}{date}</span><span class="dot">&middot;</span><button class="mention" id="authorChip" aria-expanded="false" aria-controls="people">@{name}</button>
@@ -191,7 +190,7 @@ pub(crate) fn document_page(input: &PageInput<'_>, nonce: &str) -> String {
         title = escape_html(&title),
         css = PAGE_CSS,
         home = homepage_url(),
-        brand = BRAND_MARK,
+        brand = crate::site_page::bird("kordi-bird"),
         deep_link = escape_html(&share_deep_link(input.token)),
         token = escape_html(input.token),
         calendar = CALENDAR_ICON,
@@ -208,6 +207,7 @@ pub(crate) fn document_page(input: &PageInput<'_>, nonce: &str) -> String {
 
 pub(crate) fn link_off_page(nonce: &str) -> String {
     let homepage = homepage_url();
+    let brand = crate::site_page::bird("kordi-bird");
     format!(
         r#"<!doctype html>
 <html lang="en">
@@ -219,7 +219,7 @@ pub(crate) fn link_off_page(nonce: &str) -> String {
 <style nonce="{nonce}">{PAGE_CSS}</style>
 </head>
 <body>
-<header class="webbar"><a class="brand" href="{homepage}" aria-label="Kordi home">{BRAND_MARK}Kordi</a></header>
+<header class="webbar"><a class="brand" href="{homepage}" aria-label="Kordi home">{brand}<span>kordi</span></a></header>
 <main class="gone">{LOCK_ICON}<b>This link is off</b></main>
 </body>
 </html>"#

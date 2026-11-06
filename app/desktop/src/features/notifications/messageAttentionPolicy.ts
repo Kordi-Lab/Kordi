@@ -78,13 +78,16 @@ export function messageAttentionSnapshot(
 export function newMessageAttentionEvents({
   previous,
   conversations,
+  isSuppressed,
 }: {
   previous: MessageAttentionSnapshot;
   conversations: Conversation[];
+  /** Messages that never alert, such as ones from a blocked account. */
+  isSuppressed?: (message: Message) => boolean;
 }): DesktopMessageAttentionEvent[] {
   return conversations.flatMap((conversation) => {
     const message = latestIncomingMessage(conversation);
-    if (!message?.id) return [];
+    if (!message?.id || isSuppressed?.(message)) return [];
     const sessionId = conversation.canonicalSessionId?.trim() || conversation.id;
     const unreadCount = Math.max(0, conversation.unread ?? 0);
     const prior = previous[sessionId];

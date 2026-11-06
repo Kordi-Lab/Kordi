@@ -16,9 +16,9 @@ use serde_json::json;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
-use super::{address_key, member_count_sql, room_not_found, sharing_profile, valid_code};
+use super::{address_limit, member_count_sql, room_not_found, sharing_profile, valid_code};
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
-use crate::common_ground::{db_error, limited, ROOM_IP_LIMIT, ROOM_JOIN_LIMIT, ROOM_OPEN_SQL};
+use crate::common_ground::{db_error, limited, ROOM_JOIN_LIMIT, ROOM_OPEN_SQL};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
 /// `(name, kind, memberCount, the profile the caller shares there)`.
@@ -63,11 +63,9 @@ pub(in crate::common_ground) async fn preview(
         return room_not_found();
     }
     let account = session.account_id.as_str();
-    let ip_key = address_key(connect_info, &headers);
+    let (ip_limit, ip_key) = address_limit(&rate_limiter, connect_info, &headers);
     for decision in [
-        rate_limiter
-            .observe_account_limit(ROOM_IP_LIMIT, &ip_key)
-            .await,
+        rate_limiter.observe_account_limit(ip_limit, &ip_key).await,
         rate_limiter
             .peek_account_limit(ROOM_JOIN_LIMIT, account)
             .await,

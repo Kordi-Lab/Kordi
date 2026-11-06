@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
 
 import {
@@ -36,11 +37,18 @@ export function useKordiSideAgentSessionActions({
   );
 
   const createSideAgentSession = useCallback((sourceSessionId?: string) => {
-    if (!isNativeShell) return Promise.resolve(null);
+    if (!isNativeShell && !isBrowserAppRuntime()) return Promise.resolve(null);
     if (createFlightRef.current?.source === sourceSessionId && createFlightRef.current) return createFlightRef.current.promise;
     const request = (async () => {
       try {
         setDesktopChatError(null);
+        if (import.meta.env?.VITE_KORDI_WEB_APP === '1' && isBrowserAppRuntime()) {
+          const { createBrowserAgentSession } = await import('@web/auth/browserAgentSession');
+          const sessionId = await createBrowserAgentSession(sourceSessionId);
+          inheritRuntimeRoute?.(sourceSessionId, sessionId);
+          setComposerDrafts(current => updateScopeDraft(current, 'chat', sessionId, ''));
+          return sessionId;
+        }
         const account = await loadSession();
         const nextState = await createDesktopChatSession({ independent: true, sourceSessionId });
         if ((await loadSession())?.accountId !== account?.accountId) return null;

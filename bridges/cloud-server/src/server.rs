@@ -22,10 +22,9 @@ use crate::updates::store::{
 
 mod admission_state;
 mod logging;
+mod rate_limiter;
 mod readiness;
 mod workers;
-
-use logging::redact_url_credentials;
 
 pub struct ServerState {
     admission: crate::auth::admission::AdmissionPolicy,
@@ -227,7 +226,7 @@ pub fn router_with_shared_rate_limiter(
 
     Router::new()
         .merge(playback_router)
-        .merge(crate::avatars::routes(state.clone()))
+        .merge(crate::avatars::routes(state.clone(), &rate_limiter))
         .merge(crate::blob_emoji::routes())
         .merge(crate::auth::routes::routes_with_shared_rate_limiter(
             state.clone(),
@@ -240,6 +239,7 @@ pub fn router_with_shared_rate_limiter(
         )
         .merge(crate::calls::routes(state.clone()))
         .merge(crate::cloud_agents::routes::routes(state.clone()))
+        .merge(crate::contact_permissions::routes(state.clone()))
         .merge(crate::connectors::routes::routes(state.clone()))
         .merge(crate::document_shares::routes(
             state.clone(),
@@ -253,6 +253,7 @@ pub fn router_with_shared_rate_limiter(
             crate::cloud_agent_runtime::routes::routes(state.clone())
                 .layer(axum::Extension(rate_limiter.clone())),
         )
+        .merge(crate::safety::routes(state.clone(), rate_limiter.clone()))
         .merge(
             crate::scheduled_tasks::routes::routes(state.clone())
                 .layer(axum::Extension(rate_limiter)),
@@ -352,21 +353,7 @@ pub async fn run(
             EventBus::noop()
         }
     };
-    let rate_limiter = Arc::new(match redis_url {
-        Some(url) => {
-            println!(
-                "Kordi cloud server connecting to Redis at {}",
-                redact_url_credentials(url)
-            );
-            CloudRateLimiter::redis(url, CloudRateLimitConfig::production())
-                .await
-                .map_err(RunError::RateLimiter)?
-        }
-        None => {
-            println!("Kordi cloud server starting without Redis (rate limiter is in-memory)");
-            CloudRateLimiter::memory(CloudRateLimitConfig::production())
-        }
-    });
+    let rate_limiter = Arc::new(rate_limiter::connect(redis_url).await?);
     let mut state = ServerState::new(pool, events)
         .with_connector_call_limiter(rate_limiter.clone())
         .with_admission(admission)

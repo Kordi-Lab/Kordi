@@ -6,8 +6,10 @@ import { reopenCloudOAuthBrowser } from '@/features/cloud/cloudOAuthSignIn';
 import { AppShellFrame } from '@/app/AppShellFrame';
 import { useNativeViewport } from '@/app/useNativeViewport';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
+import { useBrowserWorkspaceScope } from '@web/app/browserWorkspaceScope';
 import { CloudCallHost } from '@/features/cloud/CloudCallHost';
 import { CloudCallProvider } from '@/features/cloud/CloudCallProvider';
+import { CloudSafetyActionsProvider } from '@/features/safety/SafetyActionsProvider';
 import {
   CALL_WINDOW_THUMBNAIL_EVENT,
   CALL_WINDOW_RESULT_EVENT,
@@ -40,6 +42,7 @@ import { WhatsNewLaunchWindow } from '@/features/updates/useWhatsNewWindow';
 import { CloudSignInGate } from '@/kordi-app/cloud/CloudSignInGate';
 import type { Conversation } from '@/kordi-app/types';
 import { GroupInvitationPromptHost } from '@/pages/GroupInvitationPromptHost';
+import { AiConsentHost } from '@/features/aiConsent/AiConsentHost';
 import { DocumentShareLinkHost } from '@/features/documents/DocumentShareLinkDialog';
 
 export { CloudStartingScreen } from '@/features/cloud/CloudStartingScreen';
@@ -100,6 +103,7 @@ function CloudEditionRoot({
   cloudSessionStatusOverride?: CloudSessionStatus;
   cloudSessionOverride?: CloudSessionGateResult;
 }) {
+  const browserWorkspaceScope = useBrowserWorkspaceScope();
   const pendingGroupInvitation = usePendingGroupInvitation();
   // Tests can hand us a stubbed session result; in production we use the hook.
   const liveSession = useCloudSession({
@@ -135,6 +139,7 @@ function CloudEditionRoot({
     <>
       {status === 'authenticated' ? (
         <KordiAppShell
+          key={browserWorkspaceScope}
           cloudSession={cloudSessionOverride === undefined ? presentedSession : undefined}
           pendingGroupInvitation={pendingGroupInvitation}
           onSyncChange={setSync}
@@ -193,24 +198,27 @@ function KordiAppShell({
   }
   return (
     <div className="app-cloud-workspace-surface" data-ready={windowReady} inert={!windowReady} aria-hidden={!windowReady}>
-      <CloudCallProvider controller={cloudCalls}>
-        <DetachedCallWindowLauncher
-          controller={cloudCalls}
-          conversations={callConversations}
-          enabled={detachedCallWindowEnabled}
-        />
-        <AppShellFrame
-          {...frameProps}
-          callOverlay={(
-            <CloudCallHost
-              controller={cloudCalls}
-              suppressCurrentSurface={detachedCallWindowEnabled}
-            />
-          )}
-        />
-      </CloudCallProvider>
+      <CloudSafetyActionsProvider account={cloudSession?.account ?? null}>
+        <CloudCallProvider controller={cloudCalls}>
+          <DetachedCallWindowLauncher
+            controller={cloudCalls}
+            conversations={callConversations}
+            enabled={detachedCallWindowEnabled}
+          />
+          <AppShellFrame
+            {...frameProps}
+            callOverlay={(
+              <CloudCallHost
+                controller={cloudCalls}
+                suppressCurrentSurface={detachedCallWindowEnabled}
+              />
+            )}
+          />
+        </CloudCallProvider>
+      </CloudSafetyActionsProvider>
       {windowReady ? <WhatsNewLaunchWindow /> : null}
       {windowReady ? <DocumentShareLinkHost account={cloudSession?.account ?? null} /> : null}
+      {windowReady ? <AiConsentHost account={cloudSession?.account ?? null} /> : null}
       <GroupInvitationPromptHost
         key={cloudSession?.account?.accountId ?? 'signed-in'}
         deepLink={pendingGroupInvitation}

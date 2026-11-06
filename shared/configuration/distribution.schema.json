@@ -399,7 +399,29 @@
             "githubClientSecret": {
               "type": "string",
               "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "appleClientId": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "appleTeamId": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "appleKeyId": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+            },
+            "applePrivateKey": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
             }
+          },
+          "dependentRequired": {
+            "appleClientId": ["appleTeamId", "appleKeyId", "applePrivateKey"],
+            "appleTeamId": ["appleClientId", "appleKeyId", "applePrivateKey"],
+            "appleKeyId": ["appleClientId", "appleTeamId", "applePrivateKey"],
+            "applePrivateKey": ["appleClientId", "appleTeamId", "appleKeyId"]
           }
         },
         "loginPage": {

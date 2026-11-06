@@ -53,7 +53,15 @@ pub(super) async fn add_contact(
         );
     }
 
+    if let Some(refusal) = contact_send::block_refusal(pool, &session.account_id, &peer).await {
+        return refusal;
+    }
+
     let now = Utc::now().to_rfc3339();
+    let mut tx = match contact_send::begin_unblocked_pair(pool, &session.account_id, &peer).await {
+        Ok(tx) => tx,
+        Err(refusal) => return *refusal,
+    };
     if query(
         "INSERT INTO cloud_contacts (account_id, peer_account_id, created_at) VALUES ($1, $2, $3) \
          ON CONFLICT (account_id, peer_account_id) DO NOTHING",
@@ -61,9 +69,10 @@ pub(super) async fn add_contact(
     .bind(&session.account_id)
     .bind(&peer)
     .bind(&now)
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .is_err()
+        || tx.commit().await.is_err()
     {
         return err(
             "server_error",

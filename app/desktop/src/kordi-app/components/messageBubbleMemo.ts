@@ -80,6 +80,7 @@ export function messageBubblePropsEqual(
     && previous.densityMode === next.densityMode
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext
+    && previous.continuesAgentRun === next.continuesAgentRun
     && (previous.msg === next.msg
       || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg));
 }

@@ -10,7 +10,8 @@ import type { ChatSyncConversation, ChatSyncMessage } from '../src/features/clou
 import { cloudCollaborationConversationId, cloudDirectPersonSessionId } from '../src/features/collaboration/conversationIds';
 import { directHistorySessionId, readDirectCloudHistoryPage, useCloudDirectHistory } from '../src/features/cloud/useCloudDirectHistory';
 import { useCloudCollaborationMessageStore } from '../src/features/cloud/useCloudCollaborationMessageStore';
-import { __setSessionBackendForTests } from '../src/features/cloud/session';
+import { __setSessionBackendForTests, saveSession } from '../src/features/cloud/session';
+import { runBrowserChatSyncCommand } from '@web/runtime/browserChatSync';
 
 const account = { accountId: 'acct_me' } as CloudAccount;
 const sessionId = cloudDirectPersonSessionId(account.accountId, 'acct_peer');
@@ -162,4 +163,34 @@ test('switching away and back rejects an earlier direct-history flight', async (
   } finally {
     finishFirst?.(); await act(async () => root.unmount()); native.restore(); Object.assign(globalThis, previous); dom.window.close();
   }
+});
+
+
+test('a history fetch retains its original organization when the session switches before persistence', async () => {
+  const native = setupNative(true);
+  const original = { accountId: account.accountId, token: 'fixture',
+    organizationId: 'old-team', expiresAt: '2099-01-01T00:00:00Z' };
+  __setSessionBackendForTests({ load: async () => original, save: async () => {}, clear: async () => {} });
+  let started!: () => void;
+  let respond!: () => void;
+  const requestStarted = new Promise<void>(resolve => { started = resolve; });
+  const responseReady = new Promise<void>(resolve => { respond = resolve; });
+  const client = { listChatConversationHistoryPage: async () => {
+    started(); await responseReady;
+    return { messages: messages.slice(-50), nextBeforeSequence: 71, hasMore: true };
+  } } as unknown as CloudAuthClient;
+  try {
+    const pending = readDirectCloudHistoryPage(account.accountId, sessionId, client);
+    await requestStarted;
+    await saveSession({ ...original, organizationId: 'new-team' });
+    mockIPC((command, payload) => {
+      assert.equal(command, 'desktop_chat_sync_apply');
+      // The real browser storage boundary must see the captured old organization,
+      // rather than infer it from the now-current session at this late invocation.
+      return runBrowserChatSyncCommand(account.accountId, 'new-team', command, payload ?? {});
+    });
+    respond();
+    await assert.rejects(pending, /organization changed/);
+    assert.equal(native.persisted(), 0);
+  } finally { __setSessionBackendForTests(null); native.restore(); }
 });

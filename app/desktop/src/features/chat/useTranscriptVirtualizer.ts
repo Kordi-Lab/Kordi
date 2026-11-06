@@ -2,6 +2,7 @@ import type { Virtualizer } from '@tanstack/react-virtual';
 import { useCallback, useLayoutEffect, useMemo, useState, type RefObject } from 'react';
 import type { createTranscriptContentMeasure } from './transcriptContentMeasure';
 import { createTranscriptScrollOrigin } from './transcriptScrollOrigin';
+import { rememberTranscriptRowSize, settledTranscriptRowSize, transcriptRowSizeClock } from './transcriptRowSizeMemory';
 import { TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT, TRANSCRIPT_WINDOW_OVERSCAN } from './transcriptWindowing';
 import type { VirtualTranscriptProps } from './virtualTranscriptTypes';
 
@@ -38,6 +39,17 @@ export function useTranscriptVirtualizerOptions<Item>({
     return () => observer.disconnect();
   }, [hasItems, internalScrollRef, scrollClassName, scrollStyle, sizeContainerRef]);
 
+  // Heights remembered from earlier visits seed this entry's estimates. Heights measured
+  // during this entry are already in the virtualizer's own cache and keep its anchoring rules.
+  const [entry, setEntry] = useState(() => ({ sessionKey, startedAt: transcriptRowSizeClock() }));
+  let entryStartedAt = entry.startedAt;
+  if (entry.sessionKey !== sessionKey) {
+    // The virtualizer computes row positions in this pass and does not recompute them
+    // when only estimateSize changes, so this pass must already seed remembered heights.
+    entryStartedAt = transcriptRowSizeClock();
+    setEntry({ sessionKey, startedAt: entryStartedAt });
+  }
+
   const itemKeyAt = useCallback((index: number) => {
     const item = items[index];
     const itemKey = item === undefined ? `missing:${index}` : getItemKey(item, index);
@@ -52,6 +64,10 @@ export function useTranscriptVirtualizerOptions<Item>({
     getScrollElement: () => internalScrollRef.current,
     estimateSize: (index: number) => {
       const item = items[index];
+      // A row measured on an earlier visit starts at that height, so reopening a chat
+      // lays out its tail correctly in the first frame instead of converging over several.
+      const remembered = item === undefined ? undefined : settledTranscriptRowSize(itemKeyAt(index), entryStartedAt);
+      if (remembered !== undefined) return remembered;
       return item === undefined
         ? TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT
         : estimateSize?.(item, index) ?? TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT;
@@ -93,6 +109,22 @@ export function useMeasureTranscriptRows(
     });
     rows.forEach((row, index) => {
       virtualizer.resizeItem(Number(row.dataset.index), heights[index]);
+      if (row.dataset.transcriptRowKey) rememberTranscriptRowSize(row.dataset.transcriptRowKey, heights[index]);
     });
   });
+}
+
+/**
+ * Scroll to the tail row. The virtualizer learns the new offset from the next scroll
+ * event, a frame later. On entry, deliver it now so the tail rows mount in this layout
+ * pass and a remembered layout can show in the first paint.
+ */
+export function scrollTranscriptToTail(
+  virtualizer: Virtualizer<HTMLDivElement, HTMLElement>,
+  viewport: HTMLDivElement | null,
+  tailIndex: number,
+  entering: boolean,
+) {
+  virtualizer.scrollToIndex(tailIndex, { align: 'end' });
+  if (entering) viewport?.dispatchEvent(new Event('scroll'));
 }

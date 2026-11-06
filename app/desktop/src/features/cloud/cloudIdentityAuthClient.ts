@@ -12,6 +12,8 @@ import { CloudAuthError } from './cloudAuthError';
 import { isProductionCloudOrigin } from './cloudApiEnvironment';
 import type { CloudDeviceRegistration } from './deviceIdentity';
 import { referenceBackedAvatarMutation } from './avatarAssetClient';
+import { isBrowserAppRuntime, browserSessionAccountId } from '@web/auth/browserAppRuntime';
+import { browserAuthResult } from '@web/auth/browserSessionBackend';
 
 type CloudIdentityRequest = <TResponse>(
   path: string,
@@ -32,8 +34,8 @@ export class CloudIdentityAuthClient {
       && input.avatarMutation.uploadedAsset?.startsWith('data:image/')
       ? input.avatarMutation
       : null;
-    const result = await this.request<CloudAuthResult>(
-      '/v1/cloud/auth/signup',
+    const response = await this.request<CloudAuthResult>(
+      isBrowserAppRuntime() ? '/v1/cloud/auth/web/signup' : '/v1/cloud/auth/signup',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -41,6 +43,7 @@ export class CloudIdentityAuthClient {
       },
       'Could not create account.',
     );
+    const result = isBrowserAppRuntime() ? browserAuthResult(response) : response;
     if (!pendingAvatar?.uploadedAsset) return result;
     try {
       const avatarMutation = await referenceBackedAvatarMutation({
@@ -96,8 +99,8 @@ export class CloudIdentityAuthClient {
 
   async login(input: { email: string; password: string }): Promise<CloudAuthResult> {
     const device = await this.deviceRegistration();
-    return this.request<CloudAuthResult>(
-      '/v1/cloud/auth/login',
+    const result = await this.request<CloudAuthResult>(
+      isBrowserAppRuntime() ? '/v1/cloud/auth/web/login' : '/v1/cloud/auth/login',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -105,6 +108,7 @@ export class CloudIdentityAuthClient {
       },
       'Could not sign in.',
     );
+    return isBrowserAppRuntime() ? browserAuthResult(result) : result;
   }
 
   me(token: string): Promise<CloudAccount> {
@@ -176,7 +180,7 @@ export class CloudIdentityAuthClient {
 
   async logout(token: string): Promise<void> {
     await this.request<void>(
-      '/v1/cloud/auth/logout',
+      browserSessionAccountId(token) ? '/v1/cloud/auth/web/logout' : '/v1/cloud/auth/logout',
       {
         method: 'POST',
         headers: { authorization: `Bearer ${token}` },

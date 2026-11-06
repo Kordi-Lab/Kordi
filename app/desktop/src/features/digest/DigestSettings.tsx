@@ -1,3 +1,4 @@
+import { requireAiConsent } from '@/features/aiConsent/aiConsentStore';
 import { useEffect, useState } from 'react';
 import { digestClient } from './client';
 import type { DigestSettings as Settings } from './types';
@@ -22,6 +23,7 @@ export function DigestSettings({ accountId, onRebuilt }: { accountId: string; on
     catch { setSettings(previous); setError('Could not save digest settings.'); }
   }
   async function rebuild() {
+    if (!requireAiConsent()) return;
     setBusy(true); setError(null);
     try { await digestClient.refresh(accountId, true); onRebuilt(); }
     catch { setError('Could not rebuild the digest.'); }

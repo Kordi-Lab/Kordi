@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 
 import { documentHasActivePresentation } from '@/features/cloud/activeConversationReadPolicy';
+import { messageAlertSuppressed, useBlockedAccountIdSet } from '@/features/safety/blockedMessageAlerts';
 import { transcriptIsAtLatest } from '@/features/cloud/activeConversationReadPolicy';
 import type { Conversation } from '@/kordi-app/types';
 import {
@@ -28,6 +29,8 @@ type UseDesktopMessageAttentionArgs = {
   activeCanonicalSessionId?: string | null;
   chatTranscriptScrollRef: MutableRefObject<HTMLElement | null>;
   conversations: Conversation[];
+  /** The signed-in hosted account, whose blocked accounts never alert. */
+  cloudAccountId?: string | null;
   totalUnreadCount: number;
   onOpenSession: (sessionId: string, messageId: string) => void;
 };
@@ -64,10 +67,12 @@ export function useDesktopMessageAttention({
   activeCanonicalSessionId,
   chatTranscriptScrollRef,
   conversations,
+  cloudAccountId,
   totalUnreadCount,
   onOpenSession,
 }: UseDesktopMessageAttentionArgs) {
   const preferences = useNotificationPreferences();
+  const blockedAccountIds = useBlockedAccountIdSet(cloudAccountId);
   const previousSnapshotRef = useRef<MessageAttentionSnapshot | null>(null);
   const presentedEventIdsRef = useRef(loadPresentedEventIds());
   const lastBounceAtRef = useRef(0);
@@ -145,6 +150,7 @@ export function useDesktopMessageAttention({
     const events = newMessageAttentionEvents({
       previous: previousSnapshotRef.current,
       conversations,
+      isSuppressed: (message) => messageAlertSuppressed(message, blockedAccountIds),
     });
     previousSnapshotRef.current = currentSnapshot;
     if (events.length === 0 || !preferences.messages) return;
@@ -213,6 +219,7 @@ export function useDesktopMessageAttention({
     activeConversationId,
     activeNav,
     attentionReady,
+    blockedAccountIds,
     chatTranscriptScrollRef,
     conversations,
     isNativeShell,

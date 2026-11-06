@@ -118,13 +118,21 @@ pub(super) const SWEEP_SQL: &str = concat!(
            WHERE msg.conversation_id = c.conversation_id AND msg.deleted_at IS NULL
              AND msg.conversation_sequence > s.seen_sequence
              AND msg.sender_account_id <> agent.owner_account_id
-             AND NOT (msg.sender_account_id = ANY($2)))
+             AND NOT (msg.sender_account_id = ANY($2))
+             AND NOT EXISTS (SELECT 1 FROM cloud_contact_permissions contact_restriction
+                 WHERE contact_restriction.owner_account_id = agent.owner_account_id
+                   AND contact_restriction.subject_account_id = msg.sender_account_id
+                   AND NOT contact_restriction.agent_access))
        AND (
          (SELECT msg.created_at FROM cloud_chat_messages msg
            WHERE msg.conversation_id = c.conversation_id AND msg.deleted_at IS NULL
              AND msg.conversation_sequence > s.seen_sequence
              AND msg.sender_account_id <> agent.owner_account_id
              AND NOT (msg.sender_account_id = ANY($2))
+             AND NOT EXISTS (SELECT 1 FROM cloud_contact_permissions contact_restriction
+                 WHERE contact_restriction.owner_account_id = agent.owner_account_id
+                   AND contact_restriction.subject_account_id = msg.sender_account_id
+                   AND NOT contact_restriction.agent_access)
            ORDER BY msg.conversation_sequence DESC LIMIT 1)
            <= now() - make_interval(secs => $4)
          OR (SELECT msg.created_at FROM cloud_chat_messages msg
@@ -132,6 +140,10 @@ pub(super) const SWEEP_SQL: &str = concat!(
              AND msg.conversation_sequence > s.seen_sequence
              AND msg.sender_account_id <> agent.owner_account_id
              AND NOT (msg.sender_account_id = ANY($2))
+             AND NOT EXISTS (SELECT 1 FROM cloud_contact_permissions contact_restriction
+                 WHERE contact_restriction.owner_account_id = agent.owner_account_id
+                   AND contact_restriction.subject_account_id = msg.sender_account_id
+                   AND NOT contact_restriction.agent_access)
            ORDER BY msg.conversation_sequence ASC LIMIT 1)
            <= now() - make_interval(secs => $5))
        AND NOT EXISTS (SELECT 1 FROM cloud_agent_proactive_proposals proposal

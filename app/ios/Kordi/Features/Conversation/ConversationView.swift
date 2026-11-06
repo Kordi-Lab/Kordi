@@ -322,6 +322,7 @@ struct ConversationView: View {
     @State private var shareItem: SharedFileItem?
     @State private var documentReader: DocumentReaderRequest?
     @State private var messageShareItem: SharedMessageItem?
+    @State private var reportTarget: ReportTarget?
     @State private var showSessionDetails = false
     @State private var authorProfileConversation: ConversationSummary?
     @State private var selectedBackgroundSession: BackgroundAgentSession?
@@ -1385,6 +1386,7 @@ struct ConversationView: View {
                 completedForwardDestination = destination
             }
         }
+        .conversationSafety(report: $reportTarget)
         .sheet(item: $detailsMessage) { message in
             MessageDetailsSheet(
                 message: message,
@@ -1504,7 +1506,7 @@ struct ConversationView: View {
                         || ((conversation.kind == .group || KordiSystemIdentity.isSystemNotice(message))
                             && message.author == .person
                             && !presentation.groupedWithPrevious),
-                    showAvatar: presentation.showsAvatar,
+                    showAvatar: message.author == .agent ? !presentation.continuesAgentRun : presentation.showsAvatar,
                     replySourceMessage: replySource,
                     replySourceAvatar: replySource.map { avatarIdentity(for: $0, mentionTargets: mentionTargets) },
                     isHighlighted: highlightedMessageID == message.id,
@@ -1526,7 +1528,7 @@ struct ConversationView: View {
                     threadAgentState: threadAgentState,
                     quoteReplyCount: conversation.kind.supportsQuotedReplies ? quoteReplyIDs.count : 0,
                     selfDisplayName: model.account?.displayName,
-                    showsAvatarSlot: message.author != .agent,
+                    showsAvatarSlot: true,
                     authorAvatar: avatar,
                     ownAccountId: model.account?.accountId,
                     automaticallyPresentsActions: (
@@ -1653,6 +1655,7 @@ struct ConversationView: View {
                     onConfirmPin: { shared in pinMessage(message, shared: shared) }
                 )
                 .equatable()
+                .blockedAuthorCollapse(message, in: conversation)
                 .background(alignment: .bottomTrailing) {
                     if messageLayout == .chat, presentation.showsAvatar, let groupID = presentation.outgoingAvatarGroupID {
                         ConversationOutgoingAvatarAnchorView(
@@ -1802,10 +1805,7 @@ struct ConversationView: View {
                     : (conversation.kind == .group ? "Delete for everyone" : "Delete for me and \(conversation.displayName)"),
                 isPinned: pinnedMessageIDs.contains(message.id),
                 mediaAttachment: messageActionAttachment,
-                readReceiptLabel: MessageReadReceiptPresentation.label(
-                    for: message,
-                    readers: readReceiptReaders
-                ),
+                readReceiptLabel: MessageReadReceiptPresentation.label(for: message, readers: readReceiptReaders),
                 readReceiptReaders: readReceiptReaders,
                 onSheetAction: { action in pendingThreadMessageAction = action },
                 onDismiss: dismissMessageActions,
@@ -1882,10 +1882,7 @@ struct ConversationView: View {
                     dismissMessageActions()
                 },
                 onForward: {
-                    forwardRequest = MessageForwardRequest(
-                        sourceConversation: conversation,
-                        messages: [message]
-                    )
+                    forwardRequest = MessageForwardRequest(sourceConversation: conversation, messages: [message])
                     dismissMessageActions()
                 },
                 onEdit: {
@@ -1902,7 +1899,8 @@ struct ConversationView: View {
                 onSelect: {
                     toggleSelection(message.id)
                     dismissMessageActions()
-                }
+                },
+                onReport: ReportTarget.messageAction(for: message, in: conversation, model: model) { reportTarget = $0; dismissMessageActions() }
             )
     }
 
@@ -2992,6 +2990,7 @@ struct ConversationView: View {
     private func canSendWithCurrentAuthentication(
         mention: ComposerMentionTarget?
     ) -> Bool {
+        guard model.allowsAIRequest(for: conversation, mention: mention) else { return false }
         // The bound Agent owner's runtime authenticates shared subsession turns.
         if conversation.subsessionId != nil { return true }
         let invokesOwnedAgent = ProviderAuthenticationPolicy.requiresAuthentication(
@@ -3564,7 +3563,7 @@ enum ConversationTimestampFormatter {
     }
 }
 
-private struct SystemNoticeRow: View {
+struct SystemNoticeRow: View {
     let text: String
 
     var body: some View {

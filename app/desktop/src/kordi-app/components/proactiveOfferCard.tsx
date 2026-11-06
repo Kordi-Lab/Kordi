@@ -1,3 +1,4 @@
+import { requireAiConsent } from '@/features/aiConsent/aiConsentStore';
 import { Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -34,6 +35,7 @@ export function ProactiveOfferCard({
 
   const act = async (decision: ProactiveDecision) => {
     if (busy) return;
+    if (decision === 'allow' && !requireAiConsent()) return;
     setBusy(decision);
     setNotice(null);
     try {

@@ -36,6 +36,8 @@
 //! * **Client keys**: IPv4 addresses (including IPv4-mapped IPv6) count on
 //!   their own; other IPv6 addresses count by their /64 prefix, because one
 //!   host usually controls a whole /64.
+//! * **Trusted networks**: clients inside an operator-configured range get
+//!   every per-address limit multiplied; see [`TrustedNetworks`].
 //!
 //! The memory backend mirrors these semantics in-process (with the
 //! original sliding-window IP behaviour, since there's no cost to
@@ -51,13 +53,15 @@ use redis::AsyncCommands;
 
 mod account_actions;
 mod email_lockout;
+mod trusted_networks;
 
 pub use account_actions::{
     AccountActionLimit, ACCOUNT_SECURITY_CHANGE_LIMIT, ACCOUNT_SECURITY_PROOF_LIMIT,
-    AGENT_RUN_CLAIM_LIMIT, CONTACT_ADD_LIMIT, DOCUMENT_COLLAB_TICKET_LIMIT,
+    AGENT_RUN_CLAIM_LIMIT, BLOCK_CHANGE_LIMIT, CONTACT_ADD_LIMIT, DOCUMENT_COLLAB_TICKET_LIMIT,
     DOCUMENT_PUBLIC_READ_LIMIT, DOCUMENT_PUBLIC_WRITE_LIMIT, EMAIL_VERIFICATION_LIMIT,
-    MESSAGE_SEND_LIMIT,
+    MESSAGE_SEND_LIMIT, REPORT_SUBMIT_LIMIT,
 };
+pub use trusted_networks::{TrustedNetworks, TRUSTED_MULTIPLIER_ENV, TRUSTED_NETWORKS_ENV};
 
 #[derive(Debug, Clone, Copy)]
 pub struct CloudRateLimitConfig {
@@ -177,6 +181,7 @@ enum Backend {
 pub struct CloudRateLimiter {
     config: CloudRateLimitConfig,
     backend: Backend,
+    trusted: TrustedNetworks,
 }
 
 impl CloudRateLimiter {
@@ -185,6 +190,7 @@ impl CloudRateLimiter {
     pub fn memory(config: CloudRateLimitConfig) -> Self {
         Self {
             config,
+            trusted: TrustedNetworks::none(),
             backend: Backend::Memory(MemoryStore {
                 per_ip: Mutex::new(HashMap::new()),
                 per_email: Mutex::new(HashMap::new()),
@@ -206,11 +212,32 @@ impl CloudRateLimiter {
             .map_err(RateLimiterError::Connect)?;
         Ok(Self {
             config,
+            trusted: TrustedNetworks::none(),
             backend: Backend::Redis(RedisStore {
                 conn,
                 key_prefix: "crl".to_string(),
             }),
         })
+    }
+
+    /// Multiplies per-address limits for clients inside `trusted`.
+    pub fn with_trusted_networks(mut self, trusted: TrustedNetworks) -> Self {
+        self.trusted = trusted;
+        self
+    }
+
+    pub fn trusted_networks(&self) -> &TrustedNetworks {
+        &self.trusted
+    }
+
+    /// A per-address budget for `client`, multiplied when it is trusted. Use
+    /// it for every [`AccountActionLimit`] keyed by client address.
+    pub fn address_limit(
+        &self,
+        limit: AccountActionLimit,
+        client: Option<IpAddr>,
+    ) -> AccountActionLimit {
+        self.trusted.scale_action(limit, client)
     }
 
     /// Readiness for hosted deployments that require shared rate limits.
@@ -233,15 +260,16 @@ impl CloudRateLimiter {
     /// scrapers can't bypass simply by hiding their address.
     pub async fn observe_ip(&self, peer: Option<IpAddr>) -> RateLimitDecision {
         let key = rate_limit_client_key(peer);
+        let limit = self.trusted.scale(self.config.per_ip_limit, peer);
         match &self.backend {
-            Backend::Memory(store) => self.observe_ip_memory(store, key),
-            Backend::Redis(store) => self.observe_ip_redis(store, key).await,
+            Backend::Memory(store) => self.observe_ip_memory(store, key, limit),
+            Backend::Redis(store) => self.observe_ip_redis(store, key, limit).await,
         }
     }
 
     // ---- Memory backend ----
 
-    fn observe_ip_memory(&self, store: &MemoryStore, key: IpAddr) -> RateLimitDecision {
+    fn observe_ip_memory(&self, store: &MemoryStore, key: IpAddr, limit: u32) -> RateLimitDecision {
         let mut buckets = store.per_ip.lock().expect("rate limiter poisoned");
         let entry = buckets.entry(key).or_default();
         let now = Instant::now();
@@ -253,7 +281,7 @@ impl CloudRateLimiter {
                 break;
             }
         }
-        if entry.len() as u32 >= self.config.per_ip_limit {
+        if entry.len() as u32 >= limit {
             let oldest = entry.front().copied().unwrap_or(now);
             let retry_after = self
                 .config
@@ -272,7 +300,12 @@ impl CloudRateLimiter {
     // other defenses — auth itself, the audit log — so a Redis blip
     // shouldn't lock everyone out. We log to stderr so operators see it.
 
-    async fn observe_ip_redis(&self, store: &RedisStore, key: IpAddr) -> RateLimitDecision {
+    async fn observe_ip_redis(
+        &self,
+        store: &RedisStore,
+        key: IpAddr,
+        limit: u32,
+    ) -> RateLimitDecision {
         let mut conn = store.conn.clone();
         let redis_key = format!("{}:ip:{}", store.key_prefix, key);
         let window_secs = self.config.per_ip_window.as_secs().max(1) as i64;
@@ -296,7 +329,7 @@ impl CloudRateLimiter {
                 return RateLimitDecision::Allowed;
             }
         };
-        if count > self.config.per_ip_limit as i64 {
+        if count > i64::from(limit) {
             let pttl_ms: i64 = conn.pttl(&redis_key).await.unwrap_or(window_secs * 1000);
             let retry_after = if pttl_ms > 0 {
                 Duration::from_millis(pttl_ms as u64)

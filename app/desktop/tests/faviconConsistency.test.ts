@@ -41,11 +41,15 @@ test('self-contained OAuth pages embed the same Kordi bird favicon and mark', as
 });
 
 test('hosted invitation pages reuse the homepage favicon asset', () => {
-  const invitationPage = readRepositorySource(
+  const invitationHandlers = readRepositorySource(
     'bridges/cloud-server/src/auth/routes/app_invitation_handlers.rs',
   );
+  const invitationPage = readRepositorySource(
+    'bridges/cloud-server/src/auth/routes/app_invitation_handlers/landing.rs',
+  );
 
-  assert.match(invitationPage, /const KORDI_FAVICON_URL: &str = "\/assets\/favicon\.png";/);
+  assert.match(invitationHandlers, /const KORDI_FAVICON_URL: &str = "\/assets\/favicon\.png";/);
   assert.match(invitationPage, /<link rel="icon" type="image\/png" sizes="512x512" href="\{favicon_url\}">/);
+  assert.match(invitationPage, /favicon_url = KORDI_FAVICON_URL/);
   assert.match(invitationPage, /img-src 'self'/);
 });

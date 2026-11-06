@@ -32,6 +32,15 @@ impl SupportService {
         self.mailer.is_some()
     }
 
+    /// Sends a plain-text notice to the support inbox. `Ok(false)` when mail
+    /// delivery is not configured.
+    pub async fn send_notice(&self, subject: &str, body: String) -> Result<bool, String> {
+        match self.mailer.as_ref() {
+            Some(mailer) => mailer.send_notice(subject, body).await.map(|()| true),
+            None => Ok(false),
+        }
+    }
+
     pub async fn deliver_ticket(&self, pool: &sqlx_postgres::PgPool, ticket_id: &str) {
         let Some(mailer) = self.mailer.as_ref() else {
             return;

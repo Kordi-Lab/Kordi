@@ -9,10 +9,13 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 
+mod apple_form_post;
 mod hardening;
 mod prompt;
 mod refresh_grace;
 mod rejections;
+mod web_app;
+mod web_app_chat;
 mod web_authorize;
 mod web_oauth_binding;
 mod web_session;

@@ -1,0 +1,7 @@
+@import '../../desktop/src/index.css';
+@import './styles/shell-browser.css';
+
+/* Both clients render the same product components. Include their utility
+   classes when Tailwind runs with the web workspace as its root. */
+@source '../../desktop/src';
+@source '.';

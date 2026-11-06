@@ -1,5 +1,6 @@
 import { requiredClientDistribution } from './distribution';
 import type { CloudOAuthProvider } from './authClient';
+import { browserSessionAccountId, isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 
 // This allowlist is a development safeguard, never a release routing fallback.
 const OPERATOR_CLOUD_API_BASE_URL = 'https://kordi.ai';
@@ -12,6 +13,7 @@ export type CloudApiEnvironment = {
   VITE_KORDI_DEV_PROFILE?: string;
   VITE_KORDI_PRODUCTION_DEBUG_ACK?: string;
   VITE_KORDI_ENABLE_LOOPBACK_REALTIME?: string;
+  VITE_KORDI_WEB_APP?: string;
 };
 
 function cleanBaseUrl(value: string): string {
@@ -55,6 +57,17 @@ export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {
     : undefined;
   const activeEnv = env ?? meta;
   const configured = activeEnv?.VITE_KORDI_CLOUD_API_BASE?.trim();
+
+  if (isBrowserAppRuntime(activeEnv)) {
+    const origin = window.location.origin;
+    if (configured && cleanBaseUrl(configured) !== origin) {
+      throw new Error('The browser app requires its API on the same origin. Use a loopback development proxy.');
+    }
+    if (activeEnv?.DEV && isProductionCloudOrigin(origin)) {
+      throw new Error('Browser app development requires an isolated loopback origin.');
+    }
+    return origin;
+  }
 
   if (activeEnv?.DEV) {
     if (!configured) {
@@ -105,7 +118,7 @@ export function cloudRealtimeWebSocketEnabled(
   try {
     const host = new URL(baseUrl).hostname.toLowerCase();
     const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
-    return !loopback || Boolean(
+    return isBrowserAppRuntime(activeEnv) || !loopback || Boolean(
       activeEnv?.DEV
       && activeEnv.VITE_KORDI_ENABLE_LOOPBACK_REALTIME?.trim() === '1',
     );
@@ -117,7 +130,9 @@ export function cloudRealtimeWebSocketEnabled(
 export function cloudWebSocketUrl(token: string, baseUrl = cloudApiBaseUrl()): string {
   const url = new URL('/v1/cloud/ws', baseUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  url.searchParams.set('token', token);
+  const browserAccount = browserSessionAccountId(token);
+  if (browserAccount) url.searchParams.set('account', browserAccount);
+  else url.searchParams.set('token', token);
   return url.toString();
 }
 

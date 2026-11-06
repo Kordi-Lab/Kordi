@@ -1,3 +1,5 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { BROWSER_WORKSPACE_NAVIGATED_EVENT } from '@web/app/browserNavigation';
 import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 
@@ -29,6 +31,7 @@ function readElementContentWidth(element: HTMLDivElement) {
 }
 
 export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStateArgs) {
+  const browserApp = isBrowserAppRuntime();
   const resizeStateRef = useRef<{
     direction: ResizeDirection;
     startX: number;
@@ -52,7 +55,7 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
   const minWindowWidthRef = useRef(WINDOW_MIN_WIDTH);
   const rightDetailVisibleRef = useRef(false);
 
-  const [isSessionPanelCollapsed, setIsSessionPanelCollapsed] = useState(false);
+  const [isSessionPanelCollapsed, setIsSessionPanelCollapsed] = useState(() => browserApp && window.innerWidth < 760);
   const [isDetailPanelCollapsed, setIsDetailPanelCollapsed] = useState(
     () => isChatNavigation(activeNav) || activeNav === 'projects',
   );
@@ -77,7 +80,9 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
     }),
   );
   const [windowSize, setWindowSize] = useState(() =>
-    isNativeShell
+    browserApp
+      ? getViewportFillSize(0, 0)
+      : isNativeShell
       ? getViewportFillSize(initialMinWindowWidth, WINDOW_MIN_HEIGHT)
       : getInitialWindowSize({ minWidth: initialMinWindowWidth, minHeight: WINDOW_MIN_HEIGHT }),
   );
@@ -139,11 +144,11 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
   useEffect(() => {
     // CloudEditionRoot owns native window size and minimum constraints. A
     // second native writer here races the auth transition on shell mount.
-    if (isNativeShell) return;
+    if (isNativeShell || browserApp) return;
     setWindowSize((current) => clampWindowSize(current.width, current.height, {
       minWidth: minWindowWidth, minHeight: WINDOW_MIN_HEIGHT,
     }));
-  }, [isNativeShell, minWindowWidth]);
+  }, [browserApp, isNativeShell, minWindowWidth]);
 
   useEffect(() => {
     const element = settingsContentRef.current;
@@ -233,6 +238,10 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
       : null;
 
     const handleWindowResize = () => {
+      if (browserApp) {
+        setWindowSize(getViewportFillSize(0, 0));
+        return;
+      }
       if (nativeResizeScheduler) {
         nativeResizeScheduler.notifyResize();
         return;
@@ -328,7 +337,16 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
     };
-  }, [isNativeShell]);
+  }, [browserApp, isNativeShell]);
+
+  useEffect(() => {
+    if (!browserApp) return;
+    const closeCompactSidebar = () => {
+      if (window.innerWidth < 760) setIsSessionPanelCollapsed(true);
+    };
+    window.addEventListener(BROWSER_WORKSPACE_NAVIGATED_EVENT, closeCompactSidebar);
+    return () => window.removeEventListener(BROWSER_WORKSPACE_NAVIGATED_EVENT, closeCompactSidebar);
+  }, [browserApp]);
 
   const handleWindowResizeStart = useCallback((
     direction: ResizeDirection,

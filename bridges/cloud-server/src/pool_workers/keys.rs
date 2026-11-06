@@ -96,6 +96,33 @@ impl KeyCache {
             .jwks_uri
             .clone()
             .unwrap_or_else(|| format!("issuer:{}", identity.issuer));
+        self.cached_or_fetch(cache_key, refresh, || async {
+            let uri = match &identity.jwks_uri {
+                Some(uri) => uri.clone(),
+                None => self.discover(&identity.issuer).await?,
+            };
+            self.fetch_key_set(&uri).await
+        })
+        .await
+    }
+
+    /// The key set published at the fixed `https` URL `uri`, cached like
+    /// [`Self::keys`].
+    pub async fn keys_at(&self, uri: &str, refresh: bool) -> Result<Arc<KeySet>, KeyError> {
+        self.cached_or_fetch(uri.to_string(), refresh, || self.fetch_key_set(uri))
+            .await
+    }
+
+    async fn cached_or_fetch<F, Fut>(
+        &self,
+        cache_key: String,
+        refresh: bool,
+        fetch: F,
+    ) -> Result<Arc<KeySet>, KeyError>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<Arc<KeySet>, KeyError>>,
+    {
         if let Some(cached) = self.cached(&cache_key, refresh) {
             return cached;
         }
@@ -104,7 +131,7 @@ impl KeyCache {
         if let Some(cached) = self.cached(&cache_key, refresh) {
             return cached;
         }
-        let fetched = self.fetch_keys(identity).await;
+        let fetched = fetch().await;
         self.lock().insert(
             cache_key,
             Entry {
@@ -115,12 +142,8 @@ impl KeyCache {
         fetched
     }
 
-    async fn fetch_keys(&self, identity: &WorkerIdentity) -> Result<Arc<KeySet>, KeyError> {
-        let uri = match &identity.jwks_uri {
-            Some(uri) => uri.clone(),
-            None => self.discover(&identity.issuer).await?,
-        };
-        let keys = Arc::new(KeySet::from_jwks(&self.fetch_json(&uri).await?));
+    async fn fetch_key_set(&self, uri: &str) -> Result<Arc<KeySet>, KeyError> {
+        let keys = Arc::new(KeySet::from_jwks(&self.fetch_json(uri).await?));
         if keys.is_empty() {
             return Err(KeyError::Unavailable);
         }

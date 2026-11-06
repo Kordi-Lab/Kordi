@@ -247,7 +247,10 @@ pub(super) async fn redeem(
     let ip_key = format!("ip:{}", rate_limit_client_key(client));
     let limits = [
         (PAIR_REDEEM_LIMIT, account),
-        (PAIR_IP_LIMIT, ip_key.as_str()),
+        (
+            rate_limiter.address_limit(PAIR_IP_LIMIT, client),
+            ip_key.as_str(),
+        ),
     ];
     if let Some(response) = observe(&rate_limiter, &limits).await {
         return response;

@@ -70,21 +70,35 @@ pub(super) async fn remove_contact(
 
 /// Deletes both contact rows and the accepted requests that made them, so no
 /// accepted request outlives the contact. `false` when the caller had no
-/// contact row for `peer`.
+/// contact row for `peer`; nothing changes then.
 async fn remove_both_sides(pool: &PgPool, viewer: &str, peer: &str) -> sqlx_core::Result<bool> {
     let mut tx = pool.begin().await?;
+    let (mine, _) = delete_contact_pair(&mut tx, viewer, peer).await?;
+    if !mine {
+        // Dropping the transaction rolls the reverse deletion back.
+        return Ok(false);
+    }
+    tx.commit().await?;
+    Ok(true)
+}
+
+/// Deletes both directions of a contact and the accepted requests between
+/// the two accounts inside `tx`. Returns whether `viewer` had a row for
+/// `peer` and whether `peer` had a row for `viewer`. Blocking reuses it.
+pub(crate) async fn delete_contact_pair(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    viewer: &str,
+    peer: &str,
+) -> sqlx_core::Result<(bool, bool)> {
     let mine = query("DELETE FROM cloud_contacts WHERE account_id = $1 AND peer_account_id = $2")
         .bind(viewer)
         .bind(peer)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
-    if mine.rows_affected() == 0 {
-        return Ok(false);
-    }
-    query("DELETE FROM cloud_contacts WHERE account_id = $1 AND peer_account_id = $2")
+    let theirs = query("DELETE FROM cloud_contacts WHERE account_id = $1 AND peer_account_id = $2")
         .bind(peer)
         .bind(viewer)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
     query(
         "DELETE FROM cloud_contact_requests WHERE status = 'accepted' \
@@ -93,8 +107,7 @@ async fn remove_both_sides(pool: &PgPool, viewer: &str, peer: &str) -> sqlx_core
     )
     .bind(viewer)
     .bind(peer)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
-    tx.commit().await?;
-    Ok(true)
+    Ok((mine.rows_affected() > 0, theirs.rows_affected() > 0))
 }

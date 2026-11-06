@@ -18,6 +18,7 @@ pub enum OAuthProviderId {
     GitHub,
     Google,
     X,
+    Apple,
 }
 
 impl OAuthProviderId {
@@ -26,6 +27,7 @@ impl OAuthProviderId {
             "github" => Some(Self::GitHub),
             "google" => Some(Self::Google),
             "x" | "twitter" => Some(Self::X),
+            "apple" => Some(Self::Apple),
             _ => None,
         }
     }
@@ -35,6 +37,7 @@ impl OAuthProviderId {
             Self::GitHub => "github",
             Self::Google => "google",
             Self::X => "x",
+            Self::Apple => "apple",
         }
     }
 }
@@ -78,6 +81,10 @@ pub fn default_oauth_provider_registry() -> OAuthProviderRegistry {
         OAuthProviderDescriptor {
             id: OAuthProviderId::X,
             display_name: "X",
+        },
+        OAuthProviderDescriptor {
+            id: OAuthProviderId::Apple,
+            display_name: "Apple",
         },
     ])
 }

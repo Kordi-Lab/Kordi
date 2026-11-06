@@ -1,6 +1,6 @@
 import { useId, useMemo, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, CircleHelp, Play, ShieldCheck, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleHelp, Download, Play, ShieldCheck, X } from 'lucide-react';
 import { AppDialog, AppDialogTitle, type AppDialogAnchor } from '@/components/ui/dialog';
 import { cloudApiBaseUrl, defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
@@ -9,7 +9,9 @@ import { HelpPermissions } from './HelpPermissions';
 import { HelpReleaseNotes } from './HelpReleaseNotes';
 import { nativeMacPermissions } from './permissionAccess';
 import { readHelpProgress } from './helpProgress';
-import type { HelpTourId } from './helpTourSteps';
+import { publicAssetPath } from '@/lib/publicAsset';
+import { helpTourAvailable, type HelpTourId } from './helpTourSteps';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import type { HelpAction } from './helpContent';
 import '@/styles/help.css';
 
@@ -28,11 +30,13 @@ export type HelpMenuProps = {
   onOpenSession: (id: string) => void;
   onDismiss: () => void;
   onStartTour: (id?: HelpTourId) => void;
+  /** Browser app in a Mac browser only: opens the Mac installer download. */
+  onMacDownload?: () => void;
   anchor: AppDialogAnchor | null;
   initialView?: 'home' | 'permissions';
 };
 
-export default function HelpMenu({ progressKey, settingsAvailable, supportAvailable, onAction, onOpenSession, onDismiss, onStartTour, anchor, updateAction, initialView = 'home' }: HelpMenuProps) {
+export default function HelpMenu({ progressKey, settingsAvailable, supportAvailable, onAction, onOpenSession, onDismiss, onStartTour, onMacDownload, anchor, updateAction, initialView = 'home' }: HelpMenuProps) {
   const titleId = useId();
   const [view, setView] = useState<'home' | 'permissions' | 'updates' | 'licenses'>(initialView);
   const [error, setError] = useState<string | null>(null);
@@ -68,16 +72,17 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
       <button disabled={(capabilities.capabilities?.commonGroundVersion ?? 0) < 1} onClick={() => onStartTour('grounding')}><span>Meet people with Grounding</span><ArrowRight size={14} /></button>
       <button disabled={(capabilities.capabilities?.commonGroundVersion ?? 0) < 1} onClick={() => onStartTour('cards')}><span>Create and share cards</span><ArrowRight size={14} /></button>
       {(capabilities.capabilities?.commonGroundVersion ?? 0) < 1 ? <p className="help-menu-note">{capabilities.status === 'loading' ? 'Checking Grounding availability…' : capabilities.status === 'failed' ? 'Could not check Grounding availability. Close help and try again.' : 'Grounding and cards are not enabled in this workspace yet.'}</p> : null}
-      <button disabled={!settingsAvailable} onClick={() => onStartTour('imports')}><span>Import memory</span><ArrowRight size={14} /></button>
+      {helpTourAvailable('imports', isBrowserAppRuntime()) ? <button disabled={!settingsAvailable} onClick={() => onStartTour('imports')}><span>Import memory</span><ArrowRight size={14} /></button> : null}
       <div className="help-menu-divider" />
       <button onClick={() => setView('permissions')}><ShieldCheck size={16} /><span>Permissions & access</span><ArrowRight size={14} /></button>
       <div className="help-menu-divider" />
+      {onMacDownload ? <button onClick={() => { onMacDownload(); onDismiss(); }}><Download size={16} /><span>Download for Mac</span></button> : null}
       <button onClick={() => setView('updates')}><span>What’s new</span></button>
       <button onClick={() => setView('licenses')}><span>Open-source licenses</span><ArrowRight size={14} /></button>
       {supportAvailable ? <button disabled={busy} onClick={() => void action({ kind: 'support' })}><span>Contact support</span></button> : null}
       {updateAction ? <button onClick={(event) => { updateAction.onClick(event); onDismiss(); }}><span>{updateAction.label}</span><ArrowRight size={14} /></button> : null}
     </div> : <div className="help-menu-content">
-      {view === 'licenses' ? <iframe title="Open-source licenses" src="/licenses/index.html" className="help-license-frame" onLoad={(event) => {
+      {view === 'licenses' ? <iframe title="Open-source licenses" src={publicAssetPath('licenses/index.html')} className="help-license-frame" onLoad={(event) => {
         event.currentTarget.contentDocument?.addEventListener('click', (click) => {
           const href = (click.target as Element | null)?.closest?.('a')?.getAttribute('href');
           if (!href?.startsWith('https://')) return;

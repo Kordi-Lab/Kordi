@@ -77,8 +77,16 @@ pub(super) async fn complete_oauth_sign_in(
         .map_err(OAuthLoginError::Admission)?;
     // Only a new identity may join an account by email, and only with an
     // email its provider verified. A linked identity never moves.
+    // An Apple private relay address never joins an existing account by
+    // email, though Apple verified it: the relay hides the person's real
+    // address, so a match cannot show the account is theirs.
     let linked_email_account = match (&existing_identity, normalized_email.as_deref()) {
-        (None, Some(email)) => linkable_email_account(pool, email, profile.email_verified).await?,
+        (None, Some(email)) => {
+            let provider_verified = profile.email_verified
+                && !(provider == OAuthProvider::Apple
+                    && crate::auth::oauth::apple::is_private_relay_email(email));
+            linkable_email_account(pool, email, provider_verified).await?
+        }
         _ => None,
     };
     let links_by_email = linked_email_account.is_some();

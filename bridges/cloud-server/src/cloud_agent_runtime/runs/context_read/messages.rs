@@ -88,14 +88,17 @@ pub(super) async fn read(
             .saturating_add((limit / 2) as i64 + 1);
     }
     let scan_limit = if search { 256 } else { limit as i64 + 1 };
-    let rows:Vec<(String,String,Value,i64,String)>=query_as(
+    // Senders the owner stopped from using the agent stay unread.
+    let rows:Vec<(String,String,Value,i64,String)>=query_as(&format!(
         "SELECT message_id::text,sender_account_id,content,conversation_sequence,created_at::text
          FROM cloud_chat_messages m WHERE conversation_id=$1 AND deleted_at IS NULL AND conversation_sequence<$2
          AND (NOT $3 OR message_id::text=ANY($4))
          AND NOT EXISTS(SELECT 1 FROM cloud_chat_message_visibility v WHERE v.message_id=m.message_id AND v.account_id=ANY($5))
          AND NOT EXISTS(SELECT 1 FROM cloud_accounts consent WHERE consent.account_id=m.sender_account_id AND consent.ai_consent_status='declined')
-         ORDER BY conversation_sequence DESC LIMIT $6"
-    ).bind(scope.conversation_id).bind(before).bind(selected).bind(&ids).bind(&viewers).bind(scan_limit).fetch_all(pool).await?;
+         AND {allowed}
+         ORDER BY conversation_sequence DESC LIMIT $6",
+        allowed = crate::contact_permissions::agent_allowed_sql("$7", "m.sender_account_id"),
+    )).bind(scope.conversation_id).bind(before).bind(selected).bind(&ids).bind(&viewers).bind(scan_limit).bind(&scope.owner).fetch_all(pool).await?;
     let candidate_ids = rows.iter().map(|r| r.0.clone()).collect::<Vec<_>>();
     let refs = super::media::references(
         pool,

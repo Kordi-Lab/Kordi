@@ -18,14 +18,15 @@ use axum::http::HeaderMap;
 pub const TRUSTED_PROXIES_ENV: &str = "KORDI_CLOUD_TRUSTED_PROXIES";
 const DEFAULT_TRUSTED_PROXIES: &str = "127.0.0.0/8,::1/128";
 
+/// One address or CIDR range. A bare address covers only itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct IpNetwork {
+pub(crate) struct IpNetwork {
     address: IpAddr,
-    prefix: u8,
+    pub(crate) prefix: u8,
 }
 
 impl IpNetwork {
-    fn parse(value: &str) -> Option<Self> {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
         let (address, prefix) = match value.split_once('/') {
             Some((address, prefix)) => (address.trim(), Some(prefix.trim())),
             None => (value.trim(), None),
@@ -39,7 +40,7 @@ impl IpNetwork {
         Some(Self { address, prefix })
     }
 
-    fn contains(&self, candidate: IpAddr) -> bool {
+    pub(crate) fn contains(&self, candidate: IpAddr) -> bool {
         match (self.address, candidate.to_canonical()) {
             (IpAddr::V4(network), IpAddr::V4(candidate)) => {
                 prefix_matches(&network.octets(), &candidate.octets(), self.prefix)

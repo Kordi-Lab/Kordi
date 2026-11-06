@@ -19,6 +19,8 @@ import { useCloudCallContext } from '@/features/cloud/useCloudCallContext';
 import { useContactPresenceLabel } from '@/features/cloud/useCloudPresence';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { ContactCommonGroundLoader, type ContactProfileLoader } from '@/kordi-app/contacts/ContactCommonGround';
+import { ContactPermissionsCard } from '@/kordi-app/contacts/ContactPermissionsSection';
+import type { ContactPermissionsHost } from '@/kordi-app/contacts/contactProfileHost';
 import { ContactProfileSharedContent } from '@/pages/ContactProfileSharedContent';
 import { ContactProfileSharedPageView } from '@/pages/ContactProfileSharedPages';
 import {
@@ -53,6 +55,8 @@ type ContactInfoPopoverProps = {
   onOpenCommonGroup?: (space: ParticipantSpaceViewModel) => void;
   /** Loads the person's contact profile for the Common ground section; absent, the section stays hidden. */
   loadProfile?: ContactProfileLoader;
+  /** What the viewer allows this person; absent, the section stays hidden. */
+  permissionsHost?: ContactPermissionsHost;
   onClose: () => void;
 };
 
@@ -112,6 +116,7 @@ export function ContactInfoPopover({
   onMessageContact,
   onOpenCommonGroup,
   loadProfile,
+  permissionsHost,
 }: ContactInfoPopoverProps) {
   const calls = useCloudCallContext();
   const dialogRef = useRef<HTMLElement>(null);
@@ -400,6 +405,9 @@ export function ContactInfoPopover({
                 onOpenCommonGroup={onOpenCommonGroup}
                 onOpenPage={setSharedPage}
               />
+              {permissionsHost && accountId && participant.kind !== 'agent'
+                ? <ContactPermissionsCard accountId={accountId} initial={null} host={permissionsHost} />
+                : null}
               {requestState === 'error' || messageState === 'error' || copyState === 'error' ? (
                 <p role="alert" className="app-transient-status mt-2 px-1 text-rose-500">
                   {requestState === 'error'

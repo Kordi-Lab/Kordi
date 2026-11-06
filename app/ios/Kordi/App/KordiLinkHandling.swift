@@ -2,9 +2,11 @@ import SwiftUI
 
 extension View {
     /// Handles in-app links: Connectors settings links, shared document
-    /// links (`kordi://document/<token>`, `https://kordi.ai/d/<token>`) and
-    /// Grounding pairing links (`kordi://common-ground/pair/<code>`), from
-    /// tapped links and from `onOpenURL`.
+    /// links (`kordi://document/<token>`, `https://kordi.ai/d/<token>`),
+    /// group invite links (`kordi://group-invite/<token>`, `/g/<token>` on
+    /// the public origin) and Grounding pairing links
+    /// (`kordi://common-ground/pair/<code>`), from tapped links and from
+    /// `onOpenURL`.
     func kordiLinkHandling(openConnectors: @escaping (ConnectorsSettingsLink) -> Void) -> some View {
         modifier(KordiLinkHandling(openConnectors: openConnectors))
     }
@@ -28,6 +30,10 @@ private struct KordiLinkHandling: ViewModifier {
     private func handle(_ url: URL) -> Bool {
         if let link = SharedDocumentLink.parse(url) {
             documentLink = link
+            return true
+        }
+        if let link = GroupInviteLink.parse(url) {
+            GroupInviteCenter.shared.receive(link)
             return true
         }
         if let link = ConnectorsSettingsLink.parse(url) {

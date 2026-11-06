@@ -1,0 +1,18 @@
+{
+  "extends": "../desktop/tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "../desktop/src/*"
+      ],
+      "@web/*": [
+        "src/*"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "../desktop/src/global.d.ts"
+  ]
+}

@@ -84,6 +84,26 @@ pub(super) async fn finalize_request_acceptance(
         }
     };
 
+    // A block decided under the same pair lock wins: the request was
+    // rejected or removed, and the contact rows must not appear.
+    match blocked_while_accepting(&mut tx, from_id, to_id).await {
+        Ok(false) => {}
+        Ok(true) => {
+            return failed(
+                "contact_request_unavailable",
+                "This request isn't available anymore.",
+                StatusCode::CONFLICT,
+            );
+        }
+        Err(_) => {
+            return failed(
+                "server_error",
+                "Could not accept request.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
     if query(
         "UPDATE cloud_contact_requests \
          SET status = 'accepted', decided_at = $1 \
@@ -289,3 +309,12 @@ pub(super) fn account_to_summary(account: AccountResponse) -> ContactSummary {
 }
 
 // ---------- Cloud messages (1:1 peer chat) ----------
+
+async fn blocked_while_accepting(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    from_id: &str,
+    to_id: &str,
+) -> Result<bool, sqlx_core::Error> {
+    crate::safety::blocks::lock_pair(tx, from_id, to_id).await?;
+    crate::safety::blocks::blocked_either_way(&mut **tx, from_id, to_id).await
+}

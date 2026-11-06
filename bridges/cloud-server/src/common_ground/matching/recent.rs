@@ -62,13 +62,15 @@ pub(in crate::common_ground) async fn recent(
              LEFT JOIN cloud_common_ground_cards other_card
                ON other_card.profile_id = m.other_profile_id
              WHERE m.viewer_account_id = $1 AND m.opened_at IS NOT NULL
-               AND {viewer_shares} AND {other_shares}
+               AND NOT cloud_accounts_blocked_either_way($1, m.other_account_id)
+               AND {viewer_shares} AND {other_shares} AND {allowed}
              ORDER BY m.other_profile_id, m.opened_at DESC
          ) latest
          ORDER BY opened_at DESC LIMIT 50",
         visible = people::profile_visible_sql("m.viewer_profile_id", "m.other_profile_id"),
         viewer_shares = people::shares_sql("m.viewer_profile_id"),
         other_shares = people::shares_sql("m.other_profile_id"),
+        allowed = crate::contact_permissions::card_allowed_sql("m.other_account_id", "$1"),
     );
     let pool = state.db_pool();
     let rows: Result<Vec<RecentRow>, _> = query_as(&sql)

@@ -100,6 +100,13 @@ pub fn proves_email(org: &ConfiguredOrganization, evidence: &SignInEvidence<'_>)
                         .is_some_and(|hd| org.claim.covers(hd)))
         }
         SignInMethod::Github => org.auto_joins(SignInMethod::Github),
+        // A private relay address never proves a claimed domain.
+        SignInMethod::Apple => {
+            org.auto_joins(SignInMethod::Apple)
+                && !evidence
+                    .email
+                    .is_some_and(crate::auth::oauth::apple::is_private_relay_email)
+        }
     }
 }
 

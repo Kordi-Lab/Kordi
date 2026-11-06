@@ -1,3 +1,4 @@
+import { clearTranscriptRowSizeMemoryForTests } from '../../src/features/chat/transcriptRowSizeMemory';
 import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -134,6 +135,8 @@ export async function cleanupVirtualTranscriptHarness() {
   if (root) await act(async () => root?.unmount());
   root = null;
   document.body.innerHTML = '';
+  // Each test is a fresh app: row heights from another test's chat must not seed estimates.
+  clearTranscriptRowSizeMemoryForTests();
 }
 
 export function rows(prefix: string, start: number, count: number, height = 50): Row[] {

@@ -72,6 +72,11 @@ pub(super) async fn read(
         Ok(Err(response)) => return response,
         Err(error) => return db_error(error),
     };
+    match crate::contact_permissions::card_allowed(pool, &other, account).await {
+        Ok(true) => {}
+        Ok(false) => return people::not_found(),
+        Err(error) => return db_error(error),
+    }
     let mut person = match participation::present(pool, &other).await {
         Ok(Some(person)) if other != account => person,
         Ok(_) => return people::not_found(),

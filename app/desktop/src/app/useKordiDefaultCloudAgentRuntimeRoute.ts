@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 
 import {
   buildAuthDisplayProviders,
@@ -18,6 +19,7 @@ type DefaultCloudAgentRuntimeRouteArgs = {
   chatModelOptions: ComposerModelOption[];
   desktopAuthState: DesktopAuthState | null;
   isNativeShell: boolean;
+  browserApp?: boolean;
   preferredModelValueForProvider: (providerId: string) => string | null;
   resolveComposerProviderId: (scope: ComposerScope, modelLabel: string) => string;
   selectedModel: string;
@@ -61,12 +63,13 @@ export function resolveDefaultCloudAgentRuntimeRoute({
   chatModelOptions,
   desktopAuthState,
   isNativeShell,
+  browserApp = isBrowserAppRuntime(),
   preferredModelValueForProvider,
   resolveComposerProviderId,
   selectedModel,
   selectedThinking,
 }: DefaultCloudAgentRuntimeRouteArgs): DesktopChatMessageRoute | null {
-  if (!isNativeShell) return null;
+  if (!isNativeShell && !browserApp) return null;
 
   const authProviders = buildAuthDisplayProviders(desktopAuthState);
   const chatModel = selectedModel.trim();
@@ -99,6 +102,12 @@ export function resolveDefaultCloudAgentRuntimeRoute({
       ?? models[0]?.value;
     return model
       ? { model, authProvider: account.providerId, authChoice: account.value, thinking: selectedThinking ?? null }
+      : null;
+  }
+  // Browsers can select hosted accounts, never credentials stored on a Mac.
+  if (browserApp) {
+    return hostedAccountsState().listed
+      ? kordiCloudFallbackRoute({ model: chatModel, thinking: selectedThinking })
       : null;
   }
   const selectedModelIsAvailable = chatModelOptions.some((option) => option.value === chatModel);

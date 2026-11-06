@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { useEffect, useMemo } from 'react';
 import { participantSpaceCreateKey } from '@/app/useKordiAppModelHelpers';
 import { hasCachedCloudSessionVisibility } from '@/features/cloud/cloudDiffSync';
@@ -286,7 +287,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     () => collaborationContactRequestsForContactsPage(activeCollaborationHost),
     [activeCollaborationHost],
   );
-  const contactRequests = isNativeShell
+  const contactRequests = isNativeShell || isBrowserAppRuntime()
     ? collaborationContactRequests
     : demoContactRequests;
 
@@ -325,7 +326,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     setActiveDetailTab,
     isDetailPanelCollapsed,
     lastSeenArtifactByContextRef,
-    cloudSessionActivity,
+    cloudSessionActivity, cloudAccountId: cloudSession.account?.accountId ?? null,
   });
 
   const cloudAwareDisplayedContacts = cloudSession.account

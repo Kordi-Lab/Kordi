@@ -153,7 +153,7 @@ struct WelcomeView: View {
     }
 }
 
-private struct WelcomeButtonStyle: ButtonStyle {
+struct WelcomeButtonStyle: ButtonStyle {
     let primary: Bool
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

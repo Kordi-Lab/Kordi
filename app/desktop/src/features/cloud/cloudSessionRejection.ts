@@ -11,7 +11,10 @@ import {
  * or the server's data was reset. Network errors, 5xx and 429 are transient.
  */
 export function isCloudSessionRejected(error: unknown): boolean {
-  return error instanceof CloudAuthError && error.status === 401 && error.code === 'invalid_session';
+  return error instanceof CloudAuthError && (
+    (error.status === 401 && error.code === 'invalid_session')
+    || (error.status === 403 && error.code === 'browser_account_changed')
+  );
 }
 
 let ending: { token: string; promise: Promise<boolean> } | null = null;

@@ -7,9 +7,12 @@ import { AuthProviderGlyph } from './AuthProviderGlyph';
 import type { AuthDisplayProvider } from './model';
 import { providerListSubtitle } from './model';
 import { providerListDescription, providerShortName } from './providerCopy';
+import { providerAccountCount, providerReconnectCount, providerReconnectLabel } from './providerReconnect';
 
 type AuthProviderListProps = {
   providers: AuthDisplayProvider[];
+  /** Auth choices of saved accounts that need the owner to sign in again. */
+  needsReconnect?: readonly string[];
   notice?: string | null;
   onSelectProvider: (providerId: string) => void;
   onRefresh: () => void;
@@ -35,6 +38,7 @@ function providerDescription(provider: AuthDisplayProvider) {
 
 export function AuthProviderList({
   providers,
+  needsReconnect = [],
   notice,
   onSelectProvider,
   onRefresh,
@@ -55,17 +59,26 @@ export function AuthProviderList({
     return { connected: filtered.filter((item) => item.configured), groups: [...grouped.entries()] };
   }, [providers, query]);
 
-  const providerRow = (provider: AuthDisplayProvider) => (
-    <SettingsRow
-      key={provider.id}
-      className="app-auth-provider-index-row app-auth-provider-row"
-      icon={<AuthProviderGlyph providerId={provider.id} label={provider.label} size="sm" />}
-      title={<span className="block truncate">{providerShortName(provider.label)}</span>}
-      description={<span className="block truncate">{providerDescription(provider)}</span>}
-      chevron
-      onClick={() => onSelectProvider(provider.id)}
-    />
-  );
+  const reconnectChoices = useMemo(() => new Set(needsReconnect), [needsReconnect]);
+  const providerRow = (provider: AuthDisplayProvider) => {
+    const reconnect = providerReconnectLabel(providerReconnectCount(provider, reconnectChoices), providerAccountCount(provider));
+    return (
+      <SettingsRow
+        key={provider.id}
+        className="app-auth-provider-index-row app-auth-provider-row"
+        icon={<AuthProviderGlyph providerId={provider.id} label={provider.label} size="sm" />}
+        title={<span className="block truncate">{providerShortName(provider.label)}</span>}
+        description={(
+          <span className="block truncate">
+            {providerDescription(provider)}
+            {reconnect ? <> · <span className="text-amber-200" data-auth-provider-reconnect="">{reconnect}</span></> : null}
+          </span>
+        )}
+        chevron
+        onClick={() => onSelectProvider(provider.id)}
+      />
+    );
+  };
 
   return (
     <div className={variant === 'gate' ? 'flex min-h-0 w-full flex-1 flex-col gap-4' : 'flex h-full min-h-0 w-full flex-col gap-4'}>

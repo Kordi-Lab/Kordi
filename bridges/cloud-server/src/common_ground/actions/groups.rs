@@ -97,6 +97,14 @@ pub(in crate::common_ground) async fn start_group(
         Ok(_) => return bad_request("Pick people in this room."),
         Err(error) => return db_error(error),
     }
+    match crate::safety::blocks::any_blocked(pool, viewer, &ids).await {
+        Ok(false) => {}
+        Ok(true) => {
+            // The same refusal for either direction, naming nobody.
+            return bad_request("Some of these people can't be added.");
+        }
+        Err(error) => return db_error(error),
+    }
     let room_name: Result<(String,), _> =
         query_as("SELECT name FROM cloud_common_ground_rooms WHERE room_id = $1")
             .bind(room_id)

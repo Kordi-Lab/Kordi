@@ -32,7 +32,7 @@ use crate::server::ServerState;
 
 pub use maintenance::{maintain, spawn_maintenance};
 
-mod keys;
+pub(crate) mod keys;
 mod maintenance;
 pub mod store;
 #[cfg(test)]

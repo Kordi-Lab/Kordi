@@ -30,6 +30,8 @@ struct ContactProfileView: View {
     @State private var isMuting = false
     @State private var confirmsDelete = false
     @State private var deleteError: String?
+    @State private var blockAccount: SafetyAccount?
+    @State private var reportTarget: ReportTarget?
 
     init(
         subject: ContactProfileSubject,
@@ -57,7 +59,8 @@ struct ContactProfileView: View {
             canDelete: profileModel.canDelete,
             isPage: pageConversation != nil,
             memoryAvailable: MemoryPresentation.isAvailable(model.memoryCapabilities),
-            localShared: sharedConversation.flatMap(model.contactProfileSharedItems(for:))?.counts
+            localShared: sharedConversation.flatMap(model.contactProfileSharedItems(for:))?.counts,
+            permissionsAvailable: model.isContactPermissionsAvailable
         )
     }
 
@@ -129,6 +132,7 @@ struct ContactProfileView: View {
         } message: {
             Text(deleteError ?? "")
         }
+        .safetyActions(block: $blockAccount, report: $reportTarget) { dismiss() }
         .sheet(isPresented: $showsShare) {
             ContactProfileShareSheet(name: presentation.name, kordiId: presentation.kordiId ?? "")
         }
@@ -155,6 +159,8 @@ struct ContactProfileView: View {
             case let .chat(conversation):
                 ConversationView(conversation: conversation)
                     .task { _ = await model.restoreConversationIfNeeded(conversation) }
+            case .permissions:
+                ContactPermissionsView(appModel: model, accountId: subject.accountId, initial: profileModel.profile?.permissions, onSaved: profileModel.applyPermissions)
             }
         }
     }
@@ -174,6 +180,7 @@ struct ContactProfileView: View {
                 if let ground = presentation.commonGround {
                     ContactProfileCommonGroundSection(ground: ground)
                 }
+                ContactProfilePermissionsEntry(presentation: presentation, route: $route)
                 if presentation.showsDelete {
                     ContactProfileDeleteRow { confirmsDelete = true }
                         .disabled(profileModel.isDeleting)
@@ -300,8 +307,8 @@ struct ContactProfileView: View {
                         Button("Share", systemImage: "square.and.arrow.up") { showsShare = true }
                             .disabled(presentation.kordiId == nil)
                     }
-                    Button("Block", systemImage: "nosign") {}.disabled(true)
-                    Button("Report", systemImage: "flag") {}.disabled(true)
+                    Button("Block", systemImage: "nosign") { blockAccount = presentation.blockAccount }.disabled(presentation.blockAccount == nil)
+                    Button("Report", systemImage: "flag") { reportTarget = presentation.reportTarget }.disabled(presentation.reportTarget == nil)
                     Divider()
                     if presentation.offersDelete {
                         Button("Delete contact", systemImage: "trash", role: .destructive) { confirmsDelete = true }

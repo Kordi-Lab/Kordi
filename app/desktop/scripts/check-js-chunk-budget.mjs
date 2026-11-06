@@ -26,7 +26,22 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // The launch release (organization selection and request headers, account security, browser
 // sign-in recovery and the split desktop features chunk) adds 19 kB, so it moves to 5.72 MB.
 // Pending group invitations on the account and their join prompt add 2 kB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_722_000;
+// Shared browser runtime selection (cookie transport, browser session and adapter routing,
+// hosted navigation and delivery scopes) adds 17 kB, so it moves to 5.745 MB.
+// Agent avatars beside agent messages, the Mac app card, first-paint plan cards and
+// remembered transcript row heights add 3 kB, so it moves to 5.748 MB.
+// AI consent (the consent and AI-off dialogs, the send gates, Settings › Privacy) adds 8 kB.
+// Blocking and abuse reports (block and report dialogs, the blocked list, the safety client) add 14 kB.
+// Collapsing blocked accounts' group messages and silencing their message alerts add 2 kB.
+// Per-person permissions (the contact pane switches and their client) add 2 kB.
+// Applying them on the Mac (the restricted list, context filtering, the member popover switches) adds 2 kB.
+// Blocking and per-person permissions together in the same contact and member views add 2 kB.
+// Real group avatars in the Groups in common row add 2 kB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_780_000;
+// The separate browser target adds cookie transport, IndexedDB projections and
+// URL navigation. Its bounded allowance does not change desktop packaging.
+// AI consent, blocking and per-person permissions add 12 kB to the browser target too.
+const MAX_WEB_APP_DIST_BYTES = 5_812_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;
@@ -44,6 +59,8 @@ const __dirname = path.dirname(__filename);
 const assetsDir = process.argv[2]
   ? path.resolve(process.argv[2])
   : path.resolve(__dirname, '..', 'dist', 'assets');
+const applicationBudget = process.argv.includes('--web-app')
+  ? MAX_WEB_APP_DIST_BYTES : MAX_DESKTOP_DIST_BYTES;
 
 function formatKb(bytes) {
   return `${(bytes / 1_000).toFixed(2)} kB`;
@@ -121,8 +138,8 @@ try {
       throw new Error(`Help must load on demand, but ${chunk.name} imports it eagerly.`);
     }
   }
-  if (distBytes - atlasBytes - editorBytes - helpBytes - licenseBytes > MAX_DESKTOP_DIST_BYTES) {
-    console.error(`Desktop web bundle budget exceeded. Maximum allowed size is ${formatKb(MAX_DESKTOP_DIST_BYTES)}.`);
+  if (distBytes - atlasBytes - editorBytes - helpBytes - licenseBytes > applicationBudget) {
+    console.error(`Application bundle budget exceeded. Maximum allowed size is ${formatKb(applicationBudget)}.`);
     console.error(`- dist: ${formatKb(distBytes)}`);
     process.exit(1);
   }

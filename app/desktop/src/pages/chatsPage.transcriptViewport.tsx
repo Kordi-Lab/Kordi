@@ -13,6 +13,7 @@ import { transcriptWindowMessageMatchesId } from '@/features/chat/transcriptWind
 import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
 import { estimateTranscriptMessageHeight, transcriptContentColumns } from '@/features/chat/transcriptHeightEstimate';
 import { MessageBubble } from '@/kordi-app/components';
+import { BlockedMessageGate } from '@/features/safety/BlockedMessageGate';
 import { transcriptMessageIsOwnHuman } from '@/kordi-app/components/transcriptMessageHumanRole';
 import type { Message } from '@/kordi-app/types';
 import { formatDesktopClockTime } from '@/lib/time';
@@ -23,44 +24,13 @@ import { advanceActivation, finishActivation, initialActivationState, type Activ
 import { queuedTranscriptRequestIds } from '@/features/chat/queuedDesktopMessages';
 import { insertPinActivities, PIN_ACTIVITY_ESTIMATED_HEIGHT } from '@/pages/chatsPage.pinActivity';
 import { PinActivityNotice } from '@/pages/chatsPage.pins';
+import { continuesAgentTranscriptRun } from '@/features/chat/agentTranscriptRun';
+import { isGroupedWithAdjacentHumanMessage } from '@/features/chat/humanTranscriptGrouping';
 
 type TranscriptEntry = {
   message: Message;
   originalIndex: number;
 };
-
-function humanTranscriptGroupKey(message?: Message) {
-  if (
-    !message
-    || message.role === 'system'
-    || message.role === 'action'
-    || message.role === 'edit'
-    || message.turn
-  ) return null;
-  const senderType = message.senderType
-    ?? (message.role === 'user' || message.role === 'person' ? 'human' : 'agent');
-  const isOwnHuman = (message.isOwnMessage ?? message.role === 'user') && senderType === 'human';
-  const isPeerHuman = !isOwnHuman && (senderType === 'human' || message.role === 'person');
-  if (!isOwnHuman && !isPeerHuman) return null;
-  const side = isOwnHuman ? 'own' : 'peer';
-  const senderKey = message.senderAvatarSeed?.trim()
-    || message.senderProfileImageUrl?.trim()
-    || message.sender?.trim()
-    || side;
-  return `${side}:${senderKey}`;
-}
-
-export function isGroupedWithAdjacentHumanMessage(
-  messages: readonly Message[],
-  index: number,
-  offset: -1 | 1,
-  timeSeparators: readonly (string | null)[] = [],
-) {
-  if (offset === -1 && timeSeparators[index]) return false;
-  if (offset === 1 && timeSeparators[index + 1]) return false;
-  const currentKey = humanTranscriptGroupKey(messages[index]);
-  return Boolean(currentKey && currentKey === humanTranscriptGroupKey(messages[index + offset]));
-}
 
 export function useChatTranscriptViewport({
   viewport,
@@ -339,7 +309,7 @@ export function useChatTranscriptViewport({
               showAvatar={idx === lastQueuedRowIndex && queuedMessages.length === 0}
               avatarImageUrl={msg.role === 'user' || msg.isOwnMessage === true ? ownAvatarImageUrl ?? msg.senderProfileImageUrl : msg.senderProfileImageUrl}
             />
-          ) : <MessageBubble
+          ) : <BlockedMessageGate message={msg} groupConversation={densityMode === 'group-compact'}><MessageBubble
             msg={msg}
             imageGallery={msg.attachments?.some(shouldPreviewAttachmentInline) ? imageGallery : undefined}
             onOpenSource={onOpenSource}
@@ -377,7 +347,8 @@ export function useChatTranscriptViewport({
             plainAgentResponse={plainAgentResponse}
             isGroupedWithPrevious={!pinBoundaries.after.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, groupingSeparators)}
             isGroupedWithNext={!pinBoundaries.before.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1, groupingSeparators)}
-          />}
+            continuesAgentRun={!pinBoundaries.after.has(idx) && continuesAgentTranscriptRun(transcriptMessages, idx, groupingSeparators)}
+          /></BlockedMessageGate>}
           </div>
           {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
             <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">

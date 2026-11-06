@@ -1,0 +1,130 @@
+/* Browser application mode keeps the real shell, fitted to the viewport. */
+html.kordi-browser-shell .kordi-app.app-browser-viewport {
+  /* AppKit supplies this backing on desktop; the browser uses its shared opaque fallback. */
+  background: var(--app-native-session-fallback);
+}
+
+.app-browser-viewport {
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  overflow: hidden;
+  padding: 0;
+}
+
+.app-browser-viewport > .app-shell {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.app-browser-viewport .app-workspace-sidebar,
+.app-browser-viewport .app-main-panel {
+  border-radius: 0;
+}
+
+.app-browser-toolbar {
+  --app-native-navigation-overhang: 0px;
+  flex-shrink: 0;
+  min-height: var(--app-native-titlebar-height);
+  -webkit-app-region: no-drag;
+}
+
+.app-browser-toolbar .app-native-titlebar-navigation {
+  padding-left: 6px;
+}
+
+.app-browser-skip-link:focus-visible {
+  position: absolute;
+  z-index: 1;
+  padding: 4px;
+  background: var(--app-native-session-fallback);
+  outline: 2px solid var(--app-nav-rail-focus-ring);
+}
+
+.app-browser-skip-link:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.app-browser-sidebar-dismiss {
+  display: none;
+}
+
+@media (max-width: 759px) {
+  .app-browser-toolbar {
+    grid-template-columns: 40px minmax(0, 1fr);
+    height: auto;
+  }
+
+  .app-browser-toolbar:has(.app-chat-header-title),
+  .app-browser-toolbar:has(.app-chat-header-title) .app-native-titlebar-workspace {
+    min-height: 64px;
+  }
+
+  .app-browser-toolbar .app-native-titlebar-workspace {
+    height: auto;
+  }
+
+  .app-browser-toolbar .app-native-titlebar-main {
+    flex-wrap: wrap;
+    padding: 2px 0;
+  }
+
+  .app-browser-toolbar .app-native-titlebar-title {
+    flex-basis: 100%;
+    min-height: 28px;
+  }
+
+  .app-browser-toolbar .app-native-titlebar-actions {
+    padding-left: 10px;
+  }
+
+
+  .app-browser-viewport .app-browser-workspace-grid {
+    grid-template-columns: 40px minmax(0, 1fr) !important;
+    transition: none;
+  }
+
+  html.kordi-browser-shell .app-browser-viewport .app-workspace-sidebar {
+    position: relative;
+    z-index: 30;
+    width: var(--app-browser-sidebar-width, 40px);
+    max-width: calc(100vw - 24px);
+    background: var(--app-transient-surface-fallback);
+  }
+
+  .app-browser-sidebar-dismiss {
+    display: block;
+    position: absolute;
+    inset: 0 0 0 40px;
+    z-index: 20;
+    background: rgb(0 0 0 / 28%);
+    cursor: pointer;
+  }
+
+  .app-browser-viewport .app-browser-panel-resizer {
+    display: none;
+  }
+
+  .app-browser-viewport .app-chat-pane-header,
+  .app-browser-viewport .app-chat-header-actions {
+    flex-wrap: wrap;
+  }
+
+  .app-browser-viewport .app-chat-header-actions {
+    max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-browser-viewport .app-shell-layout-grid {
+    transition: none;
+  }
+}

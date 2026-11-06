@@ -24,7 +24,8 @@ pub mod terminal_backfill;
 
 pub use authorization::{
     claim_has_shared_cloud_agent_target, execution_agent_id, request_identity,
-    requester_can_target_owner, validate_group_agent_claim, validate_shared_cloud_agent_claim,
+    requester_can_target_owner, requester_may_use_owner_agents, validate_group_agent_claim,
+    validate_shared_cloud_agent_claim,
 };
 pub(crate) use claims::claimed_route_json;
 pub use claims::{
@@ -47,7 +48,9 @@ use envelopes::{
     cloud_group_response_body, parse_cloud_group_envelope, CloudGroupEnvelope, CloudGroupMessage,
     CloudGroupParticipant,
 };
-pub(crate) use errors::{error_response, run_error_response, runner_unauthorized};
+pub(crate) use errors::{
+    agent_unavailable, error_response, run_error_response, runner_unauthorized,
+};
 pub use errors::{RunError, RunResult};
 pub use leases::{
     lease_canary_run, lease_next_run, mark_run_running, RunnerLeaseResponse, RunnerRunEnvelope,
