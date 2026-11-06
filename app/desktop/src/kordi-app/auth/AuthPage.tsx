@@ -163,6 +163,10 @@ export function AuthPage({
     [authState, cloudSnapshots, ompCatalog],
   );
   const configuredCount = visibleProviders.filter((item) => item.configured).length;
+  const reconnectChoices = useMemo(
+    () => cloudSnapshots.filter(snapshotNeedsReconnect).map((snapshot) => snapshot.authChoice),
+    [cloudSnapshots],
+  );
 
   const [currentRoute, setCurrentRoute] = useState<AuthRoute>(() => {
     const providerId = normalizeSelectedProviderId(initialDetailProviderId);
@@ -251,6 +255,7 @@ export function AuthPage({
       return (
         <AuthProviderList
           providers={visibleProviders}
+          needsReconnect={reconnectChoices}
           notice={[
             ompUnavailable ? OMP_UNAVAILABLE_MESSAGE : null,
             catalogNotice,
@@ -286,7 +291,7 @@ export function AuthPage({
         addRoute={currentRoute.type === 'detail' ? currentRoute.add ?? null : null}
         onAddRouteChange={(add) => setCurrentRoute((route) => (route.type === 'detail' ? { ...route, add } : route))}
         recentlyAdded={recentlyAdded}
-        needsReconnect={cloudSnapshots.filter(snapshotNeedsReconnect).map((snapshot) => snapshot.authChoice)}
+        needsReconnect={reconnectChoices}
         onAccountAdded={noteAccountAdded}
         onStartChat={canStartChat && !chatBlocked && provider ? () => startChat(provider) : undefined}
         onLoginCompleted={(snapshot, loginMethod) => {

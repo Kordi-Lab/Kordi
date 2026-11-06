@@ -114,3 +114,33 @@ test('native cloud transport rejects an aborted request without leaking it', asy
     assert.equal(openResources(), 0);
   });
 });
+
+test('project catalogs and scheduled tasks use the native transport inside the desktop shell', async () => {
+  // A WebView fetch is cross-origin and preflighted; a proxy that refuses the
+  // preflight kept a new profile from loading or publishing its projects.
+  const originalFetch = globalThis.fetch;
+  let platformFetchCalls = 0;
+  globalThis.fetch = (async () => {
+    platformFetchCalls += 1;
+    throw new Error('The platform fetch must not run inside the desktop shell.');
+  }) as typeof fetch;
+  const paths: string[] = [];
+  try {
+    await withNativeShell(async (input, init) => {
+      const request = new Request(input, init);
+      paths.push(new URL(request.url).pathname);
+      assert.equal(request.headers.get('authorization'), 'Bearer synthetic-token');
+      return Response.json(new URL(request.url).pathname.includes('scheduled') ? { tasks: [] } : { devices: [] });
+    }, async () => {
+      const { projectCatalogRequest } = await import('../src/features/projects/projectSync');
+      const { listScheduledTasks } = await import('../src/features/cloud/scheduledTasksClient');
+      assert.deepEqual(await projectCatalogRequest('synthetic-token', ''), { devices: [] });
+      await listScheduledTasks({ apiBase: 'http://localhost', token: 'synthetic-token' });
+    });
+    assert.equal(paths[0], '/v1/cloud/projects');
+    assert.equal(paths.length, 2);
+    assert.equal(platformFetchCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

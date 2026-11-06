@@ -7,6 +7,7 @@ import { bindClaimedProjectSession, claimedProjectFromLease } from '../src/featu
 import { adoptedProjectSessionIds } from '../src/features/projects/adoptedProjectSessions';
 import { projectID, useProjectSync } from '../src/features/projects/projectSync';
 import { __setSessionBackendForTests } from '../src/features/cloud/session';
+import { nativeShellInvoke } from './helpers/nativeHttp';
 
 type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 
@@ -17,7 +18,8 @@ async function withDesktop(invoke: Invoke, run: (dom: JSDOM) => Promise<void>, f
   const globals: Record<string, unknown> = { window: dom.window, document: dom.window.document, Event: dom.window.Event, IS_REACT_ACT_ENVIRONMENT: true };
   if (fetch) globals.fetch = fetch;
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
-  Object.assign(dom.window, { __TAURI_INTERNALS__: { invoke } });
+  const nativeFetch = fetch;
+  Object.assign(dom.window, { __TAURI_INTERNALS__: { invoke: nativeFetch ? nativeShellInvoke((url, init) => nativeFetch(url, init), invoke) : invoke } });
   try { await run(dom); } finally {
     dom.window.close();
     for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
