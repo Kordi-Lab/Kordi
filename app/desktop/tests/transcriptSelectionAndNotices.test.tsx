@@ -438,7 +438,7 @@ test('short agent messages shrink-wrap the row so hover time stays beside the bu
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
-  assert.match(markup, /flex items-end w-fit max-w-full gap-2/);
+  assert.match(markup, /flex w-fit max-w-full items-end gap-2/);
   assert.doesNotMatch(markup, /flex items-end w-full gap-2/);
   assert.match(markup, /app-message-hover-time/);
 });

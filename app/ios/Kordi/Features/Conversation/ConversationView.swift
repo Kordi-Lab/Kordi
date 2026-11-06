@@ -1504,7 +1504,7 @@ struct ConversationView: View {
                         || ((conversation.kind == .group || KordiSystemIdentity.isSystemNotice(message))
                             && message.author == .person
                             && !presentation.groupedWithPrevious),
-                    showAvatar: presentation.showsAvatar,
+                    showAvatar: message.author == .agent ? !presentation.continuesAgentRun : presentation.showsAvatar,
                     replySourceMessage: replySource,
                     replySourceAvatar: replySource.map { avatarIdentity(for: $0, mentionTargets: mentionTargets) },
                     isHighlighted: highlightedMessageID == message.id,
@@ -1526,7 +1526,7 @@ struct ConversationView: View {
                     threadAgentState: threadAgentState,
                     quoteReplyCount: conversation.kind.supportsQuotedReplies ? quoteReplyIDs.count : 0,
                     selfDisplayName: model.account?.displayName,
-                    showsAvatarSlot: message.author != .agent,
+                    showsAvatarSlot: true,
                     authorAvatar: avatar,
                     ownAccountId: model.account?.accountId,
                     automaticallyPresentsActions: (

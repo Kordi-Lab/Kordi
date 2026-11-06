@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { createTranscriptTimeSeparatorCache, transcriptTimeSeparatorLabels } from '../src/features/chat/transcriptTimestamps';
-import { isGroupedWithAdjacentHumanMessage } from '../src/pages/chatsPage.transcriptViewport';
+import { continuesAgentTranscriptRun, isGroupedWithAdjacentHumanMessage } from '../src/pages/chatsPage.transcriptViewport';
 import type { Message } from '../src/kordi-app/types';
 
 function message(timestampMs: number | null, overrides: Partial<Message> = {}): Message {
@@ -115,6 +115,16 @@ test('a time separator breaks same-sender avatar grouping', () => {
   assert.equal(isGroupedWithAdjacentHumanMessage(messages, 0, 1, separators), false);
   assert.equal(isGroupedWithAdjacentHumanMessage(messages, 1, -1, separators), false);
   assert.equal(isGroupedWithAdjacentHumanMessage(messages, 0, 1, ['10:00', null]), true);
+});
+
+test('agent avatars group consecutive rows from the same agent until a time separator', () => {
+  const agent = (sender: string, overrides: Partial<Message> = {}) => message(1, { role: 'external-agent', senderType: 'agent', sender, senderIdentityId: `agent:${sender}`, ...overrides });
+  const turn = { id: 'turn', sessionId: 's', prompt: '', status: 'done', message: '', assistantText: 'Done', thinkingText: '', tools: [], completed: true, succeeded: true } as Message['turn'];
+  const messages = [message(1), agent('Scout'), agent('Scout', { text: '', turn }), agent('Juno'), message(2), agent('Juno')];
+
+  assert.deepEqual(messages.map((_, index) => continuesAgentTranscriptRun(messages, index)), [false, false, true, false, false, false]);
+  assert.equal(continuesAgentTranscriptRun(messages, 2, [null, null, '10:06']), false);
+  assert.equal(isGroupedWithAdjacentHumanMessage(messages, 1, 1), false, 'agent runs do not change human bubble grouping');
 });
 
 test('cached separators reuse unchanged receipts and reformat only an appended suffix', async () => {

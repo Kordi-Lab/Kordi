@@ -81,7 +81,8 @@ for (const role of ['user', 'person', 'assistant'] as const) {
           onOpenSenderProfile: (sender: Message) => { openedSender = sender; },
         })));
         const surface = host.querySelector('[data-message-context-menu-anchor]');
-        const row = surface?.parentElement;
+        let row = surface?.parentElement;
+        while (row && !row.querySelector('[data-avatar-kind]')) row = row.parentElement;
         const avatar = row?.querySelector('[data-avatar-kind]');
         assert.ok(avatar, 'every image group must identify its sender');
         assert.equal(avatar.getAttribute('data-avatar-kind'), role === 'assistant' ? 'agent' : 'human');

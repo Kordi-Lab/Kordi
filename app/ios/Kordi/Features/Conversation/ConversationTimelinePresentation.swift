@@ -7,6 +7,8 @@ struct ConversationMessagePresentation: Equatable {
     let groupedWithNext: Bool
     let showsAvatar: Bool
     let outgoingAvatarGroupID: String?
+    /// The row above is the same agent, so its avatar is not repeated.
+    var continuesAgentRun = false
 
     var rowTopPadding: CGFloat { 2 }
     var rowBottomPadding: CGFloat { groupedWithNext ? 0 : 2 }
@@ -38,6 +40,12 @@ enum ConversationTimelinePresentation {
                     .lowercased()
                 return "peer:\(participantIdsByName[normalizedName]?.nonEmpty ?? normalizedName)"
             }
+        }
+        let agentRunKeys = messages.map { message -> String? in
+            guard !message.isSystemNotice, message.author == .agent else { return nil }
+            let name = message.authorName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let owner = message.senderOwnerName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+            return "agent:\(name)|\(owner)"
         }
         let timestampVisibility = messages.indices.map { index in
             if messages[index].isSystemNotice { return true }
@@ -74,7 +82,11 @@ enum ConversationTimelinePresentation {
                 groupedWithPrevious: groupedWithPrevious,
                 groupedWithNext: groupedWithNext,
                 showsAvatar: key != nil && !groupedWithNext,
-                outgoingAvatarGroupID: outgoingAvatarGroupID
+                outgoingAvatarGroupID: outgoingAvatarGroupID,
+                continuesAgentRun: index > messages.startIndex
+                    && !timestampVisibility[index]
+                    && agentRunKeys[index] != nil
+                    && agentRunKeys[index] == agentRunKeys[index - 1]
             )
         }
     }
