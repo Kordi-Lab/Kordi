@@ -24,7 +24,6 @@
 .app-model-picker-divider { border-top: 1px solid var(--app-transient-divider); margin: 5px 3px; }
 .app-model-picker-account { color: var(--app-transient-muted-text); font-size: 11px; }
 .app-model-picker-message { margin: 6px; font-size: 12px; overflow-wrap: anywhere; }
-.app-model-picker-message button { margin-left: 6px; text-decoration: underline; }
 .app-model-picker-actions { display: flex; justify-content: flex-end; gap: 6px; padding: 6px; }
 .app-model-picker-actions button { padding: 6px 9px; border-radius: 8px; background: var(--app-transient-selected-bg); font-size: 12px; }
 .app-model-picker-search { width: 100%; margin-bottom: 5px; padding: 7px 9px; border: 1px solid var(--app-transient-border); border-radius: 8px; background: var(--app-control-bg); font-size: 12px; }

@@ -2,6 +2,7 @@ import type { PinActivity } from '@/pages/chatsPage.pinActivity';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { formatDesktopTranscriptTimeLabel } from '@/lib/time';
 import { revealPinActivity } from '@/pages/pinActivityMotion';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { List, Pin, PinOff, X } from 'lucide-react';
 
 import type { Message } from '@/kordi-app/types';
@@ -179,7 +180,7 @@ export function PinMessageDialog({
             <span>Pin for everyone</span>
           </label>
         ) : null}
-        {error ? <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+        {error ? <ErrorLine className="mt-4">{error}</ErrorLine> : null}
         <div className="mt-6 flex justify-end gap-2 text-[14px] font-semibold">
           <button
             type="button"

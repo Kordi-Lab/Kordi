@@ -235,10 +235,6 @@
 }
 
 .app-transcript-timeline-row-complete .app-transcript-timeline-node,
-.app-transcript-timeline-row-error .app-transcript-timeline-node {
-  color: color-mix(in oklab, var(--utility-muted-text) 82%, transparent);
-}
-
 .app-transcript-timeline-row-running .app-transcript-timeline-node {
   color: var(--app-tool-running-icon);
 }

@@ -90,7 +90,7 @@ test('a completed reply that mentions the provider notice shows its own text', (
   assert.equal(mapped.turn?.status, 'complete');
   assert.equal(mapped.turn?.assistantText, reportText);
   assert.doesNotMatch(markup, /No provider configured yet\./);
-  assert.doesNotMatch(markup, /Open authentication/);
+  assert.doesNotMatch(markup, />Sign in</);
   assert.match(markup, /Later successful agent replies/);
 });
 
@@ -108,7 +108,7 @@ test('a stored provider failure still shows the notice and the authentication ac
   }));
   assert.equal(mapped.turn?.status, 'failed');
   assert.match(markup, /No provider configured yet/);
-  assert.match(markup, />Open authentication</);
+  assert.match(markup, />Sign in</);
 });
 
 test('an older reply whose whole text is the notice still reads as a failure', () => {
@@ -164,8 +164,8 @@ for (const viewerOwnsAgent of [true, false]) {
         onOpenAuthSettings: () => undefined,
       }));
       assert.match(markup, /No provider configured yet/);
-      if (viewerOwnsAgent) assert.match(markup, />Open authentication</);
-      else assert.doesNotMatch(markup, />Open authentication<|<button[^>]*class="app-live-turn-auth-action/);
+      if (viewerOwnsAgent) assert.match(markup, />Sign in</);
+      else assert.doesNotMatch(markup, />Sign in<|app-error-line-action/);
     }
   });
 }

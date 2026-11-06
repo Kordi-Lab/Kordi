@@ -2,6 +2,8 @@ import { Pause, Play, RotateCcw, Scissors, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { VoiceMessageRecorderState } from '@/features/chat/useVoiceMessageRecorder';
+import { mediaPermissionCopy, openCallPermissionSettings } from '@/features/cloud/callMediaPermission';
+import { MediaPermissionDialog } from '@/features/cloud/MediaPermissionDialog';
 import { cn } from '@/lib/utils';
 import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { formatVoiceDuration, localVoiceSource } from './voiceAudioSource';
@@ -23,6 +25,7 @@ export function VoiceRecordingRail({ state, onCancel, onSend, onRetry, onTrimRan
   const [trimming, setTrimming] = useState(false);
   const recording = state.phase === 'recording';
   const failed = !recording && Boolean(state.error);
+  const permissionIssue = state.phase === 'error' ? state.permissionIssue : null;
   const duration = recording ? state.durationMs : Math.max(0, state.trimEndMs - state.trimStartMs);
   const progress = duration ? Math.max(0, Math.min(1, (elapsedMs - state.trimStartMs) / duration)) : 0;
   const path = state.attachment?.localPath ?? state.attachment?.path;
@@ -58,7 +61,8 @@ export function VoiceRecordingRail({ state, onCancel, onSend, onRetry, onTrimRan
 
   return <div className="app-voice-recording-rail" data-phase={state.phase} data-failed={failed ? 'true' : undefined}
     onKeyDown={event => {
-      if (event.key === 'Escape') { if (trimming) setTrimming(false); else onCancel(); }
+      // The permission dialog handles its own Escape.
+      if (event.key === 'Escape' && !permissionIssue) { if (trimming) setTrimming(false); else onCancel(); }
     }}>
     <audio ref={audioRef} src={source ?? undefined} preload="metadata" onPlay={() => setPlaying(true)}
       onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onTimeUpdate={event => {
@@ -112,5 +116,14 @@ export function VoiceRecordingRail({ state, onCancel, onSend, onRetry, onTrimRan
         <Send className="h-[15px] w-[15px]" />
       </Button>
     </div>
+    {permissionIssue ? <MediaPermissionDialog
+      issue={permissionIssue}
+      copy={mediaPermissionCopy(permissionIssue, 'record again')}
+      onCancel={onCancel}
+      onOpenSettings={() => {
+        void openCallPermissionSettings(permissionIssue).catch(() => {});
+        onCancel();
+      }}
+    /> : null}
   </div>;
 }

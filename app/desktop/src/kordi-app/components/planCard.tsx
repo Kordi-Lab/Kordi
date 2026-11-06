@@ -1,5 +1,6 @@
 import { CalendarCheck, CalendarClock, Check, ChevronRight, MapPin, Vote, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 import { planCardAction, type PlanCardActionRequest } from '@/features/cloud/planCardClient';
 import { cloudAvatarImageUrl } from '@/features/cloud/avatar';
@@ -307,7 +308,8 @@ export function PlanCardContent({
           }}
         />
       ) : null}
-      {notice || calendarHint ? <div className={notice ? "app-plan-card-notice" : "app-plan-card-guidance"} role="status">{notice ?? calendarHint}</div> : null}
+      {notice ? <ErrorLine className="mt-0" role="status">{notice}</ErrorLine>
+        : calendarHint ? <div className="app-plan-card-guidance" role="status">{calendarHint}</div> : null}
     </section>
   );
 }

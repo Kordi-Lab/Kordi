@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } f
 import { createPortal } from 'react-dom';
 import { Check, ChevronLeft, ChevronRight, RotateCcw, X } from 'lucide-react';
 import { composerModelChipLabels, modelDisplayName, modelEffortLabel } from '@/lib/modelDisplayName';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 import { composerThinkingLevelsIncludingCurrent } from './composerThinking';
 import {
@@ -215,7 +216,9 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
         <button type="button" className="app-transient-action-row app-model-picker-row app-model-picker-account" onClick={() => { setAccountModel(null); setView('provider'); }}>{account?.selectionLabel ?? account?.label ?? 'Choose account'}<ChevronRight size={14} /></button>
       </>}
     </>}
-    {error ? <div role="alert" className="app-model-picker-message">{error}{retry ? <button type="button" onClick={() => void apply(retry.route, retry.type)} disabled={saving}>Retry</button> : null}</div> : null}
+    {error ? <ErrorLine className="m-1.5" action={retry ? { label: 'Try again', onClick: () => void apply(retry.route, retry.type), disabled: saving } : null}>
+      {retry ? withoutTryAgain(error) : error}
+    </ErrorLine> : null}
   </div>;
   if (onSignIn && !account?.unavailable && !providerOptions.some(composerProviderOptionUsable)) {
     return <div className="flex items-center gap-2 text-xs" data-composer-sign-in="true"><span>No account</span>

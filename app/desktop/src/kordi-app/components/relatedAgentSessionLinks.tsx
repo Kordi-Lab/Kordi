@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 const STATUS: Record<RelatedAgentSessionRunStatus, { label: string; dot: string }> = {
   running: { label: 'Running', dot: 'animate-pulse bg-sky-500 motion-reduce:animate-none' },
   done: { label: 'Done', dot: 'bg-emerald-500' },
-  failed: { label: 'Failed', dot: 'bg-rose-500' },
+  failed: { label: 'Failed', dot: 'bg-[color:var(--app-error-text)]' },
   stopped: { label: 'Stopped', dot: 'bg-slate-400' },
 };
 
@@ -79,7 +79,7 @@ function SubsessionLink({ session, agentName, status, onOpen }: {
             <span aria-hidden="true"> · </span>
             <span className="truncate">Background session</span>
             <span
-              className="ml-auto inline-flex shrink-0 items-center gap-1"
+              className={cn('ml-auto inline-flex shrink-0 items-center gap-1', !notice && resolved === 'failed' && 'text-[color:var(--app-error-text)]')}
               data-related-agent-session-status={resolved}
               aria-label={`Status: ${notice ?? presentation.label}`}
               aria-live="polite"

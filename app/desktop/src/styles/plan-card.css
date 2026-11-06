@@ -18,7 +18,7 @@
 .app-plan-card-unresolved { color: #b5670c; }
 .app-plan-card-state { flex: none; font-size: 10.5px; font-weight: 500; line-height: 16px; color: var(--utility-muted-text, var(--app-chat-meta-peer)); font-variant-numeric: tabular-nums; }
 .app-plan-card-state-confirmed { color: #1e8a5f; }
-.app-plan-card-state-canceled { color: #b23b3b; }
+.app-plan-card-state-canceled { color: var(--app-error-text); }
 .app-plan-card-state-polling { color: #4c5fd5; }
 .app-plan-card-options { display: flex; flex-direction: column; gap: 4px; }
 .app-plan-card-option { position: relative; display: flex; flex-direction: column; }
@@ -106,6 +106,4 @@
 .app-plan-card-option-winner .app-plan-card-option-label { font-weight: 600; }
 .app-plan-card-option-winner .app-plan-card-option-vote { border-color: color-mix(in oklab, #1e8a5f 60%, transparent); }
 .app-plan-card-calendar-note { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 14px; color: #1e8a5f; }
-.app-plan-card-notice { font-size: 11px; line-height: 14px; color: #b23b3b; }
-
 .app-plan-card-guidance { font-size: 11px; line-height: 14px; color: var(--utility-muted-text); }

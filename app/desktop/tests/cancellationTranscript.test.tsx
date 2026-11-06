@@ -116,7 +116,7 @@ for (const error of ['Request stopped', 'Request canceled.']) {
     const turn = { ...mapCanonicalMessage(row(), identityById, 'human:test')!.turn!, message: 'Stopped', error };
     const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
     assert.equal(html.split(error).length - 1, 1);
-    assert.ok(!html.includes('app-live-turn-error-text'));
+    assert.ok(!html.includes('app-live-turn-error'));
   });
 }
 
@@ -124,7 +124,7 @@ test('a real error accompanying cancellation remains visible', () => {
   const turn = { ...mapCanonicalMessage(row(), identityById, 'human:test')!.turn!, error: 'Could not save the partial result.' };
   const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
   assert.match(html, /Could not save the partial result/);
-  assert.match(html, /app-live-turn-error-text/);
+  assert.match(html, /app-error-line app-live-turn-error/);
 });
 
 for (const role of ['sender', 'agent owner', 'participant']) {
