@@ -175,7 +175,7 @@ for (const theme of ['light', 'dark']) {
     await expect(page.getByRole('button', { name: 'Project: kordi', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`sidebar-${theme}-compact.png`) });
     await row.click({ button: 'right' });
-    await page.locator('.app-modal-panel').filter({ has: page.getByRole('button', { name: 'Move to project', exact: true }) })
+    await page.locator('.app-context-menu').filter({ has: page.getByRole('button', { name: 'Move to project', exact: true }) })
       .screenshot({ path: testInfo.outputPath(`session-menu-${theme}.png`) });
   });
 }

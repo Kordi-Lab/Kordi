@@ -1,7 +1,7 @@
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 
-const ACCOUNT_POPOVER_WIDTH_REM = 17.75;
+const ACCOUNT_POPOVER_WIDTH_REM = 16.25;
 const ACCOUNT_POPOVER_SAFE_INSET_PX = 8;
 
 export type CloudProfileRow = {

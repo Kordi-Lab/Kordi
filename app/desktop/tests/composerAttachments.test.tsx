@@ -269,7 +269,9 @@ test('composer add trigger opens one Files and folders action and dismisses acce
     assert.match(menu.className, /app-composer-attachment-add-menu/);
     assert.equal(menu.style.left, '40px');
     assert.equal(menu.style.top, '500px');
-    assert.equal(menu.style.width, '720px');
+    // The Start a chat width, opening from the composer's corner instead of spanning it.
+    assert.equal(menu.style.width, '196px');
+    assert.match(menu.className, /app-transient-surface app-dense-menu/);
     const menuItems = menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
     assert.equal(menuItems.length, 1);
     assert.equal(menuItems[0]?.textContent?.trim(), 'Files and folders');
@@ -344,14 +346,12 @@ test('composer add menu uses the native path picker without opening the browser 
   }
 });
 
-test('composer add menu stays compact and uses shadow instead of a hard divider', () => {
+test('composer add menu takes the Help menu surface and rows without its own overrides', () => {
   const css = readFileSync(new URL('../src/styles/shell-popovers.css', import.meta.url), 'utf8');
-  const surfaceRule = css.match(/\.app-transient-surface\.app-composer-attachment-add-menu\s*\{[^}]*\}/s)?.[0] ?? '';
-  assert.match(surfaceRule, /border:\s*0\s*!important;/);
-  assert.match(surfaceRule, /box-shadow:\s*0\s+10px\s+30px/);
-  assert.doesNotMatch(surfaceRule, /0\s+0\s+0\s+1px/);
-  assert.match(css, /\.app-composer-attachment-add-menu-label\s*\{[^}]*font-size:\s*9px;/s);
-  assert.match(css, /\.app-composer-attachment-add-menu-action\s*\{[^}]*font-size:\s*11px;/s);
+  const source = readFileSync(new URL('../src/kordi-app/components/composerAttachments.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(css, /\.app-composer-attachment-add-menu/);
+  assert.match(source, /app-composer-attachment-add-menu-label app-dense-menu-label/);
+  assert.match(source, /app-composer-attachment-add-menu-action app-dense-menu-row/);
 });
 
 test('Chats, Ask Agent, Projects, and Factory use the same attachment tile and add menu', () => {

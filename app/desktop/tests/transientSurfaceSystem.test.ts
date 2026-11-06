@@ -63,15 +63,16 @@ test('compact transient typography uses shared rem-based action and identity rol
   assert.match(transientCss, /\.app-transient-identity-title\s*\{[\s\S]*?font-size:\s*0\.6875rem;[\s\S]*?line-height:\s*0\.9375rem;/);
   assert.match(transientCss, /\.app-transient-metadata,[\s\S]*?\.app-transient-status\s*\{[\s\S]*?font-size:\s*0\.5625rem;[\s\S]*?line-height:\s*0\.75rem;/);
 
+  // Pop-up menus take the Help menu's dense rows (dense-menu.css); cards keep the compact roles.
   const compactFamilies: Array<[string, RegExp]> = [
-    ['kordi-app/components/transcriptAttachmentActions.tsx', /app-transient-action-row/],
+    ['kordi-app/components/transcriptAttachmentActions.tsx', /app-dense-menu-row/],
     ['pages/MemberContactProfilePopover.tsx', /app-transient-identity-title[\s\S]*app-transient-metadata[\s\S]*app-transient-action-row/],
-    ['pages/SessionActionOverlays.tsx', /app-transient-action-row/],
+    ['pages/SessionActionOverlays.tsx', /app-dense-menu-row/],
     ['kordi-app/components/modelEffortPicker.tsx', /app-transient-action-row[\s\S]*app-transient-metadata/],
-    ['kordi-app/components/composerAttachments.tsx', /app-transient-action-row/],
-    ['pages/chatsPage.companionHeader.tsx', /app-transient-action-row/],
-    ['pages/workspaceSidebar.profile.tsx', /app-transient-action-row[\s\S]*app-transient-metadata/],
-    ['kordi-app/components/messageContextMenuContent.tsx', /app-transient-action-row/],
+    ['kordi-app/components/composerAttachments.tsx', /app-dense-menu-row/],
+    ['pages/chatsPage.companionHeader.tsx', /app-dense-menu-row/],
+    ['pages/workspaceSidebar.profile.tsx', /app-dense-menu-row[\s\S]*app-dense-menu-meta/],
+    ['kordi-app/components/messageContextMenuContent.tsx', /app-dense-menu-row/],
   ];
 
   for (const [path, role] of compactFamilies) {
@@ -83,9 +84,9 @@ test('representative popup families opt into the shared transient contract', () 
   const surfaceInventory: Array<[string, RegExp]> = [
     ['pages/chatCreatePopover.tsx', /app-transient-surface app-frosted-popover app-chat-create-popover/],
     ['components/ui/dialog.tsx', /app-transient-surface app-frosted-popover app-dialog-popover/],
-    ['pages/SessionActionOverlays.tsx', /app-transient-surface app-modal-panel/],
+    ['pages/SessionActionOverlays.tsx', /app-transient-surface app-dense-menu app-context-menu/],
     ['kordi-app/components/modelEffortPicker.tsx', /app-transient-surface app-transient-scroll app-compact-model-menu/],
-    ['kordi-app/components/messageContextMenuContent.tsx', /app-transient-surface overflow-hidden rounded-\[14px\]/],
+    ['kordi-app/components/messageContextMenuContent.tsx', /app-transient-surface app-dense-menu app-message-context-menu-list/],
     ['pages/MessageForwardDialog.tsx', /app-transient-surface app-message-forward-dialog/],
     ['pages/workspaceSidebar.updatePopover.tsx', /app-transient-surface app-popover app-update-popover/],
     ['pages/GroupDetailsDialog.tsx', /app-transient-surface app-frosted-popover app-group-management-popover/],
@@ -96,7 +97,7 @@ test('representative popup families opt into the shared transient contract', () 
     ['features/cloud/CloudContactsPanel.tsx', /app-transient-surface w-full/],
     ['features/cloud/CloudPeerChatPanel.tsx', /app-transient-surface app-frosted-popover/],
     ['pages/ArtifactInspector.tsx', /app-transient-surface app-artifact-preview-window-panel/],
-    ['kordi-app/components/transcriptAttachmentContextMenu.tsx', /app-transient-surface fixed z-\[230\]/],
+    ['kordi-app/components/transcriptAttachmentContextMenu.tsx', /app-transient-surface app-dense-menu app-attachment-context-menu fixed z-\[230\]/],
   ];
 
   for (const [path, contract] of surfaceInventory) {

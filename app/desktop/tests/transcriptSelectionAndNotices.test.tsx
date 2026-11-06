@@ -266,7 +266,7 @@ test('message edit and delete actions are limited to durable human cloud message
   assert.match(ownMarkup, /data-message-context-menu-action="edit"/);
   assert.match(ownMarkup, /data-message-context-menu-action="delete"/);
   assert.match(canonicalOwnMarkup, /data-message-context-menu-action="edit"/);
-  assert.match(ownMarkup, /app-transient-flat-action-danger/);
+  assert.match(ownMarkup, /app-dense-menu-danger/);
   assert.doesNotMatch(peerMarkup, /data-message-context-menu-action="edit"/);
   assert.match(peerMarkup, /data-message-context-menu-action="delete"/);
   assert.doesNotMatch(agentMarkup, /data-message-context-menu-action="(?:edit|delete)"/);
