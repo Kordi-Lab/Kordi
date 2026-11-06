@@ -35,7 +35,7 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Collapsing blocked accounts' group messages and silencing their message alerts add 2 kB.
 // Per-person permissions (the contact pane switches and their client) add 2 kB.
 // Applying them on the Mac (the restricted list, context filtering, the member popover switches) adds 2 kB.
-// Merging these releases together adds about 1 kB of shared glue, so it moves to 5.778 MB.
+// Blocking and per-person permissions together in the same contact and member views add 2 kB.
 const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_778_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
