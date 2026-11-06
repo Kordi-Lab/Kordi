@@ -87,6 +87,8 @@ pub(super) async fn start_message(
         working_folder,
     } = input;
     let attachment_paths = attachment_paths.unwrap_or_default();
+    // A background session's later turns run on the route it inherited.
+    let route = super::background_tasks::route_for_turn(&session_id, route);
     if text.trim().is_empty() && attachment_paths.is_empty() {
         return Err("Message is empty".to_string());
     }

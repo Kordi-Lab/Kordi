@@ -57,3 +57,19 @@ export function fetchDesktopSubsessionSnapshot(sessionId: string) {
 export function fetchDesktopChatActiveTurns() {
   return invokeDesktop<DesktopChatTurnSnapshot[]>('desktop_chat_active_turns');
 }
+
+/** The model and account a background session runs on. Never a credential. */
+export type DesktopBackgroundSessionRoute = {
+  model?: string | null;
+  authProvider?: string | null;
+  authChoice?: string | null;
+  thinking?: string | null;
+};
+
+export function fetchDesktopBackgroundSessionRoute(sessionId: string) {
+  return invokeDesktop<DesktopBackgroundSessionRoute | null>('desktop_chat_background_session_route', { sessionId, model: null, thinking: null });
+}
+
+export function setDesktopBackgroundSessionRoute(sessionId: string, model: string, thinking: string | null) {
+  return invokeDesktop<DesktopBackgroundSessionRoute | null>('desktop_chat_background_session_route', { sessionId, model, thinking });
+}
