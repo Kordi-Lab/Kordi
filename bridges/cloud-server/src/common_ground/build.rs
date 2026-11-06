@@ -47,7 +47,7 @@ pub(super) async fn start(
     let pool = state.db_pool();
     let account = session.account_id.as_str();
     if let Err(response) = crate::ai_consent::require(pool, &[account]).await {
-        return response;
+        return *response;
     }
     let Some(system_agent) = state.system_agent() else {
         return super::unavailable();

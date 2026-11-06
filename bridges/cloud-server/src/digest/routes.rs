@@ -190,7 +190,7 @@ async fn refresh(
 ) -> Response {
     if let Err(response) = crate::ai_consent::require(state.db_pool(), &[&session.account_id]).await
     {
-        return response;
+        return *response;
     }
     if prefs
         .locale

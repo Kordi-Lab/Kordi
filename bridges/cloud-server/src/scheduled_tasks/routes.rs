@@ -175,7 +175,7 @@ async fn create_task(
     }
     if let Err(response) = crate::ai_consent::require(state.db_pool(), &[&session.account_id]).await
     {
-        return response;
+        return *response;
     }
     use crate::organizations::selection::{for_new_content, SelectionError};
     let requested = input.organization_id.as_deref();
@@ -316,7 +316,7 @@ async fn run_task_now(
 ) -> Response {
     if let Err(response) = crate::ai_consent::require(state.db_pool(), &[&session.account_id]).await
     {
-        return response;
+        return *response;
     }
     if let Some(response) = charge_agent_run(&rate_limiter, &session.account_id).await {
         return response;

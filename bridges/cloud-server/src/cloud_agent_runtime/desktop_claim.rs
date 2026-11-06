@@ -41,7 +41,7 @@ async fn claim_request(
         input.run.requester_account_id.trim(),
     ];
     if let Err(response) = crate::ai_consent::require(state.db_pool(), &people).await {
-        return response;
+        return *response;
     }
     // Proactive runs need no project folder, so they skip the project rule:
     // an evaluation's only tool searches memories, and an approved run works

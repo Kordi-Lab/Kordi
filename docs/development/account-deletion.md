@@ -67,7 +67,7 @@ gets `membership.removed`.
    object delete stays queued and is retried with backoff by a background
    worker; a missing object counts as deleted.
 
-Migration 0175 lets the account's project devices and commands, agent
+Migration 0179 lets the account's project devices and commands, agent
 exchanges, and references from other people's runs follow the deletion.
 Foreign keys to kept conversations, messages and plan cards stay strict, so a
 row the server failed to move makes the deletion fail instead of silently

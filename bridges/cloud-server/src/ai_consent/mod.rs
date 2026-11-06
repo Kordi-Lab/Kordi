@@ -91,6 +91,24 @@ where
     Ok(load(executor, account_id).await?.status == AiConsentStatus::Declined)
 }
 
+/// The accounts among `account_ids` that declined AI models.
+pub async fn declined_among<'e, E>(
+    executor: E,
+    account_ids: &[String],
+) -> sqlx_core::Result<std::collections::HashSet<String>>
+where
+    E: sqlx_core::executor::Executor<'e, Database = Postgres>,
+{
+    let rows: Vec<(String,)> = query_as(
+        "SELECT account_id FROM cloud_accounts \
+         WHERE account_id = ANY($1) AND ai_consent_status = 'declined'",
+    )
+    .bind(account_ids)
+    .fetch_all(executor)
+    .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
 /// Whether any of `account_ids` declined AI models.
 pub async fn any_declined(pool: &PgPool, account_ids: &[&str]) -> sqlx_core::Result<bool> {
     let ids: Vec<String> = account_ids.iter().map(|id| id.to_string()).collect();
@@ -128,15 +146,15 @@ fn unavailable() -> Response {
         .into_response()
 }
 
-/// Refuses AI work for `account_ids` when any of them declined. A database
-/// error refuses too, so the gate never fails open.
-pub async fn require(pool: &PgPool, account_ids: &[&str]) -> Result<(), Response> {
+/// Refuses AI work on behalf of `account_ids` when any of them declined. A
+/// database error refuses too, so the gate never fails open.
+pub async fn require(pool: &PgPool, account_ids: &[&str]) -> Result<(), Box<Response>> {
     match any_declined(pool, account_ids).await {
         Ok(false) => Ok(()),
-        Ok(true) => Err(required_response()),
+        Ok(true) => Err(Box::new(required_response())),
         Err(error) => {
             eprintln!("[ai-consent] Could not read AI consent: {error}");
-            Err(unavailable())
+            Err(Box::new(unavailable()))
         }
     }
 }

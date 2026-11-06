@@ -128,7 +128,7 @@ pub(crate) async fn put_setting(
     };
     if setting.enabled {
         if let Err(response) = crate::ai_consent::require(pool, &[&session.account_id]).await {
-            return response;
+            return *response;
         }
     }
     if default_owner(&agent_id).is_some() {
@@ -235,7 +235,7 @@ pub(crate) async fn post_decision(
     let pool = state.db_pool();
     if matches!(choice, Choice::Allow) {
         if let Err(response) = crate::ai_consent::require(pool, &[&session.account_id]).await {
-            return response;
+            return *response;
         }
     }
     match decide(pool, &session.account_id, &agent_id, &proposal_id, choice).await {
