@@ -93,8 +93,8 @@ test('a group admin can create and revoke a preview-first invitation link', asyn
     assert.ok(button('Add'));
     await act(async () => { button('Add')?.click(); });
     step = 'open share link';
-    assert.ok(button('Share link'));
-    await act(async () => { button('Share link')?.click(); });
+    assert.ok(button('Invite with a link'));
+    await act(async () => { button('Invite with a link')?.click(); });
 
     step = 'check compact share panel';
     assert.doesNotMatch(host.textContent ?? '', /preview the group and choose whether to join/i);
@@ -117,7 +117,7 @@ test('a group admin can create and revoke a preview-first invitation link', asyn
       host.querySelector<HTMLButtonElement>('button[aria-label="Back to group members"]')?.click();
     });
     await act(async () => { button('Add')?.click(); });
-    await act(async () => { button('Share link')?.click(); });
+    await act(async () => { button('Invite with a link')?.click(); });
     await act(async () => { await Promise.resolve(); });
     assert.doesNotMatch(host.textContent ?? '', /invitation link is already active/i);
     assert.doesNotMatch(host.textContent ?? '', /revoke it before creating another link/i);
@@ -212,8 +212,8 @@ test('a regular member can find invitation links and sees who can grant access',
     const button = (label: string) => [...host.querySelectorAll('button')]
       .find((candidate) => candidate.textContent?.trim() === label) as HTMLButtonElement | undefined;
     await act(async () => { button('Add')?.click(); });
-    assert.ok(button('Share link'), 'Share link should remain discoverable to regular members');
-    await act(async () => { button('Share link')?.click(); });
+    assert.ok(button('Invite with a link'), 'Share link should remain discoverable to regular members');
+    await act(async () => { button('Invite with a link')?.click(); });
 
     assert.match(host.textContent ?? '', /Only group admins can create invitation links/);
     assert.match(host.textContent ?? '', /Ask Maya Chen to share a link or make you an admin/);

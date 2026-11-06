@@ -71,7 +71,8 @@ function Fixture() {
       onClose={() => setCreateAnchor(null)}
       onStartPerson={(contact) => setStarted(`person:${contact.name}`)}
       onStartAgent={(agent) => setStarted(`agent:${agent.name}`)}
-      onCreateGroup={() => setStarted('group')}
+      onCreateGroup={async (request) => { setStarted(`group:${request.contactIds.length}${request.inviteLink ? ':link' : ''}`); return 'session:group:preview'; }}
+      onCreateGroupInvitation={async (input) => ({ invitationId: 'preview-invitation', inviteUrl: `https://kordi.ai/g/kordi_gi_preview_${input.groupSpaceId.length}`, expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString() })}
       onAddContact={() => setStarted('add-contact')}
     />
     {helpAnchor ? <HelpMenu anchor={helpAnchor} progressKey="start-chat-preview" settingsAvailable supportAvailable onAction={() => {}} onOpenSession={() => {}} onStartTour={() => {}} onDismiss={() => setHelpAnchor(null)} onMacDownload={macDownload ? () => setStarted('mac-download') : undefined} /> : null}

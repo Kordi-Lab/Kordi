@@ -39,12 +39,14 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Real group avatars in the Groups in common row add 2 kB.
 // The dense menu shared by Help and Start a chat moves 1.3 kB of styles out of the on-demand
 // help chunk and adds the popover's focus handling, 3 kB in all, so it moves to 5.783 MB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_783_000;
+// The dense Start group picker and its Invite with a link step add 4 kB, so it moves to 5.787 MB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_787_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.
 // The dense menu shared by Help and Start a chat adds the same 3 kB, so it moves to 5.815 MB.
-const MAX_WEB_APP_DIST_BYTES = 5_815_000;
+// The dense Start group picker and its Invite with a link step add 4 kB, so it moves to 5.82 MB.
+const MAX_WEB_APP_DIST_BYTES = 5_820_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;

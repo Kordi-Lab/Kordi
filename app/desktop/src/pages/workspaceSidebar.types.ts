@@ -97,7 +97,8 @@ export type WorkspaceSidebarChats = {
   onSelectChatSession: (sessionId: string) => void;
   onStartChatWithPerson: (contact: Contact) => Promise<void> | void;
   onStartChatWithAgent: (agent: Agent) => Promise<void> | void;
-  onCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
+  /** Resolves to the new group session id when the group was created. */
+  onCreateChatGroup: (request: CreateChatGroupRequest) => Promise<string | void> | void;
   onAddContactByNodeId: (nodeId: string) => Promise<void> | void;
   onLookupContact?: (idOrEmail: string) => Promise<AddContactLookupResult | null>;
   addContactPlaceholder?: string;

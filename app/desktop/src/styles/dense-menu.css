@@ -34,3 +34,19 @@
 
 /* Start a chat pickers open as a wider detail view of the same surface. */
 .app-chat-create-detail { width: min(284px, calc(100vw - 20px)); padding: 10px; }
+
+/* Start group: avatar and name on one line, then dense people rows. */
+.app-chat-create-group { display: grid; gap: 8px; }
+.app-chat-create-group .app-dense-menu-items { margin-inline: -5px; }
+.app-chat-create-group .app-dense-menu-items > button[aria-pressed="true"] { background: var(--app-transient-selected-bg); }
+.app-chat-create-group .app-dense-menu-items > button[aria-pressed="true"]:hover { background: var(--app-transient-hover-bg); }
+.app-dense-menu-items > button > .app-chat-create-row-avatar { flex: none; width: 20px; height: 20px; }
+.app-dense-menu-items > button > .app-chat-create-check { flex: none; display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid; border-radius: 999px; }
+.app-chat-create-check > svg { width: 10px; height: 10px; }
+.app-dense-menu-items > button > .app-chat-create-row-meta { flex: none; font-size: 11px; color: var(--app-transient-muted-text); }
+.app-chat-create-group-note { margin: 0 2px; font-size: 11px; line-height: 16px; color: var(--app-transient-muted-text); }
+.app-chat-create-icon-button { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; border-radius: 8px; background: var(--app-transient-raised-bg); color: var(--app-transient-text); }
+.app-chat-create-icon-button:hover { background: var(--app-transient-hover-bg); }
+.app-chat-create-icon-button > svg { width: 14px; height: 14px; }
+.app-chat-create-group-avatar > span[aria-hidden="true"] { right: -3px; bottom: -3px; width: 14px; height: 14px; border-width: 1.5px; border-radius: 5px; }
+.app-chat-create-group-avatar > span[aria-hidden="true"] > svg { width: 8px; height: 8px; }
