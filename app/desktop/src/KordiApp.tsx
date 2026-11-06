@@ -7,6 +7,8 @@ import { AppShellFrame } from '@/app/AppShellFrame';
 import { useNativeViewport } from '@/app/useNativeViewport';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
 import { useBrowserWorkspaceScope } from '@web/app/browserWorkspaceScope';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { signOutToSite, useBrowserSiteSignInRedirect } from '@web/auth/browserSiteSignIn';
 import { CloudCallHost } from '@/features/cloud/CloudCallHost';
 import { CloudCallProvider } from '@/features/cloud/CloudCallProvider';
 import { CloudSafetyActionsProvider } from '@/features/safety/SafetyActionsProvider';
@@ -48,6 +50,8 @@ import { DocumentShareLinkHost } from '@/features/documents/DocumentShareLinkDia
 export { CloudStartingScreen } from '@/features/cloud/CloudStartingScreen';
 
 const SHOW_DEBUG_AUTH_DIAGNOSTICS = cloudAuthCapabilityDiscoveryEnabled();
+// A build-time constant, so the web build leaves out the in-app sign-in screens.
+const WEB_APP_BUILD = import.meta.env?.VITE_KORDI_WEB_APP === '1';
 
 type CloudSessionGateResult = Pick<
   UseCloudSessionResult,
@@ -110,8 +114,12 @@ function CloudEditionRoot({
     enabled: cloudSessionOverride === undefined,
   });
   const session = cloudSessionOverride ?? liveSession;
+  // The browser app signs in on the site's own pages, never on a screen here.
+  const [siteSignIn] = useState(() => WEB_APP_BUILD && isBrowserAppRuntime());
+  const liveSignOut = liveSession.signOut;
+  const sessionSignOut = useMemo(() => (siteSignIn ? signOutToSite(liveSignOut) : liveSignOut), [liveSignOut, siteSignIn]);
   const { activity, socialProvider, signIn, signUp, socialSignIn, cancelSocialSignIn, signOut } = useCloudAuthTransition({
-    ...session, signOut: liveSession.signOut,
+    ...session, signOut: sessionSignOut,
   });
   const presentedSession = useMemo(() => ({ ...liveSession, signOut }), [liveSession, signOut]);
   const status: CloudSessionStatus = cloudSessionStatusOverride ?? session.status;
@@ -125,6 +133,10 @@ function CloudEditionRoot({
     setLoginPresented(false);
   }
   const signedOut = shouldShowCloudLoginGate({ cloudSessionStatus: status });
+  // A session the browser could not reach stays here with Retry; the site
+  // page could not load either.
+  const siteRestoreFailed = siteSignIn && signedOut && liveSession.error?.code === 'network_error';
+  useBrowserSiteSignInRedirect(siteSignIn && signedOut && !siteRestoreFailed, loginMode === 'signup' ? 'register' : 'login');
   // Browser sign-in uses the compact welcome window until the server turns
   // out not to offer it; then the in-app form takes its own window size.
   const [inAppForm, setInAppForm] = useState(false);
@@ -148,13 +160,13 @@ function CloudEditionRoot({
       ) : null}
       <CloudGateShell active={gateActive} frosted={frosted}>
         <CloudStartingScreen
-          visible={!(signedOut && loginReady)}
-          status={status === 'authenticated' && sync.status === 'error' ? 'error' : 'syncing'}
-          onRetry={sync.onRetry}
+          visible={siteSignIn || !(signedOut && loginReady)}
+          status={siteRestoreFailed || (status === 'authenticated' && sync.status === 'error') ? 'error' : 'syncing'}
+          onRetry={siteRestoreFailed ? reloadPage : sync.onRetry}
           onCancelSignIn={signedOut && activity === 'social-signing-in' ? cancelSocialSignIn : undefined}
           onReopenSignIn={reopenCloudOAuthBrowser} signInProvider={socialProvider ?? undefined}
         />
-        {signedOut ? (
+        {signedOut && !WEB_APP_BUILD && !siteSignIn ? (
           <div className="app-cloud-login-surface" data-ready={loginReady} inert={!loginReady}>
             <CloudSignInGate browserSignIn={session.browserSignIn}
               onBrowserSignInChange={handleBrowserSignInChange}
@@ -171,6 +183,10 @@ function CloudEditionRoot({
       </CloudGateShell>
     </>
   );
+}
+
+function reloadPage() {
+  window.location.reload();
 }
 
 function KordiAppShell({
