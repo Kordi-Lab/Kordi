@@ -421,29 +421,6 @@ body[data-kordi-chat-theme="classic"] .kordi-app.theme-light .app-chat-bubble-pe
   display: none;
 }
 
-.app-auth-notice {
-  border: 1px solid rgba(251, 191, 36, 0.26);
-  background: rgba(251, 191, 36, 0.11);
-  color: rgb(254 243 199);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-
-.app-auth-notice-title {
-  color: rgb(255 251 235);
-}
-
-.app-auth-notice-icon {
-  color: rgb(252 211 77);
-}
-
-.app-auth-notice-description {
-  color: rgba(254, 243, 199, 0.82);
-}
-
-.app-auth-notice-action {
-  color: var(--utility-foreground);
-}
-
 .app-compression-card {
   border: 1px solid transparent;
   font-weight: 500;
