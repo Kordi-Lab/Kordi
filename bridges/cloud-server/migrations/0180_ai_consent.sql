@@ -1,9 +1,9 @@
 -- AI consent (docs/development/ai-consent.md).
 --
 -- Every account starts `unset`; its owner may allow or decline sharing
--- content with AI models. Only `declined` is enforced, so existing accounts
--- keep working until their owner decides. Adding a column with a constant
--- default does not rewrite the table.
+-- content with AI models. Background AI work skips accounts that have not
+-- allowed it, and nothing sends a declined account's content to a model.
+-- Adding a column with a constant default does not rewrite the table.
 SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE cloud_accounts
