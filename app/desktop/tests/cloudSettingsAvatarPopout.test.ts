@@ -197,13 +197,13 @@ test('account popover variants share compact responsive geometry and shell typog
   const profileControl = readSource('pages/workspaceSidebar.profile.tsx');
   const shellCss = readDesktopShellCss();
 
-  assert.equal((profileControl.match(/app-profile-popover app-account-popover/g) ?? []).length, 2);
+  // Both variants are Help-style dense menus: one surface, a header row, dense rows.
+  assert.equal((profileControl.match(/app-transient-surface app-dense-menu app-account-popover/g) ?? []).length, 2);
   assert.doesNotMatch(profileControl, /w-\[(?:22rem|21\.25rem)\]/);
-  assert.match(shellCss, /\.app-account-popover\s*\{[^}]*width:\s*min\(17\.75rem, calc\(100vw - 1rem\)\);[^}]*font-family:\s*inherit;/s);
-  assert.match(shellCss, /\.app-account-popover \.app-transient-identity-title\s*\{[^}]*font-size:\s*0\.8125rem;[^}]*line-height:\s*1\.125rem;/s);
-  assert.match(shellCss, /\.app-account-popover \.app-transient-action-row,[^}]*font-size:\s*0\.75rem;[^}]*line-height:\s*1rem;/s);
-  assert.match(shellCss, /\.app-account-popover \.app-transient-metadata\s*\{[^}]*font-size:\s*0\.6875rem;[^}]*line-height:\s*0\.9375rem;/s);
-  assert.match(profileControl, /grid-cols-\[0\.875rem_minmax\(0,1fr\)_1\.75rem\]/);
+  assert.match(shellCss, /\.app-account-popover\.app-dense-menu\s*\{[^}]*width:\s*min\(16\.25rem, calc\(100vw - 1rem\)\);[^}]*font-family:\s*inherit;/s);
+  assert.match(shellCss, /\.app-account-identity-name\s*\{[^}]*font-size:\s*13px;[^}]*font-weight:\s*600;/s);
+  assert.match(profileControl, /app-dense-menu-header app-account-identity/);
+  assert.match(profileControl, /className="app-dense-menu-row"/);
 });
 
 test('account popover stays within the compact window safe area', () => {
@@ -212,11 +212,12 @@ test('account popover stays within the compact window safe area', () => {
     viewportWidth: 1200,
     rootFontSize: 16,
   }), 62);
+  // The 260px menu fits a 300px window beside the rail by moving left, inside the safe inset.
   assert.equal(accountPopoverLeft({
     triggerRight: 54,
     viewportWidth: 300,
     rootFontSize: 16,
-  }), 8);
+  }), 32);
   assert.equal(accountPopoverLeft({
     triggerRight: 54,
     viewportWidth: 220,

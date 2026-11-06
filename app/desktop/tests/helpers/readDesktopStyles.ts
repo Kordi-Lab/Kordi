@@ -38,6 +38,7 @@ const SHELL_STYLE_FILES = [
   '../../src/styles/theme-auth-gate.css',
   '../../src/styles/theme-cloud-signin.css',
   '../../src/styles/transient-surfaces.css',
+  '../../src/styles/dense-menu.css',
   '../../src/styles/shell-compact.css',
 ] as const;
 

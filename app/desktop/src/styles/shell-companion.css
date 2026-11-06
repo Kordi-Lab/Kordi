@@ -129,6 +129,6 @@
 .app-companion-tabbed-header > .app-companion-header-controls {
   align-self: end; align-items: center; height: var(--app-chat-pane-tab-height); margin-top: 0;
 }
-.app-companion-menu-session { padding: 6px 10px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--app-divider); }
-.app-companion-menu-session h2 { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
-.app-companion-menu-session p { margin-top: 3px; font-size: 11px; color: var(--app-transient-subtle-text); }
+.app-companion-menu-session { padding: 2px 8px 6px; margin-bottom: 4px; border-bottom: 1px solid var(--app-transient-border); }
+.app-companion-menu-session h2 { font-size: 13px; font-weight: 600; line-height: 24px; overflow-wrap: anywhere; }
+.app-companion-menu-session p { font-size: 11px; color: var(--app-transient-muted-text); }

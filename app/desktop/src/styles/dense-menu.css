@@ -1,8 +1,13 @@
-/* Dense popover menu shared by the Help menu and the Start a chat menu:
- * a small frosted surface, a one-line header, and one-line 28px rows. */
-.app-dense-menu { width: min(260px, calc(100vw - 80px)); padding: 5px; border-radius: 12px; color: var(--app-transient-text); }
-.kordi-app .app-dense-menu {
+/* Dense popover menu shared by the Help menu and every other pop-up menu:
+ * a small frosted surface, a one-line header, and one-line 28px rows.
+ * A surface joins with `app-transient-surface app-dense-menu`; rows are either
+ * direct buttons of `.app-dense-menu-items` or carry `app-dense-menu-row`.
+ * Cards that keep their own layout take only the surface (`app-dense-surface`). */
+.app-dense-menu { width: min(260px, calc(100vw - 80px)); padding: 5px; color: var(--app-transient-text); }
+.app-dense-menu, .app-dense-surface { border: 1px solid var(--app-transient-border); border-radius: 12px; }
+:is(.kordi-app, body) :is(.app-dense-menu, .app-dense-surface) {
   --app-dense-menu-bg: color-mix(in srgb, var(--app-transient-surface-bg) 68%, transparent);
+  border-color: var(--app-transient-border) !important;
   background: var(--app-dense-menu-bg) !important;
   /* Prefixed first: the CSS minifier drops an unprefixed value followed by a prefixed one. */
   -webkit-backdrop-filter: blur(24px) saturate(1.3);
@@ -10,27 +15,60 @@
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 12%), 0 12px 40px rgb(0 0 0 / 24%) !important;
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .kordi-app .app-dense-menu {
+  :is(.kordi-app, body) :is(.app-dense-menu, .app-dense-surface) {
     --app-dense-menu-bg: var(--app-transient-surface-bg);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
 }
 .app-dense-menu-header { display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px 8px; }
-.app-dense-menu-header h2 { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; line-height: 24px; }
+.app-dense-menu-header h2, .app-dense-menu-title { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; line-height: 24px; }
 .app-dense-menu-header > button { display: grid; place-items: center; flex-shrink: 0; color: inherit; width: 24px; height: 24px; border-radius: 6px; }
+.app-dense-menu-header > button > svg { width: 16px; height: 16px; }
 .app-dense-menu-header > svg { width: 16px; height: 16px; flex-shrink: 0; }
 .app-dense-menu-items { display: grid; }
-.app-dense-menu-items > button { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 400; line-height: 16px; text-align: left; color: var(--app-transient-text); }
-.app-dense-menu-items > button > svg { width: 14px; height: 14px; flex-shrink: 0; }
-.app-dense-menu-items > button > svg:last-child:not(:first-child) { width: 12px; height: 12px; color: var(--app-transient-subtle-text); }
-.app-dense-menu-items > button > span { flex: 1; min-width: 0; }
-.app-dense-menu-items > button:hover, .app-dense-menu-header > button:hover { background: var(--app-transient-hover-bg); }
-.app-dense-menu-items > button:disabled { opacity: .45; cursor: default; }
+:is(.app-dense-menu-items > button, .app-dense-menu-row) { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; padding: 4px 8px; border: 0; border-radius: 6px; background: transparent; font-size: 12px; font-weight: 400; line-height: 16px; text-align: left; color: var(--app-transient-text); box-shadow: none; }
+:is(.app-dense-menu-items > button, .app-dense-menu-row) > svg, .app-dense-menu-row > .app-dense-menu-icon > svg { width: 14px; height: 14px; flex-shrink: 0; }
+.app-dense-menu-row > .app-dense-menu-icon { display: grid; place-items: center; flex-shrink: 0; width: 14px; height: 14px; }
+:is(.app-dense-menu-items > button, .app-dense-menu-row) > svg:last-child:not(:first-child) { width: 12px; height: 12px; color: var(--app-transient-subtle-text); }
+:is(.app-dense-menu-items > button, .app-dense-menu-row) > span:not([aria-hidden="true"], .app-dense-menu-meta) { flex: 1; min-width: 0; }
+/* Trailing detail on a row (a count, a status) stays quiet. */
+.app-dense-menu-meta { flex-shrink: 0; font-size: 11px; color: var(--app-transient-muted-text); font-variant-numeric: tabular-nums; }
+:is(.app-dense-menu-items > button, .app-dense-menu-row):hover:not(:disabled), .app-dense-menu-header > button:hover { background: var(--app-transient-hover-bg); }
+:is(.app-dense-menu-items > button, .app-dense-menu-row):disabled { opacity: .45; cursor: default; }
+.app-dense-menu-row.app-dense-menu-danger { color: var(--app-transient-danger-text); }
+.app-dense-menu-row.app-dense-menu-danger:hover:not(:disabled) { background: var(--app-transient-danger-hover-bg); }
 .app-dense-menu-divider { border-top: 1px solid var(--app-transient-border); margin: 4px 6px; }
-.app-dense-menu:focus { outline: none; }
-.app-dense-menu :focus-visible { outline: 2px solid var(--app-transient-focus-ring); outline-offset: 2px; }
+/* Muted section label, as Help's "Jump to a tour section". */
+.app-dense-menu-label { margin: 2px 8px; font-size: 11px; color: var(--app-transient-muted-text); }
+/* No focus rings inside pop-up menus, including the row a menu focuses when it opens.
+ * Keyboard focus shows as the row hover fill instead. */
+.app-dense-menu, .app-dense-menu :is(:focus, :focus-visible) { outline: none !important; }
+.app-dense-menu :is(button, a[href], summary, [role="menuitem"], [tabindex]:not([tabindex="-1"])):focus-visible:not(:disabled) { background: var(--app-transient-hover-bg); }
+.app-dense-menu .app-dense-menu-danger:focus-visible:not(:disabled) { background: var(--app-transient-danger-hover-bg); }
 .app-dense-menu > .app-dialog-popover-arrow { display: none; }
+
+/* Context menus of the chat list share the Start a chat width. */
+.app-context-menu.app-dense-menu { width: min(196px, calc(100vw - 24px)); }
+
+/* Message and image actions keep their own widths. */
+.app-message-context-menu-list.app-dense-menu { width: 13.5rem; max-width: calc(100vw - 1rem); }
+.app-attachment-context-menu.app-dense-menu { width: auto; min-width: 196px; max-width: calc(100vw - 24px); }
+.app-message-context-menu-seen { margin: 4px 6px 0; padding: 6px 2px 2px; border-top: 1px solid var(--app-transient-border); }
+
+/* Side chat options: the current chat stays marked in the chat list. */
+.app-side-chat-menu.app-dense-menu { max-width: calc(100vw - 2rem); }
+.app-side-chat-menu .app-side-chat-menu-current { background: var(--app-transient-selected-bg); }
+/* The side chat header is its own backdrop, so the frost cannot blur the title behind it: stay opaque. */
+:is(.kordi-app, body) .app-side-chat-menu.app-dense-menu { --app-dense-menu-bg: var(--app-transient-surface-bg); }
+
+/* Rows that only show a value (the local profile) keep the row metrics without a hover. */
+.app-dense-menu-info { padding: 4px 8px; font-size: 12px; line-height: 16px; }
+
+/* Account menu: the identity is its header row; a copy button sits where Help has its close button. */
+.app-account-popover.app-dense-menu { width: min(16.25rem, calc(100vw - 1rem)); font-family: inherit; }
+.app-account-identity { padding-block: 4px 6px; }
+.app-account-identity-name { font-size: 13px; font-weight: 600; line-height: 18px; }
 
 /* Start a chat pickers open as a wider detail view of the same surface. */
 .app-chat-create-popover.app-dense-menu:not(.app-chat-create-detail) { width: min(196px, calc(100vw - 80px)); }
@@ -41,8 +79,6 @@
 .app-chat-create-group .app-dense-menu-items { margin-inline: -5px; }
 .app-chat-create-group .app-dense-menu-items > button[aria-pressed="true"] { background: var(--app-transient-selected-bg); }
 .app-chat-create-group .app-dense-menu-items > button[aria-pressed="true"]:hover { background: var(--app-transient-hover-bg); }
-/* The people list scrolls, so its focus ring stays inside the rows instead of being clipped. */
-.app-chat-create-group .app-dense-menu-items > button:focus-visible { outline-offset: -2px; }
 .app-dense-menu-items > button > .app-chat-create-row-avatar { flex: none; width: 20px; height: 20px; }
 .app-dense-menu-items > button > .app-chat-create-check { flex: none; display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid; border-radius: 999px; }
 .app-chat-create-check > svg { width: 10px; height: 10px; }
