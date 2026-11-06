@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { desktopChatStateAfterConfigUpdate, composerConfigTargetSessionId } from './composerConfigTarget';
 export { desktopChatStateAfterConfigUpdate, composerConfigTargetSessionId } from './composerConfigTarget';
 import { importLivePhotos } from '@/features/chat/importLivePhotos';
@@ -389,7 +390,7 @@ export function useComposerInputActions({
   ), [chatComposerAttachments]);
 
   const saveDesktopAttachments = useCallback(async (files: File[]) => {
-    if (!isNativeShell || files.length === 0) {
+    if ((!isNativeShell && !isBrowserAppRuntime()) || files.length === 0) {
       return [] as AttachmentItem[];
     }
 

@@ -4,7 +4,7 @@ import type { SendCloudGroupControlInput } from '@/features/cloud/cloudGroupCont
 import { cloudGroupParticipantsForCollaborationSession } from '@/features/cloud/cloudGroupMessages';
 import { buildChatGroupCollaborationUpdateParticipants } from '@/features/chat/chatCreateFlows';
 import type { CanonicalSessionState, ParticipantSpaceViewModel } from '@/kordi-app/types';
-import { openOrCreateCanonicalSessionFast } from '@/lib/desktop';
+import { captureCloudGroupCanonicalPersistence } from '@/features/cloud/cloudGroupCanonicalPersistence';
 import { mergeOpenCanonicalSessionResult } from './canonicalSessionStateMutations';
 import { activeGroupAdminIds, canonicalGroupParticipantsForSession, metadataGroupSpaceId, sessionMetadataRecord } from './useKordiAppModelHelpers';
 
@@ -18,6 +18,7 @@ export async function createGroupChannel({ space, name, sessionId, canonicalStat
   setCanonicalState: Dispatch<SetStateAction<CanonicalSessionState | null>>;
   selectNewSession: (id: string) => void;
 }) {
+  const persistence = captureCloudGroupCanonicalPersistence();
   const title = name.trim();
   const creatorIdentityId = canonicalState.profile.humanIdentityId;
   if (!creatorIdentityId) throw new Error('Your profile is not ready yet. Try again.');
@@ -41,7 +42,7 @@ export async function createGroupChannel({ space, name, sessionId, canonicalStat
     sessionTitle: { title, titleSource: 'manual', titleRevision: 1, titlePolicyVersion: 1,
       updatedAtMs: now, updatedByAccountId: account.accountId },
   });
-  const result = await openOrCreateCanonicalSessionFast({
+  const result = await persistence.openOrCreateCanonicalSessionFast({
     id: sessionId, kind: 'group', title, status: 'active',
     createdByIdentityId: creatorIdentityId,
     primaryIdentityId: null, relationshipIdentityId: null,

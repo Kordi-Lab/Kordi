@@ -50,8 +50,9 @@ async fn observe_app_client(
     let client_id = client_id
         .and_then(|id| registry.client(id))
         .map_or("unregistered", |client| client.client_id.as_str());
+    let limit = rate_limiter.address_limit(APP_CLIENT_LIMIT, peer_ip);
     rate_limiter
-        .observe_account_limit(APP_CLIENT_LIMIT, &format!("{client_id}:{address}"))
+        .observe_account_limit(limit, &format!("{client_id}:{address}"))
         .await
 }
 

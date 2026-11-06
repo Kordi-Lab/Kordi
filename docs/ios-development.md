@@ -115,8 +115,14 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-personal-agent` | Personal agent section with three sample agents, unread outreach messages with source chips, and an empty session; combine with `--preview-data --preview-agent-page` |
 | `--preview-login` | Welcome screen with Log in and Sign up (browser sign-in) |
 | `--preview-email-sign-in` | Email and social login form, the fallback for servers without browser sign-in |
+| `--preview-consent` | Signed-in home with the AI consent sheet ("Kordi uses AI models") over it; no server needed |
+| `--preview-privacy-settings` | Settings › Privacy: the Share with AI models switch and the legal pages |
+| `--preview-delete-account` | Edit profile › Delete account page with the password field |
+| `--preview-delete-account-confirm` | The Delete account page with the "Delete account?" alert shown |
+| `--preview-settings-about` | Settings scrolled to the bottom to show the Account and About rows (Privacy, Privacy policy, Terms of service) |
 | `--preview-signup` | Account creation in the email form |
 | `--preview-contacts` | Contacts and requests |
+| `--preview-contact-permissions` | Turns on preview data by itself and opens Maya's profile on the Permissions page (See my card off); the switches flip locally. Combine with `--preview-data` |
 | `--preview-new-chat` | New-chat sheet |
 | `--preview-add-contact` | Add-contact search inside the new-chat sheet |
 | `--preview-new-group` | New-group flow inside the new-chat sheet |
@@ -160,6 +166,9 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-contact-model` | Session model selection in a contact chat |
 | `--preview-syncing` | Active message-sync indicator and motion state |
 | `--preview-account` | Account settings with the saved-account count |
+| `--preview-blocked` | Turns on preview data by itself and opens Settings › Blocked with two synthetic blocked people; Unblock changes local state only |
+| `--preview-report` | Turns on preview data by itself and opens the report sheet for the sample contact over Contacts; Send shows Report sent without a network request. With `--preview-data`, Block and Report in the contact profile's More menu, Report in the message menu of other people's messages, and a long press on an incoming contact request also stay local |
+| `--preview-blocked-message` | Turns on preview data by itself and opens the sample group with Ethan Park blocked; his messages show as Message from a blocked account, and tapping one shows it until you leave the conversation |
 | `--preview-connectors` | Debug-only: turns on preview data by itself and opens Settings on Connectors with the in-memory sample client (Services plus On this iPhone; Google Calendar and GitHub connected, Slack needing sign-in, Outlook coming later). Without it, and until the server reports `connectorsVersion`, the Connectors row is absent. Add `--preview-connector-detail=<providerId>` (for example `google_calendar`) to open that connector's detail screen directly |
 | `--preview-authentication` | Provider-authentication catalog from the bundled OMP catalog, with connected providers listed first |
 | `--preview-authentication-detail` | OpenAI detail with no inputs: Saved accounts (Work and Personal ChatGPT accounts) and an Add account row listing Device code, ChatGPT sign-in, and API key |

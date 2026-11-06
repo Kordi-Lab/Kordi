@@ -344,16 +344,28 @@ struct ProfileSettingsView: View {
                     await model.signOut()
                 }
             } label: {
-                Text("Sign out")
-                    .font(SettingsFont.rowTitle)
-                    .foregroundStyle(KordiTheme.destructiveText)
-                    .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .contentShape(Rectangle())
+                destructiveLabel("Sign out")
             }
             .buttonStyle(.plain)
             Divider()
+            NavigationLink {
+                DeleteAccountView()
+            } label: {
+                destructiveLabel("Delete account")
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("profile-delete-account")
+            Divider()
         }
+    }
+
+    private func destructiveLabel(_ title: String) -> some View {
+        Text(title)
+            .font(SettingsFont.rowTitle)
+            .foregroundStyle(KordiTheme.destructiveText)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
     }
 
     // MARK: Row building

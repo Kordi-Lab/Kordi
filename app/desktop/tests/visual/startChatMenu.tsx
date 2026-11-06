@@ -7,11 +7,12 @@ import { ChatCreateDialog, type ChatCreateMode, type ChatCreatePopoverAnchor } f
 import type { Agent, Contact } from '../../src/kordi-app/types';
 
 // Synthetic data only: the Start a chat menu beside the Help menu it mirrors.
-// ?theme=light|dark, ?show=both|create|help, ?mode=menu|person|agent|group|add-contact
+// ?theme=light|dark, ?show=both|create|help, ?mode=menu|person|agent|group|add-contact, ?macDownload=1
 const params = new URLSearchParams(window.location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
 const show = params.get('show') ?? 'both';
 const initialMode = (params.get('mode') ?? 'menu') as ChatCreateMode;
+const macDownload = params.has('macDownload');
 document.body.classList.add(`theme-${theme}`);
 document.documentElement.style.colorScheme = theme;
 
@@ -73,7 +74,7 @@ function Fixture() {
       onCreateGroup={() => setStarted('group')}
       onAddContact={() => setStarted('add-contact')}
     />
-    {helpAnchor ? <HelpMenu anchor={helpAnchor} progressKey="start-chat-preview" settingsAvailable supportAvailable onAction={() => {}} onOpenSession={() => {}} onStartTour={() => {}} onDismiss={() => setHelpAnchor(null)} /> : null}
+    {helpAnchor ? <HelpMenu anchor={helpAnchor} progressKey="start-chat-preview" settingsAvailable supportAvailable onAction={() => {}} onOpenSession={() => {}} onStartTour={() => {}} onDismiss={() => setHelpAnchor(null)} onMacDownload={macDownload ? () => setStarted('mac-download') : undefined} /> : null}
   </div>;
 }
 

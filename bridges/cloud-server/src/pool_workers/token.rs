@@ -119,6 +119,15 @@ pub fn verify(
     keys: &KeySet,
     now: i64,
 ) -> Result<VerifiedWorker, TokenError> {
+    let claims = verify_signature(token, keys)?;
+    check_claims(&claims, identity, now)
+}
+
+/// Checks the size, shape and signature of `token` against `keys` and
+/// returns its claims, unchecked. Only RS256 and ES256 are accepted, and the
+/// key type must match the algorithm. Callers must check every claim they
+/// rely on, at least issuer, audience and expiry.
+pub(crate) fn verify_signature(token: &str, keys: &KeySet) -> Result<Value, TokenError> {
     if token.len() > MAX_TOKEN_BYTES {
         return Err(TokenError::Malformed);
     }
@@ -173,7 +182,7 @@ pub fn verify(
         }
     };
     verified.map_err(|_| TokenError::BadSignature)?;
-    check_claims(&claims, identity, now)
+    Ok(claims)
 }
 
 fn check_claims(

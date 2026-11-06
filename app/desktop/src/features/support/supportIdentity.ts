@@ -2,7 +2,7 @@ export const KORDI_SUPPORT_ACCOUNT_ID = 'acct_kordi_support';
 export const KORDI_SUPPORT_AGENT_ID = 'cloud_agent_kordi_support';
 export const KORDI_SUPPORT_NAME = 'Kordi Support';
 export const KORDI_SUPPORT_SUBTITLE = 'Ask questions or suggest improvements';
-export const KORDI_SUPPORT_AVATAR_URL = '/kordi-support-avatar.svg';
+export const KORDI_SUPPORT_AVATAR_URL = publicAssetPath('kordi-support-avatar.svg');
 
 type SupportConversationIdentity = {
   id?: string | null;
@@ -86,3 +86,4 @@ export function isKordiSupportConversation(
     || isSupportIdentityId(participant.agentId)
   )));
 }
+import { publicAssetPath } from '@/lib/publicAsset';

@@ -70,6 +70,12 @@ pub(super) fn store_error(context: &str, error: StoreError) -> Response {
             "The account is not allowed to perform this operation.",
             None,
         ),
+        StoreError::Blocked => error_response(
+            StatusCode::FORBIDDEN,
+            "CHAT_BLOCKED",
+            "You can't message this person.",
+            None,
+        ),
         StoreError::IdempotencyKeyReused => error_response(
             StatusCode::CONFLICT,
             "IDEMPOTENCY_KEY_REUSED",
@@ -238,10 +244,7 @@ fn validate_voice_message(
                 .get("waveformSamples")
                 .and_then(serde_json::Value::as_array);
             media_id == attachment_ids[0].trim()
-                && matches!(
-                    mime_type.as_str(),
-                    "audio/mp4" | "audio/m4a" | "audio/x-m4a" | "audio/aac"
-                )
+                && crate::chat_sync::voice::supported_audio_mime_type(&mime_type)
                 && (1..=60_000).contains(&duration_ms)
                 && crate::chat_sync::voice::valid_transcription(&serde_json::Value::Object(
                     (*voice).clone(),
@@ -445,6 +448,11 @@ mod tests {
             "transcript": "Meet me after lunch."
         });
         assert!(validate_message_request(&request(valid.clone())).is_ok());
+        let mut browser_audio = valid.clone();
+        browser_audio["mimeType"] = json!("audio/wav");
+        assert!(validate_message_request(&request(browser_audio.clone())).is_ok());
+        browser_audio["mimeType"] = json!("text/html");
+        assert!(validate_message_request(&request(browser_audio)).is_err());
 
         let mut too_long = valid.clone();
         too_long["durationMs"] = json!(60_001);

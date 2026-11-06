@@ -52,6 +52,7 @@ pub enum SignInMethod {
     Google,
     EmailCode,
     Github,
+    Apple,
 }
 
 impl SignInMethod {
@@ -60,6 +61,7 @@ impl SignInMethod {
             Self::Google => "google",
             Self::EmailCode => "email_code",
             Self::Github => "github",
+            Self::Apple => "apple",
         }
     }
 }

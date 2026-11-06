@@ -26,7 +26,10 @@ test('queued message bubble shape uses the outgoing clean squared soft-tail clas
 });
 
 test('transcript and queued bubbles no longer hardcode the old pill radius utilities', () => {
-  const transcript = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+  // The transcript row picks its bubble surface class in a sibling module.
+  const transcript = ['transcript.tsx', 'transcriptMessageSurfaceClass.ts']
+    .map((file) => readFileSync(new URL(`../src/kordi-app/components/${file}`, import.meta.url), 'utf8'))
+    .join('\n');
   const queuedMessage = readFileSync(new URL('../src/pages/chatsPage.queuedMessage.tsx', import.meta.url), 'utf8');
 
   assert.match(transcript, /humanMessageBubbleShapeClass\('own'\)/);

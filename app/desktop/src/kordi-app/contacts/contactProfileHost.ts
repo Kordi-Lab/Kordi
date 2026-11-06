@@ -1,4 +1,6 @@
-import type { CloudContactProfile, CloudContactProfileAgent, CloudContactProfileGroup } from '@/features/cloud/contactProfileClient';
+import type {
+  CloudContactPermissionFlags, CloudContactProfile, CloudContactProfileAgent, CloudContactProfileGroup,
+} from '@/features/cloud/contactProfileClient';
 import { isAgentContact } from '../contactPresentation';
 import type { Contact } from '../types';
 
@@ -18,6 +20,14 @@ export type ContactProfileHost = {
   /** Opens a chat with the person's agent; `person` is the contact whose profile is open. */
   openAgentChat?: (agent: CloudContactProfileAgent, person: Contact) => void;
   openGroup?: (group: CloudContactProfileGroup) => void;
+  /** Per-person Use my agent and See my card switches; present only when the server serves them. */
+  permissions?: ContactPermissionsHost;
+};
+
+/** Loads and saves the restrictions the viewer set for one person. */
+export type ContactPermissionsHost = {
+  load: (accountId: string, signal: AbortSignal) => Promise<CloudContactPermissionFlags>;
+  save: (accountId: string, patch: Partial<CloudContactPermissionFlags>) => Promise<CloudContactPermissionFlags>;
 };
 
 /** Mute for the direct chat with a contact. `isMuted` returns null when the contact has no such chat. */

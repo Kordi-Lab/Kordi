@@ -50,6 +50,20 @@ pub const CONTACT_ADD_LIMIT: AccountActionLimit = AccountActionLimit {
     window: Duration::from_secs(60 * 60),
 };
 
+/// Abuse reports. Replays of a report already received never count.
+pub const REPORT_SUBMIT_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "report-submit",
+    limit: 20,
+    window: Duration::from_secs(24 * 60 * 60),
+};
+
+/// Blocks and unblocks, which share one budget.
+pub const BLOCK_CHANGE_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "block-change",
+    limit: 60,
+    window: Duration::from_secs(60 * 60),
+};
+
 /// Requests for and guesses at codes that verify the signed-in account's
 /// primary email. The code store separately allows one send per minute, five
 /// per hour, and five guesses per code; this bounds the account as a whole.

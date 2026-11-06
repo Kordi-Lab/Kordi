@@ -45,6 +45,7 @@ export function useCloudSelfAgentExecution({
   messageIndex,
   initialMessagesSettled,
   runtimeReady = true,
+  executionReadyRef,
   routesBySessionId,
   defaultRoute,
   cloudAgentDefinitionsById,
@@ -79,6 +80,11 @@ export function useCloudSelfAgentExecution({
   });
   const voiceGate = useVoiceAgentRequestGate();
   const executionReady = useDesktopAgentReadiness({ account, client, runtimeReady, cloudAgentDefinitionsById, defaultRoute, reportWarning });
+  useEffect(() => {
+    if (!executionReadyRef) return;
+    executionReadyRef.current = executionReady;
+    return () => { executionReadyRef.current = false; };
+  }, [executionReady, executionReadyRef]);
   const activeAccountIdRef = useRef<string | null>(
     account?.accountId ?? null,
   );

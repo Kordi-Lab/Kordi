@@ -26,7 +26,10 @@ import { ConnectorsSettingsPanel } from '@/features/connectors/ConnectorsSetting
 import type { ConnectorsClient } from '@/features/connectors/connectorsClient';
 import { connectorsClientForAccount } from '@/features/connectors/connectorsClientSelection';
 import { useConnectorsLinkSelection } from '@/features/connectors/useConnectorsLinkSelection';
+import { AiConsentSettingsPanel } from '@/features/aiConsent/AiConsentSettingsPanel';
 import { MemorySettingsPanel } from '@/features/memory/MemorySettingsPanel';
+import { BlockedAccountsPanel } from '@/features/safety/BlockedAccountsPanel';
+import { useSafetyActions } from '@/features/safety/safetyActions';
 import { memoryClientForEnvironment, type MemoryClient } from '@/features/memory/memoryClient';
 import type { MemoryImporter } from '@/features/memory/memoryImport';
 import { nativeMemoryImporter, useMemoryImportRoute } from '@/features/memory/memoryImportClient';
@@ -147,6 +150,7 @@ export function CloudAccountSettingsDialog({
   }, [capabilities, capabilitiesStatus, connectorsAccountId, connectorsClients, defaultAgentName]);
   // The composer's own gate (`hasConfiguredProviderAuth`): a provider on this Mac or a hosted account.
   const hosted = useHostedAccountsSnapshot();
+  const blockedAvailable = useSafetyActions().available;
   useMemoryImportRoute(memoryImportRoute);
   const connectorsClient = hasConnectorsOverride ? connectorsClientOverride : connectorsSelection?.client ?? null;
   const connectorsArePreview = hasConnectorsOverride ? connectorsIsPreview : connectorsSelection?.source === 'preview';
@@ -199,9 +203,10 @@ export function CloudAccountSettingsDialog({
   const navGroups = cloudAccountSettingsNavGroups({
     connectorsAvailable: connectorsClient !== null,
     memoryAvailable: memoryClient !== null,
+    blockedAvailable,
   });
   const visibleTab: CloudAccountSettingsTabId =
-    (activeTab === 'connectors' && !connectorsClient) || (activeTab === 'memory' && !memoryClient) ? 'profile' : activeTab;
+    (activeTab === 'connectors' && !connectorsClient) || (activeTab === 'memory' && !memoryClient) || (activeTab === 'blocked' && !blockedAvailable) ? 'profile' : activeTab;
 
   const selectTab = (tabId: CloudAccountSettingsTabId) => {
     if (tabId !== 'connectors') clearConnectorsLinkSelection();
@@ -249,8 +254,12 @@ export function CloudAccountSettingsDialog({
     <div className="app-cloud-account-settings-section app-cloud-account-theme app-settings-option-list max-w-[680px]">
       <SettingsSection title="Appearance">
         <MessageLayoutSetting />
-        {(appearanceSection?.items ?? []).map((item) => (
-          <AppearanceSettingsRow key={item.label} item={item} themeMode={themeMode} onSelectThemeMode={setThemeMode} />
+        {(appearanceSection?.items ?? []).filter((item) => isNativeShell || item.control?.type !== 'app-icon').map((item) => (
+          <AppearanceSettingsRow key={item.label}
+            item={!isNativeShell && item.control?.type === 'chat-theme'
+              ? { ...item, hint: 'Changes conversation backgrounds and message colors in this browser.' }
+              : item}
+            themeMode={themeMode} onSelectThemeMode={setThemeMode} />
         ))}
       </SettingsSection>
     </div>
@@ -321,7 +330,7 @@ export function CloudAccountSettingsDialog({
           </div>
           <ScrollArea className="min-h-0 flex-1">
             <div className="px-8 pb-8 pt-2">
-              {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'connectors' ? connectorsPanel : visibleTab === 'memory' ? memoryPanel : visibleTab === 'usage' ? usagePanel : appearancePanel}
+              {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'privacy' ? <AiConsentSettingsPanel /> : visibleTab === 'connectors' ? connectorsPanel : visibleTab === 'memory' ? memoryPanel : visibleTab === 'usage' ? usagePanel : visibleTab === 'blocked' ? <BlockedAccountsPanel /> : appearancePanel}
             </div>
           </ScrollArea>
         </div>

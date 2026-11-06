@@ -5,6 +5,7 @@ import { DEVICE_ACTIVE_CHOICES } from '@/features/cloud/routeAccountChoice';
 import type { CloudProviderAuthSnapshot } from '@/features/cloud/cloudAgentRuntimeTypes';
 import type { OmpLoginKind, OmpLoginSpec } from '@/features/cloud/providerLogin';
 import type { DesktopAuthProvider, DesktopAuthState } from '@/kordi-app/types';
+import { readableAccountLabel } from './accountLabel';
 import { buildAuthDisplayProviders, isLocalProvider, kordiSignInProviderIds } from './model';
 import type { AuthDisplayMethod, AuthDisplayProvider, AuthHostedLogin, OmpProviderAuth } from './model';
 
@@ -256,7 +257,7 @@ export function mergeOmpAuthState(
       profileId: snapshot.snapshotId,
       method: snapshotMethod(snapshot, targetId, entry),
       source: 'Cloud',
-      label: snapshot.label || 'Saved account',
+      label: readableAccountLabel(snapshot.label, ompProviderName(targetId, entry), snapshot.createdAt) ?? 'Saved account',
       modelHint: snapshot.modelHint,
       active: false,
     });

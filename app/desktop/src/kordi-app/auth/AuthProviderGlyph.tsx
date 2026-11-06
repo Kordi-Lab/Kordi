@@ -96,7 +96,7 @@ export function AuthProviderGlyph({ providerId, label, size = 'md' }: AuthProvid
     >
       {logo ? (
         <img
-          src={`/provider-logos/${logo}.svg`}
+          src={publicAssetPath(`provider-logos/${logo}.svg`)}
           alt=""
           loading="lazy"
           className={cn('object-contain', size === 'sm' && 'h-[22px] w-[22px]', size === 'md' && 'h-6 w-6', size === 'lg' && 'h-7 w-7')}
@@ -107,3 +107,4 @@ export function AuthProviderGlyph({ providerId, label, size = 'md' }: AuthProvid
     </span>
   );
 }
+import { publicAssetPath } from '@/lib/publicAsset';

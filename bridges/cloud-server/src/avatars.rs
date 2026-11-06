@@ -255,14 +255,18 @@ pub async fn preserve_avatar_render_key(
     Ok(())
 }
 
-pub fn routes(state: Arc<ServerState>) -> Router {
+/// `shared` lends its trusted networks to the render throttle.
+pub fn routes(state: Arc<ServerState>, shared: &CloudRateLimiter) -> Router {
     // ponytail: per-process throttling plus the durable render-key allowlist bounds
     // work today; give this route its own Redis namespace if replica-level abuse appears.
-    let rate_limiter = Arc::new(CloudRateLimiter::memory(CloudRateLimitConfig {
-        per_ip_limit: 120,
-        per_ip_window: Duration::from_secs(60),
-        ..CloudRateLimitConfig::production()
-    }));
+    let rate_limiter = Arc::new(
+        CloudRateLimiter::memory(CloudRateLimitConfig {
+            per_ip_limit: 120,
+            per_ip_window: Duration::from_secs(60),
+            ..CloudRateLimitConfig::production()
+        })
+        .with_trusted_networks(shared.trusted_networks().clone()),
+    );
     Router::new()
         .route(
             "/v1/avatars/:renderer/:style/:file_name",

@@ -2,8 +2,10 @@
 //!
 //! Signed out, it names the inviter and the group and offers sign-up and
 //! log-in pages that return here. Signed in on the web, a form POST claims
-//! the invitation for the account and opens the app; nothing is claimed when
-//! the page loads. Expired or unusable links never name the inviter.
+//! the invitation for the account and then opens the app or, when this
+//! server serves it, the browser application, which offers the same join
+//! prompt; nothing is claimed when the page loads. Expired or unusable links
+//! never name the inviter.
 
 use super::pending::{claim_for_account, inviter_name, is_group_member, ClaimOutcome};
 use super::*;
@@ -13,6 +15,12 @@ const LINK_ICON: &str = r#"<svg viewBox="0 0 24 24" aria-hidden="true"><path d="
 
 /// The sign-in pages read the path to return to from this query parameter.
 pub(super) const SIGN_IN_RETURN_PARAM: &str = "next";
+
+/// The form field that names where the signed-in page continues after the
+/// claim. Only [`CONTINUE_ON_WEB`] picks the browser application; any other
+/// value opens the app.
+pub(super) const CONTINUE_FIELD: &str = "continue";
+pub(super) const CONTINUE_ON_WEB: &str = "web";
 
 pub(super) enum LandingView {
     SignedOut {
@@ -27,14 +35,17 @@ pub(super) enum LandingView {
         token: String,
         csrf: String,
         download_url: Option<String>,
+        web: bool,
     },
     Member {
         group: String,
         token: String,
+        web: bool,
     },
     Expired,
     TooManyPending {
         token: String,
+        web: bool,
     },
     Retry {
         token: String,
@@ -63,6 +74,29 @@ fn link(class: &str, href: &str, label: &str) -> String {
         r#"<a class="{class}" href="{}">{}</a>"#,
         escape_html(href),
         escape_html(label)
+    )
+}
+
+/// "Open the app" for a claimed invitation, with "Continue on the web" when
+/// the browser application is served. Both are plain links: nothing is left
+/// to claim.
+fn open_app_actions(token: &str, web: bool) -> String {
+    let web = if web {
+        link(
+            "button button-secondary",
+            BROWSER_APP_PATH,
+            "Continue on the web",
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        r#"<div class="actions">{}{web}</div>"#,
+        link(
+            "button button-primary",
+            &group_invite_deep_link(token),
+            "Open the app"
+        )
     )
 }
 
@@ -123,6 +157,7 @@ pub(super) fn landing_content(view: &LandingView) -> (String, String) {
             token,
             csrf,
             download_url,
+            web,
         } => {
             let who = viewer
                 .as_deref()
@@ -138,32 +173,43 @@ pub(super) fn landing_content(view: &LandingView) -> (String, String) {
                 .as_deref()
                 .map(|url| link("button button-secondary", url, "Download for Mac"))
                 .unwrap_or_default();
+            // Both buttons submit the same claim; the button's value picks
+            // where to continue afterwards.
+            let web_button = if *web {
+                format!(
+                    r#"<button class="button button-secondary" type="submit" name="{CONTINUE_FIELD}" value="{CONTINUE_ON_WEB}">Continue on the web</button>"#
+                )
+            } else {
+                String::new()
+            };
             let rest = format!(
                 r#"{who}
         <form class="actions" method="post" action="/g/{}">
           <input type="hidden" name="csrf" value="{}">
-          <button class="button button-primary" type="submit">Open Kordi</button>
+          <button class="button button-primary" type="submit" name="{CONTINUE_FIELD}" value="app">Open Kordi</button>
+          {web_button}
           {download}
         </form>"#,
                 escape_html(token),
                 escape_html(csrf),
             );
-            let line = format!("{group} is waiting in the app.");
-            (
-                format!("Join {group}"),
-                card(USERS_ICON, "Open Kordi to join", Some(&line), &rest),
-            )
-        }
-        LandingView::Member { group, token } => {
-            let title = format!("You're in {group}");
-            let actions = format!(
-                r#"<div class="actions">{}</div>"#,
-                link(
-                    "button button-primary",
-                    &group_invite_deep_link(token),
-                    "Open the app"
+            let title = format!("Join {group}");
+            let (heading, line) = if *web {
+                (
+                    title.as_str(),
+                    "Open it in the app or on the web.".to_string(),
                 )
-            );
+            } else {
+                (
+                    "Open Kordi to join",
+                    format!("{group} is waiting in the app."),
+                )
+            };
+            (title.clone(), card(USERS_ICON, heading, Some(&line), &rest))
+        }
+        LandingView::Member { group, token, web } => {
+            let title = format!("You're in {group}");
+            let actions = open_app_actions(token, *web);
             (title.clone(), card(USERS_ICON, &title, None, &actions))
         }
         LandingView::Expired => (
@@ -178,20 +224,13 @@ pub(super) fn landing_content(view: &LandingView) -> (String, String) {
                 ),
             ),
         ),
-        LandingView::TooManyPending { token } => (
+        LandingView::TooManyPending { token, web } => (
             "Too many invitations".to_string(),
             card(
                 USERS_ICON,
                 "Too many invitations waiting",
                 Some("Join or dismiss one in Kordi first."),
-                &format!(
-                    r#"<div class="actions">{}</div>"#,
-                    link(
-                        "button button-primary",
-                        &group_invite_deep_link(token),
-                        "Open the app"
-                    )
-                ),
+                &open_app_actions(token, *web),
             ),
         ),
         LandingView::Retry { token } => (
@@ -300,9 +339,10 @@ pub(crate) async fn group_invitation_landing(
     };
     let group = record.snapshot.group_title.clone();
     let session = signed_in_web_session(&state, &headers).await;
+    let web = session.is_some() && configured_browser_app_url().await.is_some();
     let view = match session {
         Some((session, _)) if is_group_member(&record, &session.account_id) => {
-            LandingView::Member { group, token }
+            LandingView::Member { group, token, web }
         }
         _ if !group_invitation_has_capacity(&record.snapshot) => {
             return landing_response(StatusCode::CONFLICT, &LandingView::Expired)
@@ -313,6 +353,7 @@ pub(crate) async fn group_invitation_landing(
             token,
             csrf,
             download_url: safe_release_download_url(configured_release_download_url().as_deref()),
+            web,
         },
         None => LandingView::SignedOut {
             inviter: inviter_name(&record),
@@ -327,10 +368,28 @@ pub(crate) async fn group_invitation_landing(
 #[derive(Debug, Deserialize)]
 pub(crate) struct ClaimForm {
     csrf: String,
+    #[serde(default, rename = "continue")]
+    destination: Option<String>,
+}
+
+impl ClaimForm {
+    fn continues_on_web(&self) -> bool {
+        self.destination.as_deref() == Some(CONTINUE_ON_WEB)
+    }
+}
+
+/// Where a successful claim continues: the browser application's fixed path
+/// or the app's deep link for this token, never a location from the request.
+pub(super) fn claim_redirect_target(token: &str, on_web: bool) -> String {
+    if on_web {
+        BROWSER_APP_PATH.to_string()
+    } else {
+        group_invite_deep_link(token)
+    }
 }
 
 /// `POST /g/:token`: the signed-in page's form. Claims the invitation for
-/// the web session's account and opens the app.
+/// the web session's account, then opens the app or the browser application.
 pub(crate) async fn claim_group_invitation_from_page(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
@@ -352,10 +411,11 @@ pub(crate) async fn claim_group_invitation_from_page(
             .collect();
         return landing_response(StatusCode::FORBIDDEN, &LandingView::Retry { token });
     };
+    let on_web = form.continues_on_web();
     match claim_for_account(state.db_pool(), &token, &session.account_id).await {
         Ok(ClaimOutcome::Claimed(_) | ClaimOutcome::AlreadyMember { .. }) => {
             super::super::app_sign_in_handlers::no_store(
-                Redirect::to(&group_invite_deep_link(&token)).into_response(),
+                Redirect::to(&claim_redirect_target(&token, on_web)).into_response(),
             )
         }
         Ok(ClaimOutcome::Unavailable | ClaimOutcome::GroupFull) => {
@@ -363,7 +423,10 @@ pub(crate) async fn claim_group_invitation_from_page(
         }
         Ok(ClaimOutcome::TooManyPending) => landing_response(
             StatusCode::TOO_MANY_REQUESTS,
-            &LandingView::TooManyPending { token },
+            &LandingView::TooManyPending {
+                token,
+                web: configured_browser_app_url().await.is_some(),
+            },
         ),
         Err(_) => landing_response(StatusCode::INTERNAL_SERVER_ERROR, &LandingView::Unavailable),
     }

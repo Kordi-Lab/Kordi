@@ -5,6 +5,8 @@ import { ChatPaneLayout } from '@/pages/ChatPaneLayout';
 import {
   localOwnedAgentSenderLabel,
 } from '@/app/viewModels/helpers';
+import { chatSendNeedsAiConsent } from '@/features/aiConsent/aiConsentSendGate';
+import { requireAiConsent } from '@/features/aiConsent/aiConsentStore';
 import { composerAgentRequestStop } from '@/features/chat/agentRequestStop';
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
@@ -163,6 +165,11 @@ export function ChatMainWorkspace({
       return;
     }
     const trigger = parseAskAgentTriggerCommand(draft);
+    // An AI model would see this message: ask for consent, or say AI models are off.
+    if ((draft.trim().length > 0 || attachmentCount > 0) && chatSendNeedsAiConsent({
+      paneKind: activePaneKind, draft, asksAgent: Boolean(trigger),
+      mentionOptions: draft.includes('@') ? composer.chatMentionTargetsForText('@') : [],
+    }) && !requireAiConsent()) return;
     if (trigger) {
       void companion.open(trigger.prompt).then((opened) => {
         if (opened) composer.setChatComposerText('');
@@ -443,6 +450,7 @@ export function ChatMainWorkspace({
           onMessageContact={models.senderProfiles.messageContact}
           onOpenCommonGroup={models.senderProfiles.openCommonGroup}
           loadProfile={models.senderProfiles.loadProfile}
+          permissionsHost={models.senderProfiles.permissionsHost}
           onClose={models.senderProfiles.close}
         />
       ) : null}

@@ -33,6 +33,7 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatTranscriptScrollRef'
   | 'cloudSession'
   | 'displayedContacts'
+  | 'participantSpaces'
   | 'handleStartChatWithPerson'
   | 'onForwardMessage'
   | 'handleSendChatMessage'

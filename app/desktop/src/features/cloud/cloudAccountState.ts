@@ -61,6 +61,7 @@ export function cloudAccountsEqual(left: CloudAccount | null, right: CloudAccoun
     && left.defaultAgent?.avatarUrl === right.defaultAgent?.avatarUrl
     && cloudAvatarsEqual(left.defaultAgent?.avatar, right.defaultAgent?.avatar)
     && left.nodeId === right.nodeId
-    && left.passwordSet === right.passwordSet,
+    && left.passwordSet === right.passwordSet
+    && left.aiConsent?.status === right.aiConsent?.status,
   );
 }

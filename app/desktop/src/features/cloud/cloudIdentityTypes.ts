@@ -32,7 +32,12 @@ export type CloudAccount = {
   defaultAgent?: CloudDefaultAgentProfile | null;
   nodeId: string | null;
   passwordSet: boolean;
+  /** Whether the person lets Kordi send their content to AI models. Absent on older servers. */
+  aiConsent?: CloudAiConsent | null;
 };
+
+export type CloudAiConsentStatus = 'unset' | 'allowed' | 'declined';
+export type CloudAiConsent = { status: CloudAiConsentStatus; decidedAt: string | null };
 
 /** Optional profile fields on PATCH /me, each a string where "" clears it. */
 export type CloudProfileFieldsInput = {

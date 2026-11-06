@@ -410,3 +410,56 @@ async fn redis_ip_counter_expires_and_counts_within_its_window() {
 
     conn.del::<_, ()>(&key).await.unwrap();
 }
+
+#[tokio::test]
+async fn trusted_networks_multiply_only_per_address_limits() {
+    let trusted = TrustedNetworks::parse(Some("203.0.113.0/24,2001:db8::/32"), Some("4")).unwrap();
+    let limiter = CloudRateLimiter::memory(fast_config()).with_trusted_networks(trusted);
+    let outside = Some(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)));
+    for _ in 0..12 {
+        assert_eq!(
+            limiter.observe_ip(client(9)).await,
+            RateLimitDecision::Allowed
+        );
+    }
+    assert!(matches!(
+        limiter.observe_ip(client(9)).await,
+        RateLimitDecision::Limited { .. }
+    ));
+    for _ in 0..3 {
+        assert_eq!(
+            limiter.observe_ip(outside).await,
+            RateLimitDecision::Allowed
+        );
+    }
+    assert!(matches!(
+        limiter.observe_ip(outside).await,
+        RateLimitDecision::Limited { .. }
+    ));
+
+    // Address-keyed budgets scale; the same budget for an outside client and
+    // unknown clients does not.
+    let budget = AccountActionLimit {
+        action: "address-test",
+        limit: 60,
+        window: Duration::from_secs(60),
+    };
+    let v6 = Some("2001:db8:7::1".parse().unwrap());
+    assert_eq!(limiter.address_limit(budget, client(9)).limit, 240);
+    assert_eq!(limiter.address_limit(budget, v6).limit, 240);
+    assert_eq!(limiter.address_limit(budget, outside), budget);
+    assert_eq!(limiter.address_limit(budget, None), budget);
+
+    // Per-email lockouts are not per-address limits and stay unchanged.
+    for _ in 0..3 {
+        limiter
+            .record_email_failure("event@example.com", client(9))
+            .await;
+    }
+    assert!(matches!(
+        limiter
+            .check_email_lockout("event@example.com", client(9))
+            .await,
+        RateLimitDecision::Limited { .. }
+    ));
+}

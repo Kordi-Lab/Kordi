@@ -1,3 +1,4 @@
+import { requireAiConsent } from '@/features/aiConsent/aiConsentStore';
 import { useEffect, useState } from 'react';
 import { Brain, Monitor } from 'lucide-react';
 
@@ -114,6 +115,7 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
       <div className="cg-actions-center">
         <CgNotice text={notice} />
         <button type="button" data-help-target="grounding-build" className="cg-build-pill" disabled={!canBuildProfile(choices)} onClick={() => {
+          if (!requireAiConsent()) return;
           setPhase('attempted');
           void store.build(commonGroundBuildRequest(choices));
         }}>

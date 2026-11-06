@@ -35,7 +35,8 @@ enum ContactProfilePreviewData {
                     isContact: true,
                     presence: .init(status: .offline, lastSeenAt: iso(-3 * 86_400)),
                     contactSince: iso(-2 * 86_400),
-                    shared: .init()
+                    shared: .init(),
+                    permissions: .init()
                 )
             }
             return CloudContactProfile(
@@ -73,7 +74,8 @@ enum ContactProfilePreviewData {
                         nextStep: "Ask Maya how she sets up her tabletop scenes.",
                         theirProfile: .init(profileId: "cgp_preview_maya", kind: "work", name: "Robotics lab", design: "research")
                     )
-                )
+                ),
+                permissions: .init(agentAccess: true, cardAccess: false)
             )
         }
     }

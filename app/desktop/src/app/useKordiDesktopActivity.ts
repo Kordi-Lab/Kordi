@@ -117,6 +117,7 @@ type UseKordiDesktopActivityArgs = {
   isDetailPanelCollapsed: boolean;
   lastSeenArtifactByContextRef: MutableRefObject<Record<string, string | null>>;
   cloudSessionActivity?: CloudSessionActivityStore;
+  cloudAccountId?: string | null;
 };
 
 export function useKordiDesktopActivity({
@@ -147,6 +148,7 @@ export function useKordiDesktopActivity({
   isDetailPanelCollapsed,
   lastSeenArtifactByContextRef,
   cloudSessionActivity = EMPTY_CLOUD_SESSION_ACTIVITY,
+  cloudAccountId,
 }: UseKordiDesktopActivityArgs) {
   const activeContactRequest = contactRequests.find((request) => request.id === activeContactRequestId) ?? contactRequests[0];
   const activeSettingsSection = settingsSections.find((section) => section.id === activeSettingsSectionId) ?? settingsSections[0] as SettingsSection;
@@ -205,6 +207,7 @@ export function useKordiDesktopActivity({
     activeCanonicalSessionId: activeConv.canonicalSessionId,
     chatTranscriptScrollRef,
     conversations: attentionConversations,
+    cloudAccountId,
     totalUnreadCount: totalUnreadMessages,
     onOpenSession: onOpenNotificationSession,
   });

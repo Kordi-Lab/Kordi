@@ -187,7 +187,8 @@ async fn default_agent(
 
 /// The agents a signed-in commenter may ask: their own default and named
 /// agents, and the named agents other active members of `session_id` share
-/// with the conversations they take part in.
+/// with the conversations they take part in, unless that member stopped the
+/// commenter from using their agents.
 pub(crate) async fn candidates_for_account(
     pool: &PgPool,
     account_id: &str,
@@ -195,7 +196,7 @@ pub(crate) async fn candidates_for_account(
 ) -> Result<Vec<AgentCandidate>, sqlx_core::Error> {
     let mut candidates: Vec<AgentCandidate> =
         default_agent(pool, account_id).await?.into_iter().collect();
-    let rows: Vec<(String, String, Option<String>, String)> = query_as(
+    let rows: Vec<(String, String, Option<String>, String)> = query_as(&format!(
         "SELECT definition.agent_id, definition.owner_account_id, owner.display_name, \
                 definition.name \
          FROM cloud_agent_definitions definition \
@@ -209,9 +210,13 @@ pub(crate) async fn candidates_for_account(
                   WHERE COALESCE(conversation.legacy_session_id, \
                                  conversation.conversation_id::text) = $2 \
                     AND member.account_id = definition.owner_account_id \
-                    AND member.membership_state = 'active'))) \
+                    AND member.membership_state = 'active') \
+                 AND NOT cloud_accounts_blocked_either_way($1, definition.owner_account_id))) \
+           AND {allowed} \
          ORDER BY definition.agent_id",
-    )
+        allowed =
+            crate::contact_permissions::agent_allowed_sql("definition.owner_account_id", "$1"),
+    ))
     .bind(account_id)
     .bind(session_id)
     .fetch_all(pool)

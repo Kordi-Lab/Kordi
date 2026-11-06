@@ -21,10 +21,12 @@ struct CloudAuthCapabilities: Decodable, Equatable {
     let commonGroundNearbyVersion: Int?
     /// Present when the server serves `/v1/cloud/contacts/{id}/profile`.
     let contactProfileVersion: Int?
+    /// Present when the server serves `/v1/cloud/contacts/{id}/permissions`.
+    let contactPermissionsVersion: Int?
 
     private enum CodingKeys: String, CodingKey {
         case password, oauthProviders, connectorsVersion, memoryVersion, commonGroundVersion, commonGroundNearbyVersion
-        case contactProfileVersion
+        case contactProfileVersion, contactPermissionsVersion
     }
 
     init(
@@ -34,7 +36,8 @@ struct CloudAuthCapabilities: Decodable, Equatable {
         memoryVersion: Int? = nil,
         commonGroundVersion: Int? = nil,
         commonGroundNearbyVersion: Int? = nil,
-        contactProfileVersion: Int? = nil
+        contactProfileVersion: Int? = nil,
+        contactPermissionsVersion: Int? = nil
     ) {
         self.password = password
         self.oauthProviders = oauthProviders
@@ -43,6 +46,7 @@ struct CloudAuthCapabilities: Decodable, Equatable {
         self.commonGroundVersion = commonGroundVersion
         self.commonGroundNearbyVersion = commonGroundNearbyVersion
         self.contactProfileVersion = contactProfileVersion
+        self.contactPermissionsVersion = contactPermissionsVersion
     }
 
     init(from decoder: Decoder) throws {
@@ -54,6 +58,7 @@ struct CloudAuthCapabilities: Decodable, Equatable {
         commonGroundVersion = try? container.decodeIfPresent(Int.self, forKey: .commonGroundVersion)
         commonGroundNearbyVersion = try? container.decodeIfPresent(Int.self, forKey: .commonGroundNearbyVersion)
         contactProfileVersion = try? container.decodeIfPresent(Int.self, forKey: .contactProfileVersion)
+        contactPermissionsVersion = try? container.decodeIfPresent(Int.self, forKey: .contactPermissionsVersion)
     }
 }
 

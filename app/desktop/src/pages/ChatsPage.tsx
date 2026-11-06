@@ -112,7 +112,7 @@ export function ChatsPage({
     ? cloudCallTargetForConversation(cloudAccount, activeConv)
     : null;
   const activeContactPresence = activePresenceTarget?.kind === 'direct'
-    ? cloudPresence.snapshot[activePresenceTarget.peerAccountId] ?? null
+    ? cloudPresence.presenceForAccount(activePresenceTarget.peerAccountId)
     : undefined;
   const chatHeader = useChatHeaderModel({
     contactPresence: activeContactPresence,

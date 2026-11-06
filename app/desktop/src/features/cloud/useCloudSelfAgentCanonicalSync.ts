@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import {
   useEffect,
   useReducer,
@@ -163,7 +164,7 @@ export function useCloudSelfAgentCanonicalSync({
       !account
       || !canonicalState
       || !setCanonicalState
-      || (!headMessagesReady && !isNativeDesktopShell())
+      || (!headMessagesReady && !(isNativeDesktopShell() || isBrowserAppRuntime()))
     ) return;
     const nativeHistory = nativeHistoryRef.current.accountId === account.accountId
       ? nativeHistoryRef.current

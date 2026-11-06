@@ -1,5 +1,6 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useMemo, useState, type CSSProperties, type MouseEventHandler, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type MouseEventHandler, type ReactNode } from 'react';
 import { NativeChatTitlebarContext, type NativeCompanionTitlebarLayout } from '@/app/nativeChatTitlebarContext';
 
 import {
@@ -72,15 +73,30 @@ export function AppShellFrame({
   onToggleSessionPanel,
   onToggleDetailPanel,
 }: AppShellFrameProps) {
+  const browserApp = isBrowserAppRuntime();
+  useEffect(() => {
+    if (!browserApp) return;
+    document.documentElement.classList.add('kordi-browser-shell');
+    return () => document.documentElement.classList.remove('kordi-browser-shell');
+  }, [browserApp]);
+  const browserSidebarOverlay = browserApp && windowSize.width < 760 && showSessionRail && !collapseChatSessions;
+  useEffect(() => {
+    if (!browserSidebarOverlay || !onToggleSessionPanel) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onToggleSessionPanel(); }
+    };
+    window.addEventListener('keydown', dismiss);
+    return () => window.removeEventListener('keydown', dismiss);
+  }, [browserSidebarOverlay, onToggleSessionPanel]);
   const rootRef = useNativeBackdrop(isNativeShell, rootThemeClass, leftWorkspaceWidth);
   const instanceLabel = previewInstanceLabel();
   const [titleHost, setTitleHost] = useState<HTMLDivElement | null>(null);
   const [actionsHost, setActionsHost] = useState<HTMLDivElement | null>(null);
   const [companionHost, setCompanionHost] = useState<HTMLDivElement | null>(null);
   const [companionLayout, setCompanionLayout] = useState<NativeCompanionTitlebarLayout | null>(null);
-  const chatTitlebar = useMemo(() => isNativeShell
+  const chatTitlebar = useMemo(() => isNativeShell || browserApp
     ? { title: titleHost, actions: actionsHost, companion: companionHost, setCompanionLayout }
-    : null, [isNativeShell, titleHost, actionsHost, companionHost]);
+    : null, [isNativeShell, browserApp, titleHost, actionsHost, companionHost]);
   const handleNativeWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
     const shellBounds = event.currentTarget.getBoundingClientRect();
     const resizeDirection = nativeWindowResizeDirection({
@@ -119,14 +135,14 @@ export function AppShellFrame({
       className={cn(
         'kordi-app app-page-bg w-full min-w-0 max-w-full text-[13px] text-foreground',
         rootThemeClass,
-        isNativeShell ? 'app-native-viewport overflow-hidden p-0' : 'min-h-screen p-4 md:p-6',
+        isNativeShell ? 'app-native-viewport overflow-hidden p-0' : browserApp ? 'app-browser-viewport' : 'min-h-screen p-4 md:p-6',
       )}
     >
       <div
         className={cn(
           'app-shell relative flex min-h-0 min-w-0 max-w-full flex-col overflow-hidden',
-          !isNativeShell && 'backdrop-blur-2xl',
-          isNativeShell
+          !isNativeShell && !browserApp && 'backdrop-blur-2xl',
+          isNativeShell || browserApp
             ? 'h-full w-full rounded-none border-0 shadow-none'
             : 'app-shell-preview mx-auto rounded-[26px] border',
         )}
@@ -134,18 +150,19 @@ export function AppShellFrame({
         data-sidebar-collapsed={collapseChatSessions ? 'true' : undefined}
         onMouseDownCapture={isNativeShell ? handleNativeWindowDragMouseDown : undefined}
         style={
-          isNativeShell
+          isNativeShell || browserApp
             ? undefined
             : { width: `${windowSize.width}px`, height: `${windowSize.height}px` }
         }
       >
-        {instanceLabel && !isNativeShell ? (
+        {instanceLabel && !isNativeShell && !browserApp ? (
           <div className="app-preview-instance-label" aria-label={`Preview instance: ${instanceLabel}`}>
             Preview · {instanceLabel}
           </div>
         ) : null}
-        {isNativeShell ? (
+        {isNativeShell || browserApp ? (
           <NativeTitlebar
+            browser={browserApp}
             titleHostRef={setTitleHost}
             actionsHostRef={setActionsHost}
             companionHostRef={setCompanionHost}
@@ -162,20 +179,24 @@ export function AppShellFrame({
         <div
           className={cn(
             'app-shell-layout-grid relative grid min-h-0 min-w-0 flex-1 gap-0 overflow-hidden box-border transition-[grid-template-columns]',
+            browserApp && 'app-browser-workspace-grid',
           )}
           style={{
             '--app-shell-panel-width': leftWorkspaceWidth,
+            '--app-browser-sidebar-width': `${leftWorkspaceWidth}px`,
             gridTemplateColumns: 'calc(var(--app-shell-panel-width) * 1px) minmax(0, 1fr)',
             gridTemplateRows: 'minmax(0, 1fr)',
           } as CSSProperties}
         >
           <HelpAvailabilityContext value={workspaceHelpAvailable && !authGate}>
-            {sidebar}
+            {browserApp ? <div id="kordi-browser-sidebar" className="contents">{sidebar}</div> : sidebar}
           </HelpAvailabilityContext>
+          {browserSidebarOverlay ? <button type="button" className="app-browser-sidebar-dismiss"
+            aria-label="Close sidebar" onClick={onToggleSessionPanel} tabIndex={-1} /> : null}
           {showSessionRail && !collapseChatSessions && (
             <div
               onMouseDown={onSessionResizeMouseDown}
-              className="absolute bottom-0 top-0 z-20 w-3 -translate-x-1/2 cursor-ew-resize"
+              className="app-browser-panel-resizer absolute bottom-0 top-0 z-20 w-3 -translate-x-1/2 cursor-ew-resize"
               style={{ left: `${leftWorkspaceWidth}px` }}
               data-kordi-window-drag="false"
               aria-hidden="true"
@@ -185,6 +206,7 @@ export function AppShellFrame({
           )}
 
           <section
+            inert={browserSidebarOverlay || undefined}
             className={cn(
               'app-shell-content relative min-h-0 min-w-0 overflow-hidden',
               isSingleWorkspacePage ? 'app-main-panel rounded-none border-0' : 'app-main-panel rounded-br-[22px] rounded-l-none border-l border-white/10',
@@ -201,7 +223,7 @@ export function AppShellFrame({
                 gridTemplateRows: 'minmax(0, 1fr)',
               } as CSSProperties}
             >
-              <main className="flex min-h-0 min-w-0 overflow-hidden">
+              <main id={browserApp ? "kordi-browser-main" : undefined} tabIndex={browserApp ? -1 : undefined} className="flex min-h-0 min-w-0 overflow-hidden">
                 <NativeChatTitlebarContext value={chatTitlebar}>
                   {mainContent}
                 </NativeChatTitlebarContext>
@@ -211,7 +233,7 @@ export function AppShellFrame({
               {showRightDetailRail && !isDetailPanelCollapsed && (
                 <div
                   onMouseDown={onDetailResizeMouseDown}
-                  className="absolute bottom-0 top-0 z-20 w-3 -translate-x-1/2 cursor-ew-resize"
+                  className="app-browser-panel-resizer absolute bottom-0 top-0 z-20 w-3 -translate-x-1/2 cursor-ew-resize"
                   style={{ left: `calc(100% - ${detailRailWidth}px)` }}
                   data-kordi-window-drag="false"
                   aria-hidden="true"
@@ -227,7 +249,7 @@ export function AppShellFrame({
         {messageForwardDialog}
         {messageDeleteDialog}
         {callOverlay}
-        {!isNativeShell ? windowResizeHandles : null}
+        {!isNativeShell && !browserApp ? windowResizeHandles : null}
       </div>
     </div>
   );

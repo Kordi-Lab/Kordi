@@ -70,6 +70,7 @@ export function cloudGroupNativeContextMessages({
   requestCreatedAtMs,
   respondingAccountId,
   respondingAgentId,
+  excludedSenderAccountIds,
 }: {
   groupRows: readonly IndexedCloudGroupRow[];
   groupId: string;
@@ -77,6 +78,8 @@ export function cloudGroupNativeContextMessages({
   requestCreatedAtMs: number;
   respondingAccountId: string;
   respondingAgentId?: string | null;
+  /** People the owner stopped from using their agents: their messages stay unread. */
+  excludedSenderAccountIds?: ReadonlySet<string>;
 }): DesktopChatContextMessage[] {
   const contextIds = cloudGroupAgentContextMessageIds(groupRows, groupId, requestMessageId, respondingAccountId);
   const history = compactCloudAgentNativeContextMessages(
@@ -89,6 +92,7 @@ export function cloudGroupNativeContextMessages({
       const message = envelope.message;
       if (!contextIds.has(message.id)) return [];
       if (message.id === requestMessageId) return [];
+      if (excludedSenderAccountIds?.has(message.senderAccountId)) return [];
       if (message.createdAtMs > requestCreatedAtMs) return [];
       if (
         !cloudMessageActionAllowsAgentContext(message.messageAction)

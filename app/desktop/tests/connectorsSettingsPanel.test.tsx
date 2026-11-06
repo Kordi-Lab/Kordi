@@ -234,8 +234,8 @@ test('the desktop shell gets Mac-local connectors only on macOS', () => {
 test('account settings show Connectors only when a client is available', () => {
   const ids = (connectorsAvailable: boolean) => cloudAccountSettingsNavGroups({ connectorsAvailable })
     .flatMap((group) => group.items.map((item) => item.id));
-  assert.deepEqual(ids(false), ['profile', 'devices', 'auth', 'notifications', 'usage', 'appearance']);
-  assert.deepEqual(ids(true), ['profile', 'devices', 'auth', 'notifications', 'connectors', 'usage', 'appearance']);
+  assert.deepEqual(ids(false), ['profile', 'devices', 'auth', 'notifications', 'privacy', 'usage', 'appearance']);
+  assert.deepEqual(ids(true), ['profile', 'devices', 'auth', 'notifications', 'privacy', 'connectors', 'usage', 'appearance']);
   const connectors = cloudAccountSettingsNavGroups({ connectorsAvailable: true })
     .flatMap((group) => group.items)
     .find((item) => item.id === 'connectors');

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { cloudApiBaseUrl } from '@/features/cloud/cloudApiEnvironment';
-import { withOrganizationHeader } from '@/features/cloud/cloudOrganizationFetch';
+import { cloudFetchImpl } from '@/features/cloud/cloudTransport';
 import { loadSession } from '@/features/cloud/session';
 import { fetchDesktopChatState, invokeDesktop, createDesktopProjectSession, moveDesktopChatSessionToProject } from '@/lib/desktop';
 import { adoptedProjectSessionIds } from './adoptedProjectSessions';
@@ -53,8 +53,15 @@ async function publishCatalog(token: string) {
     workspacesUnsupportedUntil = Date.now() + 10 * 60_000;
   }
 }
+/**
+ * Project catalogs use the native Cloud transport like every other Cloud
+ * request. A WebView fetch is cross-origin and needs a CORS preflight, which a
+ * proxy in front of the server may refuse; the catalog then never loaded or
+ * published, so a new profile neither found its project folders nor ran their
+ * sessions.
+ */
 export async function projectCatalogRequest<T>(token: string, path: string, method = 'GET', body?: unknown): Promise<T> {
-  const response = await withOrganizationHeader((input, init) => fetch(input, init))(`${cloudApiBaseUrl()}/v1/cloud/projects${path}`, {
+  const response = await cloudFetchImpl()(`${cloudApiBaseUrl()}/v1/cloud/projects${path}`, {
     method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15000),
   });

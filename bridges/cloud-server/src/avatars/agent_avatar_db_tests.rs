@@ -48,7 +48,10 @@ async fn new_account(pool: &PgPool) -> String {
 
 /// The versioned route when `renderer` is set, otherwise the preview route.
 async fn get_png(pool: &PgPool, renderer: Option<&str>, style: &str, seed: &str) -> Vec<u8> {
-    let app = super::routes(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let app = super::routes(
+        Arc::new(ServerState::new(pool.clone(), EventBus::noop())),
+        &Default::default(),
+    );
     let renderer = renderer.unwrap_or("preview");
     let response = app
         .oneshot(
@@ -71,7 +74,10 @@ async fn get_png(pool: &PgPool, renderer: Option<&str>, style: &str, seed: &str)
 }
 
 async fn versioned_status(pool: &PgPool, style: &str, seed: &str) -> StatusCode {
-    let app = super::routes(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let app = super::routes(
+        Arc::new(ServerState::new(pool.clone(), EventBus::noop())),
+        &Default::default(),
+    );
     app.oneshot(
         Request::get(format!(
             "/v1/avatars/{AVATAR_RENDERER_VERSION}/{style}/{seed}.png"

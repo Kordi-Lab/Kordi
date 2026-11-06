@@ -100,7 +100,7 @@ pub async fn edit_message(
     if stored_conversation_id != conversation_id {
         return Err(StoreError::NotFound);
     }
-    require_active_member(&mut transaction, conversation_id, account_id).await?;
+    require_active_writer(&mut transaction, conversation_id, account_id).await?;
     if sender_account_id != account_id {
         return Err(StoreError::Forbidden);
     }

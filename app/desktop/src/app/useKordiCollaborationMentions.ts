@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 
 import {
   buildCollaborationMentionTargetsByScope,
@@ -106,7 +107,8 @@ export function useKordiCollaborationMentions({
 
   const targetsByScope = useMemo(
     () => buildCollaborationMentionTargetsByScope({
-      isNativeShell,
+      // The browser app has the same Cloud people and agents; only local files stay desktop-only.
+      isNativeShell: isNativeShell || isBrowserAppRuntime(),
       desktopCollaborationState: collaborationState,
       desktopChatState,
       activeConvMentionScope: activeConversationScope,

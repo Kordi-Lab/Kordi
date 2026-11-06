@@ -482,8 +482,8 @@ test('side-panel local-agent sends materialize an unhydrated runtime transcript 
   assert.ok(materializeIndex < sendIndex, 'runtime transcript materialization must finish before the live turn starts');
   assert.match(sharedSendBlock, /resolvedMaterializedState[\s\S]*appendOptimisticOutboundMessage/, 'the shared send should receive the materialized target state');
   assert.match(materializerBlock, /await fetchMaterializedLocalChatTarget\(sessionId, desktopChatState\)/, 'the action should use the shared target materializer');
-  assert.match(targetSource, /await fetchDesktopChatState\(sessionId\)/, 'materialization should fetch the complete target runtime transcript');
-  assert.match(targetSource, /materializedState\.activeSessionId !== sessionId[\s\S]*materializedState\.activeSession\.id !== sessionId/, 'materialization should fail closed if the runtime returns another session');
+  assert.match(targetSource, /readState: \(sessionId: string\) => Promise<DesktopChatState \| null> = fetchDesktopChatState/, 'materialization should fetch the complete target runtime transcript');
+  assert.match(targetSource, /state\.activeSessionId === sessionId && state\.activeSession\.id === sessionId/, 'materialization never returns another session as the target');
   assert.match(materializerBlock, /mergeBackgroundDesktopChatState\(current, materializedState\)/, 'side-session materialization must preserve the main session selection');
   assert.match(queuedSendBlock, /if \(routeRunsOnKordiCloud\(route\)\) \{[\s\S]*?await startLocalAgentTurn\(/,
     'a queued hosted request must enter the shared hosted dispatch boundary before any native local turn');

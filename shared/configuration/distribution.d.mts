@@ -15,7 +15,8 @@ export interface DistributionConfiguration {
     admission: 'existing' | 'verified-domain' | 'approved-testers';
     verifiedDomains: string[];
     approvedEmailsBinding: string;
-    oauthBindings: Record<'googleClientId' | 'googleClientSecret' | 'githubClientId' | 'githubClientSecret', string>;
+    oauthBindings: Record<'googleClientId' | 'googleClientSecret' | 'githubClientId' | 'githubClientSecret', string>
+      & Partial<Record<'appleClientId' | 'appleTeamId' | 'appleKeyId' | 'applePrivateKey', string>>;
   };
   clients: {
     displayName: string;

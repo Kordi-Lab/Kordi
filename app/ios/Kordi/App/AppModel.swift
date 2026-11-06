@@ -43,6 +43,10 @@ enum KordiPreviewModePersistence {
         "--preview-group-detail", "--preview-group-memory", "--preview-group-invite", "--preview-media", "--preview-media-messages",
         "--preview-media-expanded", "--preview-media-separated", "--preview-photo-send",
         "--preview-connectors", "--preview-shared-document", "--preview-common-ground", "--preview-contact-profile",
+        "--preview-consent", "--preview-privacy-settings", "--preview-delete-account", "--preview-delete-account-confirm",
+        "--preview-settings-about",
+        "--preview-blocked", "--preview-report", "--preview-blocked-message",
+        "--preview-contact-permissions",
     ]
 
     static func launchRequested(by arguments: [String]) -> Bool {
@@ -258,7 +262,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var threadAttentionBySession: [String: CloudThreadAttention] = [:]
     @Published var pendingThreadRoute: KordiMessageNotificationRoute?
     @Published private(set) var threadNextPage: [String: Int64] = [:]
-
     @Published private(set) var threadReadCursors: [String: [String: Int64]] = [:]
     @Published private(set) var pinnedGroupSpaceIds = Set<String>()
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
@@ -304,6 +307,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isRefreshingDevices = false
     @Published private(set) var deviceErrorMessage: String?
     @Published private(set) var deviceReviewRequired = false
+    @Published var blockedAccountList: BlockedAccountList?
     @Published private(set) var isRefreshing = false
     @Published private(set) var agentRunState: [String: AgentActivity] = [:]
     @Published private(set) var agentExecutionLocation: [String: AgentExecutionLocation] = [:]
@@ -320,6 +324,8 @@ final class AppModel: ObservableObject {
     /// Server capabilities for the Memory screen. Nil until loaded or when the
     /// request fails, which keeps the Memory entry hidden.
     @Published private(set) var memoryCapabilities: CloudAuthCapabilities?
+    /// The AI data-sharing choice; nil until loaded or on a server without it.
+    @Published var aiConsent: CloudAIConsent?
 
     let api: CloudAPIClient
     private let oauth: CloudOAuthSession
@@ -750,13 +756,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func signOut() async {
+    /// `accountDeleted` skips the logout calls: the server already ended every session.
+    func signOut(accountDeleted: Bool = false) async {
         digestWarmup.reset()
         let endedBrowserSignIn = await browserSignIn.endForSignOut()
         let oldToken = token
         let oldAccountId = account?.accountId
-        if let oldToken { await CommonGroundNearbyLocator.shared.signOut(api: api, token: oldToken) }
-        if let oldToken {
+        if let oldToken { await CommonGroundNearbyLocator.shared.signOut(api: api, token: accountDeleted ? nil : oldToken) }
+        if let oldToken, !accountDeleted {
             await presencePublisher.stopAndPublishOffline(token: oldToken)
         } else {
             presencePublisher.stop()
@@ -788,6 +795,7 @@ final class AppModel: ObservableObject {
         hasPendingDirectoryRefresh = false
         currentDeviceId = nil
         account = nil
+        aiConsent = nil
         contacts = []
         contactPresenceByAccountID = [:]
         contactRequests = []
@@ -880,7 +888,7 @@ final class AppModel: ObservableObject {
         if !previewMode { try? shareCredentialStore.delete() }
         phase = .signedOut
         await DigestCalendarService.clearReminders()
-        await endSignIn(token: oldToken, browserSignIn: endedBrowserSignIn)
+        if !accountDeleted { await endSignIn(token: oldToken, browserSignIn: endedBrowserSignIn) }
     }
 
     /// Returns whether this request applied a current account/contact directory.
@@ -1507,6 +1515,7 @@ final class AppModel: ObservableObject {
     /// account, or the provider's active one, and its preferred model.
     @discardableResult
     func startAgentChat(with provider: ProviderAuthenticationDefinition, snapshotID: String? = nil) async -> ConversationSummary? {
+        guard requireAIConsent() else { return nil }
         let chosen = snapshotID.flatMap { id in authenticationSnapshots(for: provider.id).first { $0.snapshotId == id } }
         guard let active = chosen ?? activeAccount(for: provider.id),
               let modelID = preferredModel(for: active, provider: provider),
@@ -2602,6 +2611,7 @@ final class AppModel: ObservableObject {
             if pendingAgentRequestIds[conversation.id, default: []].contains(localId) {
                 finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: localId, failed: true)
             }
+            noteIfAIConsentRequired(error)
             markMessageFailed(localId, error: userFacing(error, fallback: "Message not sent."))
         }
     }

@@ -1,3 +1,4 @@
+import { requireAiConsent } from '@/features/aiConsent/aiConsentStore';
 import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
 import { useEffect, useRef, useState } from 'react';
 
@@ -75,6 +76,7 @@ export function MemoryImportSection({
   const run = async () => {
     const chosen = files.filter((file) => selected.has(file.path));
     if (runningRef.current || !chosen.length || !client.importLesson) return;
+    if (!requireAiConsent()) return;
     runningRef.current = true;
     setRunning(true);
     setNotice('');

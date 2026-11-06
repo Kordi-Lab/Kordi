@@ -184,9 +184,9 @@ export function useCloudMessageSync({
           if (!response.chat) {
             throw new Error('Reliable chat sync returned a legacy response.');
           }
-          commitCloudVisibility(account.accountId, storesRef.current, response.events);
           const local = await applyChatSyncLocalBatch({
             accountId: account.accountId,
+            expectedOrganizationId: session.organizationId ?? null,
             bootstrap: response.chat.bootstrap,
             cursor: response.chat.nextCursor,
             lastStreamSeq: response.chat.lastStreamSeq,
@@ -195,6 +195,7 @@ export function useCloudMessageSync({
             events: response.chat.events,
           });
           if (!coordinator.isCurrentGeneration(generation)) return;
+          commitCloudVisibility(account.accountId, storesRef.current, response.events);
           if (response.chat.bootstrap || response.chat.conversations.length > 0
             || response.chat.messages.length > 0 || response.chat.events.length > 0) historyRepairRef.current.invalidate();
           publishCloudGroupCatalog(account.accountId, response.chat.conversations);
@@ -369,6 +370,7 @@ export function useCloudMessageSync({
         if (!coordinator.isCurrentGeneration(generation)) return;
         await applyChatSyncLocalBatch({
           accountId: account.accountId,
+          expectedOrganizationId: session.organizationId ?? null,
           bootstrap: false,
           messages: page.messages,
         });

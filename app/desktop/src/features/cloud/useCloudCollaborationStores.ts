@@ -136,6 +136,8 @@ export function useCloudCollaborationStores({
   const collaborationStateContextKeyRef =
     useRef<string | null>(null);
   const processedAgentMentionIdsRef = useRef<Set<string>>(new Set());
+  // Whether the server accepted this Mac as ready to run the owner's agent.
+  const desktopExecutionReadyRef = useRef(false);
   const agentTurnIdsByRequestIdRef =
     useRef<Map<string, string>>(new Map());
 
@@ -215,6 +217,7 @@ export function useCloudCollaborationStores({
     agentRequests: {
       processedMentionIdsRef: processedAgentMentionIdsRef,
       turnIdsByRequestIdRef: agentTurnIdsByRequestIdRef,
+      desktopExecutionReadyRef,
     },
     ...lifecycle,
   };

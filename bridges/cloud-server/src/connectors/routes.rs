@@ -250,21 +250,25 @@ async fn oauth_callback(
     if let Some(target) = outcome.redirect_after.as_deref() {
         return Redirect::to(&oauth::callback_redirect_url(target, &outcome)).into_response();
     }
-    let (status, message) = match &outcome.result {
+    let (status, title, message) = match &outcome.result {
         Ok(_) => (
             StatusCode::OK,
+            "Connected",
             "Return to Kordi to finish connecting.".to_string(),
         ),
-        Err(err) => (StatusCode::BAD_REQUEST, err.message.clone()),
+        Err(err) => (
+            StatusCode::BAD_REQUEST,
+            "Not connected",
+            err.message.clone(),
+        ),
     };
-    (
-        status,
-        Html(format!(
-            "<!doctype html><meta charset=\"utf-8\"><title>Kordi</title><p>{}</p>",
-            html_escape(&message)
-        )),
-    )
-        .into_response()
+    (status, Html(oauth_result_page(title, &message))).into_response()
+}
+
+/// The page a connector sign-in ends on when no app is waiting for it.
+fn oauth_result_page(title: &str, message: &str) -> String {
+    let home = html_escape(&format!("{}/", crate::distribution::public_origin()));
+    crate::site_page::message_page(title, message, &home)
 }
 
 async fn load_live(

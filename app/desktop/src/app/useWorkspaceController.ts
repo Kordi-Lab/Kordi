@@ -1,3 +1,6 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { applyBrowserWorkspaceRoute, parseBrowserWorkspaceRoute } from '@web/app/browserNavigation';
+import { useBrowserWorkspaceHistory } from '@web/app/useBrowserWorkspaceHistory';
 import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -18,10 +21,17 @@ export function useWorkspaceController({
   projectRoutingGroups,
   isNativeShell,
 }: UseWorkspaceControllerArgs) {
-  const [chatNavigation, setChatNavigation] = useState<ChatNavigationState>(() => ({
-    activeNav: 'agent-chats', activeConvId: isNativeShell ? '' : 'my-agent',
-    selections: { chats: '', 'agent-chats': isNativeShell ? '' : 'my-agent' },
-  }));
+  const [chatNavigation, setChatNavigation] = useState<ChatNavigationState>(() => {
+    const browserApp = isBrowserAppRuntime();
+    const initialId = isNativeShell || browserApp ? '' : 'my-agent';
+    const initial: ChatNavigationState = {
+      activeNav: 'agent-chats', activeConvId: initialId,
+      selections: { chats: '', 'agent-chats': initialId },
+    };
+    const route = browserApp ? parseBrowserWorkspaceRoute(window.location.pathname) : null;
+    return route ? applyBrowserWorkspaceRoute(initial, route) : initial;
+  });
+  useBrowserWorkspaceHistory(chatNavigation, setChatNavigation);
   const { activeNav, activeConvId } = chatNavigation;
   const chatIndexRef = useRef<ReadonlyMap<string, ChatNavId>>(new Map());
   const setActiveNav: Dispatch<SetStateAction<NavId>> = useCallback(value => {

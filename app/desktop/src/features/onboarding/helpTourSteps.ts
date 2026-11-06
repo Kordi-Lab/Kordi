@@ -9,6 +9,10 @@ export type HelpTourStep = {
   page?: NavId;
   settings?: CloudAccountSettingsTabId;
   groundingScreen?: 'home' | 'build' | 'card';
+  /** Explains a control only the desktop app has, such as reading local files. */
+  desktopOnly?: true;
+  /** Replaces `body` in the browser app when the desktop wording does not apply. */
+  browserBody?: string;
 };
 
 const overviewSteps: readonly HelpTourStep[] = [
@@ -18,7 +22,8 @@ const overviewSteps: readonly HelpTourStep[] = [
   { target: 'nav-chats', page: 'chats', title: 'Start a conversation', body: 'Open Chats, then click + to start a chat or group. Select a conversation to send a message or attach a file.' },
   { target: 'nav-agents', page: 'agents', title: 'Set up an agent', body: 'Open Factory to create or edit an agent. Choose its model, instructions, and tools. Then open Agent Chats to talk to it.' },
   { target: 'nav-digest', page: 'digest', title: 'Check your daily overview', body: 'Open Digest to review recent activity and upcoming calendar events.' },
-  { target: 'help', title: 'Find help here anytime', body: 'Click ? to replay this tour. Choose Permissions & access to enable your microphone, camera, notifications, or calendar.' },
+  { target: 'help', title: 'Find help here anytime', body: 'Click ? to replay this tour. Choose Permissions & access to enable your microphone, camera, notifications, or calendar.',
+    browserBody: 'Click ? to replay this tour. Choose Permissions & access to allow notifications, your microphone, or your camera in this browser.' },
 ];
 
 
@@ -40,11 +45,12 @@ export const helpTours: Record<HelpTourId, readonly HelpTourStep[]> = {
     { target: 'grounding-topics', groundingScreen: 'card', title: 'Review what your card says', body: 'Review the topics and their sources. Edit or hide anything you do not want on the card before sharing.' },
     { target: 'grounding-sharing', groundingScreen: 'card', title: 'Decide whether to share this card', body: 'Use Share my card to control sharing. Turn it on when you are ready to use this card in Grounding.' },
   ],
+  // Import reads agent files on this computer, so the browser app skips it.
   imports: [
-    { target: 'settings-memory', settings: 'memory', title: 'Bring your existing knowledge into Kordi', body: 'Open Memory in settings to import instructions and memories from your coding agents. Turn on Memory to show the Import section.' },
-    { target: 'memory-import-files', settings: 'memory', title: 'Choose the files to import', body: 'Review the detected files or click Choose files to add your own. Select only the files you want Kordi to read.' },
-    { target: 'memory-import-run', settings: 'memory', title: 'Import the selected files', body: 'Click Import when you are ready. Kordi extracts memories from the selected files; you can review and remove them in Memory.' },
-    { target: 'memory-review', settings: 'memory', title: 'Review what was imported', body: 'Find the imported memories here. Search, edit, or remove anything you do not want Kordi to remember.' },
+    { target: 'settings-memory', settings: 'memory', desktopOnly: true, title: 'Bring your existing knowledge into Kordi', body: 'Open Memory in settings to import instructions and memories from your coding agents. Turn on Memory to show the Import section.' },
+    { target: 'memory-import-files', settings: 'memory', desktopOnly: true, title: 'Choose the files to import', body: 'Review the detected files or click Choose files to add your own. Select only the files you want Kordi to read.' },
+    { target: 'memory-import-run', settings: 'memory', desktopOnly: true, title: 'Import the selected files', body: 'Click Import when you are ready. Kordi extracts memories from the selected files; you can review and remove them in Memory.' },
+    { target: 'memory-review', settings: 'memory', desktopOnly: true, title: 'Review what was imported', body: 'Find the imported memories here. Search, edit, or remove anything you do not want Kordi to remember.' },
   ],
 };
 
@@ -63,3 +69,16 @@ export const helpTourSteps: readonly HelpTourStep[] = [
 ];
 helpTours.workspace = helpTourSteps;
 export const helpTourEntry: Record<HelpTourId, string> = { workspace: 'settings-auth', cards: 'grounding-cards', grounding: 'grounding-pair', imports: 'settings-memory' };
+
+/** Whether this runtime can show the step. A hidden step keeps its saved index. */
+export function helpTourStepAvailable(step: HelpTourStep, browserApp: boolean) {
+  return !(browserApp && step.desktopOnly);
+}
+
+export function helpTourStepBody(step: HelpTourStep, browserApp: boolean) {
+  return browserApp && step.browserBody ? step.browserBody : step.body;
+}
+
+export function helpTourAvailable(id: HelpTourId, browserApp: boolean) {
+  return helpTours[id].some((step) => helpTourStepAvailable(step, browserApp));
+}

@@ -145,7 +145,7 @@ async fn hosted_account_waits_for_the_ready_owner_mac_then_falls_back() {
     }
 
     sqlx_core::query::query(
-        "UPDATE cloud_agent_desktop_capabilities SET updated_at=now()-interval '1 minute' WHERE agent_id=$1",
+        "UPDATE cloud_agent_desktop_capabilities SET updated_at=now()-interval '2 minutes' WHERE agent_id=$1",
     )
     .bind(format!("cloud-agent:{}", owner.account_id))
     .execute(&pool)

@@ -1,10 +1,14 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const preview = '/tests/visual/startChatMenu.html';
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/v1/cloud/auth/capabilities', (route) => route.fulfill({ json: { password: true, oauthProviders: ['google', 'github'], commonGroundVersion: 3, connectorsVersion: 1, memoryVersion: 3 } }));
 });
+
+async function settle(page: Page) {
+  await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== 'running'));
+}
 
 async function rowBox(row: Locator) {
   const box = await row.boundingBox();
@@ -20,7 +24,7 @@ for (const theme of ['light', 'dark'] as const) {
     const help = page.getByRole('dialog', { name: 'Help', exact: true });
     await expect(create).toHaveAccessibleName('Start a chat');
     await expect(help).toBeVisible();
-    await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished)));
+    await settle(page);
 
     const [createBox, helpBox] = [await rowBox(create), await rowBox(help)];
     expect(createBox.width).toBeCloseTo(helpBox.width, 1);
@@ -46,6 +50,23 @@ for (const theme of ['light', 'dark'] as const) {
     await page.screenshot({ path: test.info().outputPath(`start-chat-and-help-${theme}.png`) });
   });
 }
+
+test('Help menu Download for Mac row uses the dense row style', async ({ page }) => {
+  await page.goto(`${preview}?theme=light&show=help&macDownload=1`);
+  const help = page.getByRole('dialog', { name: 'Help', exact: true });
+  await expect(help).toBeVisible();
+  await settle(page);
+  const download = help.getByRole('button', { name: 'Download for Mac', exact: true });
+  const reference = await rowBox(help.getByRole('button', { name: 'Show me around' }));
+  const box = await rowBox(download);
+  expect(box.height).toBeCloseTo(reference.height, 1);
+  expect(box.width).toBeCloseTo(reference.width, 1);
+  await expect(download).toHaveCSS('font-size', '12px');
+  await expect(download.locator('svg')).toHaveCSS('width', '14px');
+  await download.click();
+  await expect(page.getByTestId('started')).toHaveText('mac-download');
+  await expect(help).toHaveCount(0);
+});
 
 test('Start a chat menu keyboard: first row focus, Tab cycles, Escape returns to +', async ({ page }) => {
   await page.goto(`${preview}?theme=dark&show=none`);

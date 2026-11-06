@@ -29,7 +29,7 @@ use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use chrono::Utc;
 use futures_util::{SinkExt, StreamExt};
@@ -40,7 +40,8 @@ use crate::server::ServerState;
 
 #[derive(Debug, Deserialize)]
 pub struct WsAuthQuery {
-    pub token: String,
+    pub token: Option<String>,
+    pub account: Option<String>,
 }
 
 /// Axum handler for `/v1/cloud/ws`. Validates the session token before
@@ -50,9 +51,25 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<ServerState>>,
     Query(q): Query<WsAuthQuery>,
+    headers: HeaderMap,
 ) -> Response {
+    if q.token.is_none() {
+        let session =
+            match crate::auth::routes::web_socket_session(&state, &headers, q.account.as_deref())
+                .await
+            {
+                Ok(session) => session,
+                Err(response) => return *response,
+            };
+        let connection = WsConnection {
+            account_id: session.account_id,
+            device_id: session.device_id,
+            token_id: session.token_id,
+        };
+        return ws.on_upgrade(move |socket| run_ws(socket, connection, state));
+    }
     let pool = state.db_pool();
-    let session = match lookup_session(pool, &q.token).await {
+    let session = match lookup_session(pool, q.token.as_deref().unwrap_or_default()).await {
         Ok(Some(row)) => row,
         Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
         Err(err) => {

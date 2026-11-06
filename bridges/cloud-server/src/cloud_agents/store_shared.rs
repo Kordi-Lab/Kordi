@@ -1,5 +1,5 @@
 //! The agents other accounts can see: shared agents of the owners they ask
-//! about.
+//! about, except owners who stopped the viewer from using their agents.
 
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
@@ -14,6 +14,7 @@ use crate::cloud_agents::store::CloudAgentStoreError;
 pub async fn list_shared_agent_summaries(
     pool: &PgPool,
     owner_account_ids: &[String],
+    viewer_account_id: &str,
 ) -> Result<Vec<SharedCloudAgentSummary>, CloudAgentStoreError> {
     let owners: Vec<String> = owner_account_ids
         .iter()
@@ -44,7 +45,7 @@ pub async fn list_shared_agent_summaries(
         i64,
         String,
     );
-    let rows = query_as::<_, SharedAgentRow>(
+    let rows = query_as::<_, SharedAgentRow>(&format!(
         "SELECT a.agent_id, a.owner_account_id, c.display_name, a.access_scope, a.name, a.role, a.description, a.updated_at,
              a.avatar_url, a.avatar_source, a.avatar_style, a.avatar_seed, a.avatar_renderer_version,
              a.avatar_version, a.avatar_updated_at
@@ -54,11 +55,14 @@ pub async fn list_shared_agent_summaries(
            AND a.status = $2
            AND a.access_scope = $3
            AND a.is_system_managed = FALSE
+           AND {allowed}
          ORDER BY a.updated_at DESC, a.agent_id ASC",
-    )
+        allowed = crate::contact_permissions::agent_allowed_sql("a.owner_account_id", "$4"),
+    ))
     .bind(&owners)
     .bind(CLOUD_AGENT_STATUS_ACTIVE)
     .bind(CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS)
+    .bind(viewer_account_id)
     .fetch_all(pool)
     .await?;
 

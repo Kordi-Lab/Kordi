@@ -82,5 +82,11 @@ pub(super) async fn unlink_provider(
     if tx.commit().await.is_err() {
         return *server_error();
     }
+    if provider == OAuthProviderId::Apple.as_str() {
+        // Apple asks apps to revoke the user's tokens once they are no
+        // longer used.
+        crate::auth::oauth::apple::revoke_apple_tokens_for_account(&state, &session.account_id)
+            .await;
+    }
     StatusCode::NO_CONTENT.into_response()
 }

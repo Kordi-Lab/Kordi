@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
 import type { CloudAgentRuntimeRouteChangeInput } from '@/features/cloud/cloudAgentRuntime';
 import { routeRunsOnKordiCloud, runtimeRoutesMatch } from '@/features/cloud/cloudAgentRuntimeRoute';
@@ -102,7 +103,8 @@ export function useHostedComposerRouting({
     change: ComposerRouteChange,
     isolatedTarget?: Exclude<ComposerConfigTargetOverride, string | null> | null,
   ): boolean => {
-    if (!isNativeShell || scope !== 'chat' || !sessionId || !publishCloudAgentRuntimeRouteChange) return false;
+    const browserApp = isBrowserAppRuntime();
+    if ((!isNativeShell && !browserApp) || scope !== 'chat' || !sessionId || !publishCloudAgentRuntimeRouteChange) return false;
     const stored = resolveChatRuntimeRoute?.(sessionId) ?? null;
     const applied = appliedRef.current.get(sessionId);
     const currentRoute = applied && Date.now() - applied.atMs < APPLIED_ROUTE_FRESH_MS
@@ -117,6 +119,10 @@ export function useHostedComposerRouting({
       pinLocalAccount: Boolean(isolatedTarget),
       modelOptions: chatModelOptions,
     });
+    if (browserApp && (!decision || decision.leavesCloud)) {
+      setDesktopChatError('Choose a hosted account to use this model in the browser. Local accounts run in the desktop app.');
+      return true;
+    }
     const model = decision?.route.model?.trim();
     if (!decision || !model) return false;
     let previous: ComposerSelectionState | null = null;

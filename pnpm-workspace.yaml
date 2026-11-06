@@ -1,4 +1,5 @@
 packages:
   - app/desktop
+  - app/web
   - bridges
   - bridges/registry

@@ -68,3 +68,19 @@ export function buildBeforeDevCommand({ title, host, port, frontendMode = 'devel
   }
   return `${assignments.join(' ')} npm run dev:web -- --host ${host} --port ${port} --strictPort`;
 }
+
+/**
+ * Environment that makes `cargo run` start the macOS debug binary from a
+ * minimal signed .app, so privacy prompts such as Location Services appear.
+ * Set KORDI_DEV_APP_BUNDLE=0 to run the bare binary.
+ */
+export function macDevAppBundleEnv({ identifier, title, targetTriple, runnerPath, platform = process.platform, env = process.env }) {
+  if (platform !== 'darwin' || env.KORDI_DEV_APP_BUNDLE === '0') return {};
+  const runnerKey = `CARGO_TARGET_${targetTriple.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_RUNNER`;
+  if (env[runnerKey]) return {};
+  return {
+    [runnerKey]: runnerPath,
+    KORDI_DEV_BUNDLE_IDENTIFIER: identifier,
+    KORDI_DEV_BUNDLE_NAME: title,
+  };
+}

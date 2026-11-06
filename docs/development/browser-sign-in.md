@@ -37,7 +37,7 @@ The sign-in page holds its session in cookies set by the server:
 | --- | --- | --- |
 | `__Host-kordi_web_session` | `Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000` | The session token. Never readable by scripts. |
 | `__Host-kordi_web_csrf` | `Path=/; Secure; SameSite=Strict; Max-Age=2592000` | The CSRF token, readable by the page. |
-| `__Host-kordi_oauth_bind` | `Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=600` | A random value that binds a web Google or GitHub sign-in to this browser. |
+| `__Host-kordi_oauth_bind` | `Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=600` | A random value that binds a web Google, GitHub or Apple sign-in to this browser. |
 
 The `__Host-` prefix makes both cookies host-only (no `Domain`), `Secure`,
 and scoped to `Path=/`, so another subdomain cannot set or overwrite them.
@@ -64,7 +64,10 @@ Endpoints:
   failed sign-in lands on `/v1/cloud/auth/web/oauth/complete`, which returns
   to `returnTo` with the error in the fragment. Only one web provider
   sign-in per browser can be in progress; a second start replaces the
-  binding of the first.
+  binding of the first. Apple returns with a cross-site form `POST`, which
+  carries no `Lax` cookie; the server keeps the posted code with the state
+  and redirects to the `GET` callback, where the cookie is checked (see
+  [Sign in with Apple](sign-in-with-apple.md)).
 - A provider sign-in that returns to the public origin always uses this
   cookie hand-off, never a session in a URL fragment: the only accepted
   target there is `/v1/cloud/auth/web/oauth/complete`, only the web start

@@ -1,6 +1,9 @@
 import { ConfigurationError } from './backend.mjs';
 
 const fail = () => { throw new ConfigurationError('Invalid instance authentication policy.'); };
+const OAUTH_FIELDS = { googleClientId: 'KORDI_OAUTH_GOOGLE_CLIENT_ID', googleClientSecret: 'KORDI_OAUTH_GOOGLE_CLIENT_SECRET', githubClientId: 'KORDI_OAUTH_GITHUB_CLIENT_ID', githubClientSecret: 'KORDI_OAUTH_GITHUB_CLIENT_SECRET' };
+const REQUIRED_OAUTH_FIELDS = Object.keys(OAUTH_FIELDS);
+const APPLE_OAUTH_FIELDS = { appleClientId: 'KORDI_OAUTH_APPLE_CLIENT_ID', appleTeamId: 'KORDI_OAUTH_APPLE_TEAM_ID', appleKeyId: 'KORDI_OAUTH_APPLE_KEY_ID', applePrivateKey: 'KORDI_OAUTH_APPLE_PRIVATE_KEY' };
 export function validateAuthentication(value, target) {
   if (!value || Object.keys(value).sort().join(',') !== 'admission,approvedEmailsBinding,loginPage,oauthBindings,verifiedDomains') fail();
   if (Object.keys(value.loginPage ?? {}).sort().join(',') !== 'signupSubtitle,signupTitle,subtitle,title'
@@ -12,7 +15,12 @@ export function validateAuthentication(value, target) {
   if ((value.admission === 'verified-domain') !== (value.verifiedDomains.length > 0)) fail();
   if (target.environment === 'staging' && value.admission !== 'approved-testers') fail();
   if (target.edition === 'research' && target.environment === 'production' && value.admission !== 'verified-domain') fail();
-  if (Object.keys(value.oauthBindings ?? {}).sort().join(',') !== 'githubClientId,githubClientSecret,googleClientId,googleClientSecret') fail();
+  const keys = Object.keys(value.oauthBindings ?? {});
+  if (REQUIRED_OAUTH_FIELDS.some((field) => !keys.includes(field))) fail();
+  if (keys.some((field) => !REQUIRED_OAUTH_FIELDS.includes(field) && !Object.hasOwn(APPLE_OAUTH_FIELDS, field))) fail();
+  // Sign in with Apple is optional; when any binding is present, all four are required.
+  const apple = keys.filter((field) => Object.hasOwn(APPLE_OAUTH_FIELDS, field));
+  if (apple.length > 0 && apple.length !== Object.keys(APPLE_OAUTH_FIELDS).length) fail();
   const bindings = [value.approvedEmailsBinding, ...Object.values(value.oauthBindings)];
   if (bindings.some((v) => typeof v !== 'string' || !/^[A-Z][A-Z0-9_]{2,79}$/.test(v)) || new Set(bindings).size !== bindings.length) fail();
   return value;
@@ -22,9 +30,13 @@ export function validateAuthentication(value, target) {
 export function authenticationBindings(profile, env) {
   if (!profile.authentication) return {};
   const output = {};
-  for (const [field, runtime] of Object.entries({ googleClientId: 'KORDI_OAUTH_GOOGLE_CLIENT_ID', googleClientSecret: 'KORDI_OAUTH_GOOGLE_CLIENT_SECRET', githubClientId: 'KORDI_OAUTH_GITHUB_CLIENT_ID', githubClientSecret: 'KORDI_OAUTH_GITHUB_CLIENT_SECRET' })) {
-    const value = env[profile.authentication.oauthBindings[field]];
-    if (!value?.trim() || /[\r\n\0]/.test(value)) throw new ConfigurationError('Required instance OAuth binding is missing.');
+  const oauthBindings = profile.authentication.oauthBindings;
+  const fields = { ...OAUTH_FIELDS, ...Object.fromEntries(Object.entries(APPLE_OAUTH_FIELDS).filter(([field]) => Object.hasOwn(oauthBindings, field))) };
+  for (const [field, runtime] of Object.entries(fields)) {
+    const value = env[oauthBindings[field]];
+    // Only the Apple private key is multi-line (PEM).
+    const forbidden = field === 'applePrivateKey' ? /\0/ : /[\r\n\0]/;
+    if (!value?.trim() || forbidden.test(value)) throw new ConfigurationError('Required instance OAuth binding is missing.');
     output[runtime] = value;
   }
   if (profile.authentication.admission !== 'existing' && !env[profile.authentication.approvedEmailsBinding]) {

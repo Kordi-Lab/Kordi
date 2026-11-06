@@ -112,6 +112,7 @@ struct KordiApp: App {
         WindowGroup {
             RootView(hasTopAccessory: showsPreviewThemeControls || callCoordinator.isMinimized)
                 .kordiLinkHandling(openConnectors: openConnectorsSettings) // Connectors and shared document links
+                .groupInviteHandling()
                 .environmentObject(model)
                 .environmentObject(callCoordinator)
                 .environmentObject(notificationCoordinator)
@@ -399,6 +400,8 @@ private struct RootView: View {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-native-design") {
             NativeDesignPreview()
+        } else if ContactPermissionsAvailability.isPreviewRequested() {
+            ContactPermissionsPreviewHost()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-contacts") {
             NavigationStack {
                 ContactsView()
@@ -407,6 +410,13 @@ private struct RootView: View {
             AgentSubsessionStopPreviewView()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-appearance") {
             AppearanceSettingsPreview()
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-privacy-settings") {
+            PrivacySettingsPreview()
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-delete-account")
+            || ProcessInfo.processInfo.arguments.contains("--preview-delete-account-confirm") {
+            DeleteAccountPreview()
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-settings-about") {
+            AccountSheet()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-profile") {
             ProfileSettingsPreview()
         } else if ConnectorsAvailability.isPreviewRequested() {
@@ -417,6 +427,8 @@ private struct RootView: View {
             MemorySettingsPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-devices") {
             ActiveSessionsPreview()
+        } else if let safetyPreview = SafetyPreview.requested {
+            SafetyPreviewHost(kind: safetyPreview)
         } else if ProcessInfo.processInfo.arguments.contains("--preview-account") {
             AccountSheet()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-authentication") {
@@ -438,10 +450,8 @@ private struct RootView: View {
             || ProcessInfo.processInfo.arguments.contains("--preview-group-call")
             || ProcessInfo.processInfo.arguments.contains("--preview-media")
             || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
-            || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
-            || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
-            || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
-            || ProcessInfo.processInfo.arguments.contains("--preview-group-chat")
+            || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded") || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
+            || ProcessInfo.processInfo.arguments.contains("--preview-photo-send") || ProcessInfo.processInfo.arguments.contains("--preview-group-chat")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-detail")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-memory")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-invite")
@@ -526,6 +536,8 @@ private struct RootView: View {
             case .signedIn:
                 MainTabView(hasTopAccessory: hasTopAccessory)
                     .transition(.opacity)
+                    // Asks for the AI choice once after sign-in while it is undecided.
+                    .task(id: model.account?.accountId) { await model.refreshAIConsent(promptIfUnset: true) }
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: model.phase)

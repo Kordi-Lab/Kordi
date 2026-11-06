@@ -33,6 +33,7 @@ import {
 } from './cloudAgentRuntime';
 import { cloudAgentTurnReplyText } from './cloudAgentReplyText';
 import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
+import { agentRestrictedAccountIds } from './agentRestrictions';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
 import { handBackDesktopRun } from './cloudDesktopRunHandback';
 import type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
@@ -98,6 +99,10 @@ export async function respondToCloudGroupAgentMention(
     : cloudGroupAgentReplyThreadAction(groupRows, envelope.groupId, message.id, account.accountId);
   const session = await loadSession();
   if (!session?.token) throw new Error('Not signed in.');
+  // Someone the owner stopped from using their agents gets no answer here,
+  // as on the cloud route, and their messages stay out of the context.
+  const restricted = await agentRestrictedAccountIds({ token: () => Promise.resolve(session.token) });
+  if (restricted.has(message.senderAccountId)) { void runtime.syncDiff(); return; }
   throwIfCloudAgentTurnAborted(signal);
   const targetAccountIds = cloudGroupAgentResponseTargetAccountIds({
     localAccountId: account.accountId,
@@ -168,6 +173,7 @@ export async function respondToCloudGroupAgentMention(
       requestCreatedAtMs: message.createdAtMs,
       respondingAccountId: account.accountId,
       respondingAgentId: presentation.agentId,
+      excludedSenderAccountIds: restricted,
     }),
   ];
   let rememberedTurn: DesktopChatTurnSnapshot | undefined;

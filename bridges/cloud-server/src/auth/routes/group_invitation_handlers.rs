@@ -131,6 +131,8 @@ fn group_invitation_has_capacity(snapshot: &GroupInvitationSnapshot) -> bool {
 #[cfg(test)]
 mod landing_tests;
 #[cfg(test)]
+mod landing_web_tests;
+#[cfg(test)]
 mod pending_tests;
 #[cfg(test)]
 mod tests;

@@ -20,6 +20,7 @@ import {
   encodeCloudGroupControl,
 } from './cloudGroupMessages';
 import { loadSession } from './session';
+import { isAgentUnavailableRefusal } from './agentRestrictions';
 import { cloudAgentLocalFailureMessage } from './cloudAgentLocalExecution';
 import {
   cloudAgentCanonicalIdentityId,
@@ -123,6 +124,12 @@ export async function handleCloudGroupAgentFailure(
   const message = envelope.message;
   if (!message) return;
   runtime.turnIdsByRequestId.delete(message.id);
+  // The generic refusal for a restricted requester is never answered in the
+  // group: an error there would tell them about the restriction.
+  if (isAgentUnavailableRefusal(error)) {
+    setCanonicalState((current) => stateOps.removePendingRows(current, message.id, account.accountId) ?? current);
+    return;
+  }
 
   const responseCreatedAtMs = Date.now();
   const noProvider = isCloudAgentNoProviderConfiguredError(error);

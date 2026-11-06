@@ -60,6 +60,7 @@ export type CloudGroupAgentPolicy = {
     requestCreatedAtMs: number;
     respondingAccountId: string;
     respondingAgentId?: string | null;
+    excludedSenderAccountIds?: ReadonlySet<string>;
   }): DesktopChatContextMessage[];
   waitForTurn(
     turnId: string,

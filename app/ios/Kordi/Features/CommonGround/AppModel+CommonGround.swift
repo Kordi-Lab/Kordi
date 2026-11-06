@@ -51,12 +51,14 @@ extension AppModel {
         let memories = MemoryPresentation.hasProfileRouting(memoryCapabilities)
         let cardChoices = MemoryPresentation.hasCardChoices(memoryCapabilities)
         let nearby = CommonGroundAvailability.hasNearby(capabilities: memoryCapabilities)
-        return CommonGroundModel(me: me, profilesEnabled: profiles, memoriesEnabled: memories, cardChoicesEnabled: cardChoices,
-                                 nearbyEnabled: nearby) { [weak self] in
+        let model = CommonGroundModel(me: me, profilesEnabled: profiles, memoriesEnabled: memories, cardChoicesEnabled: cardChoices,
+                                      nearbyEnabled: nearby) { [weak self] in
             guard let self else { throw CancellationError() }
             let (api, token, _) = try self.digestContext()
             return (api, token)
         }
+        model.onAIConsentRequired = { [weak self] in self?.noteAIConsentRequired() }
+        return model
     }
 
     /// The chat a Common ground action leads to. Looks in the loaded list
