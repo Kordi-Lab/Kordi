@@ -366,7 +366,8 @@ test('sending from main or side-panel chat schedules a jump to the sent message'
   const mainSendStart = mainWorkspace.indexOf(
     'const handleSend = (draftOverride?: string, attachmentOverride?: AttachmentItem[]) => {',
   );
-  const splitStart = mainWorkspace.indexOf('\n\n  return (', mainSendStart);
+  // The handler ends at its own closing brace; early returns may follow it.
+  const splitStart = mainWorkspace.indexOf('\n  };\n', mainSendStart);
   assert.notEqual(mainSendStart, -1, 'main chat send handler should exist');
   assert.notEqual(splitStart, -1, 'main chat send block should have an end boundary');
   const mainSendBlock = mainWorkspace.slice(mainSendStart, splitStart);
