@@ -458,7 +458,7 @@ export function useCloudCollaborationState({
   });
 
   const { stopActiveRequest: stopCloudSelfAgentRequest } = useCloudSelfAgentExecution({
-    account, canonicalState: canonicalSessionState,
+    account, canonicalState: canonicalSessionState, executionReadyRef: stores.agentRequests.desktopExecutionReadyRef,
     client,
     messageIndex: cloudMessageIndex,
     initialMessagesSettled: executionMessagesReady, hydrateSessionPage: hydrateCanonicalSessionPage,

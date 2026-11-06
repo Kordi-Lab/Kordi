@@ -60,7 +60,10 @@ fn invitation_document_matches_the_approved_kordi_surface() {
     assert!(document.contains("Download Kordi for Mac"));
     assert!(document.contains(VERSIONED_DMG_URL));
     assert!(document.contains("href=\"https://kordi.ai/\">Learn more</a>"));
-    assert!(document.contains("&copy; Kordi 2026"));
+    assert!(document.contains(r#"<nav aria-label="Footer">"#));
+    assert!(document.contains(r#"href="https://kordi.ai/terms">Terms</a>"#));
+    assert!(document.contains("/research-preview/public/assets/fonts/geist-400.ttf"));
+    assert!(!document.contains("Marcellus"));
     assert!(!document.contains("Back to overview"));
     assert!(!document.contains("Kordi beta"));
     assert!(!document.contains("@218208141"));
@@ -96,6 +99,53 @@ fn invitation_document_can_offer_a_safe_open_app_action() {
     assert!(document.contains("Open Kordi"));
     assert!(document.contains("kordi://group-invite/kordi_gi_token"));
     assert!(document.contains("Download Kordi for Mac"));
+}
+
+#[test]
+fn app_invitation_can_continue_on_the_web_beside_the_download() {
+    let document = invitation_landing_document_with_actions(
+        "Alex <Morgan> invited you to Kordi.",
+        "Join @alex in a shared workspace.",
+        None,
+        Some(BROWSER_APP_PATH),
+        Some(VERSIONED_DMG_URL),
+    );
+    assert!(document
+        .contains(r#"<a class="button button-primary" href="/app/">Continue on the web</a>"#));
+    assert!(document.contains(&format!(
+        r#"<a class="button button-secondary" href="{VERSIONED_DMG_URL}">"#
+    )));
+    assert!(
+        document.contains(r#"class="button button-secondary" href="https://kordi.ai/">Learn more"#)
+    );
+    assert!(document.contains("Alex &lt;Morgan&gt; invited you to Kordi."));
+    assert!(!document.contains("<script"));
+    assert!(!document.contains("<form"));
+    assert!(!document.contains("kordi://"));
+    assert!(
+        !invitation_landing_document_with_open_action("Join Kordi", "Preview", None, None)
+            .contains("Continue on the web")
+    );
+    let response = invitation_landing_html_with_browser_action(
+        StatusCode::OK,
+        "Join Kordi",
+        "Preview",
+        None,
+        Some(BROWSER_APP_PATH),
+        None,
+    );
+    assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
+    assert_eq!(
+        response.headers().get("referrer-policy").unwrap(),
+        "no-referrer"
+    );
+    assert!(response
+        .headers()
+        .get("content-security-policy")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains("frame-ancestors 'none'"));
 }
 
 #[test]

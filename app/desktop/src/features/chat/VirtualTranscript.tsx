@@ -431,6 +431,10 @@ export function VirtualTranscript<Item>({
       if (items.length > 0 && (!tailIsMounted
         || (revealFromIndex === undefined && !hasActiveTranscriptRowLift(tailLiftRowsRef.current)))) {
         virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
+        // The virtualizer learns the new offset from the next scroll event, a frame
+        // later. On entry, deliver it now so the tail rows mount in this layout pass
+        // and a remembered layout can show in the first paint.
+        if (aligned?.sessionKey !== sessionKey) internalScrollRef.current?.dispatchEvent(new Event('scroll'));
       }
       scheduleTailAlignment(revealFromIndex);
     }

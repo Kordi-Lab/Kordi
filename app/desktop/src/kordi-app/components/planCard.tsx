@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { planCardAction, type PlanCardActionRequest } from '@/features/cloud/planCardClient';
 import { cloudAvatarImageUrl } from '@/features/cloud/avatar';
-import { loadSession } from '@/features/cloud/session';
+import { cachedSessionSnapshot, loadSession } from '@/features/cloud/session';
 import type { MessagePlanCard, MessagePlanCardOption } from '@/kordi-app/types/message';
 import { planCardView } from '@/features/cloud/planCardSnapshot';
 import { shouldLoadAvatarThroughNativeProxy, useRemoteAvatarImage } from './remoteAvatarImage';
@@ -91,7 +91,11 @@ export function PlanCardContent({
   /** The cloud chat the card lives in; the organizer needs it to change the time. */
   conversationId?: string | null;
 }) {
-  const [sessionAccountId, setSessionAccountId] = useState<string | null>(ownAccountId ?? null);
+  // Start from the session already loaded, so the card paints with its answer buttons in the
+  // first frame instead of growing a row (and moving the transcript) when the session resolves.
+  const [sessionAccountId, setSessionAccountId] = useState<string | null>(
+    () => ownAccountId ?? cachedSessionSnapshot()?.accountId ?? null,
+  );
   useEffect(() => {
     if (ownAccountId) return;
     let cancelled = false;

@@ -50,6 +50,8 @@ function createPreviewCloudSources(onNotice: (notice: string) => void): PreviewC
       : []),
     // ?hostedAccounts=1: accounts stored only in the Kordi account, which run on Kordi Cloud.
     ...(previewParams().get('hostedAccounts') === '1' ? previewHostedSnapshots : []),
+    // ?migratedAccounts=1: expired ChatGPT copies from an older server, one named only by its account ID.
+    ...(previewParams().get('migratedAccounts') === '1' ? previewMigratedSnapshots : []),
   ];
   const login = createPreviewProviderLogin(async () => (await loadPinnedOmpCatalog()).providers, {
     // ?captureBusy=1: another sign-in holds the provider's localhost port.
@@ -90,6 +92,11 @@ const previewHostedSnapshots: CloudProviderAuthSnapshot[] = [
   { snapshotId: 'snap_preview_research', provider: 'cerebras', authChoice: 'cloud-api-key:preview-research', label: 'Research', modelHint: null, createdAt: '2026-01-01T00:00:00Z', revokedAt: null },
   { snapshotId: 'snap_preview_gateway', provider: 'custom', authChoice: 'cloud-api-key:preview-gateway', label: 'Gateway', modelHint: 'deepseek-chat', createdAt: '2026-01-01T00:00:00Z', revokedAt: null },
   { snapshotId: 'snap_preview_old', provider: 'openai-codex', authChoice: 'cloud-login:preview-old', label: 'Old laptop', modelHint: null, createdAt: '2026-01-01T00:00:00Z', revokedAt: null, status: 'needs-reconnect' },
+];
+
+const previewMigratedSnapshots: CloudProviderAuthSnapshot[] = [
+  { snapshotId: 'snap_preview_migrated_work', provider: 'openai-codex', authChoice: 'cloud-login:preview-migrated-work', label: 'Work', modelHint: null, createdAt: '2026-10-17T04:01:14Z', revokedAt: null, status: 'needs-reconnect' },
+  { snapshotId: 'snap_preview_migrated_id', provider: 'openai-codex', authChoice: 'profile:preview-migrated-id', label: '00000000-0000-4000-8000-000000000000', modelHint: null, createdAt: '2026-10-26T19:33:05Z', revokedAt: null, status: 'needs-reconnect' },
 ];
 
 function previewTheme(): ResolvedThemeMode {

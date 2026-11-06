@@ -270,7 +270,7 @@ def main():
              'bridges/cloud-temporal-bridge/go.mod', 'bridges/cloud-temporal-bridge/go.sum',
              'app/ios/Kordi.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved',
              'shared/omp-runtime/package.json', 'legal/runtime-sources.json', 'legal/native/archive-evidence.json', 'legal/public-contact-hashes.json']
-    paths += ['app/desktop/package.json', 'legal/runtime-relink-verification.json', 'legal/runtime-bundle-review.json']
+    paths += ['app/desktop/package.json', 'app/web/package.json', 'legal/runtime-relink-verification.json', 'legal/runtime-bundle-review.json']
     paths += [dockerfile for dockerfile, _, _ in SOURCE_IMAGES]
     paths += [str(p.relative_to(ROOT)) for p in sorted((ROOT / 'legal/native').iterdir()) if p.is_file() and str(p.relative_to(ROOT)) not in paths]
     paths += [str(p.relative_to(ROOT)) for p in sorted((ROOT / 'legal/runtime-patches').glob('*.patch'))]

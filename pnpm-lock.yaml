@@ -178,6 +178,67 @@ importers:
         specifier: ^2.8.3
         version: 2.8.3
 
+  app/web:
+    dependencies:
+      react:
+        specifier: ^19.2.4
+        version: 19.2.5
+      react-dom:
+        specifier: ^19.2.4
+        version: 19.2.5(react@19.2.5)
+    devDependencies:
+      "@eslint/js":
+        specifier: ^9.39.4
+        version: 9.39.4
+      "@playwright/test":
+        specifier: 1.61.1
+        version: 1.61.1
+      "@types/jsdom":
+        specifier: ^28.0.3
+        version: 28.0.3
+      "@types/react":
+        specifier: ^19.2.14
+        version: 19.2.14
+      "@types/react-dom":
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.14)
+      "@vitejs/plugin-react":
+        specifier: ^6.0.1
+        version: 6.0.1(vite@8.0.8(@types/node@20.19.39)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
+      eslint:
+        specifier: ^9.39.4
+        version: 9.39.4(jiti@2.6.1)
+      eslint-plugin-react-hooks:
+        specifier: ^7.0.1
+        version: 7.1.1(eslint@9.39.4(jiti@2.6.1))
+      eslint-plugin-react-refresh:
+        specifier: ^0.5.2
+        version: 0.5.2(eslint@9.39.4(jiti@2.6.1))
+      globals:
+        specifier: ^17.4.0
+        version: 17.5.0
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript-eslint:
+        specifier: ^8.65.0
+        version: 8.65.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3)
+      vite:
+        specifier: ^8.0.4
+        version: 8.0.8(@types/node@20.19.39)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      "@tauri-apps/api":
+        specifier: ^2.8.0
+        version: 2.10.1
+
   bridges: {}
 
   bridges/registry:

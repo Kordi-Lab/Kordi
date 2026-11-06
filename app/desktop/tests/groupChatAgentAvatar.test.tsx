@@ -76,10 +76,37 @@ test('chat layout falls back to the generated seed for the owner agent in a grou
   assert.match(sources[0], /preview\/kordi-birds\/cloud_agent_baby\.png$/);
 });
 
-test('chat layout keeps one-to-one agent replies without an avatar', async () => {
+test('chat layout shows the agent avatar on one-to-one agent replies', async () => {
   for (const densityMode of [undefined, 'agent-compact', 'contact-compact'] as const) {
-    assert.deepEqual(await avatarSources('chat', peerAgentText, densityMode), []);
-    assert.deepEqual(await avatarSources('chat', peerAgentTurn, densityMode), []);
+    assert.deepEqual(await avatarSources('chat', peerAgentText, densityMode), ['https://images.test/scout.png']);
+    assert.deepEqual(await avatarSources('chat', peerAgentTurn, densityMode), ['https://images.test/scout.png']);
+  }
+});
+
+test('chat layout shows the agent avatar once per run of the same agent', async () => {
+  for (const densityMode of [undefined, 'agent-compact', 'contact-compact', 'group-compact'] as const) {
+    for (const msg of [peerAgentText, peerAgentTurn]) {
+      await withJsdomRoot(async (mount) => {
+        const host = await mount(<MessageBubble msg={msg} densityMode={densityMode} continuesAgentRun />);
+        assert.equal(host.querySelectorAll('img').length, 0, `${msg.id} ${densityMode} hides the repeated avatar`);
+        assert.ok(host.querySelector('.app-message-avatar-spacer'), `${msg.id} ${densityMode} keeps the avatar column`);
+        assert.ok(senderNameElement(host, msg.sender!), `${msg.id} ${densityMode} keeps the header`);
+      });
+    }
+  }
+});
+
+test('threads layout ignores agent runs', async () => {
+  for (const msg of [peerAgentText, peerAgentTurn]) {
+    await withJsdomRoot(async (mount) => {
+      try {
+        await act(async () => { setMessageLayout('threads'); });
+        const host = await mount(<MessageBubble msg={msg} continuesAgentRun />);
+        assert.deepEqual(Array.from(host.querySelectorAll('img'), (img) => img.getAttribute('src')), ['https://images.test/scout.png']);
+      } finally {
+        await act(async () => { setMessageLayout('chat'); });
+      }
+    });
   }
 });
 
@@ -122,9 +149,9 @@ test('one-to-one agent names keep the muted meta style', async () => {
   }
 });
 
-test('the owner agent avatar sits left of its header in both group paths', async () => {
-  for (const msg of [ownAgentText, ownAgentTurn]) {
-    await renderBubble('chat', msg, 'group-compact', (host) => {
+test('the owner agent avatar sits left of its header in every chat density', async () => {
+  for (const densityMode of [undefined, 'agent-compact', 'contact-compact', 'group-compact'] as const) for (const msg of [ownAgentText, ownAgentTurn]) {
+    await renderBubble('chat', msg, densityMode, (host) => {
       const avatars = host.querySelectorAll('img');
       assert.equal(avatars.length, 1, `${msg.id} renders one avatar`);
       const avatar = avatars[0];
@@ -135,7 +162,8 @@ test('the owner agent avatar sits left of its header in both group paths', async
       let row = avatar.parentElement;
       while (row && !row.contains(name)) row = row.parentElement;
       assert.ok(row && !row.classList.contains('flex-col'), `${msg.id} avatar and header share a row`);
-      assert.ok(row.classList.contains('items-start'), `${msg.id} avatar aligns with the header`);
+      const avatarTopAligned = row.classList.contains('items-start') || Boolean(avatar.closest('.self-start'));
+      assert.ok(avatarTopAligned, `${msg.id} avatar aligns with the header`);
     });
   }
 });

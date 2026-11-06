@@ -69,7 +69,7 @@
 /* The 1px line that continues the session list's top edge across the
    conversation and companion columns; above the columns, since the companion
    header paints its own surface. */
-html.kordi-native-shell .app-native-titlebar-workspace::after {
+html:is(.kordi-native-shell, .kordi-browser-shell) .app-native-titlebar-workspace::after {
   content: '';
   position: absolute;
   inset-inline: 0;
@@ -94,7 +94,7 @@ html.kordi-native-shell .app-native-titlebar-workspace::after {
 .app-native-companion-titlebar[data-side="left"] { grid-column: 1; }
 /* The companion's edge line continues the split divider below it through the
    titlebar, as the conversation's left line does. */
-html.kordi-native-shell .app-native-companion-titlebar[data-open="true"]::before {
+html:is(.kordi-native-shell, .kordi-browser-shell) .app-native-companion-titlebar[data-open="true"]::before {
   content: '';
   position: absolute;
   top: 0;
@@ -104,8 +104,8 @@ html.kordi-native-shell .app-native-companion-titlebar[data-open="true"]::before
   pointer-events: none;
 }
 /* The split divider is its own 1px grid track beside the companion column. */
-html.kordi-native-shell .app-native-companion-titlebar[data-side="right"][data-open="true"]::before { left: -1px; }
-html.kordi-native-shell .app-native-companion-titlebar[data-side="left"][data-open="true"]::before { right: -1px; }
+html:is(.kordi-native-shell, .kordi-browser-shell) .app-native-companion-titlebar[data-side="right"][data-open="true"]::before { left: -1px; }
+html:is(.kordi-native-shell, .kordi-browser-shell) .app-native-companion-titlebar[data-side="left"][data-open="true"]::before { right: -1px; }
 .app-native-companion-titlebar[data-open="false"] { overflow: hidden; pointer-events: none; }
 .app-native-companion-titlebar-surface { height: 100%; }
 .app-native-companion-titlebar[data-side="left"] .app-native-companion-titlebar-surface { float: right; }
@@ -263,7 +263,7 @@ html.kordi-native-shell .app-native-companion-titlebar[data-side="left"][data-op
 
 /* The conversation is flat: flush on every side, no corners, with one 1px
    divider on its left that the titlebar continues to the top of the window. */
-html.kordi-native-shell .kordi-app .app-shell-content {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-shell-content {
   margin: 0;
   border: 0;
   border-left: 1px solid var(--app-nav-rail-glass-border);

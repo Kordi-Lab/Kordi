@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { cloudMessageDeletions } from '@/features/cloud/cloudMessageDeletions';
 import { filterDeletedCanonicalStore } from '@/features/canonical/canonicalMessageDeletions';
 import {
@@ -123,6 +124,7 @@ export function useKordiCanonicalSessionStore({
   accountId: string | null;
   isNativeShell: boolean;
 }) {
+  const hasCanonicalStorage = isNativeShell || isBrowserAppRuntime();
   const [store, setStoreValue] = useState<CanonicalStore>(
     () => createCanonicalStore(),
   );
@@ -144,7 +146,7 @@ export function useKordiCanonicalSessionStore({
   const [
     initialRefreshSettled,
     setInitialRefreshSettled,
-  ] = useState(!isNativeShell);
+  ] = useState(!hasCanonicalStorage);
   const [
     initialRefreshError,
     setInitialRefreshError,
@@ -190,7 +192,7 @@ export function useKordiCanonicalSessionStore({
     } = {},
   ) => {
     const normalizedSessionId = sessionId.trim();
-    if (!isNativeShell || !normalizedSessionId || accountScopeRef.current !== accountScope) {
+    if (!hasCanonicalStorage || !normalizedSessionId || accountScopeRef.current !== accountScope) {
       return Promise.resolve(null);
     }
     recentPageSessionIdsRef.current = recentCanonicalSessionIds(
@@ -255,7 +257,7 @@ export function useKordiCanonicalSessionStore({
       });
     pageFlightsRef.current.set(flightKey, request);
     return request;
-  }, [accountScope, isNativeShell, updateStore]);
+  }, [accountScope, hasCanonicalStorage, updateStore]);
 
   const loadSessionHistory = useCallback(async (sessionId: string) => {
     const normalizedSessionId = sessionId.trim();
@@ -309,7 +311,7 @@ export function useKordiCanonicalSessionStore({
   }, [accountScope, hydrateSessionPage]);
 
   const refreshState = useCallback(async () => {
-    if (!isNativeShell) {
+    if (!hasCanonicalStorage || (isBrowserAppRuntime() && !accountId)) {
       setInitialRefreshSettled(true);
       return;
     }
@@ -345,7 +347,7 @@ export function useKordiCanonicalSessionStore({
       }
     });
     await (run ?? flight.currentPromise ?? Promise.resolve());
-  }, [accountScope, isNativeShell, updateStore]);
+  }, [accountId, accountScope, hasCanonicalStorage, updateStore]);
 
   useEffect(() => {
     let cancelled = false;
@@ -355,6 +357,13 @@ export function useKordiCanonicalSessionStore({
     return () => {
       cancelled = true;
     };
+  }, [accountId, refreshState]);
+
+  useEffect(() => {
+    if (!isBrowserAppRuntime() || !accountId) return;
+    const refresh = () => { void refreshState().catch(() => undefined); };
+    window.addEventListener('kordi-browser-canonical-changed', refresh);
+    return () => window.removeEventListener('kordi-browser-canonical-changed', refresh);
   }, [accountId, refreshState]);
 
   const resetInitialRefresh = useCallback(() => {

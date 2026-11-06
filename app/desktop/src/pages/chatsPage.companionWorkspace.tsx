@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { composerAgentRequestStop, sidePaneTurnStop } from '@/features/chat/agentRequestStop';
 import { useCompanionReadPresentation } from '@/pages/useCompanionReadPresentation';
 import { useCompanionHistorySession } from '@/pages/useCompanionHistorySession';
@@ -154,7 +155,7 @@ export function ChatCompanionWorkspace({
   };
   const saveAttachments = async (files: File[]) => {
     if (conversation?.agentSubsessionId) { setAttachmentError('This session supports text messages.'); return []; }
-    if (!shell.isNativeShell || files.length === 0) return [];
+    if ((!shell.isNativeShell && !isBrowserAppRuntime()) || files.length === 0) return [];
     try {
       setAttachmentError(null);
       const saved = await Promise.all(

@@ -77,6 +77,9 @@ pub fn routes(pages: Option<WebPagesDir>) -> Router {
         .route("/register", get(page))
         .route("/account", get(page))
         .route("/account/*rest", get(page))
+        .route("/app", get(application_page))
+        .route("/app/", get(application_page))
+        .route("/app/*rest", get(application_page))
         .fallback(asset)
         .with_state(pages)
 }
@@ -143,6 +146,73 @@ async fn asset(
     };
     if matches!(segments.first().map(String::as_str), Some("v1" | "v2")) {
         return not_found();
+    }
+    match segments.last().and_then(|name| asset_type(name)) {
+        Some(kind) => serve(&pages, &segments.join("/"), kind, &headers).await,
+        None => not_found(),
+    }
+}
+
+/// The browser application shares the API's origin and cookie session. Only
+/// application routes fall back to its entry point; missing assets and API
+/// routes must keep their real 404 responses. Route IDs never become file paths.
+async fn application_page(
+    State(pages): State<WebPagesDir>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+) -> Response {
+    let path = uri.path();
+    if path.contains("//") {
+        return not_found();
+    }
+    let route = path.strip_prefix("/app").unwrap_or_default();
+    let parts: Vec<_> = route.trim_matches('/').split('/').collect();
+    let section = parts.first().copied().unwrap_or_default();
+    let application_route = match parts.as_slice() {
+        [""] | ["contacts" | "chats" | "agent-chats" | "factory" | "digest"] => true,
+        ["chats" | "agent-chats", id] => {
+            !id.is_empty()
+                && id.len() <= 2048
+                && *id != "."
+                && *id != ".."
+                && id.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric()
+                        || matches!(
+                            byte,
+                            b'-' | b'_'
+                                | b':'
+                                | b'%'
+                                | b'@'
+                                | b'.'
+                                | b'~'
+                                | b'!'
+                                | b'\''
+                                | b'('
+                                | b')'
+                                | b'*'
+                        )
+                })
+        }
+        _ => false,
+    };
+    if application_route {
+        return serve(&pages, "app/index.html", HTML, &headers).await;
+    }
+    // Static files live beneath /app, including the generated license pages.
+    let Some(segments) = clean_segments(path) else {
+        return not_found();
+    };
+    if section == "licenses" && segments.last().is_some_and(|name| name.ends_with(".html")) {
+        let mut response = serve(&pages, &segments.join("/"), HTML, &headers).await;
+        // The script-free license document is embedded by the app's Help
+        // panel. Account and application pages retain DENY framing.
+        response.headers_mut().insert(
+            header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("SAMEORIGIN"),
+        );
+        response.headers_mut().insert(header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"));
+        return response;
     }
     match segments.last().and_then(|name| asset_type(name)) {
         Some(kind) => serve(&pages, &segments.join("/"), kind, &headers).await,

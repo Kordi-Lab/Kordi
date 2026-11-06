@@ -6,6 +6,7 @@ import { reopenCloudOAuthBrowser } from '@/features/cloud/cloudOAuthSignIn';
 import { AppShellFrame } from '@/app/AppShellFrame';
 import { useNativeViewport } from '@/app/useNativeViewport';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
+import { useBrowserWorkspaceScope } from '@web/app/browserWorkspaceScope';
 import { CloudCallHost } from '@/features/cloud/CloudCallHost';
 import { CloudCallProvider } from '@/features/cloud/CloudCallProvider';
 import {
@@ -100,6 +101,7 @@ function CloudEditionRoot({
   cloudSessionStatusOverride?: CloudSessionStatus;
   cloudSessionOverride?: CloudSessionGateResult;
 }) {
+  const browserWorkspaceScope = useBrowserWorkspaceScope();
   const pendingGroupInvitation = usePendingGroupInvitation();
   // Tests can hand us a stubbed session result; in production we use the hook.
   const liveSession = useCloudSession({
@@ -135,6 +137,7 @@ function CloudEditionRoot({
     <>
       {status === 'authenticated' ? (
         <KordiAppShell
+          key={browserWorkspaceScope}
           cloudSession={cloudSessionOverride === undefined ? presentedSession : undefined}
           pendingGroupInvitation={pendingGroupInvitation}
           onSyncChange={setSync}

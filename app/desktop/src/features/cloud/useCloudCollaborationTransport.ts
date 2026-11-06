@@ -170,6 +170,7 @@ export function useCloudCollaborationTransport({
     messageIndex: stores.messages.index,
     messageIndexRef: stores.messages.indexRef,
     initialMessagesSettled,
+    desktopExecutionReadyRef: stores.agentRequests.desktopExecutionReadyRef,
     reportWarning: reportAvailabilityWarning,
   });
   const directMessaging = useCloudDirectMessaging({

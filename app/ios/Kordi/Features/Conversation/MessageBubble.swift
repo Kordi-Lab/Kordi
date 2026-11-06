@@ -220,13 +220,13 @@ struct MessageBubble: View, Equatable {
     }
 
     var body: some View {
-        HStack(alignment: isThreadLayout || usesBorderlessMediaSurface ? .top : .bottom, spacing: 8) {
+        HStack(alignment: isThreadLayout || usesBorderlessMediaSurface || message.author == .agent ? .top : .bottom, spacing: 8) {
             if isThreadLayout || (showsAvatarSlot && message.author != .me) {
                 if isThreadLayout ? !groupedWithPrevious || visibleReplySource != nil : showAvatar {
                     Button(action: onOpenAuthorProfile) {
                         Color.clear
                             .frame(width: 44, height: 44)
-                            .overlay(alignment: isThreadLayout || usesBorderlessMediaSurface ? .top : .bottom) {
+                            .overlay(alignment: isThreadLayout || usesBorderlessMediaSurface || message.author == .agent ? .top : .bottom) {
                                 IdentityAvatar(
                                     name: authorAvatar.name,
                                     imageSource: authorAvatar.source,

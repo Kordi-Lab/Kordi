@@ -1,3 +1,4 @@
+import type { CloudGroupCanonicalPersistence } from './cloudGroupCanonicalPersistence';
 import type { Dispatch, SetStateAction } from 'react';
 import type {
   CanonicalSessionState,
@@ -24,6 +25,7 @@ export type CanonicalSessionStateUpdate = (current: CanonicalSessionState | null
 export type CanonicalSessionStateSetter = (update: CanonicalSessionStateUpdate) => void;
 
 export type CloudGroupControlContext = {
+  persistence?: CloudGroupCanonicalPersistence;
   account: CloudAccount;
   cloudMessage: CloudMessage;
   envelope: CloudGroupControlEnvelope;

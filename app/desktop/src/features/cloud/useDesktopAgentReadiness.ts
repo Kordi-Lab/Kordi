@@ -41,6 +41,8 @@ export type CloudSelfAgentExecutionInput = {
   messageIndex: CloudMessageIndex;
   initialMessagesSettled: boolean;
   runtimeReady?: boolean;
+  /** Receives this Mac's accepted readiness, so Cloud fallback claims can wait for it. */
+  executionReadyRef?: MutableRefObject<boolean>;
   routesBySessionId?: Record<string, DesktopChatMessageRoute>;
   defaultRoute?: DesktopChatMessageRoute | null;
   cloudAgentDefinitionsById?: Record<string, CloudAgentDefinition>;

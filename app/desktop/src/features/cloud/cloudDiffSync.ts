@@ -1,3 +1,5 @@
+import { browserSyncMetadataStorage } from '@web/runtime/browserSyncMetadataStorage';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { sessionPinMessageIds } from './cloudSessionPinTypes';
 import { notifyDocumentSyncEvents } from '@/features/documents/documentSyncEvents';
 import { notifyCommonGroundNearbyEvents } from '@/features/commonGround/nearbyHints';
@@ -60,6 +62,7 @@ export function hasCachedCloudSessionVisibility(accountId: string | null | undef
 
 function browserLocalStorage(): Storage | null {
   if (typeof window === 'undefined') return null;
+  if (isBrowserAppRuntime()) return browserSyncMetadataStorage();
   try {
     return window.localStorage ?? null;
   } catch {

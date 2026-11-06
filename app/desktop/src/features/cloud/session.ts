@@ -1,9 +1,11 @@
 // Persistent storage for the hosted account session token.
 //
-// Inside Tauri (the production runtime), the session is stored in the OS
-// keychain via the cloud_session_* Tauri commands. Outside Tauri (Vite browser
-// preview, unit tests) we fall back to a memory-only stub and emit one console
-// warning so devs notice the security degradation.
+// Tauri stores credentials in the OS keychain. The explicit browser app
+// restores a public account marker from its HttpOnly cookie session; it never
+// stores a credential in JavaScript. Ordinary Vite fixtures retain a memory-only backend.
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { BrowserSessionBackend } from '@web/auth/browserSessionBackend';
+import { withBrowserSession } from '@web/auth/browserSessionTransport';
 
 export type StoredSession = {
   token: string;
@@ -164,7 +166,14 @@ export function __setSessionBackendForTests(backend: SessionStorageBackend | nul
 function backend(): SessionStorageBackend {
   if (backendOverride) return backendOverride;
   if (cachedBackend) return cachedBackend;
-  cachedBackend = isTauriRuntime() ? new TauriKeychainBackend() : new MemoryBackend();
+  cachedBackend = isTauriRuntime()
+    ? new TauriKeychainBackend()
+    : isBrowserAppRuntime()
+      ? new BrowserSessionBackend(
+        withBrowserSession(globalThis.fetch.bind(globalThis), window.location.origin, () => document.cookie),
+        window.location.origin,
+      )
+      : new MemoryBackend();
   return cachedBackend;
 }
 

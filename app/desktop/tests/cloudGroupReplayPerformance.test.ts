@@ -18,10 +18,10 @@ const groupMemberRolesSource = () => readFileSync(
 test('cloud group replay persists messages with compact canonical writes instead of full state reloads', () => {
   const replayBlock = cloudGroupMessageControlSource();
 
-  assert.match(replayBlock, /const persistedMessage = await upsertCanonicalMessageFast\(messageRequest\)/, 'all replay messages should use compact idempotent upsert');
+  assert.match(replayBlock, /const persistedMessage = await persistence\.upsertCanonicalMessageFast\(messageRequest\)/, 'all replay messages should use compact idempotent upsert');
   assert.doesNotMatch(replayBlock, /appendCanonicalMessageFast\(messageRequest\)/, 'replay must not race another writer through the append-only path');
-  assert.doesNotMatch(replayBlock, /await upsertCanonicalMessage\(messageRequest\)/, 'replay must not request full canonical state for upserts');
-  assert.doesNotMatch(replayBlock, /await appendCanonicalMessage\(messageRequest\)/, 'replay must not request full canonical state for appends');
+  assert.doesNotMatch(replayBlock, /await (?:persistence\.)?upsertCanonicalMessage\(messageRequest\)/, 'replay must not request full canonical state for upserts');
+  assert.doesNotMatch(replayBlock, /await (?:persistence\.)?appendCanonicalMessage\(messageRequest\)/, 'replay must not request full canonical state for appends');
 });
 
 test('cloud group replay prepares identities and sessions with compact canonical writes', () => {
@@ -32,12 +32,12 @@ test('cloud group replay prepares identities and sessions with compact canonical
   assert.match(replaySetupBlock, /for \(const memberLeave of envelope\.memberLeaves \?\? \[\]\)/, 'group replay should apply explicit member removals');
   assert.match(replaySetupBlock, /if \(!isStillActive\) continue/, 'replayed member removals should be idempotent');
   assert.match(replaySetupBlock, /removeCanonicalSessionParticipant\(\{/, 'group replay should persist removed participants as left');
-  assert.doesNotMatch(replaySetupBlock, /await upsertCanonicalIdentity\(request\)/, 'participant identity sync must not reload full canonical state per participant');
-  assert.doesNotMatch(replaySetupBlock, /await openOrCreateCanonicalSession\(/, 'group replay must not reload full canonical state when opening existing group sessions');
+  assert.doesNotMatch(replaySetupBlock, /await (?:persistence\.)?upsertCanonicalIdentity\(request\)/, 'participant identity sync must not reload full canonical state per participant');
+  assert.doesNotMatch(replaySetupBlock, /await (?:persistence\.)?openOrCreateCanonicalSession\(/, 'group replay must not reload full canonical state when opening existing group sessions');
   assert.doesNotMatch(replaySetupBlock, /isSelfAuthoredControl/, 'durable rename notices must rehydrate for their author too');
   assert.match(replaySetupBlock, /envelope\.kind === 'group-title-update'[\s\S]*cloudTitleUpdateNoticeEquivalent/);
   assert.match(replaySetupBlock, /envelope\.kind === 'session-title-update'[\s\S]*cloudTitleUpdateNoticeEquivalent/);
-  assert.match(replaySetupBlock, /const persistedNotice = await upsertCanonicalMessageFast\(noticeRequest\)/);
+  assert.match(replaySetupBlock, /const persistedNotice = await persistence\.upsertCanonicalMessageFast\(noticeRequest\)/);
   assert.doesNotMatch(replaySetupBlock, /appendCanonicalMessage\(noticeRequest\)/);
 });
 

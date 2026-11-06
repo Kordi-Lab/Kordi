@@ -94,7 +94,7 @@ test('cloud settings modal uses the flat main-app palette instead of nested tran
   assert.doesNotMatch(shellPages, /\.app-cloud-account-profile\s*\{[^}]*border-(?:top|bottom)/s);
   assert.doesNotMatch(modal, /app-cloud-account-theme[^\n]*border-y/);
   assert.doesNotMatch(providerGlyph, /bg-\[linear-gradient|rounded-\[14px\] border|shadow-\[inset/);
-  assert.match(providerGlyph, /src=\{`\/provider-logos\/\$\{logo\}\.svg`\}/);
+  assert.match(providerGlyph, /src=\{publicAssetPath\(`provider-logos\/\$\{logo\}\.svg`\)\}/);
   assert.doesNotMatch(themeOverrides, /\.kordi-app\.theme-light \.app-auth-provider-glyph\s*\{[^}]*background:/s);
   assert.doesNotMatch(modalPaletteBlock, /rgba\(147, 128, 109|rgba\(138, 118, 98|rgba\(126,111,64/);
 });

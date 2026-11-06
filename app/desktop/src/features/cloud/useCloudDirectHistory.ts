@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   cloudConversationKindFromConversationId,
@@ -40,6 +41,8 @@ export async function readDirectCloudHistoryPage(
   client: CloudAuthClient,
   beforeSequence?: number,
 ): Promise<CloudDirectHistoryPage | null> {
+  const browserSession = isBrowserAppRuntime() ? await loadSession() : null;
+  if (isBrowserAppRuntime() && browserSession?.accountId !== accountId) return null;
   const conversations = await loadChatSyncConversations(accountId);
   const conversation = conversations.find((row) => row.kind === 'direct'
     && (row.legacy_session_id ?? row.id) === sessionId
@@ -61,10 +64,11 @@ export async function readDirectCloudHistoryPage(
     const oldest = messages.reduce((min, row) => Math.min(min, row.conversation_sequence), before);
     page = { messages, nextBeforeSequence: messages.length ? oldest : null, hasMore: oldest > 1 && messages.length > 0 };
   } else {
-    const session = await loadSession();
+    const session = browserSession ?? await loadSession();
     if (!session?.token || session.accountId !== accountId) return null;
     page = await client.listChatConversationHistoryPage(session.token, conversation.id, beforeSequence, DIRECT_HISTORY_PAGE_SIZE);
-    await applyChatSyncLocalBatch({ accountId, bootstrap: false, conversations: [conversation], messages: page.messages });
+    await applyChatSyncLocalBatch({ accountId, expectedOrganizationId: session.organizationId ?? null,
+      bootstrap: false, conversations: [conversation], messages: page.messages });
   }
   const messagesByPeer: Record<string, CloudMessage[]> = {};
   for (const snapshot of page.messages) {
@@ -77,7 +81,7 @@ export async function readDirectCloudHistoryPage(
 
 export function useCloudDirectHistory(account: CloudAccount | null, activeConversationId: string | null | undefined, client: CloudAuthClient) {
   const accountId = account?.accountId ?? null;
-  const sessionId = accountId && isNativeDesktopShell() ? directHistorySessionId(accountId, activeConversationId) : null;
+  const sessionId = accountId && (isNativeDesktopShell() || isBrowserAppRuntime()) ? directHistorySessionId(accountId, activeConversationId) : null;
   const key = accountId && sessionId ? `${accountId}\u0000${sessionId}` : '';
   const scope = useMemo(() => ({ key }), [key]);
   const currentScope = useRef<typeof scope | null>(scope);

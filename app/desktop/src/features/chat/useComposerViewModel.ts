@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { modelDisplayName } from '@/lib/modelDisplayName';
 import { useCallback, useEffect, useMemo } from 'react';
 
@@ -165,11 +166,12 @@ export function useComposerViewModel({
   composerSelections,
   composerDrafts,
 }: UseComposerViewModelArgs) {
+  const browserApp = isBrowserAppRuntime();
   const authDisplayProviders = useMemo(() => buildAuthDisplayProviders(desktopAuthState), [desktopAuthState]);
   // Hosted accounts run on Kordi Cloud; accounts on this Mac run here.
-  const hostedState = useHostedAccounts(isNativeShell);
+  const hostedState = useHostedAccounts(isNativeShell || browserApp);
   // Null until this Mac's accounts load (and again while they reload), so no copy of them runs on Kordi Cloud.
-  const localChoiceKey = desktopAuthState
+  const localChoiceKey = browserApp ? '[]' : desktopAuthState
     ? JSON.stringify(desktopAuthState.providers.flatMap((provider) => provider.options.map((option) => option.value)))
     : null;
   const localProviderKey = JSON.stringify((desktopAuthState?.providers ?? []).filter((provider) => provider.configured).map((provider) => provider.id));
@@ -189,7 +191,7 @@ export function useComposerViewModel({
       && `${account.providerId}/${account.model}` === composerSelections.chat.model.trim())?.authChoice ?? null;
 
   const chatModelOptions = useMemo<ComposerModelOption[]>(() => {
-    if (!isNativeShell) {
+    if (!isNativeShell && !browserApp) {
       return [];
     }
 
@@ -222,6 +224,7 @@ export function useComposerViewModel({
     }
 
     for (const selection of [composerSelections.chat.model, composerSelections.project.model]) {
+      if (!isNativeShell) continue;
       const [provider, ...modelParts] = selection.split('/');
       const modelId = modelParts.join('/').trim();
       if (provider !== 'lm-studio' || !modelId || options.some((option) => option.value === selection)) continue;
@@ -240,7 +243,7 @@ export function useComposerViewModel({
     }
 
     return options.map((option) => ({ ...option, label: modelDisplayName(option.value, option.label) }));
-  }, [authDisplayProviders, composerSelections.chat.model, composerSelections.project.model, desktopChatState?.modelOptions, hostedAccounts, hostedState.catalog, isNativeShell]);
+  }, [authDisplayProviders, browserApp, composerSelections.chat.model, composerSelections.project.model, desktopChatState?.modelOptions, hostedAccounts, hostedState.catalog, isNativeShell]);
 
   const composerProviderOptions = useMemo<ComposerProviderOption[]>(() => {
     const displayProviders = authDisplayProviders;

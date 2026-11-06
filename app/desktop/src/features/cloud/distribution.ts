@@ -1,3 +1,5 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+
 export type ClientDistribution = {
   loginPage?: { title: string; subtitle: string; signupTitle: string; signupSubtitle: string };
   backendOrigin: string;
@@ -19,6 +21,7 @@ export function requiredClientDistribution(): ClientDistribution {
 
 /** Development keeps its existing link handling; releases accept only their own origin and scheme. */
 export function distributionLinkTarget() {
+  if (isBrowserAppRuntime()) return { origin: window.location.origin, scheme: 'kordi' };
   const distribution = clientDistribution();
   if (distribution) return { origin: distribution.backendOrigin, scheme: distribution.callbackScheme };
   if (import.meta.env?.DEV) return { origin: 'https://kordi.ai', scheme: 'kordi' };

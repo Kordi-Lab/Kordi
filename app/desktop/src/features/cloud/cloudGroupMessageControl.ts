@@ -1,7 +1,4 @@
-import {
-  upsertCanonicalIdentityFast,
-  upsertCanonicalMessageFast,
-} from '@/lib/desktop';
+import { captureCloudGroupCanonicalPersistence } from './cloudGroupCanonicalPersistence';
 import type {
   AppendCanonicalMessageRequest,
   CanonicalIdentity,
@@ -100,6 +97,7 @@ export async function applyCloudGroupMessageControl({
     identityIdByAccount,
     agentAvatarByAccount,
   } = context;
+  const persistence = context.persistence ?? captureCloudGroupCanonicalPersistence();
   let nextState = context.nextState;
   const message = envelope.message;
   if (!message) {
@@ -166,7 +164,7 @@ export async function applyCloudGroupMessageControl({
       message.messageKind,
     );
   if (senderIsAgent) {
-    const senderIdentity = await upsertCanonicalIdentityFast({
+    const senderIdentity = await persistence.upsertCanonicalIdentityFast({
       id: senderIdentityId,
       kind: 'agent',
       displayName: cloudAgentDisplayName(message.senderDisplayName),
@@ -215,7 +213,7 @@ export async function applyCloudGroupMessageControl({
         sourceTransport: existingCloudGroupMessage.sourceTransport,
         sourceEventId: existingCloudGroupMessage.sourceEventId,
       } satisfies AppendCanonicalMessageRequest;
-      const persistedMessage = await upsertCanonicalMessageFast(attachmentUpdateRequest);
+      const persistedMessage = await persistence.upsertCanonicalMessageFast(attachmentUpdateRequest);
       nextState = mergeCanonicalMessageRow(nextState, persistedMessage) ?? nextState;
       setCanonicalState((current) => mergeCanonicalMessageRow(current, persistedMessage));
     }
@@ -319,7 +317,7 @@ export async function applyCloudGroupMessageControl({
       sourceTransport: incomingSourceTransport,
       sourceEventId: incomingSourceEventId,
     };
-    const persistedMessage = await upsertCanonicalMessageFast(messageRequest);
+    const persistedMessage = await persistence.upsertCanonicalMessageFast(messageRequest);
     nextState = mergeCanonicalMessageRow(nextState, persistedMessage) ?? nextState;
     setCanonicalState((current) => mergeCanonicalMessageRow(current, persistedMessage));
     if (senderIsAgent && messageRequestId) {

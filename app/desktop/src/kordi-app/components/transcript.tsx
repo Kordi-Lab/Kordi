@@ -148,6 +148,7 @@ function MessageBubbleView({
   plainAgentResponse = false,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
+  continuesAgentRun = false,
   densityMode = 'default',
 }: {
   msg: Message;
@@ -177,6 +178,8 @@ function MessageBubbleView({
   plainAgentResponse?: boolean;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
+  /** The row above is the same agent, so its avatar is not repeated. */
+  continuesAgentRun?: boolean;
   densityMode?: TranscriptDensityMode;
 } & MessageSelectionProps) {
   const renderSpan = beginChatPerformanceSpan('message-bubble-render');
@@ -549,7 +552,9 @@ function MessageBubbleView({
         ) : null}
         {threadLayout && !plainAgentResponse && (msg.sourceMessage ?? msg.turn.sourceMessage) ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage ?? msg.turn.sourceMessage} onNavigateToMessage={onNavigateToMessage} className="app-thread-quote-row" /> : null}
         <div className={cn("flex max-w-full gap-2", groupChatAgentAvatar ? "items-start" : "items-end", msg.turn.segments?.length ? "w-full" : "w-fit", threadLayout && "app-thread-message-main")}>
-          {threadLayout || groupChatAgentAvatar ? <IdentityAvatar kind="agent" seed={agentMessageAvatarSeed(msg, currentLocalAgentAvatarSeed)} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className={cn("h-7 w-7 shrink-0", !threadLayout && "border border-white/10")} /> : null}
+          {threadLayout || !continuesAgentRun
+            ? <IdentityAvatar kind="agent" seed={agentMessageAvatarSeed(msg, currentLocalAgentAvatarSeed)} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className={cn("h-7 w-7 shrink-0", !threadLayout && "self-start border border-white/10")} />
+            : <span className="app-message-avatar-spacer h-7 w-7 shrink-0" aria-hidden="true" />}
           <div className={cn("app-message-hover-time-trigger min-w-0 max-w-[58rem]", msg.turn.segments?.length ? "w-full" : "w-fit")}>
             <div className="flex min-h-[18px] w-full items-center gap-1.5">
               {threadLayout ? <ThreadMessageHeader msg={msg} name={msg.sender || "Agent"} ownerName={agentOwnerName} /> : null}
@@ -583,7 +588,7 @@ function MessageBubbleView({
           <MessageHoverTime msg={msg} side="peer" />
         </div>
         {msg.threadSummary?.replyCount ? (
-          <div className="flex items-center">
+          <div className={cn("flex items-center", !threadLayout && "pl-9")}>
             <ThreadReplyLine
               count={msg.threadSummary.replyCount}
               unread={msg.threadSummary.unread}
@@ -629,7 +634,8 @@ function MessageBubbleView({
       && contactRequestFailureCanBeRetried(msg.detail),
   );
   const imageGroupAvatar = hasGroupedImageAttachments || hasDetachedImageGroup;
-  const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = threadLayout || !isAgentMessage || groupChatAgentAvatar || imageGroupAvatar; const smallAvatar = threadLayout || useHumanCompactDensity || groupChatAgentAvatar; const showAvatar = showAvatarSlot && (imageGroupAvatar || (threadLayout ? !isGroupedWithPrevious || Boolean(msg.sourceMessage) : !isGroupedWithNext));
+  const footerDetail = showContactRequestAction ? undefined : msg.detail; const agentAvatarColumn = isAgentMessage && !threadLayout; const smallAvatar = threadLayout || useHumanCompactDensity || agentAvatarColumn; const showAvatar = imageGroupAvatar || (threadLayout ? !isGroupedWithPrevious || Boolean(msg.sourceMessage) : agentAvatarColumn ? !continuesAgentRun : !isGroupedWithNext);
+  const agentHeaderBesideAvatar = agentAvatarColumn && showHeaderMeta && !groupChatAgentAvatar;
   const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode && !isSystemAvatarUrl(msg.senderProfileImageUrl)); const isForwardedMessage = msg.messageAction?.kind === 'forward';
   const standaloneEmojiItem = isForwardedMessage ? null : standaloneEmojiItemForMessage(msg, { isHuman: showCompactFooter, showsSender: showInlineHumanSender, footerDetail });
   const bubbleAttachmentPreview = hasBubbleAttachments ? <AttachmentPreview msg={msg} scope={hasDetachedImageGroup ? 'non-images' : 'all'} imageGallery={imageGallery} imageDeliveryStatus={hasOnlyBorderlessMediaAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null} /> : null;
@@ -702,6 +708,62 @@ function MessageBubbleView({
       )}
     </>
   );
+  const messageRowBody = (
+    <>
+      <TranscriptMessageSurface data-message-context-menu-anchor="true"
+        data-message-media-side={hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasDetachedImageGroup && hasText ? 'true' : undefined}
+        data-message-detached-image-group={hasDetachedImageGroup ? 'true' : undefined}
+        attachmentPreview={<AttachmentPreview msg={msg} scope="images" imageGallery={imageGallery} imageDeliveryStatus={null} />} borderless={bareSurface || Boolean(standaloneEmojiItem)}
+        bubbleClassName={bubble} compact={useHumanCompactDensity} detachedImageGroup={hasDetachedImageGroup}
+        enter={shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus)} groupedWithPrevious={isGroupedWithPrevious}
+        side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'} tail={!isGroupedWithNext}
+        data-transcript-density={compactDensity}
+        onClick={(event) => {
+          if (!selectableInSelectionMode) return;
+          const target = event.target instanceof Element ? event.target : null;
+          if (target?.closest('button,a,input,textarea,[role="button"]')) return;
+          event.preventDefault();
+          event.stopPropagation();
+          onToggleSelectedMessage?.(msg);
+        }}
+        className={cn(
+        'app-message-hover-time-trigger min-w-0',
+        hasDetachedImageGroup ? cn('flex flex-col gap-2', isOwnHumanMessage ? 'items-end' : 'items-start') : '',
+        hasGroupedImageAttachments ? (isOwnHumanMessage ? 'mr-4' : isPeerHumanMessage ? 'ml-4' : '') : '',
+        bareSurface || hasDetachedImageGroup || standaloneEmojiItem ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
+        isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
+        isOwnHumanMessage
+          ? bareSurface || hasDetachedImageGroup || standaloneEmojiItem
+            ? 'w-fit max-w-[31rem] p-0'
+            : useHumanCompactDensity
+              ? cn('app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
+              : cn('w-fit px-4 py-2.5', 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
+          : isPeerHumanMessage
+            ? bareSurface || hasDetachedImageGroup || standaloneEmojiItem
+              ? 'w-fit max-w-[31rem] p-0'
+              : useHumanCompactDensity
+                ? cn(
+                  'app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', 'max-w-[52rem]',
+                  msg.supportContactTyping ? 'min-w-[3.25rem]' : undefined,
+                  humanMessageBubbleShapeClass('peer'),
+                )
+                : cn(
+                  'w-fit px-4 py-2.5', 'max-w-[52rem]',
+                  msg.supportContactTyping ? 'min-w-[4rem]' : undefined,
+                  humanMessageBubbleShapeClass('peer'),
+                )
+             : hasDetachedImageGroup ? 'w-fit max-w-[31rem] p-0' : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyBorderlessMediaAttachments ? 'pl-2.5 py-1.5' : '',
+        !bareSurface && !hasDetachedImageGroup && !standaloneEmojiItem && bubble,
+      )}
+      >
+      {messageSurfaceContent}
+      </TranscriptMessageSurface>
+      <TranscriptMessageTransferActions message={msg} showUploads={isOwnHumanMessage} retryable={showsExternalRetry} onRetryMessage={onRetryMessage} />
+      <MessageHoverTime msg={msg} side={isOwnHumanMessage ? 'own' : 'peer'} />
+      {forkButton}
+      {forkChip}
+    </>
+  );
   return (
     <MessageContextMenuHost
       msg={msg}
@@ -730,12 +792,11 @@ function MessageBubbleView({
       data-message-layout={threadLayout ? 'threads' : undefined}
     >
       {threadLayout && msg.sourceMessage && !isForwardedMessage ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage} onNavigateToMessage={onNavigateToMessage} className="app-thread-quote-row" /> : null}
-      {showHeaderMeta && !threadLayout && !groupChatAgentAvatar ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} /> : null}
       <div className={cn(
         'flex w-full max-w-full',
         threadLayout && 'app-thread-message-main',
-        hasOnlyBorderlessMediaAttachments || imageGroupAvatar || (isAgentMessage && groupChatAgentAvatar) ? 'items-start' : 'items-end',
-        isAgentMessage ? 'w-fit max-w-full gap-2' : showAvatarSlot || selectionControl ? (useHumanCompactDensity ? 'gap-1.5' : 'gap-2') : 'gap-0',
+        hasOnlyBorderlessMediaAttachments || imageGroupAvatar || agentAvatarColumn ? 'items-start' : 'items-end',
+        isAgentMessage ? 'w-fit max-w-full gap-2' : useHumanCompactDensity ? 'gap-1.5' : 'gap-2',
         isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row',
       )}>
         {selectionControl}
@@ -775,63 +836,17 @@ function MessageBubbleView({
               )}
             />
           )
-        ) : showAvatarSlot ? (
+        ) : (
           <span className={cn('app-message-avatar-spacer shrink-0', smallAvatar ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
-        ) : null}
-        <TranscriptMessageSurface data-message-context-menu-anchor="true"
-          data-message-media-side={hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasDetachedImageGroup && hasText ? 'true' : undefined}
-          data-message-detached-image-group={hasDetachedImageGroup ? 'true' : undefined}
-          attachmentPreview={<AttachmentPreview msg={msg} scope="images" imageGallery={imageGallery} imageDeliveryStatus={null} />} borderless={bareSurface || Boolean(standaloneEmojiItem)}
-          bubbleClassName={bubble} compact={useHumanCompactDensity} detachedImageGroup={hasDetachedImageGroup}
-          enter={shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus)} groupedWithPrevious={isGroupedWithPrevious}
-          side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'} tail={!isGroupedWithNext}
-          data-transcript-density={compactDensity}
-          onClick={(event) => {
-            if (!selectableInSelectionMode) return;
-            const target = event.target instanceof Element ? event.target : null;
-            if (target?.closest('button,a,input,textarea,[role="button"]')) return;
-            event.preventDefault();
-            event.stopPropagation();
-            onToggleSelectedMessage?.(msg);
-          }}
-          className={cn(
-          'app-message-hover-time-trigger min-w-0',
-          hasDetachedImageGroup ? cn('flex flex-col gap-2', isOwnHumanMessage ? 'items-end' : 'items-start') : '',
-          hasGroupedImageAttachments ? (isOwnHumanMessage ? 'mr-4' : isPeerHumanMessage ? 'ml-4' : '') : '',
-          bareSurface || hasDetachedImageGroup || standaloneEmojiItem ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
-          isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
-          isOwnHumanMessage
-            ? bareSurface || hasDetachedImageGroup || standaloneEmojiItem
-              ? 'w-fit max-w-[31rem] p-0'
-              : useHumanCompactDensity
-                ? cn('app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
-                : cn('w-fit px-4 py-2.5', 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
-            : isPeerHumanMessage
-              ? bareSurface || hasDetachedImageGroup || standaloneEmojiItem
-                ? 'w-fit max-w-[31rem] p-0'
-                : useHumanCompactDensity
-                  ? cn(
-                    'app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', 'max-w-[52rem]',
-                    msg.supportContactTyping ? 'min-w-[3.25rem]' : undefined,
-                    humanMessageBubbleShapeClass('peer'),
-                  )
-                  : cn(
-                    'w-fit px-4 py-2.5', 'max-w-[52rem]',
-                    msg.supportContactTyping ? 'min-w-[4rem]' : undefined,
-                    humanMessageBubbleShapeClass('peer'),
-                  )
-               : hasDetachedImageGroup ? 'w-fit max-w-[31rem] p-0' : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyBorderlessMediaAttachments ? 'pl-2.5 py-1.5' : '',
-          !bareSurface && !hasDetachedImageGroup && !standaloneEmojiItem && bubble,
         )}
-        >
-        {messageSurfaceContent}
-        </TranscriptMessageSurface>
-        <TranscriptMessageTransferActions message={msg} showUploads={isOwnHumanMessage} retryable={showsExternalRetry} onRetryMessage={onRetryMessage} />
-        <MessageHoverTime msg={msg} side={isOwnHumanMessage ? 'own' : 'peer'} />
-        {forkButton}
-        {forkChip}
+        {agentHeaderBesideAvatar ? (
+          <div className="flex min-w-0 max-w-full flex-col items-start gap-1">
+            <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} />
+            <div className="flex w-fit max-w-full items-end gap-2">{messageRowBody}</div>
+          </div>
+        ) : messageRowBody}
       </div>
-      {!threadLayout && msg.sourceMessage && !isForwardedMessage ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage} side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'} onNavigateToMessage={onNavigateToMessage} className={isOwnHumanMessage ? 'justify-end pr-10' : showAvatarSlot ? 'justify-start pl-10' : 'justify-start'} /> : null}
+      {!threadLayout && msg.sourceMessage && !isForwardedMessage ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage} side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'} onNavigateToMessage={onNavigateToMessage} className={isOwnHumanMessage ? 'justify-end pr-10' : 'justify-start pl-10'} /> : null}
       <MessageReactionChips
         msg={msg}
         onReactMessage={onReactMessage}
@@ -841,7 +856,7 @@ function MessageBubbleView({
         <div className={cn(
           'flex items-center',
           threadLayout && 'app-thread-discussion-line',
-          isOwnHumanMessage ? 'justify-end pr-10' : showAvatarSlot ? 'justify-start pl-10' : 'justify-start',
+          isOwnHumanMessage ? 'justify-end pr-10' : 'justify-start pl-10',
         )}>
           <ThreadReplyLine
             count={msg.threadSummary.replyCount}

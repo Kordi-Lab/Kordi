@@ -10,6 +10,7 @@
       "prerequisites": ["node", "pnpm"],
       "paths": [
         "app/desktop/**",
+        "app/web/**",
         "shared/blob-emoji/**",
         "shared/noto-emoji/**",
         "shared/digest/**",
@@ -32,6 +33,7 @@
       "prerequisites": ["node", "pnpm", "playwright-chromium"],
       "paths": [
         "app/desktop/src/**",
+        "app/web/**",
         "app/desktop/tests/visual/**",
         "app/desktop/public/**",
         "app/desktop/index.html",
@@ -57,6 +59,7 @@
       "prerequisites": ["node", "pnpm", "playwright-chromium"],
       "paths": [
         "app/desktop/src/**",
+        "app/web/**",
         "app/desktop/tests/production/**",
         "app/desktop/tests/visual/**",
         "app/desktop/index.html",
@@ -75,7 +78,7 @@
       "always": false,
       "serial": false,
       "timeoutMinutes": 30,
-      "outputs": ["production entrypoint checks", "transcript trajectory checks", "Chromium and WebKit transcript history checks"]
+      "outputs": ["production entrypoint checks", "transcript trajectory checks", "Chromium and WebKit transcript history checks", "browser app authentication, chat and responsive shell"]
     },
     {
       "id": "server",

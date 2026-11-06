@@ -14,6 +14,7 @@ import {
 } from './authClient';
 import { cloudOAuthCallbackError } from './cloudAuthError';
 import { parseCloudOAuthHashError } from './cloudOAuthResult';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import {
   throwIfCloudOAuthCancelled,
   waitForCloudOAuthOrCancellation,
@@ -34,6 +35,12 @@ export async function startCloudOAuthSignIn(
   let loopback: Awaited<ReturnType<typeof prepareDesktopCloudOAuthLoopback>> = null;
   try {
     throwIfCloudOAuthCancelled(signal);
+    if (isBrowserAppRuntime()) {
+      const url = new URL(`/v1/cloud/auth/web/oauth/${encodeURIComponent(provider)}/start`, window.location.origin);
+      url.searchParams.set('returnTo', `${window.location.pathname}${window.location.search}`);
+      window.location.assign(url.toString());
+      return null;
+    }
     loopback = await prepareDesktopCloudOAuthLoopback();
     throwIfCloudOAuthCancelled(signal);
     if (loopback) {

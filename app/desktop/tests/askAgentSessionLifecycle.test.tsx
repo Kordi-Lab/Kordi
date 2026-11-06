@@ -210,8 +210,9 @@ test('side Agent sends stay optimistic while materializing the target runtime', 
     sharedSendBlock,
     /if \(materializeTarget\) resolvedMaterializedState = await materializeTarget\(\);[\s\S]*appendOptimisticOutboundMessage/,
   );
-  assert.match(materializer, /await fetchDesktopChatState\(sessionId\)/);
-  assert.match(materializer, /materializedState\.activeSessionId !== sessionId[\s\S]*materializedState\.activeSession\.id !== sessionId/);
+  assert.match(materializer, /= fetchDesktopChatState,[\s\S]*await readState\(sessionId\)/);
+  // Another session's state is never used as the target's (see localAgentSessionTarget.test.ts).
+  assert.match(materializer, /state\.activeSessionId === sessionId && state\.activeSession\.id === sessionId/);
   const materializerStart = chatMessages.indexOf('const materializeLocalChatTarget = useCallback');
   const materializerBlock = chatMessages.slice(materializerStart, chatMessages.indexOf('const sendQueuedLocalMessage', materializerStart));
   assert.match(materializerBlock, /mergeBackgroundDesktopChatState\(current, materializedState\)/);

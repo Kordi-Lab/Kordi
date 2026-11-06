@@ -31,6 +31,7 @@
 		0999F5B612F83B3E0878F47F /* KordiShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CF2ED6EF5EAC14BB658712DE /* KordiShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		09DEA8E88AEA560303FBB07B /* ShareExtensionAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F01AB264A8FBD300AF8A544 /* ShareExtensionAPI.swift */; };
 		0A6834A3DFA502989E88F67F /* ConversationAgentSendIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC2736E8F637DA8000EEBB5D /* ConversationAgentSendIntegrationTests.swift */; };
+		0AB588921F99386970D8A100 /* GroupInviteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FE8118A29D27F692382BAD6 /* GroupInviteTests.swift */; };
 		0AE339A604A15C66AF7F3BFA /* CompanionChatPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D777A5F9528D93CB115E881 /* CompanionChatPanelTests.swift */; };
 		0B11AACCFFF668187F188567 /* KordiIDTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AB98E915ABB5AB20F01FDD4 /* KordiIDTests.swift */; };
 		0B72A6AC80380063ABDC7755 /* AgentSessionPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8907D09B7736B6EBC799138 /* AgentSessionPresentationTests.swift */; };
@@ -38,9 +39,11 @@
 		0BC280400290839FA07CB175 /* GroupAvatarPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 678FB4D57B001BD9FE4E8153 /* GroupAvatarPicker.swift */; };
 		0CCA0D9E4453616087A1C935 /* ShareExtensionSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E82504028486B67BF05F7A51 /* ShareExtensionSupportTests.swift */; };
 		0D697B51F119F58F2297E35F /* GroupSessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95CE270CEA87A8CE6D97F559 /* GroupSessionListView.swift */; };
+		0DB3E3BFFC6DD8BCB8F01D94 /* GroupInviteFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB02152A6F7AEBD9E92F4DA3 /* GroupInviteFlow.swift */; };
 		0EBED06DFB5ED16D25504CE2 /* SubsessionConversationViewportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A54C66F5E7062E660286DF /* SubsessionConversationViewportTests.swift */; };
 		0ECD5A149AA56F8FE8606C0A /* ContactsRowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60C9761039C7ED339BC0C048 /* ContactsRowLayout.swift */; };
 		0FB8C0C9566E5071F7CC2B84 /* ConnectorsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62C13F3A5F2EE6E5B8CFAD5E /* ConnectorsClient.swift */; };
+		0FC721B51AC9F504B8BE417E /* CloudGroupInvitations.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6BF8FCF3CB0E396B3CDAAC1 /* CloudGroupInvitations.swift */; };
 		0FCC9220F6A589D7DEA8B2DD /* CloudModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F1853F7027097BBC718478 /* CloudModels.swift */; };
 		103E087FF4423F03F4F8870C /* ContactPresencePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D2AF3B66E209A9728305F4 /* ContactPresencePresentation.swift */; };
 		1045622D69A49EDA88492D53 /* AppModelSessionPins.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85D76D3C4C75887D61CBC73A /* AppModelSessionPins.swift */; };
@@ -149,8 +152,10 @@
 		50987C956B98A62D3A9B1A20 /* ConnectorActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2428C7194E60C10BB2220EAA /* ConnectorActivityView.swift */; };
 		50C62CF159AE39125365DD5E /* ConversationTimelineVirtualization.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBCAAF8E76831DD9D605A11A /* ConversationTimelineVirtualization.swift */; };
 		5279C7AE232AE58BCA9965D5 /* ContactProfileMatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EAFC364140D5A6229EC819F /* ContactProfileMatchTests.swift */; };
+		52FA999552108F4B625A52D9 /* GroupInviteCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05FA2FCDE90AE329673E538D /* GroupInviteCenter.swift */; };
 		544E780F1D9A3BC2CDE8251C /* DocumentAgentThreadViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE444B4BDA9B72D9E774955A /* DocumentAgentThreadViews.swift */; };
 		54E213B51A1D5B127679B739 /* CommonGroundRoomViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F357ED39C59FAD90F5BF85AB /* CommonGroundRoomViews.swift */; };
+		55B8365227A2AFF48A8C5755 /* GroupInviteJoinSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D342A56147F7DC6C1224AF5 /* GroupInviteJoinSheet.swift */; };
 		55BA423EBC0559D8BCB5CABA /* MemoryPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 180966D4C85820B8A46B31F9 /* MemoryPresentationTests.swift */; };
 		564CD6F8EA26FC0916093F42 /* CloudSessionPin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C253E0419E810F300A4012 /* CloudSessionPin.swift */; };
 		57B6384A6CF3A33677D02166 /* CommonGroundNearbyTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B3080843F3105278E80767 /* CommonGroundNearbyTransport.swift */; };
@@ -276,6 +281,7 @@
 		9FF04BEAF8E8D57C8CDD9D41 /* ComposerTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 442174FAD2A3DF14419AC2C0 /* ComposerTextView.swift */; };
 		A082484169F35E02D7235624 /* CommonGroundResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB004F6B7BACCE373E946958 /* CommonGroundResultsView.swift */; };
 		A16CDFD55AF387279483B919 /* OfflineChatRefreshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D22A792A04EFA89754D2EE1 /* OfflineChatRefreshTests.swift */; };
+		A1A2EADC7B19E9FE598A0B13 /* GroupInviteLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A63AD8A97A7983AD032145F6 /* GroupInviteLink.swift */; };
 		A1A37E6BA1FAA2744376AD88 /* AgentSubsessionStopPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB5C03F9FBEE0DC0D15F79B0 /* AgentSubsessionStopPreview.swift */; };
 		A207CB18D4DB771ED154D18B /* CommonGroundTileHue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 310F9B146798BBE0C0C3F2B2 /* CommonGroundTileHue.swift */; };
 		A2391AAA58D3BB6B1CC01E45 /* RollingDigestModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108123CCF91230E14EE21237 /* RollingDigestModels.swift */; };
@@ -500,6 +506,7 @@
 		030EF9AB2B49807064976F35 /* SharedEmojiAnimationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedEmojiAnimationView.swift; sourceTree = "<group>"; };
 		032F0E9CF2067EBA48D5195A /* BlobEmojiComposerText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlobEmojiComposerText.swift; sourceTree = "<group>"; };
 		04DB13168D004CFB223E9828 /* ProfileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileEditorView.swift; sourceTree = "<group>"; };
+		05FA2FCDE90AE329673E538D /* GroupInviteCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupInviteCenter.swift; sourceTree = "<group>"; };
 		065C96F4684935A21E2C862E /* NetworkProxyPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkProxyPolicyTests.swift; sourceTree = "<group>"; };
 		0676A85B5C6E75428E339FDB /* KordiReleaseConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiReleaseConfiguration.swift; sourceTree = "<group>"; };
 		06AEAA1B70194CB973B18D68 /* CommonGroundModel+Memories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CommonGroundModel+Memories.swift"; sourceTree = "<group>"; };
@@ -571,6 +578,7 @@
 		2BD932A38840C17EA0B8EF01 /* AppModel+Digest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Digest.swift"; sourceTree = "<group>"; };
 		2C4AAEAEA5A157A0B9F537F6 /* AppSignInSessionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSignInSessionStoreTests.swift; sourceTree = "<group>"; };
 		2D532A8DAAC5AE9484BF6B4E /* ContactProfileSharedItemsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactProfileSharedItemsTests.swift; sourceTree = "<group>"; };
+		2FE8118A29D27F692382BAD6 /* GroupInviteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupInviteTests.swift; sourceTree = "<group>"; };
 		30170A4D2C1A1AF7B87BF136 /* noto-emoji */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "noto-emoji"; path = "Kordi/Resources/noto-emoji"; sourceTree = SOURCE_ROOT; };
 		309CD0A7C2C6D11A2519E80E /* PersonalAgentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalAgentTests.swift; sourceTree = "<group>"; };
 		310F9B146798BBE0C0C3F2B2 /* CommonGroundTileHue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundTileHue.swift; sourceTree = "<group>"; };
@@ -735,6 +743,7 @@
 		8BE10A83E5B7600FB8C28B13 /* OrganizationSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrganizationSelectionTests.swift; sourceTree = "<group>"; };
 		8C0C3CC4E57DFE30A0CA7CCC /* ChatRowSwipeGestureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatRowSwipeGestureTests.swift; sourceTree = "<group>"; };
 		8CF543DAFCB4887780A9921F /* CommonGroundWalletTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundWalletTests.swift; sourceTree = "<group>"; };
+		8D342A56147F7DC6C1224AF5 /* GroupInviteJoinSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupInviteJoinSheet.swift; sourceTree = "<group>"; };
 		8D777A5F9528D93CB115E881 /* CompanionChatPanelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionChatPanelTests.swift; sourceTree = "<group>"; };
 		8DB852A1AC3BAABE284AC4D5 /* AvatarIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarIdentityTests.swift; sourceTree = "<group>"; };
 		8DBC2CAB3C0303EF73751D6B /* DocumentShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentShareSheet.swift; sourceTree = "<group>"; };
@@ -779,6 +788,7 @@
 		A21B553E883C637AF55134AE /* AttachmentTransferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentTransferTests.swift; sourceTree = "<group>"; };
 		A3CB1BE1838B72C6486F57D8 /* ContactProfilePresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactProfilePresenter.swift; sourceTree = "<group>"; };
 		A5DD145571AE89A517CFDA72 /* MemoryLabelChips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryLabelChips.swift; sourceTree = "<group>"; };
+		A63AD8A97A7983AD032145F6 /* GroupInviteLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupInviteLink.swift; sourceTree = "<group>"; };
 		A65E789E3576D0F0275E8B65 /* ConversationSendQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSendQueue.swift; sourceTree = "<group>"; };
 		A721A7C18CFB4B2D4F497A8A /* CommonGroundPairingExchange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundPairingExchange.swift; sourceTree = "<group>"; };
 		A7AD908E7B5EEAFC89EC25B5 /* ContactProfileUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactProfileUITests.swift; sourceTree = "<group>"; };
@@ -891,6 +901,7 @@
 		E4A633852D5BE5F827D45874 /* ComposerBackdropBand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerBackdropBand.swift; sourceTree = "<group>"; };
 		E4C548DEDF958CD421B1FC9B /* DocumentTitles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTitles.swift; sourceTree = "<group>"; };
 		E5E0E98754E4D3E74B787C6A /* VoiceMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageView.swift; sourceTree = "<group>"; };
+		E6BF8FCF3CB0E396B3CDAAC1 /* CloudGroupInvitations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudGroupInvitations.swift; sourceTree = "<group>"; };
 		E73D9AC825DC3BC458F81028 /* ConversationTrajectoryViewport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTrajectoryViewport.swift; sourceTree = "<group>"; };
 		E75003FC35484D74E742DA4F /* DocumentForwardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentForwardingTests.swift; sourceTree = "<group>"; };
 		E7805CAF02455FD762B57398 /* CommonGroundCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundCardView.swift; sourceTree = "<group>"; };
@@ -931,6 +942,7 @@
 		F84338335ED5C3245CFA8E68 /* CloudAPIClient+ContactProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CloudAPIClient+ContactProfile.swift"; sourceTree = "<group>"; };
 		F93CA48DD086B4999869484F /* SubsessionConversationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubsessionConversationUITests.swift; sourceTree = "<group>"; };
 		F9EAECC27E3B8C88C21CBA73 /* AppSignInClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSignInClient.swift; sourceTree = "<group>"; };
+		FB02152A6F7AEBD9E92F4DA3 /* GroupInviteFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupInviteFlow.swift; sourceTree = "<group>"; };
 		FB201FE56A48A0CC09D85718 /* DigestMonthGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestMonthGrid.swift; sourceTree = "<group>"; };
 		FC40CA44539DE969C3129E9B /* KordiAppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiAppEnvironment.swift; sourceTree = "<group>"; };
 		FD490ECA738742A1C27BD23C /* ProviderAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAuthentication.swift; sourceTree = "<group>"; };
@@ -989,6 +1001,7 @@
 				947D36AE16CB8FC9349B6169 /* EmojiAnimationDiskCache.swift */,
 				416A049DC931011ECA554628 /* EmojiAnimationRepository.swift */,
 				8B58CB494BE1FE3E64175CFF /* GroupAgentTarget.swift */,
+				A63AD8A97A7983AD032145F6 /* GroupInviteLink.swift */,
 				DDB063759C8072686227B4C1 /* GroupSpaceSummary.swift */,
 				9D6D4254D09283B27D15B674 /* KordiID.swift */,
 				5C2D1BC4DA20D76871039412 /* LivePhotoAttachment.swift */,
@@ -1242,6 +1255,8 @@
 				958064210641FA020E27EF19 /* ChatHomeView.swift */,
 				1DECAF58B49CE2DE63185B4C /* ChatRowSwipeGesture.swift */,
 				A020F6E80156312C56FA7D0F /* ConversationRow.swift */,
+				FB02152A6F7AEBD9E92F4DA3 /* GroupInviteFlow.swift */,
+				8D342A56147F7DC6C1224AF5 /* GroupInviteJoinSheet.swift */,
 				0B7E8E86F8830C031FE1EC87 /* GroupManagementSheet.swift */,
 				19D7E03C00B6716981C6470A /* GroupMemberInviteSheet.swift */,
 				95CE270CEA87A8CE6D97F559 /* GroupSessionListView.swift */,
@@ -1478,6 +1493,7 @@
 				D3BDEA26F6B2936B8130310A /* EmojiAnimationTests.swift */,
 				5FF8982F88272CFCECE0D898 /* GroupAgentTargetTests.swift */,
 				216678652A940F2F115F8A26 /* GroupAvatarTests.swift */,
+				2FE8118A29D27F692382BAD6 /* GroupInviteTests.swift */,
 				FD8D24A6689116C11FF7A038 /* InitialAgentModelNoticeTests.swift */,
 				1B3BED33D4A29116EAD073A0 /* KordiAppEnvironmentTests.swift */,
 				7AB98E915ABB5AB20F01FDD4 /* KordiIDTests.swift */,
@@ -1550,6 +1566,7 @@
 				85D76D3C4C75887D61CBC73A /* AppModelSessionPins.swift */,
 				CB6037E13EA0BCC18AA44625 /* AttachmentReactionMutationQueue.swift */,
 				C895B1E21D180A3B8DAC028C /* CloudPresencePublisher.swift */,
+				05FA2FCDE90AE329673E538D /* GroupInviteCenter.swift */,
 				583A0B10599C4D4B56B397F3 /* KordiApp.swift */,
 				5A0218E2113CE6E59C3A85E1 /* KordiLinkHandling.swift */,
 				34269C735F1FCF72602AD0D6 /* KordiMessageNotificationCleanup.swift */,
@@ -1642,6 +1659,7 @@
 				3EB18EB4C7CB33187DFB7840 /* CloudDirectMessageProjector.swift */,
 				B829E6583F62108007ADC212 /* CloudDocuments.swift */,
 				5ADA22B3431586FF4FB75C2C /* CloudGroupAvatar.swift */,
+				E6BF8FCF3CB0E396B3CDAAC1 /* CloudGroupInvitations.swift */,
 				F07103152F3015F0B24FEE45 /* CloudGroupMessageCodec.swift */,
 				DA7028359C98849CFD0A5FCE /* CloudMemory.swift */,
 				1B208AC082D8D2E3AC98654A /* CloudMessageCodec.swift */,
@@ -2031,6 +2049,7 @@
 				43AD849D638FA91F9791A089 /* EmojiAnimationTests.swift in Sources */,
 				7450B6513CBD85BE88B9D802 /* GroupAgentTargetTests.swift in Sources */,
 				0BC208ED5A89747823F3B780 /* GroupAvatarTests.swift in Sources */,
+				0AB588921F99386970D8A100 /* GroupInviteTests.swift in Sources */,
 				BA1EBAE68A68B522D0B2C8C8 /* InitialAgentModelNoticeTests.swift in Sources */,
 				F72232A5E55E5DDBF7C08493 /* KordiAppEnvironmentTests.swift in Sources */,
 				0B11AACCFFF668187F188567 /* KordiIDTests.swift in Sources */,
@@ -2143,6 +2162,7 @@
 				058435B09407E4E59A1265BD /* CloudDocumentEvents.swift in Sources */,
 				4962DC7D1F6C588C1AA0C142 /* CloudDocuments.swift in Sources */,
 				C0C9FEBBD69FC5882BF250CF /* CloudGroupAvatar.swift in Sources */,
+				0FC721B51AC9F504B8BE417E /* CloudGroupInvitations.swift in Sources */,
 				DEAE54A65AF63D57C0DFF6CA /* CloudGroupMessageCodec.swift in Sources */,
 				719C3D9F59C2EFD4B35654FC /* CloudMemory.swift in Sources */,
 				D9428E4F1B6772EBB490EFC9 /* CloudMessageCodec.swift in Sources */,
@@ -2289,6 +2309,10 @@
 				F9E33A7DCCE9CF63E615408F /* ForwardMessageSheet.swift in Sources */,
 				22A8E54BEF31249E570DABA2 /* GroupAgentTarget.swift in Sources */,
 				0BC280400290839FA07CB175 /* GroupAvatarPicker.swift in Sources */,
+				52FA999552108F4B625A52D9 /* GroupInviteCenter.swift in Sources */,
+				0DB3E3BFFC6DD8BCB8F01D94 /* GroupInviteFlow.swift in Sources */,
+				55B8365227A2AFF48A8C5755 /* GroupInviteJoinSheet.swift in Sources */,
+				A1A2EADC7B19E9FE598A0B13 /* GroupInviteLink.swift in Sources */,
 				D8DBAE5BA9E4237E34169C64 /* GroupManagementSheet.swift in Sources */,
 				BF60B4571004FB7698BFED47 /* GroupMemberInviteSheet.swift in Sources */,
 				0D697B51F119F58F2297E35F /* GroupSessionListView.swift in Sources */,

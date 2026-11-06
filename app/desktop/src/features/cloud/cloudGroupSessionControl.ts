@@ -3,12 +3,7 @@ import {
   groupMetadataWithoutSessionTitleOwnership,
   resolveReplicatedGroupTitle,
 } from '@/features/chat/groupTitle';
-import {
-  openOrCreateCanonicalSessionFast,
-  removeCanonicalSessionParticipant,
-  upsertCanonicalIdentityFast,
-  upsertCanonicalMessageFast,
-} from '@/lib/desktop';
+import { captureCloudGroupCanonicalPersistence, type CloudGroupCanonicalPersistence } from './cloudGroupCanonicalPersistence';
 import type {
   CanonicalIdentity,
   CanonicalSessionState,
@@ -72,6 +67,7 @@ type CloudGroupSessionStateOps = {
 };
 
 export type ApplyCloudGroupSessionControlInput = {
+  persistence?: CloudGroupCanonicalPersistence;
   cloudMessage: CloudGroupControlContext['cloudMessage'];
   envelope: CloudGroupControlEnvelope;
   historyReplay?: boolean;
@@ -99,6 +95,7 @@ export function cloudGroupHistoryReplayPreservesSessionShell(
 }
 
 export async function applyCloudGroupSessionControl({
+  persistence = captureCloudGroupCanonicalPersistence(),
   cloudMessage,
   envelope,
   historyReplay,
@@ -128,6 +125,7 @@ export async function applyCloudGroupSessionControl({
     && canonicalState.sessions.some((session) => session.id === envelope.groupId)
   ) {
     return {
+      persistence,
       account,
       cloudMessage,
       envelope,
@@ -186,7 +184,7 @@ export async function applyCloudGroupSessionControl({
   for (const participant of participantByAccount.values()) {
     const request = cloudGroupIdentityRequest(participant, account, localHumanIdentityId);
     identityIdByAccount.set(participant.accountId, request.id ?? '');
-    const identity = await upsertCanonicalIdentityFast(request);
+    const identity = await persistence.upsertCanonicalIdentityFast(request);
     nextState = stateOps.upsertIdentity(nextState, identity);
     canonical.setState((current) => stateOps.upsertIdentity(current, identity));
   }
@@ -208,7 +206,7 @@ export async function applyCloudGroupSessionControl({
     });
     if (creationNotice && envelope.channelCreated === true
       && !nextState.messages.some((message) => message.id === creationNotice.id)) {
-      const persisted = await upsertCanonicalMessageFast(creationNotice);
+      const persisted = await persistence.upsertCanonicalMessageFast(creationNotice);
       nextState = mergeCanonicalMessageRow(nextState, persisted) ?? nextState;
     }
     for (const noticeRequest of cloudGroupMemberJoinNoticeRequests({
@@ -217,12 +215,13 @@ export async function applyCloudGroupSessionControl({
       identityIdByAccount,
       existingMessageIds: new Set(nextState.messages.map((message) => message.id)),
     })) {
-      await upsertCanonicalMessageFast(noticeRequest);
+      await persistence.upsertCanonicalMessageFast(noticeRequest);
     }
     if (envelope.kind !== 'group-message' || !envelope.message) {
       return null;
     }
     return {
+      persistence,
       account,
       cloudMessage,
       envelope,
@@ -350,7 +349,7 @@ export async function applyCloudGroupSessionControl({
     } : {}),
   };
   const persistedSessionTitle = stateOps.cleanText(envelopeSession?.title);
-  const openResult = await openOrCreateCanonicalSessionFast({
+  const openResult = await persistence.openOrCreateCanonicalSessionFast({
     id: envelope.groupId,
     kind: 'group',
     title: authorizedSessionTitle?.title ?? (persistedSessionTitle || 'New chat'),
@@ -378,7 +377,7 @@ export async function applyCloudGroupSessionControl({
     if (noticeRequest && !nextState.messages.some((message) => (
       cloudTitleUpdateNoticeEquivalent(message, noticeRequest)
     ))) {
-      const persistedNotice = await upsertCanonicalMessageFast(noticeRequest);
+      const persistedNotice = await persistence.upsertCanonicalMessageFast(noticeRequest);
       nextState = mergeCanonicalMessageRow(nextState, persistedNotice) ?? nextState;
       canonical.setState((current) => mergeCanonicalMessageRow(current, persistedNotice));
     }
@@ -393,7 +392,7 @@ export async function applyCloudGroupSessionControl({
     if (noticeRequest && !nextState.messages.some((message) => (
       cloudTitleUpdateNoticeEquivalent(message, noticeRequest)
     ))) {
-      const persistedNotice = await upsertCanonicalMessageFast(noticeRequest);
+      const persistedNotice = await persistence.upsertCanonicalMessageFast(noticeRequest);
       nextState = mergeCanonicalMessageRow(nextState, persistedNotice) ?? nextState;
       canonical.setState((current) => mergeCanonicalMessageRow(current, persistedNotice));
     }
@@ -404,7 +403,7 @@ export async function applyCloudGroupSessionControl({
     identityIdByAccount,
     existingMessageIds: new Set(nextState.messages.map((message) => message.id)),
   })) {
-    const persistedNotice = await upsertCanonicalMessageFast(noticeRequest);
+    const persistedNotice = await persistence.upsertCanonicalMessageFast(noticeRequest);
     nextState = mergeCanonicalMessageRow(nextState, persistedNotice) ?? nextState;
     canonical.setState((current) => mergeCanonicalMessageRow(current, persistedNotice));
   }
@@ -417,7 +416,7 @@ export async function applyCloudGroupSessionControl({
       && participant.state === 'active'
     ));
     if (!isStillActive) continue;
-    nextState = await removeCanonicalSessionParticipant({
+    nextState = await persistence.removeCanonicalSessionParticipant({
       sessionId: envelope.groupId,
       identityId: removedIdentityId,
       removedByIdentityId: actorIdentityId,
@@ -448,6 +447,7 @@ export async function applyCloudGroupSessionControl({
     return null;
   }
   return {
+    persistence,
     account,
     cloudMessage,
     envelope,

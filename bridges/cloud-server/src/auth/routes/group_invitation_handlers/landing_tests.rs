@@ -1,4 +1,6 @@
-use super::landing::{landing_document, landing_response, LandingView, SIGN_IN_RETURN_PARAM};
+use super::landing::{
+    claim_redirect_target, landing_document, landing_response, LandingView, SIGN_IN_RETURN_PARAM,
+};
 use super::*;
 
 const TOKEN: &str = "kordi_gi_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -26,6 +28,11 @@ fn signed_out_page_names_inviter_group_and_count_and_returns_after_sign_in() {
     )));
     assert!(!page.contains("<form"));
     assert!(!page.contains("<script"));
+    // The kordi.ai home page's type, header and footer.
+    assert!(page.contains("/research-preview/public/assets/fonts/geist-600.ttf"));
+    assert!(page.contains(r#"<header class="wrap mast">"#));
+    assert!(page.contains(r#"<nav aria-label="Footer">"#));
+    assert!(!page.contains("Marcellus"));
 }
 
 #[test]
@@ -36,12 +43,14 @@ fn signed_in_page_claims_only_through_a_form_with_the_csrf_token() {
         token: TOKEN.to_string(),
         csrf: "csrf-value".to_string(),
         download_url: Some("https://example.test/download.dmg".to_string()),
+        web: false,
     });
     assert!(page.contains("Open Kordi to join"));
     assert!(page.contains("Reading group is waiting in the app."));
     assert!(page.contains(&format!(r#"method="post" action="/g/{TOKEN}""#)));
     assert!(page.contains(r#"name="csrf" value="csrf-value""#));
-    assert!(page.contains(r#"type="submit">Open Kordi</button>"#));
+    assert!(page.contains(r#"name="continue" value="app">Open Kordi</button>"#));
+    assert!(!page.contains("Continue on the web"));
     assert!(page.contains("Download for Mac"));
     assert!(page.contains(">AS</span><span>Ana Silva</span>"));
     assert!(!page.contains("Sign up"));
@@ -49,17 +58,63 @@ fn signed_in_page_claims_only_through_a_form_with_the_csrf_token() {
 }
 
 #[test]
-fn member_page_opens_the_app() {
-    let page = landing_document(&LandingView::Member {
-        group: "Reading group".to_string(),
+fn signed_in_page_offers_the_app_and_the_web_from_one_claim_form() {
+    let page = landing_document(&LandingView::SignedIn {
+        group: "Reading <group>".to_string(),
+        viewer: Some("Ana Silva".to_string()),
         token: TOKEN.to_string(),
+        csrf: "csrf-value".to_string(),
+        download_url: None,
+        web: true,
     });
-    assert!(page.contains("You&#39;re in Reading group"));
-    assert!(page.contains(&format!(
-        "href=\"{}\">Open the app</a>",
+    assert!(page.contains("<h1>Join Reading &lt;group&gt;</h1>"));
+    assert!(page.contains("Open it in the app or on the web."));
+    assert_eq!(page.matches("<form").count(), 1);
+    assert!(page.contains(&format!(r#"method="post" action="/g/{TOKEN}""#)));
+    assert!(page.contains(r#"name="csrf" value="csrf-value""#));
+    let open = page
+        .find(r#"<button class="button button-primary" type="submit" name="continue" value="app">Open Kordi</button>"#)
+        .expect("primary Open Kordi");
+    let web = page
+        .find(r#"<button class="button button-secondary" type="submit" name="continue" value="web">Continue on the web</button>"#)
+        .expect("secondary Continue on the web");
+    assert!(open < web);
+    assert!(!page.contains("Download for Mac"));
+    assert!(!page.contains("<script"));
+}
+
+#[test]
+fn claims_continue_only_to_the_web_app_or_the_deep_link() {
+    assert_eq!(claim_redirect_target(TOKEN, true), "/app/");
+    assert_eq!(
+        claim_redirect_target(TOKEN, false),
         group_invite_deep_link(TOKEN)
+    );
+    assert!(group_invite_deep_link(TOKEN).starts_with(&format!(
+        "{}://group-invite/",
+        crate::distribution::callback_scheme()
     )));
-    assert!(!page.contains("<form"));
+}
+
+#[test]
+fn member_page_opens_the_app() {
+    for web in [false, true] {
+        let page = landing_document(&LandingView::Member {
+            group: "Reading group".to_string(),
+            token: TOKEN.to_string(),
+            web,
+        });
+        assert!(page.contains("You&#39;re in Reading group"));
+        assert!(page.contains(&format!(
+            "href=\"{}\">Open the app</a>",
+            group_invite_deep_link(TOKEN)
+        )));
+        assert_eq!(
+            page.contains(r#"href="/app/">Continue on the web</a>"#),
+            web
+        );
+        assert!(!page.contains("<form"));
+    }
 }
 
 #[test]

@@ -289,3 +289,105 @@ async fn a_project_request_stays_with_its_mac_when_it_cannot_start() {
     );
     assert_eq!(fx.runs().await, vec![("leased".into(), "desktop".into())]);
 }
+
+impl Fixture {
+    /// The owner Mac's readiness and presence last beat `seconds` ago. With
+    /// `swept`, the stale-presence sweep already marked the Mac offline.
+    async fn age_readiness(&self, seconds: i64, swept: bool) {
+        query("UPDATE cloud_agent_desktop_capabilities SET updated_at=now()-make_interval(secs => $2) WHERE agent_id=$1")
+            .bind(format!("cloud-agent:{}", self.owner.account_id)).bind(seconds as f64).execute(&self.pool).await.unwrap();
+        query("UPDATE cloud_device_presence SET last_heartbeat_at=(now()-make_interval(secs => $2))::text, state=CASE WHEN $3 THEN 'offline' ELSE 'online' END, last_offline_at=CASE WHEN $3 THEN now()::text ELSE NULL END WHERE account_id=$1")
+            .bind(&self.owner.account_id).bind(seconds as f64).bind(swept).execute(&self.pool).await.unwrap();
+    }
+
+    /// The Mac's next readiness and presence beats.
+    async fn beat(&self) {
+        let ready = json!({ "agentIds": [format!("cloud-agent:{}", self.owner.account_id)] });
+        self.post("/v1/cloud/agent-runs/desktop/ready", ready).await;
+        let online = post_with_token("/v1/cloud/presence/online", &self.owner.token);
+        let response = self.router.clone().oneshot(online).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    /// A hosted-account request claimed by another device of the owner.
+    async fn hosted_request_claim(&self) -> Value {
+        let mut body = self.body(None);
+        body["runtimeRoute"] = json!({
+            "defaultModel": "openai/gpt-5.6-sol",
+            "defaultAuthProvider": "openai",
+            "defaultAuthChoice": "cloud-login:synthetic"
+        });
+        self.post("/v1/cloud/agent-runs/claim", body).await
+    }
+
+    async fn held_for_mac(&self, run_id: &str) -> bool {
+        let held: (bool,) = sqlx_core::query_as::query_as(
+            "SELECT COALESCE(desktop_preferred_until > now(), FALSE) FROM cloud_agent_fallback_runs WHERE run_id=$1",
+        )
+        .bind(run_id)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap();
+        held.0
+    }
+}
+
+#[tokio::test]
+async fn a_mac_that_missed_one_beat_still_gets_the_request_first() {
+    let Some(fx) = fixture("mac-first-missed-beat").await else {
+        return;
+    };
+    fx.age_readiness(50, false).await;
+    let held = fx.hosted_request_claim().await;
+    let run_id = held["runId"].as_str().unwrap();
+    assert!(
+        fx.held_for_mac(run_id).await,
+        "one missed beat keeps the hold"
+    );
+    assert!(
+        !runner_can_lease(&fx.router, run_id).await,
+        "the Mac goes first"
+    );
+
+    fx.beat().await;
+    let claimed = fx.mac_claim().await;
+    assert_eq!(claimed["runId"], run_id);
+    assert_eq!(claimed["acquired"], true);
+    assert_eq!(fx.runs().await, vec![("leased".into(), "desktop".into())]);
+}
+
+#[tokio::test]
+async fn a_mac_the_sweep_marked_offline_is_held_for_then_the_cloud_answers() {
+    let Some(fx) = fixture("mac-first-swept").await else {
+        return;
+    };
+    fx.age_readiness(40, true).await;
+    let held = fx.hosted_request_claim().await;
+    let run_id = held["runId"].as_str().unwrap();
+    assert!(fx.held_for_mac(run_id).await);
+    assert!(!runner_can_lease(&fx.router, run_id).await);
+
+    fx.end_window(run_id).await;
+    assert!(
+        runner_can_lease(&fx.router, run_id).await,
+        "no Mac claimed it"
+    );
+    assert_eq!(fx.runs().await, vec![("leased".into(), "cloud".into())]);
+}
+
+#[tokio::test]
+async fn a_mac_silent_past_the_grace_window_gets_no_hold() {
+    for swept in [false, true] {
+        let Some(fx) = fixture("mac-first-gone").await else {
+            return;
+        };
+        fx.age_readiness(80, swept).await;
+        let run_id = fx.hosted_request_claim().await["runId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(!fx.held_for_mac(&run_id).await, "no hold for a gone Mac");
+        assert!(runner_can_lease(&fx.router, &run_id).await);
+        assert_eq!(fx.runs().await, vec![("leased".into(), "cloud".into())]);
+    }
+}

@@ -11,6 +11,7 @@ import { remoteProjectsFromCatalog, useRemoteProjectCatalog } from '../src/featu
 import { __setSessionBackendForTests } from '../src/features/cloud/session';
 import type { ChatSidebarRow } from '../src/pages/sidebar/chatSidebarRows';
 import type { CanonicalSessionState, DesktopChatState } from '../src/kordi-app/types';
+import { nativeShellInvoke } from './helpers/nativeHttp';
 
 const ROOT = '/Users/example/example-project';
 const CATALOG_ID = 'a'.repeat(64);
@@ -129,10 +130,10 @@ for (const bound of [false, true]) test(`unresolved catalog projects are searche
     },
   };
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
-  Object.assign(dom.window, { __TAURI_INTERNALS__: { invoke: async (command: string, args?: Record<string, unknown>) => {
+  Object.assign(dom.window, { __TAURI_INTERNALS__: { invoke: nativeShellInvoke(globals.fetch, async (command: string, args?: Record<string, unknown>) => {
     invoked.push([command, args]);
     return command === 'desktop_project_resolve_catalog' && bound ? { root: '/Users/example/elsewhere', name: 'elsewhere' } : null;
-  } } });
+  }) } });
   dom.window.addEventListener('kordi-projects-updated', () => { updates += 1; });
   __setSessionBackendForTests({ load: async () => ({ token: 'synthetic-token', accountId: 'owner', deviceId: 'this-mac', expiresAt: '' }), save: async () => {}, clear: async () => {} });
   let result: RemoteProjectMembership[] | undefined;

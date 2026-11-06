@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { defaultCloudAuthClient, type CloudGroupInvitationAcceptance } from '@/features/cloud/authClient';
 import type { CloudPendingGroupInvitation } from '@/features/cloud/cloudIdentityTypes';
 import { dispatchCloudGroupInvitationAccepted } from '@/features/cloud/groupInvitationDeepLink';
+import { setGroupInvitationPromptBusy } from '@/features/cloud/groupInvitationPromptPresence';
 import { loadSession } from '@/features/cloud/session';
 import {
   useServerPendingGroupInvitations,
@@ -84,6 +85,13 @@ export function GroupInvitationPromptHost({
     if (newest) dismissServer(newest);
   }, [dismissServer, newest]);
   const onPendingJoined = useCallback(() => undefined, []);
+
+  // First-run help waits for the first invitation check and for any prompt.
+  const busy = visible && (Boolean(token) || settlingDeepLink || !server.settled || Boolean(newest));
+  useLayoutEffect(() => {
+    setGroupInvitationPromptBusy(busy);
+  }, [busy]);
+  useLayoutEffect(() => () => setGroupInvitationPromptBusy(false), []);
 
   if (!visible) return null;
   if (token) {

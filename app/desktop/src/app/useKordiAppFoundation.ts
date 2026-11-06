@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { useConnectorsSettingsLinks } from '@/app/useConnectorsSettingsLinks';
 import { useMemo, useRef, useState } from 'react';
@@ -161,7 +162,7 @@ export function useKordiAppFoundation({
     selectProject,
     selectProjectSession,
   } = useWorkspaceController({
-    initialProjects: isNativeShell ? [] : projects,
+    initialProjects: isNativeShell || isBrowserAppRuntime() ? [] : projects,
     projectRoutingGroups,
     isNativeShell,
   });
