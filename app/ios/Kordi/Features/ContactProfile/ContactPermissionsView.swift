@@ -8,8 +8,13 @@ struct ContactPermissionsView: View {
         _model = StateObject(wrappedValue: model())
     }
 
-    init(appModel: AppModel, accountId: String, initial: CloudContactPermissions?) {
-        self.init(model: appModel.makeContactPermissionsModel(accountId: accountId, initial: initial))
+    init(
+        appModel: AppModel,
+        accountId: String,
+        initial: CloudContactPermissions?,
+        onSaved: ((CloudContactPermissions) -> Void)? = nil
+    ) {
+        self.init(model: appModel.makeContactPermissionsModel(accountId: accountId, initial: initial, onSaved: onSaved))
     }
 
     var body: some View {

@@ -34,12 +34,21 @@ final class ContactPermissionsModel: ObservableObject {
     @Published var errorMessage: String?
     private let loader: Loader?
     private let saver: Saver?
+    /// Told the values the server holds after each load or save, so the
+    /// profile that opened this page shows them next time.
+    private let onSaved: ((CloudContactPermissions) -> Void)?
 
     /// A nil loader and saver flip the switches locally (preview mode).
-    init(initial: CloudContactPermissions?, loader: Loader?, saver: Saver?) {
+    init(
+        initial: CloudContactPermissions?,
+        loader: Loader?,
+        saver: Saver?,
+        onSaved: ((CloudContactPermissions) -> Void)? = nil
+    ) {
         permissions = initial
         self.loader = loader
         self.saver = saver
+        self.onSaved = onSaved
     }
 
     func loadIfNeeded() async {
@@ -52,7 +61,9 @@ final class ContactPermissionsModel: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            permissions = try await loader()
+            let loaded = try await loader()
+            permissions = loaded
+            onSaved?(loaded)
         } catch is CancellationError {
         } catch {
             errorMessage = Self.message(for: error, fallback: "Could not load permissions.")
@@ -73,7 +84,10 @@ final class ContactPermissionsModel: ObservableObject {
         }
         permissions = next
         errorMessage = nil
-        guard let saver else { return }
+        guard let saver else {
+            onSaved?(next)
+            return
+        }
         savingFields.insert(field)
         defer { savingFields.remove(field) }
         do {
@@ -83,6 +97,7 @@ final class ContactPermissionsModel: ObservableObject {
             case .agent: permissions?.agentAccess = saved.agentAccess
             case .card: permissions?.cardAccess = saved.cardAccess
             }
+            if let permissions { onSaved?(permissions) }
         } catch {
             switch field {
             case .agent: permissions?.agentAccess = previous.agentAccess
@@ -100,9 +115,15 @@ final class ContactPermissionsModel: ObservableObject {
 }
 
 extension AppModel {
-    func makeContactPermissionsModel(accountId: String, initial: CloudContactPermissions?) -> ContactPermissionsModel {
+    func makeContactPermissionsModel(
+        accountId: String,
+        initial: CloudContactPermissions?,
+        onSaved: ((CloudContactPermissions) -> Void)? = nil
+    ) -> ContactPermissionsModel {
         if isPreviewMode {
-            return ContactPermissionsModel(initial: initial ?? CloudContactPermissions(), loader: nil, saver: nil)
+            return ContactPermissionsModel(
+                initial: initial ?? CloudContactPermissions(), loader: nil, saver: nil, onSaved: onSaved
+            )
         }
         return ContactPermissionsModel(
             initial: initial,
@@ -115,7 +136,8 @@ extension AppModel {
                 guard let self else { throw CancellationError() }
                 let (api, token, _) = try self.digestContext()
                 return try await api.updateContactPermissions(token: token, accountId: accountId, update: update).permissions
-            }
+            },
+            onSaved: onSaved
         )
     }
 }

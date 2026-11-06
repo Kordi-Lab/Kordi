@@ -270,6 +270,11 @@ final class ContactProfileModel: ObservableObject {
 
     var canDelete: Bool { remover != nil }
 
+    /// Keeps the loaded profile in step with switches saved on the Permissions page.
+    func applyPermissions(_ permissions: CloudContactPermissions) {
+        profile?.permissions = permissions
+    }
+
     init(loader: Loader?, profile: CloudContactProfile? = nil, remover: Remover? = nil) {
         self.loader = loader
         self.remover = remover

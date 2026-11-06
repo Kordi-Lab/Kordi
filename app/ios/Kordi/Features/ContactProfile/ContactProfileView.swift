@@ -157,7 +157,7 @@ struct ContactProfileView: View {
                 ConversationView(conversation: conversation)
                     .task { _ = await model.restoreConversationIfNeeded(conversation) }
             case .permissions:
-                ContactPermissionsView(appModel: model, accountId: subject.accountId, initial: profileModel.profile?.permissions)
+                ContactPermissionsView(appModel: model, accountId: subject.accountId, initial: profileModel.profile?.permissions, onSaved: profileModel.applyPermissions)
             }
         }
     }
