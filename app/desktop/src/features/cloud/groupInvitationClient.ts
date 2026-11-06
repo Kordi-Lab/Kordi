@@ -1,8 +1,11 @@
 import type {
   CloudGroupInvitation,
   CloudGroupInvitationAcceptance,
+  CloudGroupInvitationClaim,
   CloudGroupInvitationCreateInput,
   CloudGroupInvitationPreview,
+  CloudPendingGroupInvitation,
+  CloudPendingGroupInvitationAcceptance,
 } from './cloudIdentityTypes';
 
 type CloudRequestClient = {
@@ -53,5 +56,53 @@ export async function revokeCloudGroupInvitation(
     `/v1/cloud/invitations/groups/${encodeURIComponent(invitationId)}`,
     { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
     'Could not revoke group invitation.',
+  );
+}
+
+export function claimCloudGroupInvitation(
+  client: CloudRequestClient,
+  token: string,
+  invitationToken: string,
+): Promise<CloudGroupInvitationClaim> {
+  return client.request(
+    `/v1/cloud/invitations/groups/claim/${encodeURIComponent(invitationToken)}`,
+    { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+    'Could not save group invitation.',
+  );
+}
+
+export async function listCloudPendingGroupInvitations(
+  client: CloudRequestClient,
+  token: string,
+): Promise<CloudPendingGroupInvitation[]> {
+  const response = await client.request<{ invitations?: CloudPendingGroupInvitation[] }>(
+    '/v1/cloud/invitations/groups/pending',
+    { method: 'GET', headers: { authorization: `Bearer ${token}` } },
+    'Could not load group invitations.',
+  );
+  return Array.isArray(response?.invitations) ? response.invitations : [];
+}
+
+export function acceptCloudPendingGroupInvitation(
+  client: CloudRequestClient,
+  token: string,
+  pendingId: string,
+): Promise<CloudPendingGroupInvitationAcceptance> {
+  return client.request(
+    `/v1/cloud/invitations/groups/pending/${encodeURIComponent(pendingId)}/accept`,
+    { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+    'Could not join group.',
+  );
+}
+
+export async function dismissCloudPendingGroupInvitation(
+  client: CloudRequestClient,
+  token: string,
+  pendingId: string,
+): Promise<void> {
+  await client.request(
+    `/v1/cloud/invitations/groups/pending/${encodeURIComponent(pendingId)}`,
+    { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
+    'Could not dismiss group invitation.',
   );
 }

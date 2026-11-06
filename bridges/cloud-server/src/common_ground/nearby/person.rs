@@ -19,6 +19,7 @@ use super::results::{self, entry, Evaluated, Viewer};
 use crate::auth::rate_limit::CloudRateLimiter;
 use crate::common_ground::actions::relationship;
 use crate::common_ground::{db_error, people, unavailable};
+use crate::organizations::requests::RequestOrganization;
 use crate::{auth::routes::CloudSession, server::ServerState};
 
 /// Each active request in range with a current verdict, with its checks.
@@ -58,6 +59,7 @@ pub(super) async fn read(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
+    organization: Option<Extension<RequestOrganization>>,
     Path(other): Path<String>,
 ) -> Response {
     let Some(pip) = state.system_agent() else {
@@ -84,12 +86,16 @@ pub(super) async fn read(
     if !within(person.distance_m, MAX_RANGE_M) {
         return people::not_found();
     }
+    let organization_id = organization
+        .as_ref()
+        .map(|Extension(organization)| organization.organization_id.as_str());
     let evaluated = match results::evaluate(
         pool,
         pip.config(),
         &rate_limiter,
         &viewer,
         std::slice::from_ref(&person),
+        organization_id,
     )
     .await
     {
