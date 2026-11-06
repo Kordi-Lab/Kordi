@@ -16,9 +16,20 @@ async fn the_setting_round_trips_for_definitions_and_the_default_agent() {
     let (status, body) = f
         .send("GET", &personal_uri(&f.agent_id), &f.owner_token, None)
         .await;
-    assert_eq!((status.as_u16(), body), (200, json!({"proactive": false})));
+    assert_eq!(status, 200);
+    assert_eq!(
+        body,
+        json!({
+            "proactive": false, "connected": true, "checkedAt": null, "recent": [],
+            "sources": [{"connectorId": f.connector_id, "provider": "gmail", "status": "connected"}],
+        })
+    );
     let (status, body) = f.set_proactive(&f.agent_id, true).await;
-    assert_eq!((status.as_u16(), body), (200, json!({"proactive": true})));
+    assert_eq!(
+        (status.as_u16(), body["proactive"].clone()),
+        (200, json!(true))
+    );
+    assert!(body["checkedAt"].is_string(), "turned on now: {body}");
     let (_, list) = f
         .send("GET", "/v1/cloud/agents", &f.owner_token, None)
         .await;
@@ -45,13 +56,24 @@ async fn the_setting_round_trips_for_definitions_and_the_default_agent() {
 
     let default_agent = format!("cloud-agent:{}", f.owner);
     let (status, body) = f.set_proactive(&default_agent, true).await;
-    assert_eq!((status.as_u16(), body), (200, json!({"proactive": true})));
+    assert_eq!(status, 409, "no connector yet: {body}");
+    assert_eq!(body["errorCode"], "personal_agent_needs_connector");
+    grant(&f.pool, &f.connector_id, &default_agent).await;
+    let (status, body) = f.set_proactive(&default_agent, true).await;
+    assert_eq!(
+        (status.as_u16(), body["proactive"].clone()),
+        (200, json!(true))
+    );
     let (_, body) = f
         .send("GET", &personal_uri(&default_agent), &f.owner_token, None)
         .await;
-    assert_eq!(body, json!({"proactive": true}));
+    assert_eq!(body["proactive"], true);
     let (status, body) = f.set_proactive(&default_agent, false).await;
-    assert_eq!((status.as_u16(), body), (200, json!({"proactive": false})));
+    assert_eq!(
+        (status.as_u16(), body["proactive"].clone()),
+        (200, json!(false))
+    );
+    assert_eq!(body["checkedAt"], json!(null));
 }
 
 #[tokio::test]
@@ -110,22 +132,33 @@ async fn cooperative_is_an_alias_of_proactive() {
             &f.owner_token,
             Some(create(json!({
                 "cooperative": {"enabled": true},
-                "personalAgent": {"proactive": true},
+                "personalAgent": {"proactive": false},
             }))),
         )
         .await;
     assert_eq!(status, 201, "{body}");
     assert_eq!(body["agent"]["proactive"], json!({"enabled": true}));
     assert_eq!(body["agent"]["cooperative"], json!({"enabled": true}));
-    assert_eq!(body["agent"]["personalAgent"], json!({"proactive": true}));
+    assert_eq!(body["agent"]["personalAgent"], json!({"proactive": false}));
     let created = body["agent"]["agentId"].as_str().unwrap().to_string();
+    grant(&f.pool, &f.connector_id, &created).await;
+    let (status, body) = f
+        .send(
+            "PUT",
+            &format!("/v1/cloud/agents/{created}"),
+            &f.owner_token,
+            Some(json!({"personalAgent": {"proactive": true}})),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["agent"]["personalAgent"], json!({"proactive": true}));
     let (cursor_set,): (bool,) =
         query_as("SELECT EXISTS(SELECT 1 FROM cloud_personal_agent_state WHERE agent_id = $1)")
             .bind(&created)
             .fetch_one(&f.pool)
             .await
             .unwrap();
-    assert!(cursor_set, "turning it on at creation starts the cursor");
+    assert!(cursor_set, "turning it on starts the cursor");
 
     let (status, body) = f
         .send(

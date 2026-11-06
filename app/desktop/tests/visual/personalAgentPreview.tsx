@@ -7,23 +7,30 @@ import { applyChatTheme, readStoredChatTheme } from '../../src/app/themePreferen
 import { chatNavigationIndex } from '../../src/features/chat/chatNavigation';
 import { buildParticipantSpaces, filterParticipantSpaces } from '../../src/features/chat/participantSpaces';
 import { setPersonalAgentEntries } from '../../src/features/personalAgent/personalAgentStore';
+import { __setDefaultPersonalAgentStatusForTests } from '../../src/features/personalAgent/personalAgentStatus';
+import { openPersonalAgentPage } from '../../src/features/personalAgent/personalAgentPageState';
 import { ChatProjectsContext } from '../../src/features/projects/chatProjects';
 import { LEFT_RAIL_WIDTH } from '../../src/kordi-app/layout';
 import { ChatsPage } from '../../src/pages/ChatsPage';
 import type { ChatsPageProps } from '../../src/pages/chatsPage.types';
 import { WorkspaceSidebar, type WorkspaceSidebarProps } from '../../src/pages/WorkspaceSidebar';
 import { baseSidebarProps } from '../helpers/workspaceSidebarParticipantSpacesFixtures';
-import { KORDI_SESSION, previewConversations, previewPersonalAgents, userMessage } from './personalAgentPreviewData';
+import { KORDI_SESSION, previewAccount, previewConversations, previewPersonalAgents, previewStatus, userMessage } from './personalAgentPreviewData';
 import '../../src/index.css';
 import './chatProjectWorkspace.css';
 
-// Login-free preview of the Personal agent section (#2091): the real sidebar
-// and chat with synthetic agents. `?theme=dark`, `?state=off` (Proactive off:
-// the agent answers when asked), `?session=<id>` to open another chat.
+// Login-free preview of Personal agent: the real sidebar entry, page and
+// chats with synthetic agents. `?theme=dark`, `?status=setup|off|on` (no
+// connector, connected and off, watching), `?page=1` opens the Personal
+// agent page, `?state=off` (the agent answers when asked), `?session=<id>`.
 
 type PreviewChatsPageProps = ChatsPageProps['layout'] & ChatsPageProps['session'] & ChatsPageProps['transcript'] & ChatsPageProps['composer'] & ChatsPageProps['runtime'] & ChatsPageProps['auth'];
 
 setPersonalAgentEntries(previewPersonalAgents);
+const status = new URLSearchParams(location.search).get('status');
+__setDefaultPersonalAgentStatusForTests(previewStatus(status === 'setup' || status === 'off' ? status : 'on'));
+// After the first selection lands, which would close it.
+if (new URLSearchParams(location.search).get('page') === '1') setTimeout(openPersonalAgentPage, 300);
 applyChatTheme(readStoredChatTheme());
 const params = new URLSearchParams(location.search);
 const initialSessionId = params.get('session') || KORDI_SESSION;
@@ -98,6 +105,7 @@ function PersonalAgentPreview() {
     onRequestCollaborationContact: () => undefined, onForkChatMessage: async () => undefined, onPrefetchChatSession: async () => undefined,
     onSelectSession: select, onSendChatMessage: send, onCreateAgentSession: () => undefined,
     hasAnyAuth: true, onOpenAuthSettings: () => undefined, onOpenAccountAuthentication: () => undefined,
+    cloudAccount: previewAccount,
   } as unknown as PreviewChatsPageProps;
   const sidebar = baseSidebarProps({ isNativeShell: true, chatConversations: conversations, participantSpaces,
     filteredConversations: conversations, contactParticipantSpaces: filterParticipantSpaces(participantSpaces, search, 'contact'), agentParticipantSpaces: filterParticipantSpaces(participantSpaces, search, 'agent'),

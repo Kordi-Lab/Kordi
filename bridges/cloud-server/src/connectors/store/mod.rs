@@ -211,16 +211,23 @@ pub async fn agent_owned_by_account(
     Ok(row.is_some())
 }
 
+/// Replaces the agents granted the connector. An agent left without a live
+/// grant has its Proactive setting turned off in the same transaction.
 pub async fn replace_agent_grants(
     pool: &PgPool,
     connector_id: &str,
     agent_ids: &[String],
 ) -> StoreResult<()> {
     let mut tx = pool.begin().await?;
-    query("DELETE FROM cloud_connector_agent_grants WHERE connector_id = $1")
-        .bind(connector_id)
-        .execute(&mut *tx)
-        .await?;
+    let removed: Vec<(String, String)> = query_as(
+        "DELETE FROM cloud_connector_agent_grants agent_grant \
+         USING cloud_connectors connector \
+         WHERE agent_grant.connector_id = $1 AND connector.connector_id = agent_grant.connector_id \
+         RETURNING connector.account_id, agent_grant.agent_id",
+    )
+    .bind(connector_id)
+    .fetch_all(&mut *tx)
+    .await?;
     query(
         "INSERT INTO cloud_connector_agent_grants (connector_id, agent_id) \
          SELECT $1, agent_id FROM unnest($2::text[]) AS agent_id",
@@ -229,7 +236,21 @@ pub async fn replace_agent_grants(
     .bind(agent_ids)
     .execute(&mut *tx)
     .await?;
+    personal_agent_grants_removed(&mut tx, removed).await?;
     tx.commit().await
+}
+
+/// Turns Proactive off for the agents among `removed` (owner, agent) pairs
+/// that no live grant is left for.
+pub(super) async fn personal_agent_grants_removed(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    removed: Vec<(String, String)>,
+) -> StoreResult<()> {
+    for (account_id, agent_id) in removed {
+        crate::personal_agent::setting::grants_removed_in_transaction(tx, &account_id, &[agent_id])
+            .await?;
+    }
+    Ok(())
 }
 
 pub async fn set_act_enabled(

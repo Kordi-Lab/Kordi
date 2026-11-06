@@ -1,5 +1,7 @@
 // @ts-expect-error The repository's bird generator is plain JavaScript without types.
 import { birdSvg } from '../../../../scripts/kordi-birds/birds.mjs';
+import type { CloudAccount } from '../../src/features/cloud/cloudIdentityTypes';
+import type { PersonalAgentStatus } from '../../src/features/personalAgent/personalAgentClient';
 import type { PersonalAgentEntry } from '../../src/features/personalAgent/personalAgentStore';
 import type { Conversation, Message } from '../../src/kordi-app/types';
 import type { MessageEventSource } from '../../src/kordi-app/types/message';
@@ -97,4 +99,29 @@ export function previewConversations(proactiveOff = false) {
       agentTurn('session:direct-agent:preview-lisbon', 'l-answer', 'Research agent', 'preview-owl', 'Three options under €900.', 'Tue', today(9, 1) - 86_400_000 * 5),
     ]),
   ];
+}
+
+/** The synthetic owner, for the Personal agent page header. */
+export const previewAccount = {
+  accountId: ACCOUNT, displayName: 'Alex', primaryEmail: 'alex@example.test', avatarUrl: null,
+  avatar: null, defaultAgent: null, nodeId: null, passwordSet: false,
+} as unknown as CloudAccount;
+
+/** The default agent's status: no connector, connected and off, or watching. */
+export function previewStatus(state: 'setup' | 'off' | 'on'): PersonalAgentStatus {
+  const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+  return {
+    proactive: state === 'on',
+    connected: state !== 'setup',
+    sources: state === 'setup' ? [] : [
+      { connectorId: 'cn_preview_gmail', provider: 'gmail', status: 'connected' },
+      { connectorId: 'cn_preview_calendar', provider: 'google_calendar', status: 'connected' },
+      { connectorId: 'cn_preview_github', provider: 'github', status: 'connected' },
+    ],
+    checkedAt: state === 'on' ? ago(2) : null,
+    recent: state === 'setup' ? [] : [
+      { at: ago(35), text: 'Lab sync moved to 10 am Thursday. Mei wants your review on #412 before it.' },
+      { at: ago(330), text: "Sam asked on Airbnb if they can check in at 1 pm tomorrow. You're free then." },
+    ],
+  };
 }

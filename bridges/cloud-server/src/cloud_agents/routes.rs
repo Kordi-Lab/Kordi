@@ -116,6 +116,10 @@ fn store_error_response(context: &str, error: CloudAgentStoreError) -> Response 
         CloudAgentStoreError::Invalid(message) => {
             error_response("invalid_cloud_agent", &message, StatusCode::BAD_REQUEST)
         }
+        // A valid setting the agent's state refuses, such as Proactive without a connector.
+        CloudAgentStoreError::InvalidSetting(code @ "personal_agent_needs_connector", message) => {
+            error_response(code, &message, StatusCode::CONFLICT)
+        }
         CloudAgentStoreError::InvalidSetting(code, message) => {
             error_response(code, &message, StatusCode::BAD_REQUEST)
         }
