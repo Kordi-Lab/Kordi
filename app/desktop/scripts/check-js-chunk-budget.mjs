@@ -30,7 +30,8 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // hosted navigation and delivery scopes) adds 17 kB, so it moves to 5.745 MB.
 // Agent avatars beside agent messages, the Mac app card, first-paint plan cards and
 // remembered transcript row heights add 3 kB, so it moves to 5.748 MB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_748_000;
+// AI consent (the consent and AI-off dialogs, the send gates, Settings › Privacy) adds 8 kB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_756_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 const MAX_WEB_APP_DIST_BYTES = 5_800_000;

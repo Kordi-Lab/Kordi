@@ -1,8 +1,8 @@
-import { Bell, Brain, Gauge, KeyRound, Laptop, Palette, Plug, User } from 'lucide-react';
+import { Bell, Brain, Gauge, KeyRound, Laptop, Palette, Plug, Shield, User } from 'lucide-react';
 
 import type { SettingsNavGroup } from '@/kordi-app/components';
 
-export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'connectors' | 'memory' | 'usage' | 'appearance';
+export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'privacy' | 'connectors' | 'memory' | 'usage' | 'appearance';
 
 export function cloudAccountSettingsNavGroups({
   connectorsAvailable,
@@ -24,6 +24,7 @@ export function cloudAccountSettingsNavGroups({
       items: [
         { id: 'auth', label: 'Authentication', icon: KeyRound, keywords: ['providers', 'accounts', 'api key', 'omp'] },
         { id: 'notifications', label: 'Notifications', icon: Bell, keywords: ['alerts', 'sound', 'badge'] },
+        { id: 'privacy', label: 'Privacy', icon: Shield, keywords: ['ai', 'models', 'consent', 'openai', 'google', 'terms', 'policy'] },
         ...(connectorsAvailable
           ? [{ id: 'connectors' as const, label: 'Connectors', icon: Plug, keywords: ['gmail', 'calendar', 'github', 'slack', 'services', 'integrations', 'mac'] }]
           : []),

@@ -41,6 +41,7 @@ import { WhatsNewLaunchWindow } from '@/features/updates/useWhatsNewWindow';
 import { CloudSignInGate } from '@/kordi-app/cloud/CloudSignInGate';
 import type { Conversation } from '@/kordi-app/types';
 import { GroupInvitationPromptHost } from '@/pages/GroupInvitationPromptHost';
+import { AiConsentHost } from '@/features/aiConsent/AiConsentHost';
 import { DocumentShareLinkHost } from '@/features/documents/DocumentShareLinkDialog';
 
 export { CloudStartingScreen } from '@/features/cloud/CloudStartingScreen';
@@ -214,6 +215,7 @@ function KordiAppShell({
       </CloudCallProvider>
       {windowReady ? <WhatsNewLaunchWindow /> : null}
       {windowReady ? <DocumentShareLinkHost account={cloudSession?.account ?? null} /> : null}
+      {windowReady ? <AiConsentHost account={cloudSession?.account ?? null} /> : null}
       <GroupInvitationPromptHost
         key={cloudSession?.account?.accountId ?? 'signed-in'}
         deepLink={pendingGroupInvitation}

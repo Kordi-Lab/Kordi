@@ -1,3 +1,4 @@
+import { requireAiConsent } from '@/features/aiConsent/aiConsentStore';
 import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type FormEvent } from 'react';
 import { Bell, ChevronRight, RefreshCw, SlidersHorizontal } from 'lucide-react';
@@ -92,7 +93,7 @@ export default function DigestPage({accountId,onOpenProviderSettings,renderConte
     :null;
   // A rejected patch can fail repeatedly against the same baseline. Rebuild
   // on explicit retry; keep the saved snapshot and the owner's model choice.
-  function retryGeneration(){void act(()=>digestClient.refresh(accountId,invalidOutput));}
+  function retryGeneration(){if(!requireAiConsent())return;void act(()=>digestClient.refresh(accountId,invalidOutput));}
   // Every status and its one action live in the header line, which keeps the
   // same height in every state; the body stays empty until there is a brief.
   const statusAction=(label:string,onClick:()=>void)=><> · <button className="digest-link" disabled={busy} onClick={onClick}>{label}</button></>;
