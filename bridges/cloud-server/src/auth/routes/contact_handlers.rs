@@ -60,7 +60,7 @@ pub(super) async fn add_contact(
     let now = Utc::now().to_rfc3339();
     let mut tx = match contact_send::begin_unblocked_pair(pool, &session.account_id, &peer).await {
         Ok(tx) => tx,
-        Err(refusal) => return refusal,
+        Err(refusal) => return *refusal,
     };
     if query(
         "INSERT INTO cloud_contacts (account_id, peer_account_id, created_at) VALUES ($1, $2, $3) \

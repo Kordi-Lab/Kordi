@@ -170,7 +170,7 @@ pub(crate) async fn send_request(
     let now = Utc::now().to_rfc3339();
     let mut tx = match begin_unblocked_pair(pool, &session.account_id, &peer).await {
         Ok(tx) => tx,
-        Err(refusal) => return ContactOutcome::Failed(refusal),
+        Err(refusal) => return ContactOutcome::Failed(*refusal),
     };
     if query(
         "INSERT INTO cloud_contact_requests \
@@ -248,13 +248,13 @@ pub(super) async fn begin_unblocked_pair(
     pool: &PgPool,
     caller: &str,
     peer: &str,
-) -> Result<sqlx_core::transaction::Transaction<'static, sqlx_postgres::Postgres>, Response> {
+) -> Result<sqlx_core::transaction::Transaction<'static, sqlx_postgres::Postgres>, Box<Response>> {
     let failed = || {
-        err(
+        Box::new(err(
             "server_error",
             "Database error.",
             StatusCode::INTERNAL_SERVER_ERROR,
-        )
+        ))
     };
     let mut tx = pool.begin().await.map_err(|_| failed())?;
     crate::safety::blocks::lock_pair(&mut tx, caller, peer)
@@ -264,7 +264,7 @@ pub(super) async fn begin_unblocked_pair(
         .await
         .map_err(|_| failed())?;
     match refusal_for(blocks) {
-        Some(refusal) => Err(refusal),
+        Some(refusal) => Err(Box::new(refusal)),
         None => Ok(tx),
     }
 }
