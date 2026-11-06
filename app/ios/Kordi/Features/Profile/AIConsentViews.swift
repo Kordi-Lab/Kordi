@@ -6,6 +6,8 @@ struct AIConsentSheet: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openURL) private var openURL
     let onFinish: () -> Void
+    /// After a failed save the sheet may be swiped away so nobody is stuck.
+    var onFailure: () -> Void = {}
     @State private var saving: AIConsentStatus?
     @State private var error: String?
 
@@ -60,6 +62,7 @@ struct AIConsentSheet: View {
         saving = nil
         if let failure {
             error = failure
+            onFailure()
         } else {
             onFinish()
         }
@@ -81,8 +84,11 @@ enum AIConsentPresenter {
     static func presentConsent(model: AppModel) {
         guard presented == nil, let host = topController() else { return }
         let holder = WeakControllerBox()
-        let sheet = AIConsentSheet(onFinish: { holder.controller?.dismiss(animated: true) })
-            .environmentObject(model)
+        let sheet = AIConsentSheet(
+            onFinish: { holder.controller?.dismiss(animated: true) },
+            onFailure: { holder.controller?.isModalInPresentation = false }
+        )
+        .environmentObject(model)
         let controller = UIHostingController(rootView: sheet)
         holder.controller = controller
         controller.isModalInPresentation = true
@@ -152,7 +158,7 @@ struct PrivacySettingsView: View {
                 CompactSettingsLabel(title: AIConsentCopy.toggle, systemImage: "sparkles")
             }
             .frame(minHeight: SettingsMetrics.rowMinHeight)
-            .disabled(isSaving)
+            .disabled(isSaving || model.aiConsent == nil)
             .accessibilityIdentifier("privacy-ai-toggle")
             SettingsCaption(AIConsentCopy.caption)
             if let error {

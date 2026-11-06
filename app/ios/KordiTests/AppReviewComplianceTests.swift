@@ -54,7 +54,7 @@ final class AppReviewComplianceTests: XCTestCase {
 
     func testPrivacySwitchReflectsTheChoice() {
         XCTAssertTrue(AIConsentGate.sharesWithAI(.allowed))
-        XCTAssertTrue(AIConsentGate.sharesWithAI(nil))
+        XCTAssertFalse(AIConsentGate.sharesWithAI(nil))
         XCTAssertFalse(AIConsentGate.sharesWithAI(.declined))
         XCTAssertFalse(AIConsentGate.sharesWithAI(.unset))
     }
@@ -92,9 +92,17 @@ final class AppReviewComplianceTests: XCTestCase {
         ))
         XCTAssertEqual(AccountDeletionProofMode.from(recent), .recentSignIn)
         let stale = try decoder.decode(CloudAccountSecurityOverview.self, from: Data(
-            #"{"email":null,"password":{"set":false},"recentSignIn":false}"#.utf8
+            #"{"email":{"address":"maya@example.com"},"password":{"set":false},"recentSignIn":false}"#.utf8
         ))
         XCTAssertEqual(AccountDeletionProofMode.from(stale), .emailCode)
+        let noEmail = try decoder.decode(CloudAccountSecurityOverview.self, from: Data(
+            #"{"email":{"address":null},"password":{"set":false},"recentSignIn":false}"#.utf8
+        ))
+        XCTAssertEqual(AccountDeletionProofMode.from(noEmail), .signInAgain)
+        let missingEmail = try decoder.decode(CloudAccountSecurityOverview.self, from: Data(
+            #"{"email":null,"password":{"set":false},"recentSignIn":false}"#.utf8
+        ))
+        XCTAssertEqual(AccountDeletionProofMode.from(missingEmail), .signInAgain)
     }
 
     func testRefusedDeleteSwitchesToTheProofTheServerAsks() {
@@ -102,6 +110,9 @@ final class AppReviewComplianceTests: XCTestCase {
         XCTAssertEqual(AccountDeletionProofMode.after(reauth, current: .recentSignIn), .emailCode)
         let password = CloudAPIError(code: "current_password_required", message: "", statusCode: 403)
         XCTAssertEqual(AccountDeletionProofMode.after(password, current: .emailCode), .password(allowsEmailCode: false))
+        let noEmail = CloudAPIError(code: "email_missing", message: "", statusCode: 400)
+        XCTAssertEqual(AccountDeletionProofMode.after(noEmail, current: .emailCode), .signInAgain)
+        XCTAssertEqual(AccountDeletionProofMode.after(reauth, current: .signInAgain), .signInAgain)
         let wrong = CloudAPIError(code: "invalid_current_password", message: "", statusCode: 403)
         XCTAssertEqual(AccountDeletionProofMode.after(wrong, current: .password(allowsEmailCode: false)), .password(allowsEmailCode: false))
     }

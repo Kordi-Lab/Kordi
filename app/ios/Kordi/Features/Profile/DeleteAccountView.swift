@@ -29,7 +29,7 @@ struct DeleteAccountView: View {
     private var canDelete: Bool {
         guard !isDeleting else { return false }
         switch mode {
-        case .loading: return false
+        case .loading, .signInAgain: return false
         case .password: return !password.isEmpty || (challenge != nil && codeIsComplete)
         case .emailCode: return challenge != nil && codeIsComplete
         case .recentSignIn: return true
@@ -85,6 +85,13 @@ struct DeleteAccountView: View {
             SettingsLoadingRow("Loading…")
         case .recentSignIn:
             EmptyView()
+        case .signInAgain:
+            Text("Sign in again to delete your account.")
+                .font(SettingsFont.rowTitle)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+                .accessibilityIdentifier("delete-account-sign-in-again")
         case .password(let allowsEmailCode):
             SettingsSectionTitle("Confirm it's you")
                 .padding(.top, 8)

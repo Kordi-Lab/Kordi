@@ -760,7 +760,7 @@ final class AppModel: ObservableObject {
         let endedBrowserSignIn = await browserSignIn.endForSignOut()
         let oldToken = token
         let oldAccountId = account?.accountId
-        if let oldToken { await CommonGroundNearbyLocator.shared.signOut(api: api, token: oldToken) }
+        if let oldToken { await CommonGroundNearbyLocator.shared.signOut(api: api, token: accountDeleted ? nil : oldToken) }
         if let oldToken, !accountDeleted {
             await presencePublisher.stopAndPublishOffline(token: oldToken)
         } else {
@@ -2609,6 +2609,7 @@ final class AppModel: ObservableObject {
             if pendingAgentRequestIds[conversation.id, default: []].contains(localId) {
                 finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: localId, failed: true)
             }
+            noteIfAIConsentRequired(error)
             markMessageFailed(localId, error: userFacing(error, fallback: "Message not sent."))
         }
     }

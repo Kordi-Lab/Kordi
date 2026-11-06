@@ -44,6 +44,8 @@ final class CommonGroundModel: ObservableObject {
     @Published var busy: String?
     /// One line shown as a toast over every screen.
     @Published var notice: String?
+    /// Shows "AI models are off" when the server refuses AI work.
+    var onAIConsentRequired: (() -> Void)?
     /// Set in CommonGroundModel+Profiles.swift.
     @Published var profiles: [CommonGroundProfileSummary] = []
     @Published var currentProfileID: String?
@@ -113,6 +115,7 @@ final class CommonGroundModel: ObservableObject {
         "common_ground_profile_exists": "You already have this profile.",
         "common_ground_too_many_profiles": "You can have up to 5 profiles.",
         "common_ground_room_closed": "This room is closed.",
+        "ai_consent_required": AIConsentCopy.declinedTitle,
     ]
 
     /// One line for a failed call; nil for a cancelled one.
@@ -127,6 +130,7 @@ final class CommonGroundModel: ObservableObject {
     }
 
     func report(_ error: Error) {
+        if AIConsentGate.isConsentRequired(error) { onAIConsentRequired?() }
         if let message = Self.message(for: error) { notice = message }
     }
 

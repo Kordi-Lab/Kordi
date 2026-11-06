@@ -183,9 +183,7 @@ extension AppModel {
             case "invalid_redirect": return "This Kordi build is not yet allowed to finish social sign-in."
             case "oauth_not_configured": return "This sign-in provider is temporarily unavailable."
             case "device_review_required": return "Approve this device from another device first."
-            case "ai_consent_required":
-                noteAIConsentRequired()
-                return AIConsentCopy.declinedTitle
+            case "ai_consent_required": return AIConsentCopy.declinedTitle
             default: return error.message.nonEmpty ?? fallback
             }
         }

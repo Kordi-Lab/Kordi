@@ -38,23 +38,21 @@ enum AIConsentGate {
         (error as? CloudAPIError)?.code == "ai_consent_required"
     }
 
-    /// Settings › Privacy shows the switch on unless the account declined or never chose.
+    /// Settings › Privacy shows the switch on only for a known `allowed`; while
+    /// the choice is unknown the switch is disabled.
     static func sharesWithAI(_ status: AIConsentStatus?) -> Bool {
-        switch status {
-        case nil, .allowed?: true
-        case .unset?, .declined?: false
-        }
+        status == .allowed
     }
 }
 
 /// Contract copy for the AI choice.
 enum AIConsentCopy {
     static let title = "Kordi uses AI models"
-    static let body = "Agents, the System agent, Digest and Grounding send the messages, files and calendar details they work on to AI providers such as OpenAI and Google."
+    static let body = "Agents, the System agent, Digest and Grounding send the messages, files and calendar details they work on to AI providers such as OpenAI, Anthropic and Google."
     static let declinedTitle = "AI models are off"
     static let declinedMessage = "Allow in Settings › Privacy to use agents."
     static let toggle = "Share with AI models"
-    static let caption = "OpenAI and Google process what agents work on."
+    static let caption = "Your AI provider, such as OpenAI, Anthropic or Google, processes what agents work on."
 }
 
 extension AppModel {
@@ -130,6 +128,15 @@ extension AppModel {
         } catch {
             return userFacing(error, fallback: "Could not save your choice. Try again.")
         }
+    }
+
+    /// Call where AI work fails: notes a 403 `ai_consent_required` and shows
+    /// "AI models are off". Returns whether the error was that refusal.
+    @discardableResult
+    func noteIfAIConsentRequired(_ error: Error) -> Bool {
+        guard AIConsentGate.isConsentRequired(error) else { return false }
+        noteAIConsentRequired()
+        return true
     }
 
     /// A 403 `ai_consent_required`: the account declined, perhaps on another

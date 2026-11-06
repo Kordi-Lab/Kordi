@@ -9,17 +9,22 @@ enum AccountDeletionProofMode: Equatable {
     case password(allowsEmailCode: Bool)
     case emailCode
     case recentSignIn
+    /// No password, no email for a code, and no recent sign-in.
+    case signInAgain
 
     static func from(_ overview: CloudAccountSecurityOverview) -> Self {
         if overview.password.set { return .password(allowsEmailCode: false) }
-        return overview.recentSignIn == true ? .recentSignIn : .emailCode
+        if overview.recentSignIn == true { return .recentSignIn }
+        let hasEmail = overview.email?.address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        return hasEmail ? .emailCode : .signInAgain
     }
 
     /// The proof a refused delete asks for instead.
     static func after(_ error: Error, current: Self) -> Self {
         switch (error as? CloudAPIError)?.code {
         case "current_password_required": .password(allowsEmailCode: false)
-        case "reauthentication_required": .emailCode
+        case "reauthentication_required": current == .signInAgain ? .signInAgain : .emailCode
+        case "email_missing": .signInAgain
         default: current
         }
     }
