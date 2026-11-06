@@ -446,5 +446,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0173_identity_matching_email.sql"
     ),
     migration!(174, "usage pauses", "0174_usage_pauses.sql"),
-    migration!(179, "sign in with apple", "0179_sign_in_with_apple.sql"),
+    migration!(183, "sign in with apple", "0183_sign_in_with_apple.sql"),
 ];
