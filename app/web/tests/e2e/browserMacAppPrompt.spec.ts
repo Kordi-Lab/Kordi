@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import process from 'node:process';
-import { installApiFixture } from './apiFixture';
+import { installApiFixture, isCancelledFixtureRequest } from './apiFixture';
 
 const MAC_CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.0 Mobile/15E148 Safari/604.1';
@@ -29,7 +29,7 @@ test.describe('in a Mac browser', () => {
 
   test('the Mac card waits for the welcome prompt, then Not now hides it across reloads', async ({ page, baseURL }, testInfo) => {
     const errors: string[] = [];
-    page.on('pageerror', error => errors.push(error.message));
+    page.on('pageerror', error => { if (!isCancelledFixtureRequest(error.message)) errors.push(error.message); });
     await page.setViewportSize({ width: 1440, height: 960 });
     await installApiFixture(page, baseURL!, true);
     await page.goto('/app/?welcome=1');

@@ -33,7 +33,7 @@
 .app-dense-menu > .app-dialog-popover-arrow { display: none; }
 
 /* Start a chat pickers open as a wider detail view of the same surface. */
-.app-chat-create-popover.app-dense-menu { width: min(196px, calc(100vw - 80px)); }
+.app-chat-create-popover.app-dense-menu:not(.app-chat-create-detail) { width: min(196px, calc(100vw - 80px)); }
 .app-chat-create-detail { width: min(284px, calc(100vw - 20px)); padding: 10px; }
 
 /* Start group: avatar and name on one line, then dense people rows. */

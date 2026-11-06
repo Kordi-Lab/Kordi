@@ -2,6 +2,13 @@ import type { Page } from '@playwright/test';
 
 // Synthetic protocol fixtures exercise the complete production application,
 // without Tauri mocks. They are not two-account/backend acceptance evidence.
+// WebKit reports a same-origin request that a reload or navigation cancels as a
+// page error ("... due to access control checks."). The app already catches
+// those failures, so specs ignore exactly that message for the local fixture.
+export function isCancelledFixtureRequest(message: string) {
+  return /127\.0\.0\.1:\d+\/\S* due to access control checks\.$/.test(message);
+}
+
 export const account = {
   accountId: 'acct_browser_test_owner', displayName: 'Browser Test',
   primaryEmail: 'browser@example.test', primaryEmailVerified: true,

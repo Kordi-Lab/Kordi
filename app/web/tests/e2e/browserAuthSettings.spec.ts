@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { installApiFixture } from './apiFixture';
+import { installApiFixture, isCancelledFixtureRequest } from './apiFixture';
 import type { CloudProviderAuthSnapshot } from '@/features/cloud/cloudAgentRuntimeTypes';
 
 // Protocol fixtures validate the real settings controls and request wiring;
@@ -7,7 +7,7 @@ import type { CloudProviderAuthSnapshot } from '@/features/cloud/cloudAgentRunti
 test('browser Authentication refreshes hosted accounts and saves a Custom API account', async ({ page, baseURL }) => {
   await installApiFixture(page, baseURL!, true);
   const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
+  page.on('pageerror', error => { if (!isCancelledFixtureRequest(error.message)) errors.push(error.message); });
   let snapshotReads = 0;
   const snapshots: CloudProviderAuthSnapshot[] = [];
   let saved = false;
