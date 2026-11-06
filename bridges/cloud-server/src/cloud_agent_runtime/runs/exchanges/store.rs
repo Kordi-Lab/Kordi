@@ -37,10 +37,14 @@ pub(super) async fn authorize(
            AND (e.exchange_id IS NULL OR e.status NOT IN ('cancelled','failed','timed_out'))
            AND NOT EXISTS (SELECT 1 FROM unnest(ARRAY[r.owner_account_id,r.requester_account_id,root.owner_account_id,root.requester_account_id,COALESCE(e.target_owner_id,r.owner_account_id)]) a WHERE NOT EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=c.conversation_id AND m.account_id=a AND m.membership_state='active'))
            AND (r.execution_agent_id='cloud-agent:'||r.owner_account_id OR EXISTS(SELECT 1 FROM cloud_agent_definitions d WHERE d.agent_id=r.execution_agent_id AND d.owner_account_id=r.owner_account_id AND d.status='active' AND (d.access_scope='participant_conversations' OR r.owner_account_id=r.requester_account_id)))
-           AND {run_allowed} AND {target_allowed} AND {go_between_allowed}",
+           AND {run_allowed} AND {target_allowed} AND {go_between_allowed}
+           AND {run_access} AND {root_access} AND {go_between_access}",
         run_allowed = crate::contact_permissions::agent_allowed_sql("r.owner_account_id", "r.requester_account_id"),
         target_allowed = crate::contact_permissions::agent_allowed_sql("COALESCE(e.target_owner_id,r.owner_account_id)", "root.requester_account_id"),
         go_between_allowed = crate::contact_permissions::agent_allowed_sql("COALESCE(e.target_owner_id,r.owner_account_id)", "COALESCE((SELECT parent.owner_account_id FROM cloud_agent_fallback_runs parent WHERE parent.run_id=e.parent_run_id),r.owner_account_id)"),
+        run_access = crate::agent_access::access_allows_sql("r.owner_account_id", "r.requester_account_id", "r.execution_agent_id"),
+        root_access = crate::agent_access::access_allows_sql("r.owner_account_id", "root.requester_account_id", "r.execution_agent_id"),
+        go_between_access = crate::agent_access::access_allows_sql("r.owner_account_id", "COALESCE((SELECT parent.owner_account_id FROM cloud_agent_fallback_runs parent WHERE parent.run_id=e.parent_run_id),r.owner_account_id)", "r.execution_agent_id"),
     )).bind(run).bind(who).bind(account).fetch_optional(pool).await?;
     let (session, owner, requester, agent, conversation, kind, root, original_request) =
         row.ok_or(RunError::NotFound)?;
@@ -81,16 +85,18 @@ fn normalized(value: &str) -> String {
 }
 
 /// The agents a run may reach out to; agents whose owner stopped the run's
-/// requester, or the owner of the agent reaching out, from using them are
-/// left out.
+/// requester, or the owner of the agent reaching out, from using them, and
+/// agents whose Access is private to their owner, are left out.
 pub(super) async fn directory(pool: &PgPool, parent: &Parent) -> RunResult<Vec<Target>> {
     let rows: Vec<(String,String,String,String)> = query_as(&format!(
-        "SELECT 'cloud-agent:'||a.account_id,a.account_id,COALESCE(p.display_name,'Kordi'),a.display_name FROM cloud_chat_conversation_members m JOIN cloud_accounts a USING(account_id) LEFT JOIN cloud_default_agent_profiles p ON p.owner_account_id=a.account_id WHERE m.conversation_id=$1 AND m.membership_state='active' AND {member_allowed} AND {member_go_between}
+        "SELECT 'cloud-agent:'||a.account_id,a.account_id,COALESCE(p.display_name,'Kordi'),a.display_name FROM cloud_chat_conversation_members m JOIN cloud_accounts a USING(account_id) LEFT JOIN cloud_default_agent_profiles p ON p.owner_account_id=a.account_id WHERE m.conversation_id=$1 AND m.membership_state='active' AND {member_allowed} AND {member_go_between} AND {member_access} AND {member_go_between_access}
          UNION ALL SELECT d.agent_id,d.owner_account_id,d.name,a.display_name FROM cloud_agent_definitions d JOIN cloud_accounts a ON a.account_id=d.owner_account_id JOIN cloud_chat_conversation_members m ON m.account_id=d.owner_account_id WHERE m.conversation_id=$1 AND m.membership_state='active' AND d.status='active' AND d.access_scope='participant_conversations' AND {definition_allowed} AND {definition_go_between}",
         member_allowed = crate::contact_permissions::agent_allowed_sql("a.account_id", "$2"),
         definition_allowed = crate::contact_permissions::agent_allowed_sql("d.owner_account_id", "$2"),
         member_go_between = crate::contact_permissions::agent_allowed_sql("a.account_id", "$3"),
         definition_go_between = crate::contact_permissions::agent_allowed_sql("d.owner_account_id", "$3"),
+        member_access = crate::agent_access::default_agent_usable_sql("a.account_id", "$2"),
+        member_go_between_access = crate::agent_access::default_agent_usable_sql("a.account_id", "$3"),
     )).bind(parent.conversation).bind(&parent.requester).bind(&parent.owner).fetch_all(pool).await?;
     // Agents whose owner blocked, or was blocked by, the requester or the
     // parent agent's owner are not offered.

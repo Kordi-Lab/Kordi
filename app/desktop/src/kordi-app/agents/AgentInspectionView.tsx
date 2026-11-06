@@ -2,7 +2,7 @@ import { Bot, ChevronRight, FileText, Settings2 } from 'lucide-react';
 
 import { EditableIdentityAvatar } from '../components/EditableIdentityAvatar';
 import type { Agent } from '../types';
-import { inspectionAvatarControls, type AgentsPageProps } from './model';
+import { cloudAgentAccessLabel, inspectionAvatarControls, type AgentsPageProps } from './model';
 
 function ReadOnlySection({
   title,
@@ -43,9 +43,7 @@ export function AgentInspectionView({
     );
   }
 
-  const access = agent.cloudAgentAccessScope === 'participant_conversations'
-    ? 'People in my chats can mention it'
-    : agent.isOwned ? 'Only me' : 'Shared with me';
+  const access = agent.isOwned ? cloudAgentAccessLabel(agent.cloudAgentAccessScope) : 'Shared with me';
   const capabilities = [
     ...agent.loadedSkills.map((name) => ({ kind: 'Skill', name })),
     ...agent.loadedTools.map((name) => ({ kind: 'Tool', name })),

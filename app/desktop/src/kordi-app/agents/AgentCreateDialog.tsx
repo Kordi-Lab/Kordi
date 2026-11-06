@@ -41,7 +41,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
   const [identity, setIdentity] = useState('');
   const [draft, setDraft] = useState<ShapeAgentDraft | null>(null);
   const [feedback, setFeedback] = useState<{ tone: 'idle' | 'info' | 'error' | 'success'; text: string }>({ tone: 'idle', text: '' });
-  const [accessScope, setAccessScope] = useState<CloudAgentAccessScope>('private');
+  const [accessScope, setAccessScope] = useState<CloudAgentAccessScope>('participant_conversations');
   const [creating, setCreating] = useState(false);
   const [shaping, setShaping] = useState(false);
 

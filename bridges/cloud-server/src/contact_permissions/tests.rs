@@ -17,7 +17,7 @@ fn path(account_id: &str) -> String {
     format!("/v1/cloud/contacts/{account_id}/permissions")
 }
 
-async fn befriend(pool: &PgPool, left: &str, right: &str) {
+pub(crate) async fn befriend(pool: &PgPool, left: &str, right: &str) {
     for (owner, peer) in [(left, right), (right, left)] {
         query("INSERT INTO cloud_contacts (account_id, peer_account_id, created_at) VALUES ($1, $2, $3)")
             .bind(owner)
@@ -30,13 +30,13 @@ async fn befriend(pool: &PgPool, left: &str, right: &str) {
 }
 
 /// A group conversation with these active members; returns its session id.
-async fn group(pool: &PgPool, members: &[&str]) -> String {
+pub(crate) async fn group(pool: &PgPool, members: &[&str]) -> String {
     let session = format!("session:group:perm-{}", Uuid::new_v4().simple());
     conversation(pool, "group", &session, members).await;
     session
 }
 
-async fn conversation(pool: &PgPool, kind: &str, session: &str, members: &[&str]) {
+pub(crate) async fn conversation(pool: &PgPool, kind: &str, session: &str, members: &[&str]) {
     let id = Uuid::new_v4();
     query(
         "INSERT INTO cloud_chat_conversations (conversation_id, kind, created_by_account_id, \
@@ -79,7 +79,7 @@ async fn shared_agent(app: &axum::Router, token: &str) -> String {
         .to_string()
 }
 
-fn claim(owner: &str, requester: &str, session: &str) -> ClaimRunRequest {
+pub(crate) fn claim(owner: &str, requester: &str, session: &str) -> ClaimRunRequest {
     let id = Uuid::new_v4().to_string();
     ClaimRunRequest {
         request_message_id: id.clone(),
@@ -92,7 +92,7 @@ fn claim(owner: &str, requester: &str, session: &str) -> ClaimRunRequest {
     }
 }
 
-async fn insert_run(
+pub(crate) async fn insert_run(
     pool: &PgPool,
     owner: &str,
     requester: &str,
@@ -119,7 +119,7 @@ async fn insert_run(
     run_id
 }
 
-async fn run_state(pool: &PgPool, run_id: &str) -> (String, bool) {
+pub(crate) async fn run_state(pool: &PgPool, run_id: &str) -> (String, bool) {
     query_as(
         "SELECT status, cancel_requested_at IS NOT NULL FROM cloud_agent_fallback_runs WHERE run_id = $1",
     )
