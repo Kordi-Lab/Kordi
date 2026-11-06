@@ -354,6 +354,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         chatTranscriptScrollRef: args.chatTranscriptScrollRef,
         cloudSession: args.cloudSession,
         displayedContacts: args.displayedContacts,
+        participantSpaces: args.participantSpaces,
         handleStartChatWithPerson: args.handleStartChatWithPerson,
         onForwardMessage: args.onForwardMessage,
         handleSendChatMessage: args.handleSendChatMessage,

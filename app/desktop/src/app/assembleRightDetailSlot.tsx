@@ -58,6 +58,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           onReturnToChat={() => args.setIsDetailPanelCollapsed(true)}
           legacy={legacy}
           openProfile={openProfile}
+          groupSpaces={args.participantSpaces}
         />
       )
     : undefined;

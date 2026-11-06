@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, type ReactNode } from 'react';
 
-import type { Contact, Conversation } from '@/kordi-app/types';
+import type { Contact, Conversation, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import type { ChatSenderProfileOpener } from '@/pages/useChatSenderProfiles';
 import type { CloudAccount } from './authClient';
 import { cloudContactToContact } from './cloudContactMapping';
@@ -22,10 +22,12 @@ type CloudChatPersonInfoProps = {
   legacy: ReactNode;
   /** Opens a participant's profile popover, as the chat header and transcript do. */
   openProfile?: ChatSenderProfileOpener | null;
+  /** The loaded group spaces, for the common groups' avatars. */
+  groupSpaces?: readonly ParticipantSpaceViewModel[];
 };
 
 /** Info tab of a direct person chat: participants and what the two accounts share. */
-export function CloudChatPersonInfo({ account, conversation, peerAccountId, onReturnToChat, legacy, openProfile }: CloudChatPersonInfoProps) {
+export function CloudChatPersonInfo({ account, conversation, peerAccountId, onReturnToChat, legacy, openProfile, groupSpaces }: CloudChatPersonInfoProps) {
   const cloud = useCloudContacts(account);
   const presence = useCloudPresence(account);
   const contact = useMemo<Contact>(() => {
@@ -55,6 +57,7 @@ export function CloudChatPersonInfo({ account, conversation, peerAccountId, onRe
         conversation={conversation}
         host={host}
         onReturnToChat={onReturnToChat}
+        groupSpaces={groupSpaces}
         onOpenPeer={openProfile
           ? (anchorRect) => openProfile(conversation, directChatPeerParticipant(conversation, peerAccountId, contact), anchorRect)
           : undefined}

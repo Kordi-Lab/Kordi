@@ -86,12 +86,21 @@
   color: color-mix(in oklab, var(--utility-muted-text) 60%, transparent);
 }
 
+/* Overlapping group avatars; the ring is the card's own colour, so each tile reads as cut out of it. */
+.app-contacts-group-avatars {
+  --app-contacts-group-avatar-ring: color-mix(in oklab, var(--utility-foreground) 5%, var(--app-main-bg));
+}
+
+.app-contact-detail-dialog .app-contacts-group-avatars {
+  --app-contacts-group-avatar-ring: color-mix(in oklab, var(--app-transient-text) 6%, var(--app-transient-surface-bg));
+}
+
 .app-contacts-group-avatars > * + * {
   margin-left: -6px;
 }
 
 .app-contacts-group-avatars > * {
-  box-shadow: 0 0 0 1.5px var(--app-main-bg);
+  box-shadow: 0 0 0 1.5px var(--app-contacts-group-avatar-ring);
 }
 
 .app-contacts-chip {
