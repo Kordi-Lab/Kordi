@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import {
   buildBeforeDevCommand,
   desktopDevCapabilities,
+  macDevAppBundleEnv,
   resolveDesktopDevUrl,
   resolveDesktopPreviewIcons,
 } from '../scripts/tauri-dev-env.mjs';
@@ -156,4 +157,19 @@ test('production frontend preview builds before serving and preserves operator a
   assert.equal(command.split("VITE_KORDI_DEV_PROFILE='operator'").length - 1, 2);
   assert.throws(() => buildBeforeDevCommand({ title: 'Test', host: '127.0.0.1', port: 62359, frontendMode: 'production', env: { ...env, VITE_KORDI_PRODUCTION_DEBUG_ACK: '' } }));
   assert.throws(() => buildBeforeDevCommand({ title: 'Test', host: '127.0.0.1', port: 62359, frontendMode: 'invalid', env }));
+});
+
+test('macOS previews run the debug binary from a signed app bundle so permission prompts can appear', () => {
+  const options = { identifier: 'io.kordi.cloud.feature-a', title: 'Kordi Feature A', targetTriple: 'aarch64-apple-darwin', runnerPath: '/repo/runner.sh' };
+  assert.deepEqual(macDevAppBundleEnv({ ...options, platform: 'darwin', env: {} }), {
+    CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER: '/repo/runner.sh',
+    KORDI_DEV_BUNDLE_IDENTIFIER: 'io.kordi.cloud.feature-a',
+    KORDI_DEV_BUNDLE_NAME: 'Kordi Feature A',
+  });
+  assert.deepEqual(macDevAppBundleEnv({ ...options, platform: 'linux', env: {} }), {});
+  assert.deepEqual(macDevAppBundleEnv({ ...options, platform: 'darwin', env: { KORDI_DEV_APP_BUNDLE: '0' } }), {});
+  assert.deepEqual(macDevAppBundleEnv({ ...options, platform: 'darwin', env: { CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER: 'custom' } }), {});
+  const runner = readFileSync(new URL('../scripts/macos-dev-app-runner.sh', import.meta.url), 'utf8');
+  assert.match(runner, /CFBundleIdentifier/);
+  assert.match(runner, /codesign --force --sign -/);
 });

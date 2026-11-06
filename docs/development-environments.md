@@ -55,6 +55,8 @@ pnpm dev:desktop:profile -- \
   --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
+On macOS the profile launcher starts the debug binary from a minimal ad-hoc signed app under `<cargo target>/debug/dev-app-bundles/<identifier>/`, so privacy prompts such as Location Services can appear. A bare binary never gets a location prompt. Set `KORDI_DEV_APP_BUNDLE=0` to run the bare binary instead. The bundle is rebuilt on every launch and is safe to delete.
+
 Sign-up verification emails are captured by the stack's Mailpit inbox at `http://127.0.0.1:18025` instead of being delivered; see [Sign-up email change](self-hosted-debug.md#sign-up-email-change).
 
 See [Local development with an isolated Kordi backend](self-hosted-debug.md) for OAuth, multi-user, log, validation, and reset commands. Voice and video require the additional [call hosting guide](call-hosting.md); the base stack does not start LiveKit.
