@@ -4,7 +4,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, patch, post, put};
+use axum::routing::{get, patch, post, put};
 use axum::{Extension, Json, Router};
 use serde_json::json;
 use uuid::Uuid;
@@ -65,14 +65,6 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
             post(channels::create),
         )
         .route(
-            "/v2/chat/group-spaces/:group_space_id",
-            delete(channels::dissolve_group),
-        )
-        .route(
-            "/v2/chat/group-spaces/:group_space_id/channels/:conversation_id",
-            delete(channels::dissolve_channel),
-        )
-        .route(
             "/v2/chat/conversations/:conversation_id",
             patch(update_shared_title),
         )
@@ -93,6 +85,7 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
             get(history).post(send_message),
         )
         .merge(message_mutations::routes())
+        .merge(channels::dissolve_routes())
         .merge(attachment_actions::routes())
         .route("/v2/chat/attention", get(thread_reads::attention))
         .route(

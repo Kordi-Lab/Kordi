@@ -48,6 +48,19 @@ pub(super) async fn create(
 }
 
 /// Dissolves a whole group: an owner or admin only.
+/// Dissolving a whole group, or one of its channels, is for group admins only.
+pub(super) fn dissolve_routes() -> Router<Arc<ServerState>> {
+    Router::new()
+        .route(
+            "/v2/chat/group-spaces/:group_space_id",
+            axum::routing::delete(dissolve_group),
+        )
+        .route(
+            "/v2/chat/group-spaces/:group_space_id/channels/:conversation_id",
+            axum::routing::delete(dissolve_channel),
+        )
+}
+
 pub(super) async fn dissolve_group(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
