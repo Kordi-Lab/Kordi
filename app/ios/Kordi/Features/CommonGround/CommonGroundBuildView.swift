@@ -91,6 +91,7 @@ struct CommonGroundBuildView: View {
                         .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
                 }
                 Button(model.buildFailed ? "Try again" : "Build profile") {
+                    guard appModel.requireAIConsent() else { return }
                     Task { await model.build(choices.request) }
                 }
                 .buttonStyle(CommonGroundPrimaryButtonStyle())

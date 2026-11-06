@@ -113,8 +113,13 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-data` | Complete signed-in Contact chat flow |
 | `--preview-agent-page` | Agents root tab (combine with preview data) |
 | `--preview-personal-agent` | Personal agent section with three sample agents, unread outreach messages with source chips, and an empty session; combine with `--preview-data --preview-agent-page` |
-| `--preview-login` | Welcome screen with Log in and Sign up (browser sign-in) |
-| `--preview-email-sign-in` | Email and social login form, the fallback for servers without browser sign-in |
+| `--preview-login` | Welcome screen with Sign in with Apple, Log in and Sign up (browser sign-in), and the Terms and Privacy Policy line |
+| `--preview-email-sign-in` | Email and social login form (Apple, Google, GitHub), the fallback for servers without browser sign-in |
+| `--preview-consent` | Signed-in home with the AI consent sheet ("Kordi uses AI models") over it; no server needed |
+| `--preview-privacy-settings` | Settings › Privacy: the Share with AI models switch and the legal pages |
+| `--preview-delete-account` | Edit profile › Delete account page with the password field |
+| `--preview-delete-account-confirm` | The Delete account page with the "Delete account?" alert shown |
+| `--preview-settings-about` | Settings scrolled to the bottom to show the Account and About rows (Privacy, Privacy policy, Terms of service) |
 | `--preview-signup` | Account creation in the email form |
 | `--preview-contacts` | Contacts and requests |
 | `--preview-new-chat` | New-chat sheet |

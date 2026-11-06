@@ -5,6 +5,7 @@ enum AccountSettingsRoute: String, Hashable {
     case profile
     case activeSessions = "active-sessions"
     case authentication
+    case privacy
     case notifications
     case connectors
     case memory
@@ -40,7 +41,7 @@ struct AccountSheet: View {
         self.connectorsRequest = connectorsRequest
     }
 
-    fileprivate init(previewing route: AccountSettingsRoute) {
+    init(previewing route: AccountSettingsRoute) {
         _path = State(initialValue: [route])
         embeddedInNavigationStack = false
     }
@@ -141,8 +142,13 @@ struct AccountSheet: View {
                     }
                 }
                 .accessibilityIdentifier("settings-authentication")
+                settingsLink(.privacy) {
+                    CompactSettingsLabel(title: "Privacy", systemImage: "hand.raised")
+                }
                 SettingsDivider()
                 SettingsSectionTitle("About")
+                LegalLinkRow(title: "Privacy policy", systemImage: "lock.doc", url: KordiLegalLinks.privacy)
+                LegalLinkRow(title: "Terms of service", systemImage: "doc.plaintext", url: KordiLegalLinks.terms)
                 settingsLink(.licenses) {
                     CompactSettingsLabel(title: "Open-source licenses", systemImage: "doc.text")
                 }
@@ -152,6 +158,7 @@ struct AccountSheet: View {
             .padding(.top, 12)
             .padding(.bottom, 24)
         }
+        .defaultScrollAnchor(ProcessInfo.processInfo.arguments.contains("--preview-settings-about") ? .bottom : nil)
         .background(Color(uiColor: .systemBackground))
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
@@ -163,6 +170,8 @@ struct AccountSheet: View {
                 DevicesSettingsView()
             case .authentication:
                 ProviderAuthenticationView()
+            case .privacy:
+                PrivacySettingsView()
             case .notifications:
                 NotificationSettingsView()
             case .connectors:

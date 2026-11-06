@@ -418,7 +418,7 @@ struct DigestView: View {
         CloudTransportErrorPolicy.shouldSurface(error, taskIsCancelled: Task.isCancelled)
             && revision == loadRevision && model.account?.accountId == accountId
     }
-    private func refresh() async { isRefreshing = true; defer { isRefreshing = false }; await perform { try await model.refreshRollingDigest() }; if let id = model.account?.accountId { await load(accountId: id) } }
+    private func refresh() async { guard model.requireAIConsent() else { return }; isRefreshing = true; defer { isRefreshing = false }; await perform { try await model.refreshRollingDigest() }; if let id = model.account?.accountId { await load(accountId: id) } }
     private func requestReminders() async { if remoteReminders { await notifications.requestAuthorization(); remindersAllowed = notifications.authorizationState.canRegisterForRemoteNotifications; return }; guard let id = model.account?.accountId else { return }; await perform { remindersAllowed = try await DigestCalendarService.syncReminders(accountId: id, events: events, requestPermission: true, isCurrentAccount: { model.account?.accountId == id }) } }
     private func perform(_ operation: () async throws -> Void) async { do { try await operation(); error = nil } catch { self.error = error.localizedDescription } }
 }

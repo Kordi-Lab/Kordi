@@ -243,6 +243,7 @@ struct NewChatView: View {
     }
 
     private func startAgentSession(from template: ConversationSummary) {
+        guard model.requireAIConsent() else { return }
         guard model.hasConfiguredProviderAuthentication else {
             showsProviderAuthentication = true
             return

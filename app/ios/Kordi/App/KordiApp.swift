@@ -407,6 +407,13 @@ private struct RootView: View {
             AgentSubsessionStopPreviewView()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-appearance") {
             AppearanceSettingsPreview()
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-privacy-settings") {
+            PrivacySettingsPreview()
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-delete-account")
+            || ProcessInfo.processInfo.arguments.contains("--preview-delete-account-confirm") {
+            DeleteAccountPreview()
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-settings-about") {
+            AccountSheet()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-profile") {
             ProfileSettingsPreview()
         } else if ConnectorsAvailability.isPreviewRequested() {
@@ -526,6 +533,8 @@ private struct RootView: View {
             case .signedIn:
                 MainTabView(hasTopAccessory: hasTopAccessory)
                     .transition(.opacity)
+                    // Asks for the AI choice once after sign-in while it is undecided.
+                    .task(id: model.account?.accountId) { await model.refreshAIConsent(promptIfUnset: true) }
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: model.phase)
