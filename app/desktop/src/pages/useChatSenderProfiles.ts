@@ -3,6 +3,8 @@ import { createContext, useCallback, useMemo, useState } from 'react';
 import { cloudApiBaseUrl, defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
 import { contactProfileVersionFromCapabilities, fetchContactProfile } from '@/features/cloud/contactProfileClient';
+import { contactPermissionsVersionFromCapabilities } from '@/features/cloud/contactPermissionsClient';
+import { cloudContactPermissionsHost } from '@/features/cloud/contactPermissionsHost';
 import { useCloudContacts } from '@/features/cloud/useCloudContacts';
 import type { CloudPresenceStore } from '@/features/cloud/presence';
 import type { CloudSupportTicketInput } from '@/features/cloud/supportClient';
@@ -95,6 +97,12 @@ export function useChatSenderProfiles({
           signal,
           request: (path, init, fallback) => authClient.request(path, init, fallback),
         })
+      : undefined
+  ), [authClient, capabilities]);
+  // The popover's Permissions section, also for people who are not contacts.
+  const permissionsHost = useMemo(() => (
+    authClient && contactPermissionsVersionFromCapabilities(capabilities) !== null
+      ? cloudContactPermissionsHost((path, init, fallback) => authClient.request(path, init, fallback))
       : undefined
   ), [authClient, capabilities]);
   const [storedState, setStoredState] = useState<SenderProfileState>({
@@ -210,6 +218,7 @@ export function useChatSenderProfiles({
     openCompanion,
     openCommonGroup: onSelectSession ? openCommonGroup : undefined,
     loadProfile,
+    permissionsHost,
     close,
   };
 }

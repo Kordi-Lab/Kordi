@@ -5,7 +5,8 @@ import type { ContactProfileHost } from '@/kordi-app/contacts/contactProfileHost
 import { cloudApiBaseUrl, defaultCloudAuthClient, type CloudAccount } from './authClient';
 import { useCloudAuthCapabilitiesState } from './cloudAuthCapabilities';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
-import { contactPermissionsVersionFromCapabilities, fetchContactPermissions, updateContactPermissions } from './contactPermissionsClient';
+import { contactPermissionsVersionFromCapabilities } from './contactPermissionsClient';
+import { cloudContactPermissionsHost } from './contactPermissionsHost';
 import { contactProfileVersionFromCapabilities, fetchContactProfile, removeCloudContact } from './contactProfileClient';
 import { dispatchCloudGroupInvitationAccepted } from './groupInvitationDeepLink';
 
@@ -85,10 +86,7 @@ export function useCloudContactProfileHost(options: ContactProfileHostOptions): 
       openGroup: (group) => {
         dispatchCloudGroupInvitationAccepted({ groupId: group.groupId, groupSpaceId: group.groupId, groupTitle: group.title });
       },
-      permissions: permissionsAvailable ? {
-        load: (accountId, signal) => fetchContactPermissions(accountId, { signal, request }),
-        save: (accountId, patch) => updateContactPermissions(accountId, patch, { request }),
-      } : undefined,
+      permissions: permissionsAvailable ? cloudContactPermissionsHost(request) : undefined,
     };
   }, [authClient, available, permissionsAvailable, selfAccountId]);
 

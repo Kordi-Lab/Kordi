@@ -56,3 +56,14 @@ export async function updateContactPermissions(
   if (!permissions) throw new Error('Could not save permissions.');
   return permissions;
 }
+
+/** `GET /v1/cloud/contacts/permissions`: everyone the signed-in owner restricted in any way. */
+export async function fetchRestrictedPeople(options: FetchContactProfileOptions = {}): Promise<CloudContactPermissions[]> {
+  const body = await authorizedRequest<unknown>('/v1/cloud/contacts/permissions', 'GET', options, 'Could not load permissions.');
+  const people = (body as { people?: unknown } | null)?.people;
+  if (!Array.isArray(people)) return [];
+  return people.flatMap((row) => {
+    const permissions = normalizeContactPermissions(row, '');
+    return permissions?.accountId ? [permissions] : [];
+  });
+}
