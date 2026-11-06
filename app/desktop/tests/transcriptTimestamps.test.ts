@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { createTranscriptTimeSeparatorCache, transcriptTimeSeparatorLabels } from '../src/features/chat/transcriptTimestamps';
 import { continuesAgentTranscriptRun } from '../src/features/chat/agentTranscriptRun';
-import { isGroupedWithAdjacentHumanMessage } from '../src/pages/chatsPage.transcriptViewport';
+import { isGroupedWithAdjacentHumanMessage } from '../src/features/chat/humanTranscriptGrouping';
 import type { Message } from '../src/kordi-app/types';
 
 function message(timestampMs: number | null, overrides: Partial<Message> = {}): Message {

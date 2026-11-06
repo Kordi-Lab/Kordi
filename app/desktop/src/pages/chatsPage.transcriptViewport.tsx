@@ -25,44 +25,12 @@ import { queuedTranscriptRequestIds } from '@/features/chat/queuedDesktopMessage
 import { insertPinActivities, PIN_ACTIVITY_ESTIMATED_HEIGHT } from '@/pages/chatsPage.pinActivity';
 import { PinActivityNotice } from '@/pages/chatsPage.pins';
 import { continuesAgentTranscriptRun } from '@/features/chat/agentTranscriptRun';
+import { isGroupedWithAdjacentHumanMessage } from '@/features/chat/humanTranscriptGrouping';
 
 type TranscriptEntry = {
   message: Message;
   originalIndex: number;
 };
-
-function humanTranscriptGroupKey(message?: Message) {
-  if (
-    !message
-    || message.role === 'system'
-    || message.role === 'action'
-    || message.role === 'edit'
-    || message.turn
-  ) return null;
-  const senderType = message.senderType
-    ?? (message.role === 'user' || message.role === 'person' ? 'human' : 'agent');
-  const isOwnHuman = (message.isOwnMessage ?? message.role === 'user') && senderType === 'human';
-  const isPeerHuman = !isOwnHuman && (senderType === 'human' || message.role === 'person');
-  if (!isOwnHuman && !isPeerHuman) return null;
-  const side = isOwnHuman ? 'own' : 'peer';
-  const senderKey = message.senderAvatarSeed?.trim()
-    || message.senderProfileImageUrl?.trim()
-    || message.sender?.trim()
-    || side;
-  return `${side}:${senderKey}`;
-}
-
-export function isGroupedWithAdjacentHumanMessage(
-  messages: readonly Message[],
-  index: number,
-  offset: -1 | 1,
-  timeSeparators: readonly (string | null)[] = [],
-) {
-  if (offset === -1 && timeSeparators[index]) return false;
-  if (offset === 1 && timeSeparators[index + 1]) return false;
-  const currentKey = humanTranscriptGroupKey(messages[index]);
-  return Boolean(currentKey && currentKey === humanTranscriptGroupKey(messages[index + offset]));
-}
 
 export function useChatTranscriptViewport({
   viewport,
