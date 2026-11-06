@@ -8,7 +8,7 @@ import {
 } from 'react';
 import { useVoiceAgentRequestGate } from './useVoiceAgentRequestGate';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
-import { desktopTurnNeedsCloudHandBack, handBackDesktopRun } from './cloudDesktopRunHandback';
+import { handBackHostedCredentialTurn } from './cloudHostedCredentialHandBack';
 import { publishModelSubsessions } from './agentSubsessionSync';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
 import {
@@ -36,12 +36,10 @@ import {
 import {
   cloudAgentNativeContextMessagesFromDirectCloudSession,
   cloudDirectAgentReplyThreadAction,
-  cloudAgentCouldNotAnswerText,
-  cloudAgentProviderFailureNotice,
   encodeCloudAgentResponse,
-  isCloudAgentHostedCredentialUnavailableError,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
+import { cloudAgentSharedReplyFailureNotice } from './cloudAgentFailureNotices';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
 import {
   registerCloudBackgroundFollowUpHandler,
@@ -351,20 +349,11 @@ export function useCloudDirectAgentExecution({
           }
 
           // This Mac could not load the owner's hosted account before the
-          // model ran. The cloud runner resolves it on the server, so it
-          // answers instead of the request failing for everyone.
-          if (desktopTurnNeedsCloudHandBack(finalTurn)
-            && await handBackDesktopRun(client, session.token, lease)) {
-            setLocalTurns((current) => {
-              if (!(message.messageId in current)) return current;
-              const next = { ...current };
-              delete next[message.messageId];
-              return next;
-            });
-            reportWarning('[cloud-agent-mention] handed back to the cloud', finalTurn.error);
-            void syncMessages();
-            return;
-          }
+          // model ran; the cloud runner resolves it on the server instead.
+          if (await handBackHostedCredentialTurn(
+            { client, setLocalTurns, syncDiff: syncMessages },
+            session.token, lease, finalTurn, message.messageId,
+          )) return;
 
           try {
             if (activitySessionId && !agentExchangeTurnIsWaiting(finalTurn)) {
@@ -402,19 +391,15 @@ export function useCloudDirectAgentExecution({
             }
             const replyText = cloudAgentTurnReplyText(finalTurn);
             const responseSucceeded = replyText.length > 0;
-            const failureDetail = finalTurn.error || finalTurn.message;
             const responseText = responseSucceeded
               ? replyText
               : finalTurn.status === 'cancelled'
                 ? 'Request stopped.'
-              // Every member reads this row; the owner's own turn shows
-              // how to reconnect the account.
-              : isCloudAgentHostedCredentialUnavailableError(failureDetail)
-                ? cloudAgentCouldNotAnswerText(
-                  cloudAgentDefinitionsById[targetCloudAgentId ?? '']?.name
-                  || account.defaultAgent?.displayName,
-                )
-              : cloudAgentProviderFailureNotice(finalTurn.error || finalTurn.message)
+              // Every member reads this row; the owner's own turn shows how to reconnect.
+              : cloudAgentSharedReplyFailureNotice(
+                finalTurn.error || finalTurn.message,
+                cloudAgentDefinitionsById[targetCloudAgentId ?? '']?.name || account.defaultAgent?.displayName,
+              )
                 ?? `Failed: ${
                   finalTurn.error
                   || finalTurn.message

@@ -1,7 +1,5 @@
 import type { CloudAuthClient } from './authClient';
-import { isCloudAgentHostedCredentialUnavailableError } from './cloudAgentMessages';
 import { CloudAuthError } from './cloudAuthError';
-import type { DesktopChatTurnSnapshot } from '@/kordi-app/types';
 
 /** The part of a desktop execution lease a hand-back needs. */
 export type HandBackLease = {
@@ -42,19 +40,4 @@ export async function handBackDesktopRun(
       await new Promise((resolve) => setTimeout(resolve, retryMs));
     }
   }
-}
-
-/**
- * Whether a Mac turn ended before the model ran because this Mac could not
- * load the owner's hosted account. The cloud runner resolves that account on
- * the server, so the run is handed back instead of failing for everyone.
- */
-export function desktopTurnNeedsCloudHandBack(
-  turn: Pick<DesktopChatTurnSnapshot, 'status' | 'succeeded' | 'assistantText' | 'tools' | 'error' | 'message'>,
-): boolean {
-  return turn.status === 'failed'
-    && !turn.succeeded
-    && !turn.assistantText?.trim()
-    && turn.tools.length === 0
-    && isCloudAgentHostedCredentialUnavailableError(turn.error || turn.message);
 }
