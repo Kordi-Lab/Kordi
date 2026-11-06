@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { AttachmentItem, ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 import type { CompactComposerModelMenuSaveInput } from '@/kordi-app/components';
 import type { Conversation, DesktopChatContextWindowStatus } from '@/kordi-app/types';
@@ -47,6 +48,8 @@ export type MainComposerProps = {
     placeholder: string;
     /** Opens sign-in when no account can run the agent. */
     onOpenAuthentication?: () => void;
+    /** Attached to the top edge of the composer, such as the provider tray. */
+    notice?: ReactNode;
   };
   onSend: (draftOverride?: string, attachmentOverride?: AttachmentItem[]) => Promise<void> | void;
   /** Present while a request the viewer sent in this chat runs or waits. */

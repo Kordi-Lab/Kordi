@@ -4,16 +4,20 @@ use sha2::{Digest, Sha256};
 
 mod acceptance;
 mod creation;
+mod landing;
+mod landing_page;
 mod lookup;
+mod pending;
 
 pub(super) use acceptance::{accept_group_invitation, revoke_group_invitation};
 pub(crate) use acceptance::{audit_join, redeem_group_invitation_by_id, Redemption};
 pub(crate) use creation::create_invitation_in_transaction;
 pub(super) use creation::{
-    create_group_invitation, get_group_invitation, group_invitation_landing,
-    list_active_group_invitations,
+    create_group_invitation, get_group_invitation, list_active_group_invitations,
 };
+pub(super) use landing::{claim_group_invitation_from_page, group_invitation_landing};
 use lookup::*;
+pub(super) use pending::pending_routes;
 
 const GROUP_INVITE_TOKEN_PREFIX: &str = "kordi_gi_";
 const GROUP_INVITE_LIFETIME_DAYS: i64 = 7;
@@ -124,5 +128,9 @@ fn group_invitation_has_capacity(snapshot: &GroupInvitationSnapshot) -> bool {
     snapshot.participants.len() < GROUP_INVITE_MAX_MEMBERS
 }
 
+#[cfg(test)]
+mod landing_tests;
+#[cfg(test)]
+mod pending_tests;
 #[cfg(test)]
 mod tests;

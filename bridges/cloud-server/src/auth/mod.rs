@@ -16,5 +16,6 @@ pub mod routes;
 mod rows;
 pub mod session;
 pub mod session_activity;
+pub(crate) mod session_signals;
 pub mod signup_email;
 pub mod subsessions;
