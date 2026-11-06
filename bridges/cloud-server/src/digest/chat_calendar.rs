@@ -39,7 +39,7 @@ pub(super) async fn route(
         Err(RunError::ContextUnavailable(_)) => super::routes::error("calendar_unavailable", "Calendar context is unavailable. Try again.", StatusCode::UNPROCESSABLE_ENTITY),
         Ok(value) => Json(value).into_response(),
         Err(RunError::Persistence(_)) => super::routes::error("calendar_unavailable", "The saved calendar could not be loaded. Try again; this does not mean the calendar is empty.", StatusCode::INTERNAL_SERVER_ERROR),
-        Err(RunError::NotFound) => super::routes::error("calendar_unavailable", "Calendar access is unavailable for this request; this does not mean the calendar is empty.", StatusCode::FORBIDDEN),
+        Err(RunError::NotFound | RunError::AgentUnavailable) => super::routes::error("calendar_unavailable", "Calendar access is unavailable for this request; this does not mean the calendar is empty.", StatusCode::FORBIDDEN),
     }
 }
 

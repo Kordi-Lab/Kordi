@@ -160,7 +160,7 @@ async fn list_agents(
 
 async fn list_shared_agents(
     State(state): State<Arc<ServerState>>,
-    Extension(_session): Extension<CloudSession>,
+    Extension(session): Extension<CloudSession>,
     Query(query): Query<SharedAgentsQuery>,
 ) -> Response {
     let owner_ids = query
@@ -171,7 +171,7 @@ async fn list_shared_agents(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .collect::<Vec<_>>();
-    match list_shared_agent_summaries(state.db_pool(), &owner_ids).await {
+    match list_shared_agent_summaries(state.db_pool(), &owner_ids, &session.account_id).await {
         Ok(agents) => Json(SharedCloudAgentListResponse { agents }).into_response(),
         Err(err) => store_error_response("list_shared", err),
     }

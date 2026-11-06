@@ -5,7 +5,9 @@
 //! references. Turning sharing off hides your card through every link of
 //! that profile and hides the other cards from you through them; the links
 //! stay, so turning it back on restores both. People never see another
-//! profile of the same person.
+//! profile of the same person. An owner who stopped a viewer from seeing
+//! their card (docs/contact-permissions.md) is hidden from that viewer
+//! through every link, exactly as if their card were not shared.
 
 use std::sync::Arc;
 
@@ -21,6 +23,7 @@ use sqlx_postgres::{PgPool, Postgres};
 
 use super::profiles::{self, ProfileQuery};
 use super::{card, db_error, err, ROOM_OPEN_SQL};
+use crate::contact_permissions::card_allowed_sql;
 use crate::document_shares::access::{clean_display_name, syncable_avatar_url};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
@@ -64,10 +67,11 @@ pub(super) fn shares_sql(profile: &str) -> String {
 /// SQL that is true when the account in `viewer` may see the shared card of
 /// the account in `other` (both SQL expressions): they are paired, or both
 /// are still in the same room, open or closed, and both share the profiles
-/// linked there. Leaving a room withdraws it.
+/// linked there. Leaving a room withdraws it. Never while `other` stopped
+/// `viewer` from seeing their card.
 pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
     format!(
-        "(EXISTS (
+        "({allowed} AND (EXISTS (
              SELECT 1 FROM cloud_common_ground_pairings pairing
              WHERE pairing.account_a = LEAST({viewer}, {other})
                AND pairing.account_b = GREATEST({viewer}, {other})
@@ -79,7 +83,8 @@ pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
                   AND theirs.left_at IS NULL
              WHERE mine.account_id = {viewer} AND mine.left_at IS NULL
                AND {mine_shares} AND {theirs_shares}
-         ))",
+         )))",
+        allowed = card_allowed_sql(other, viewer),
         pairing_a = shares_sql("pairing.profile_a"),
         pairing_b = shares_sql("pairing.profile_b"),
         mine_shares = shares_sql("mine.profile_id"),
@@ -89,10 +94,17 @@ pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
 
 /// SQL that is true when the profile in `viewer_profile` may see the card of
 /// the profile in `other_profile`: both share them, and they are paired with
-/// those profiles or both share them in the same room and have not left.
+/// those profiles or both share them in the same room and have not left,
+/// and the other profile's owner did not stop the viewer from seeing it.
 pub(super) fn profile_visible_sql(viewer_profile: &str, other_profile: &str) -> String {
     format!(
-        "({viewer_shares} AND {other_shares} AND (EXISTS (
+        "({viewer_shares} AND {other_shares} AND NOT EXISTS (
+             SELECT 1 FROM cloud_common_ground_profiles restricted_owner
+             JOIN cloud_common_ground_profiles restricted_viewer
+               ON restricted_viewer.profile_id = {viewer_profile}
+             WHERE restricted_owner.profile_id = {other_profile}
+               AND NOT {allowed}
+         ) AND (EXISTS (
              SELECT 1 FROM cloud_common_ground_pairings
              WHERE (profile_a = {viewer_profile} AND profile_b = {other_profile})
                 OR (profile_a = {other_profile} AND profile_b = {viewer_profile})
@@ -105,6 +117,10 @@ pub(super) fn profile_visible_sql(viewer_profile: &str, other_profile: &str) -> 
          )))",
         viewer_shares = shares_sql(viewer_profile),
         other_shares = shares_sql(other_profile),
+        allowed = card_allowed_sql(
+            "restricted_owner.account_id",
+            "restricted_viewer.account_id"
+        ),
     )
 }
 
@@ -122,13 +138,15 @@ pub(super) struct Link {
 /// Every (viewer profile, other profile) pair through which `viewer` sees
 /// `other`, most recent first: a pairing, or a room both still share, open
 /// or closed. Limited to the viewer sharing `$3` when that is not null, and
-/// with `shared_only` to pairs where both profiles share a built card.
+/// with `shared_only` to pairs where both profiles share a built card and
+/// `$2` did not stop `$1` from seeing their card.
 fn links_sql(limit: &str, shared_only: bool) -> String {
     let shared = if shared_only {
         format!(
-            "AND {} AND {}",
+            "AND {} AND {} AND {}",
             shares_sql("links.vp"),
-            shares_sql("links.op")
+            shares_sql("links.op"),
+            card_allowed_sql("$2", "$1")
         )
     } else {
         String::new()

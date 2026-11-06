@@ -266,7 +266,8 @@ pub(super) async fn build(
     .bind(&service)
     .fetch_all(pool)
     .await?;
-    let mut rows: Vec<MessageRow> = query_as(
+    // The agent never reads people its owner stopped from using it.
+    let mut rows: Vec<MessageRow> = query_as(&format!(
         "SELECT message.message_id::text, message.conversation_sequence,
                 message.sender_account_id, account.display_name, message.content,
                 message.created_at::text
@@ -274,13 +275,15 @@ pub(super) async fn build(
          JOIN cloud_accounts account ON account.account_id = message.sender_account_id
          WHERE message.conversation_id = $1 AND message.deleted_at IS NULL
            AND message.conversation_sequence <= $2
-           AND message.message_kind IN ('text', 'voice')
+           AND message.message_kind IN ('text', 'voice') AND {allowed}
          ORDER BY message.conversation_sequence DESC
          LIMIT $3",
-    )
+        allowed = crate::contact_permissions::agent_allowed_sql("$4", "message.sender_account_id"),
+    ))
     .bind(candidate.conversation_id)
     .bind(candidate.latest_sequence)
     .bind(SNAPSHOT_MESSAGES)
+    .bind(&agent.owner_account_id)
     .fetch_all(pool)
     .await?;
     rows.reverse();

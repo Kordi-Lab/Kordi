@@ -86,6 +86,18 @@ pub(super) async fn claim_cloud_agent_run(
         }
     }
 
+    // One refusal for every target, so it never shows the owner's choice.
+    match super::runs::requester_may_use_owner_agents(state.db_pool(), &input).await {
+        Ok(true) => {}
+        Ok(false) => return super::runs::agent_unavailable(),
+        Err(error) => {
+            return run_error_response(
+                "check agent permission",
+                "Could not validate Cloud agent run authorization.",
+                error,
+            )
+        }
+    }
     match super::runs::request_identity(
         state.db_pool(),
         &input.session_id,

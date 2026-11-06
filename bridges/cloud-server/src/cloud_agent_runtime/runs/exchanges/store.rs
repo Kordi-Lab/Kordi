@@ -26,7 +26,7 @@ pub(super) async fn authorize(
     let (who, account) = executor
         .map(|(who, account)| (Some(who), account))
         .unwrap_or_default();
-    let row: Option<AuthorizedRunRow> = query_as(
+    let row: Option<AuthorizedRunRow> = query_as(&format!(
         "SELECT r.session_id,r.owner_account_id,r.requester_account_id,r.execution_agent_id,c.conversation_id,c.kind,
                 COALESCE(e.root_run_id,r.run_id),root.request_message_id
          FROM cloud_agent_fallback_runs r JOIN cloud_chat_conversations c ON c.legacy_session_id=r.session_id
@@ -36,8 +36,11 @@ pub(super) async fn authorize(
            AND ($3::text IS NULL OR r.owner_account_id=$3) AND root.cancel_requested_at IS NULL AND root.status<>'cancelled'
            AND (e.exchange_id IS NULL OR e.status NOT IN ('cancelled','failed','timed_out'))
            AND NOT EXISTS (SELECT 1 FROM unnest(ARRAY[r.owner_account_id,r.requester_account_id,root.owner_account_id,root.requester_account_id,COALESCE(e.target_owner_id,r.owner_account_id)]) a WHERE NOT EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=c.conversation_id AND m.account_id=a AND m.membership_state='active'))
-           AND (r.execution_agent_id='cloud-agent:'||r.owner_account_id OR EXISTS(SELECT 1 FROM cloud_agent_definitions d WHERE d.agent_id=r.execution_agent_id AND d.owner_account_id=r.owner_account_id AND d.status='active' AND (d.access_scope='participant_conversations' OR r.owner_account_id=r.requester_account_id)))"
-    ).bind(run).bind(who).bind(account).fetch_optional(pool).await?;
+           AND (r.execution_agent_id='cloud-agent:'||r.owner_account_id OR EXISTS(SELECT 1 FROM cloud_agent_definitions d WHERE d.agent_id=r.execution_agent_id AND d.owner_account_id=r.owner_account_id AND d.status='active' AND (d.access_scope='participant_conversations' OR r.owner_account_id=r.requester_account_id)))
+           AND {run_allowed} AND {target_allowed}",
+        run_allowed = crate::contact_permissions::agent_allowed_sql("r.owner_account_id", "r.requester_account_id"),
+        target_allowed = crate::contact_permissions::agent_allowed_sql("COALESCE(e.target_owner_id,r.owner_account_id)", "root.requester_account_id"),
+    )).bind(run).bind(who).bind(account).fetch_optional(pool).await?;
     let (session, owner, requester, agent, conversation, kind, root, original_request) =
         row.ok_or(RunError::NotFound)?;
     // A deleted source request cannot authorize new work or restored context.
@@ -76,11 +79,15 @@ fn normalized(value: &str) -> String {
         .collect()
 }
 
+/// The agents a run may reach out to; agents whose owner stopped the run's
+/// requester from using them are left out.
 pub(super) async fn directory(pool: &PgPool, parent: &Parent) -> RunResult<Vec<Target>> {
-    let rows: Vec<(String,String,String,String)> = query_as(
-        "SELECT 'cloud-agent:'||a.account_id,a.account_id,COALESCE(p.display_name,'Kordi'),a.display_name FROM cloud_chat_conversation_members m JOIN cloud_accounts a USING(account_id) LEFT JOIN cloud_default_agent_profiles p ON p.owner_account_id=a.account_id WHERE m.conversation_id=$1 AND m.membership_state='active'
-         UNION ALL SELECT d.agent_id,d.owner_account_id,d.name,a.display_name FROM cloud_agent_definitions d JOIN cloud_accounts a ON a.account_id=d.owner_account_id JOIN cloud_chat_conversation_members m ON m.account_id=d.owner_account_id WHERE m.conversation_id=$1 AND m.membership_state='active' AND d.status='active' AND d.access_scope='participant_conversations'"
-    ).bind(parent.conversation).fetch_all(pool).await?;
+    let rows: Vec<(String,String,String,String)> = query_as(&format!(
+        "SELECT 'cloud-agent:'||a.account_id,a.account_id,COALESCE(p.display_name,'Kordi'),a.display_name FROM cloud_chat_conversation_members m JOIN cloud_accounts a USING(account_id) LEFT JOIN cloud_default_agent_profiles p ON p.owner_account_id=a.account_id WHERE m.conversation_id=$1 AND m.membership_state='active' AND {member_allowed}
+         UNION ALL SELECT d.agent_id,d.owner_account_id,d.name,a.display_name FROM cloud_agent_definitions d JOIN cloud_accounts a ON a.account_id=d.owner_account_id JOIN cloud_chat_conversation_members m ON m.account_id=d.owner_account_id WHERE m.conversation_id=$1 AND m.membership_state='active' AND d.status='active' AND d.access_scope='participant_conversations' AND {definition_allowed}",
+        member_allowed = crate::contact_permissions::agent_allowed_sql("a.account_id", "$2"),
+        definition_allowed = crate::contact_permissions::agent_allowed_sql("d.owner_account_id", "$2"),
+    )).bind(parent.conversation).bind(&parent.requester).fetch_all(pool).await?;
     Ok(rows
         .into_iter()
         .filter(|r| r.0 != parent.agent && !crate::system_account::is_service_account(&r.1))

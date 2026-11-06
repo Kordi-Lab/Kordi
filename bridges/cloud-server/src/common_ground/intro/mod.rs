@@ -55,7 +55,8 @@ async fn room_profiles(
 
 /// Display names and the cards `accounts` share in the room. Everyone the
 /// intro names reads it, so it quotes cards only while all of them share
-/// theirs in the room; otherwise it only names people.
+/// theirs in the room and none stopped another from seeing it; otherwise it
+/// only names people.
 async fn introduced(
     pool: &PgPool,
     room_id: Uuid,
@@ -68,7 +69,9 @@ async fn introduced(
         .into_iter()
         .map(|card| (card.account_id, card.topics))
         .collect();
-    if !ids.iter().all(|id| cards.contains_key(id)) {
+    if !ids.iter().all(|id| cards.contains_key(id))
+        || crate::contact_permissions::card_restricted_among(pool, &ids).await?
+    {
         cards.clear();
     }
     let names: HashMap<String, Option<String>> =
@@ -273,7 +276,7 @@ pub(super) async fn fail(
 /// How `account` relates to the other people in the conversation, from the
 /// stored matches with `account`'s room card as viewer, in join order.
 /// Everyone in the group reads the line, so it quotes cards only while all
-/// of them share theirs in the room.
+/// of them share theirs in the room and none stopped another from seeing it.
 async fn related_people(
     pool: &PgPool,
     system_agent_account: &str,
@@ -305,7 +308,9 @@ async fn related_people(
         .filter_map(|id| Some((id.clone(), profiles.get(id)?.clone())))
         .collect();
     let mut cards = shared_cards(pool, &members).await?;
-    if cards.len() < ids.len() {
+    if cards.len() < ids.len()
+        || crate::contact_permissions::card_restricted_among(pool, &ids).await?
+    {
         return Ok((None, Vec::new()));
     }
     let Some(position) = cards.iter().position(|card| card.account_id == account) else {

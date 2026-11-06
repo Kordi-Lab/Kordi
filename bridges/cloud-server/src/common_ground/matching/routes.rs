@@ -90,7 +90,20 @@ pub(in crate::common_ground) async fn results(
             None => card::no_card(),
         };
     };
-    let others: Vec<SharedCard> = cards
+    // People who stopped you from seeing their card are left out, as if
+    // they did not share it; themes are still computed with everyone.
+    let owners: Vec<String> = cards.iter().map(|c| c.account_id.clone()).collect();
+    let hidden = match crate::contact_permissions::card_hidden_owners(pool, account, &owners).await
+    {
+        Ok(hidden) => hidden,
+        Err(error) => return db_error(error),
+    };
+    let visible_cards: Vec<SharedCard> = cards
+        .iter()
+        .filter(|c| !hidden.contains(&c.account_id))
+        .cloned()
+        .collect();
+    let others: Vec<SharedCard> = visible_cards
         .iter()
         .filter(|c| c.account_id != account)
         .cloned()
@@ -121,7 +134,7 @@ pub(in crate::common_ground) async fn results(
         Err(error) => return db_error(error),
     };
     // A closed room keeps themes computed with people who no longer share.
-    let visible = themes.map(|themes| visible_themes(themes, &cards));
+    let visible = themes.map(|themes| visible_themes(themes, &visible_cards));
     let needs_themes = open && visible.is_none() && theme_members.len() >= 2;
     // Each queued run is charged; polling while one works or pauses is free.
     let mut pending = None;
@@ -182,7 +195,7 @@ pub(in crate::common_ground) async fn results(
         Ok(extras) => extras,
         Err(error) => return db_error(error),
     };
-    let by_id = |id: &String| cards.iter().find(|c| &c.account_id == id);
+    let by_id = |id: &String| visible_cards.iter().find(|c| &c.account_id == id);
     let theme_view = |(label, ids): &(String, Vec<String>)| {
         // You come first, then everyone else in join order.
         let mut ids: Vec<&String> = ids.iter().collect();

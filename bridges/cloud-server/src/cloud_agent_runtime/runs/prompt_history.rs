@@ -130,7 +130,8 @@ pub(super) async fn fallback_prompt_for_claim(
         &input.request_message_id,
     )
     .await?;
-    let mut chat_rows = query_as::<_, (String, String, String, serde_json::Value, i32)>(
+    // The agent never reads people its owner stopped from using it.
+    let mut chat_rows = query_as::<_, (String, String, String, serde_json::Value, i32)>(&format!(
         "SELECT message.message_id::text, message.client_message_id::text, message.sender_account_id,
                 message.content, message.version
          FROM cloud_chat_conversations conversation
@@ -140,11 +141,14 @@ pub(super) async fn fallback_prompt_for_claim(
            AND message.deleted_at IS NULL
            AND NOT EXISTS(SELECT 1 FROM cloud_chat_message_visibility hidden
                           WHERE hidden.message_id=message.message_id AND hidden.account_id=ANY($2))
-           AND message.content #>> '{blocks,0,text}' IS NOT NULL
+           AND message.content #>> '{{blocks,0,text}}' IS NOT NULL
+           AND {allowed}
          ORDER BY message.conversation_sequence DESC LIMIT 256",
-    )
+        allowed = crate::contact_permissions::agent_allowed_sql("$3", "message.sender_account_id"),
+    ))
     .bind(&input.session_id)
     .bind(vec![input.owner_account_id.clone(), input.requester_account_id.clone()])
+    .bind(&input.owner_account_id)
     .fetch_all(pool)
     .await?;
     let message_versions = chat_rows

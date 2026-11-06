@@ -234,6 +234,7 @@ pub fn router_with_shared_rate_limiter(
         )
         .merge(crate::calls::routes(state.clone()))
         .merge(crate::cloud_agents::routes::routes(state.clone()))
+        .merge(crate::contact_permissions::routes(state.clone()))
         .merge(crate::connectors::routes::routes(state.clone()))
         .merge(crate::document_shares::routes(
             state.clone(),

@@ -11,6 +11,10 @@ pub enum RunError {
     ContextUnavailable(&'static str),
     #[error("Cloud agent run was not found for the requested transition")]
     NotFound,
+    /// The owner stopped the requester from using their agents
+    /// (docs/contact-permissions.md). Answered like any unavailable agent.
+    #[error("The agent is not available to this requester")]
+    AgentUnavailable,
     #[error("Cloud agent run persistence failed: {0}")]
     Persistence(#[from] sqlx_core::Error),
 }
@@ -24,7 +28,9 @@ impl RunError {
         match self {
             Self::Persistence(error) => error,
             Self::NotFound => sqlx_core::Error::Protocol(self.to_string()),
-            Self::ContextUnavailable(_) => sqlx_core::Error::Protocol(self.to_string()),
+            Self::ContextUnavailable(_) | Self::AgentUnavailable => {
+                sqlx_core::Error::Protocol(self.to_string())
+            }
         }
     }
 }
@@ -42,6 +48,15 @@ pub(crate) fn error_response(
         })),
     )
         .into_response()
+}
+
+/// The 403 for an agent the requester may not use.
+pub(crate) fn agent_unavailable() -> Response {
+    error_response(
+        crate::contact_permissions::AGENT_REFUSAL_CODE,
+        crate::contact_permissions::AGENT_REFUSAL_MESSAGE,
+        StatusCode::FORBIDDEN,
+    )
 }
 
 pub(crate) fn runner_unauthorized() -> Response {
@@ -63,6 +78,7 @@ pub(crate) fn run_error_response(
             message,
             StatusCode::UNPROCESSABLE_ENTITY,
         ),
+        RunError::AgentUnavailable => agent_unavailable(),
         RunError::NotFound => error_response(
             "agent_run_not_found",
             "Cloud agent run was not found for this runner.",

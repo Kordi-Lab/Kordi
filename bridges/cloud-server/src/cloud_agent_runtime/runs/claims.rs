@@ -211,6 +211,17 @@ async fn claim_run_with_executor(
             return Err(super::RunError::ContextUnavailable("Open Kordi on the project Mac to run this task. Project files are available only on that device."));
         }
     }
+    // Every claim path admits runs here; a restricted requester gets none,
+    // not even a run admitted before the restriction.
+    if !crate::contact_permissions::agent_allowed(
+        pool,
+        &input.owner_account_id,
+        &input.requester_account_id,
+    )
+    .await?
+    {
+        return Err(super::RunError::AgentUnavailable);
+    }
     let agent_id = super::execution_agent_id(pool, input).await?;
     if let Some(run_id) = existing_run_id(pool, input, &agent_id).await? {
         match desktop_executor {
