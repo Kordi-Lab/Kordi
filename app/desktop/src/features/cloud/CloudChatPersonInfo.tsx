@@ -33,8 +33,9 @@ export function CloudChatPersonInfo({ account, conversation, peerAccountId, onRe
       ?? cloudContactToContact({ accountId: peerAccountId, displayName: conversation.name, avatarUrl: null, nodeId: null, createdAt: '' });
     return {
       ...row,
-      presenceStatus: presence.statusForAccount(peerAccountId),
-      presenceLastSeenAt: presence.snapshot[peerAccountId]?.lastSeenAt ?? null,
+      // Unknown presence shows no line rather than "last seen recently" before the snapshot loads.
+      presenceStatus: presence.ready ? presence.statusForAccount(peerAccountId) : null,
+      presenceLastSeenAt: presence.presenceForAccount(peerAccountId)?.lastSeenAt ?? null,
     };
   }, [cloud.contacts, conversation.name, peerAccountId, presence]);
   const { host } = useCloudContactProfileHost({

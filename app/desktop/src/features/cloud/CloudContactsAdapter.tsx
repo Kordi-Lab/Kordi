@@ -65,8 +65,8 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       const accountId = cloudAccountIdForContact(contact);
       return {
         ...contact,
-        presenceStatus: contact.systemContact ? 'online' : presence.statusForAccount(accountId),
-        presenceLastSeenAt: contact.systemContact || !accountId ? null : presence.snapshot[accountId]?.lastSeenAt ?? null,
+        presenceStatus: contact.systemContact ? 'online' : presence.ready ? presence.statusForAccount(accountId) : null,
+        presenceLastSeenAt: contact.systemContact || !accountId ? null : presence.presenceForAccount(accountId)?.lastSeenAt ?? null,
       };
     });
   }, [contactsPageProps.contactSearch, cloud.contacts, presence]);
