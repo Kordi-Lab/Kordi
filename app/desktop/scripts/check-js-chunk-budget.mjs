@@ -46,7 +46,13 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // requester's ended runs add 3 kB, so it moves to 5.794 MB.
 // Group names before creating, dissolving groups and channels, the Link copied toast and
 // the group created line add 9 kB, so it moves to 5.803 MB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_803_000;
+// Resuming background sessions on their saved provider route and owner-sent replies add 6 kB.
+// The redesigned group Info panel and its Manage level add 3.5 kB.
+// Default agent access controls in the Factory add 1 kB.
+// Per-account rate limit wait times in sign-in and link errors add under 1 kB.
+// The discussion panel, artifacts tab alignment, border contrast and thread read state add 1.5 kB.
+// The dense popover help styles remove 5.5 kB, so it moves to 5.809 MB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_809_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.
