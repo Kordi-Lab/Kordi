@@ -202,7 +202,7 @@ test('a group chat Memory tab shows memories saved under the cloud group id', as
   );
   await withRendered(tab, async (host) => {
     assert.deepEqual(rowIds(host), ['lesson-10', 'lesson-7']);
-    assert.doesNotMatch(host.textContent ?? '', /No memories yet\./);
+    assert.doesNotMatch(host.textContent ?? '', /No memories yet/);
     assert.deepEqual(accounts, ['acct-preview-taylor']);
   });
 });
@@ -239,10 +239,14 @@ test('a group memory edit by someone outside the group shows the membership erro
   });
 });
 
-test('a chat without memories shows one short line', async () => {
+test('a chat without memories shows a centered line and the Add memory button, without the sync caption', async () => {
   await withRendered(memoryTab(createPreviewMemoryClient({ latencyMs: 0 }), 'empty-chat'), async (host) => {
     assert.deepEqual(rowIds(host), []);
-    assert.match(host.textContent ?? '', /No memories yet\./);
+    const empty = host.querySelector('[data-memory-empty]');
+    assert.ok(empty);
+    assert.equal(empty.querySelector('p')?.textContent, 'No memories yet');
+    assert.equal(empty.querySelector('[data-memory-add] button')?.textContent, 'Add memory');
+    assert.doesNotMatch(host.textContent ?? '', /Synced with/);
   });
 });
 
