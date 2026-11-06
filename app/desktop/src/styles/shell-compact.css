@@ -34,41 +34,41 @@ body[data-kordi-chat-theme='classic'] .kordi-app.theme-light {
 
 /* One continuous backing plane, not separate rectangles meeting at a corner.
  * AppKit supplies the native backing; the browser renders its own stand-in. */
-html.kordi-native-shell .kordi-app .app-shell {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-shell {
   background: var(--app-shell-material);
 }
-html.kordi-native-shell .kordi-app[data-native-backdrop="ready"] .app-shell,
-html.kordi-native-shell .kordi-app :is(.app-native-titlebar, .app-left-glass) {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app[data-native-backdrop="ready"] .app-shell,
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app :is(.app-native-titlebar, .app-left-glass) {
   background: transparent;
 }
-html.kordi-native-shell .kordi-app .app-native-titlebar {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-native-titlebar {
   box-shadow: none;
   backdrop-filter: none;
 }
-html.kordi-native-shell .kordi-app .app-native-titlebar-workspace {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-native-titlebar-workspace {
   margin-right: calc(var(--app-native-detail-width, 0px) + var(--app-surface-inset));
 }
-html.kordi-native-shell .kordi-app .app-native-titlebar-workspace::after {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-native-titlebar-workspace::after {
   content: none;
 }
-html.kordi-native-shell .kordi-app .app-left-glass {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-left-glass {
   padding: 6px 4px 0;
 }
-html.kordi-native-shell .kordi-app .app-session-panel-clip {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-session-panel-clip {
   background: transparent;
   margin-bottom: var(--app-surface-inset);
 }
-html.kordi-native-shell .kordi-app .app-session-panel {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-session-panel {
   background: var(--app-session-material);
   border: 0;
   border-radius: var(--app-surface-radius) 0 0 var(--app-surface-radius);
   box-shadow: none;
 }
 /* Apply the inset once to the list, including lists portaled into the session slot. */
-html.kordi-native-shell .kordi-app .app-session-panel .app-sidebar-list-content {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-session-panel .app-sidebar-list-content {
   padding: 12px 14px 10px;
 }
-html.kordi-native-shell body[data-kordi-chat-theme='classic'] .kordi-app.theme-light .app-workspace-sidebar {
+html:is(.kordi-native-shell, .kordi-browser-shell) body[data-kordi-chat-theme='classic'] .kordi-app.theme-light .app-workspace-sidebar {
   --app-sidebar-selected-bg: rgb(0 0 0 / .055);
   --app-nav-rail-active-bg: rgb(0 0 0 / .055);
   --app-sidebar-title-text: rgb(0 0 0 / .78);
@@ -77,7 +77,7 @@ html.kordi-native-shell body[data-kordi-chat-theme='classic'] .kordi-app.theme-l
 
 /* Only the outside contour is rounded. The sidebar/content seam stays straight.
  * The parent clips the actual header, transcript and detail panels together. */
-html.kordi-native-shell .kordi-app .app-shell-content {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-shell-content {
   margin: 0 var(--app-surface-inset) var(--app-surface-inset) 0;
   border: 0;
   border-left: 1px solid var(--app-nav-rail-glass-border);
@@ -85,25 +85,25 @@ html.kordi-native-shell .kordi-app .app-shell-content {
   border-radius: 0 var(--app-surface-radius) var(--app-surface-radius) 0;
   box-shadow: none;
 }
-html.kordi-native-shell .kordi-app .app-shell[data-sidebar-collapsed='true'] .app-shell-content {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-shell[data-sidebar-collapsed='true'] .app-shell-content {
   border-left-color: transparent !important;
   border-radius: var(--app-surface-radius);
 }
 .app-native-titlebar-title {
   padding-left: calc(14px + var(--app-native-navigation-overhang, 0px));
 }
-html.kordi-native-shell .kordi-app .app-chat-pane-header {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-chat-pane-header {
   border-bottom-color: var(--app-chat-pane-divider, var(--app-nav-rail-glass-border));
 }
 
 /* Keyboard focus is independent of the panel's structural edges. */
-html.kordi-native-shell .kordi-app [data-virtual-transcript-scroll][data-transcript-keyboard-focus='true']:focus {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app [data-virtual-transcript-scroll][data-transcript-keyboard-focus='true']:focus {
   box-shadow: none;
   outline: 1px solid color-mix(in oklab, var(--utility-muted-text) 24%, transparent);
   outline-offset: -4px;
 }
 @media (forced-colors: active) {
-  html.kordi-native-shell .kordi-app [data-virtual-transcript-scroll][data-transcript-keyboard-focus='true']:focus {
+  html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app [data-virtual-transcript-scroll][data-transcript-keyboard-focus='true']:focus {
     outline-color: Highlight;
   }
 }
@@ -117,33 +117,33 @@ html.kordi-native-shell .kordi-app [data-virtual-transcript-scroll][data-transcr
 
 /* Cover/reveal: the list is a stationary layer. Only the foreground content
  * boundary moves across it; the navigation rail remains outside that sweep. */
-html.kordi-native-shell .kordi-app .app-workspace-sidebar {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-workspace-sidebar {
   position: relative;
   z-index: 0;
   overflow: visible;
 }
-html.kordi-native-shell .kordi-app .app-session-panel-clip {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-session-panel-clip {
   flex: 0 0 var(--app-session-surface-width);
   width: var(--app-session-surface-width);
 }
-html.kordi-native-shell .kordi-app .app-session-panel-clip > .app-session-panel {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-session-panel-clip > .app-session-panel {
   transform: none;
 }
-html.kordi-native-shell .kordi-app .app-shell-content {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-shell-content {
   z-index: 1;
   transition: border-radius 320ms cubic-bezier(.22, 1, .36, 1),
     border-color 320ms cubic-bezier(.22, 1, .36, 1);
 }
-html.kordi-native-shell .kordi-app .app-shell > .app-shell-layout-grid {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-shell > .app-shell-layout-grid {
   transition: --app-shell-panel-width 320ms cubic-bezier(.22, 1, .36, 1);
 }
-html.kordi-native-shell .kordi-app .app-native-titlebar {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-native-titlebar {
   transition: --app-native-sidebar-width 320ms cubic-bezier(.22, 1, .36, 1);
 }
 @media (prefers-reduced-motion: reduce) {
-  html.kordi-native-shell .kordi-app .app-shell-content,
-  html.kordi-native-shell .kordi-app .app-shell > .app-shell-layout-grid,
-  html.kordi-native-shell .kordi-app .app-native-titlebar {
+  html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-shell-content,
+  html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-shell > .app-shell-layout-grid,
+  html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-native-titlebar {
     transition: none;
   }
 }

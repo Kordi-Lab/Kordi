@@ -1,3 +1,5 @@
+import { activeLocalTurnShouldDelayChatSend, localChatTargetSessionIdForActiveConversation, chatDraftSessionIdsToClearForSend } from './chatSendTargetSelection';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { chatSendShouldAutoFollowMain, composerQuoteFromMessageAction } from './chatSendState';
 export { chatSendShouldAutoFollowMain, chatSendIsBusy } from './chatSendState';
 import { mergeBackgroundDesktopChatState } from '../desktopChatStateReducers';
@@ -88,7 +90,7 @@ import {
   markLocalAgentMessageDelivered,
   appendOptimisticAgentRequest, releaseLocalChatSend, routeRunsOnKordiCloud, startLocalAgentTurn,
 } from './localAgentTurnDispatch';
-import { localChatSendDelayReason,localChatTargetHasRunningTurn,queuedDesktopChatMessageFromDraft } from "./localChatQueue";
+import { localChatSendDelayReason,queuedDesktopChatMessageFromDraft } from "./localChatQueue";
 import { mentionsLocalAgent } from './mentions';
 import { useSessionQueueWaits } from './sessionQueueWaits';
 import { activeConversationMatchesSendScope,claimConversationSend,releaseConversationSend } from './messageSendScope';
@@ -134,54 +136,7 @@ async function persistCanonicalGroupMessageFailure(
 
 export { awaitRelayProgressBeforeTerminal,localAgentRelayFailureText,localAgentRelayTerminalDeliveryState,waitForCompletedDesktopTurn,type LocalAgentRelayTerminalDeliveryState,type LocalAgentRelayTurnResult } from './localAgentRelayTurns';
 export { collaborationConversationSendPlan } from './messageSendScope';
-export function activeLocalTurnShouldDelayChatSend({
-  activeConversationUsesCollaborationRouting,
-  activeConvId,
-  desktopLiveTurn,
-}: {
-  activeConversationUsesCollaborationRouting: boolean;
-  activeConvId: string;
-  desktopLiveTurn?: { sessionId?: string | null; completed?: boolean } | null;
-}) {
-  return !activeConversationUsesCollaborationRouting
-    && !activeConvId.startsWith('bridge:')
-    && !isLocalDraftChatConversationId(activeConvId)
-    && localChatTargetHasRunningTurn(desktopLiveTurn, activeConvId);
-}
-export function localChatTargetSessionIdForActiveConversation({
-  activeConvId,
-  activeConvCanonicalSessionId,
-  desktopActiveSessionId,
-}: {
-  activeConvId: string;
-  activeConvCanonicalSessionId?: string | null;
-  desktopActiveSessionId?: string | null;
-}) {
-  const activeSessionId = activeConvId.trim();
-  if (isLocalDraftChatConversationId(activeSessionId)) return null;
-
-  const canonicalSessionId = activeConvCanonicalSessionId?.trim() ?? '';
-  if (canonicalSessionId && !isLocalDraftChatConversationId(canonicalSessionId)) {
-    return canonicalSessionId;
-  }
-
-  if (activeSessionId && !activeSessionId.startsWith('bridge:')) {
-    return activeSessionId;
-  }
-
-  const desktopSessionId = desktopActiveSessionId?.trim() ?? '';
-  if (desktopSessionId && !isLocalDraftChatConversationId(desktopSessionId)) {
-    return desktopSessionId;
-  }
-
-  return null;
-}
-
-export function chatDraftSessionIdsToClearForSend(activeSessionId: string, resolvedSessionId: string) {
-  return [activeSessionId, resolvedSessionId]
-    .map((sessionId) => sessionId.trim())
-    .filter((sessionId, index, sessionIds) => Boolean(sessionId) && sessionIds.indexOf(sessionId) === index);
-}
+export { activeLocalTurnShouldDelayChatSend, localChatTargetSessionIdForActiveConversation, chatDraftSessionIdsToClearForSend } from './chatSendTargetSelection';
 
 export { restoredSelfAgentContextMessages } from './restoredSelfAgentContext';
 
@@ -614,7 +569,7 @@ export function useChatMessageActions({
   ]);
 
   const sendTargetedChatMessage = useCallback(async (targetSessionId: string, rawText: string, contextMessages: DesktopChatContextMessage[] = [], attachments: AttachmentItem[] = []) => {
-    if (!isNativeShell) return;
+    if (!isNativeShell && !isBrowserAppRuntime()) return;
     const text = rawText.trim();
     if (!text && attachments.length === 0) return;
 
@@ -847,7 +802,7 @@ export function useChatMessageActions({
     quoteOverride?: ComposerQuoteState | null,
     retryMessage?: Message,
   ) => {
-    if (!isNativeShell) return;
+    if (!isNativeShell && !isBrowserAppRuntime()) return;
     if (sideTargetSessionId && sideTargetSessionId !== activeConvId) {
       await sendTargetedChatMessage(sideTargetSessionId, draftOverride ?? '', contextMessages, attachmentOverride);
       return;

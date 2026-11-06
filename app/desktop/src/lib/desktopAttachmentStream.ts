@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import {
   invokeDesktop,
   type DesktopStoredChatAttachment,
@@ -29,6 +30,9 @@ export async function storeDesktopChatAttachmentFile(
   name = file.name || 'attachment.bin',
   chunkSize = 1024 * 1024,
 ) {
+  if (isBrowserAppRuntime()) {
+    return invokeDesktop<DesktopStoredChatAttachment>('desktop_chat_store_attachment_blob', { blob: file, name });
+  }
   const streamId = await startDesktopChatAttachmentStream(name);
   try {
     for (let offset = 0; offset < file.size; offset += chunkSize) {

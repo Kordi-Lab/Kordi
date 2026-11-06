@@ -12,6 +12,8 @@
 // Browser previews use platform fetch. Tests that emulate the native shell
 // must supply the HTTP plugin commands or inject a client's fetchImpl.
 import { withOrganizationHeader } from './cloudOrganizationFetch';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { withBrowserSession } from '@web/auth/browserSessionTransport';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const LOCAL_TUNNEL_REQUEST_TIMEOUT_MS = 45_000;
@@ -42,6 +44,9 @@ export function cloudFetchImpl(): typeof fetch {
 /** Cloud fetch without the organization header, for organization state and token exchange requests. */
 export function baseCloudFetchImpl(): typeof fetch {
   if (!isNativeDesktopShell()) {
+    if (isBrowserAppRuntime()) {
+      return withBrowserSession(globalThis.fetch.bind(globalThis), window.location.origin, () => document.cookie);
+    }
     return globalThis.fetch.bind(globalThis);
   }
   return async (input: RequestInfo | URL, init?: RequestInit) => {

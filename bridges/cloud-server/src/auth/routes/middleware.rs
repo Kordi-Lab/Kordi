@@ -7,6 +7,17 @@ pub async fn cloud_session_middleware(
     mut req: Request,
     next: Next,
 ) -> Response {
+    if !headers.contains_key(axum::http::header::AUTHORIZATION)
+        && super::web_session_handlers::cookie_value(&headers, WEB_SESSION_COOKIE).is_some()
+    {
+        return super::web_session_handlers::cookie_session_middleware(
+            State(state),
+            headers,
+            req,
+            next,
+        )
+        .await;
+    }
     let token = match bearer_token_from_headers(&headers) {
         Some(token) if token.starts_with(SESSION_TOKEN_PREFIX) => token.to_string(),
         _ => {

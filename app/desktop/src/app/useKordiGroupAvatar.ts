@@ -1,6 +1,8 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { captureChatDeliveryScope } from '@/features/cloud/chatDeliveryScope';
 import { useCallback } from 'react';
 import { defaultCloudAuthClient, type CloudAccount } from '@/features/cloud/authClient';
-import { loadSession } from '@/features/cloud/session';
+import { cachedSessionSnapshot, loadSession } from '@/features/cloud/session';
 import type { SendCloudGroupControlInput } from '@/features/cloud/cloudGroupControl.types';
 import {
   cloudGroupParticipantsForCollaborationSession,
@@ -26,7 +28,7 @@ export function useKordiGroupAvatar({ account, canonicalState, isNativeShell, se
   sendCloudGroupControl: (input: SendCloudGroupControlInput) => Promise<void>;
 }) {
   return useCallback(async (sessionIds: string[], dataUrl: string | null) => {
-    if (!isNativeShell || !canonicalState || !account) {
+    if ((!isNativeShell && !isBrowserAppRuntime()) || !canonicalState || !account) {
       throw new Error('Sign in before changing the group image.');
     }
     const ids = uniqueStrings(sessionIds);
@@ -36,11 +38,15 @@ export function useKordiGroupAvatar({ account, canonicalState, isNativeShell, se
     if (!id) {
       throw new Error('Only a group admin can change this image.');
     }
+    const original = cachedSessionSnapshot();
+    const scope = original ? captureChatDeliveryScope(original.token, account.accountId) : null;
     const session = await loadSession();
-    if (!session?.token) throw new Error('Sign in before changing the group image.');
+    scope?.assertCurrent();
+    if (!session?.token || session.accountId !== account.accountId) throw new Error('Sign in before changing the group image.');
     const imageUrl = dataUrl
       ? await defaultCloudAuthClient().uploadGroupAvatarAsset(session.token, dataUrl, account.accountId)
       : null;
+    scope?.assertCurrent();
     const groupAvatar = { imageUrl, updatedAtMs: Date.now() };
     const spaceId = metadataGroupSpaceId(sessionMetadataRecord(canonicalState, id)) || id;
     const participants = canonicalGroupParticipantsForSession(canonicalState, id);

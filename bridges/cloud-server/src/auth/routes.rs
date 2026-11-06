@@ -127,6 +127,7 @@ pub(crate) use group_invitation_handlers::{
 pub use middleware::cloud_session_middleware;
 pub(crate) use session_forks::cloud_session_participants;
 pub use types::*;
+pub(crate) use web_session_handlers::web_socket_session;
 pub use web_session_handlers::{web_csrf_token, WEB_CSRF_HEADER, WEB_SESSION_COOKIE};
 
 pub fn routes(state: Arc<ServerState>) -> Router {

@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { useCallback, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
@@ -174,6 +175,22 @@ export function useDesktopSessionController({
   }, [prepareCloudSessionPin, hydrateCanonicalSessionPage, isDesktopSessionTranscriptCached, isNativeShell, preloadDesktopSessionTranscript, refreshDesktopChat, setActiveConvId, setChatComposerAttachments, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
 
   const handleCreateChatSession = useCallback(async () => {
+    if (import.meta.env?.VITE_KORDI_WEB_APP === '1' && isBrowserAppRuntime()) {
+      try {
+        setDesktopChatError(null);
+        const { createBrowserAgentSession } = await import('@web/auth/browserAgentSession');
+        const sessionId = await createBrowserAgentSession();
+        shouldAutoFollowChatRef.current = true;
+        onPrepareChatDraftSession?.();
+        setPendingUserChatMessage(null);
+        setChatComposerAttachments([]);
+        setComposerDrafts(current => updateScopeDraft(current, 'chat', sessionId, ''));
+        setActiveConvId(sessionId);
+      } catch (error) {
+        setDesktopChatError(error instanceof Error ? error.message : 'Unable to create Agent Chat.');
+      }
+      return;
+    }
     if (!isNativeShell) return;
 
     shouldAutoFollowChatRef.current = true;
@@ -242,7 +259,10 @@ export function useDesktopSessionController({
   }, [activeConvId, activeConversationUsesCollaboration, desktopChatState, desktopSessionRenameDraft, isNativeShell, setActiveConvId, setDesktopChatError, setDesktopChatState, setDesktopSessionRenameDraft, setIsEditingDesktopSessionTitle]);
 
   const handleForkChatMessage = useCallback(async (sessionId: string, messageEntryId: string) => {
-    if (!isNativeShell) return;
+    if (!isNativeShell) {
+      if (isBrowserAppRuntime()) setDesktopChatError('Forking this conversation requires the Kordi desktop app. Open this conversation there to create a fork.');
+      return;
+    }
     if (!sessionId || !messageEntryId) return;
     shouldAutoFollowChatRef.current = true;
     try {

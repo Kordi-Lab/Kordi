@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { markHelpWelcome } from '@/features/onboarding/helpProgress';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { browserSessionRestoreError, consumeBrowserSignInError, signOutCloudSession } from './cloudSessionLifecycle';
 
 import {
   activateDesktopCloudAccountStorage,
@@ -21,10 +23,9 @@ import {
   type CloudSignupCodeChallenge,
   type CloudSignupInput,
 } from './authClient';
-import { revokeAppSignIn, type AppSignInResult } from './appSignIn/appSignInClient';
+import type { AppSignInResult } from './appSignIn/appSignInClient';
 import { useCloudBrowserSignInSession, useCloudSessionKeepAlive, type CloudBrowserSignInSession } from './appSignIn/cloudBrowserSignInSession';
 import { carryCloudAccountEmailVerification, cloudAccountsEqual } from './cloudAccountState';
-import { cloudFetchImpl } from './cloudTransport';
 import { endCloudSessionIfRejected } from './cloudSessionRejection';
 import { isCloudOAuthCancelled } from './cloudOAuthCancellation';
 import { startCloudOAuthSignIn } from './cloudOAuthSignIn';
@@ -33,11 +34,10 @@ import {
   type CloudAccountEmailVerificationActions,
 } from './useCloudAccountEmailVerification';
 import { useCloudCapabilities } from './useCloudCapabilities';
-import { publishPresenceOffline, useCloudPresencePublisher } from './useCloudPresencePublisher';
+import { useCloudPresencePublisher } from './useCloudPresencePublisher';
 import {
   CLOUD_SESSION_SIGNED_OUT_EVENT,
   clearSession,
-  clearSessionAndNotifySignedOut,
   loadSession,
   saveSession,
   type StoredSession,
@@ -254,7 +254,11 @@ export function useCloudSession({
 
     async function bootstrap() {
       try {
-        const oauthResult = typeof window !== 'undefined' ? parseCloudOAuthHashResult(window.location.hash) : null;
+        if (consumeBrowserSignInError((error) => {
+          if (!cancelled && mountedRef.current) { setSignedOut(); setError(error); }
+        })) return;
+        const oauthResult = typeof window !== 'undefined' && !isBrowserAppRuntime()
+          ? parseCloudOAuthHashResult(window.location.hash) : null;
         if (oauthResult) {
           const completed = await completeCloudAuthResult({
             result: oauthResult,
@@ -302,7 +306,11 @@ export function useCloudSession({
           if (!cancelled && mountedRef.current) setSignedOut();
         }
       } catch {
-        if (!cancelled && mountedRef.current) setSignedOut();
+        if (!cancelled && mountedRef.current) {
+          setSignedOut();
+          const restoreError = browserSessionRestoreError();
+          if (restoreError) setError(restoreError);
+        }
       }
     }
 
@@ -453,25 +461,8 @@ export function useCloudSession({
   const accountEmailVerification = useCloudAccountEmailVerification({ authClient, accountRef, setAuthenticated });
 
   const signOut = useCallback(async () => {
-    try {
-      const stored = await loadSession();
-      if (stored) {
-        try {
-          await publishPresenceOffline(authClient);
-        } catch {
-          // Best-effort: still sign out below.
-        }
-        try {
-          // Browser sign-ins end through revocation; older sessions through logout.
-          if (!(await revokeAppSignIn(stored, cloudFetchImpl()))) await authClient.logout(stored.token);
-        } catch {
-          // Best-effort: still clear local state below.
-        }
-      }
-    } finally {
-      await clearSessionAndNotifySignedOut();
-      setSignedOut();
-    }
+    await signOutCloudSession(authClient);
+    setSignedOut();
   }, [authClient, setSignedOut]);
 
   useCloudPresencePublisher(account, authClient);

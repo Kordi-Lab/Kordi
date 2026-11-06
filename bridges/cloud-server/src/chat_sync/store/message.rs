@@ -237,10 +237,7 @@ pub(crate) async fn send_message_in_transaction(
                 .and_then(|row| row.0)
                 .unwrap_or_default()
                 .to_ascii_lowercase();
-            if !matches!(
-                content_type.as_str(),
-                "audio/mp4" | "audio/m4a" | "audio/x-m4a" | "audio/aac"
-            ) {
+            if !crate::chat_sync::voice::supported_audio_mime_type(&content_type) {
                 return Err(StoreError::InvalidInput(
                     "voice message media type is invalid",
                 ));

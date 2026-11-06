@@ -1,4 +1,5 @@
 import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChatProjects } from '@/features/projects/chatProjects';
 import { projectChatGroups } from '@/features/projects/projectChatGroups';
@@ -38,8 +39,10 @@ export function WorkspaceChatLists({
   const [expandedProjectIds, setExpandedProjectIds] = useState<ReadonlySet<string>>(new Set());
   const [creatingProjectIds, setCreatingProjectIds] = useState<ReadonlySet<string>>(new Set());
   const usesMacShortcuts = typeof navigator === 'undefined' || /Mac|iPhone|iPad/u.test(navigator.platform);
+  // Browsers reserve Cmd/Ctrl+N for a new window, so the web app neither advertises nor intercepts it.
+  const newSessionShortcut = !isBrowserAppRuntime();
   useEffect(() => {
-    if (model.chatChannel !== 'agent' || model.showArchived) return;
+    if (!newSessionShortcut || model.chatChannel !== 'agent' || model.showArchived) return;
     const handleNew = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat || event.isComposing || event.altKey || event.shiftKey
         || !(usesMacShortcuts ? event.metaKey : event.ctrlKey) || event.key.toLowerCase() !== 'n') return;
@@ -48,7 +51,7 @@ export function WorkspaceChatLists({
     };
     document.addEventListener('keydown', handleNew);
     return () => document.removeEventListener('keydown', handleNew);
-  }, [model.chatChannel, model.showArchived, onOpenAgentCreate, usesMacShortcuts]);
+  }, [model.chatChannel, model.showArchived, newSessionShortcut, onOpenAgentCreate, usesMacShortcuts]);
   const pinnedSessionIds = useMemo(() => new Set(
     [...model.agentSessionRowsById.values()]
       .filter(({ session, space }) => model.pinnedSessionIds.has(participantSpaceSessionPreferenceId(session))
@@ -161,11 +164,11 @@ export function WorkspaceChatLists({
           className="chat-sidebar-new-session"
           title="New session"
           aria-label="New session"
-          aria-keyshortcuts={usesMacShortcuts ? 'Meta+N' : 'Control+N'}
+          aria-keyshortcuts={newSessionShortcut ? usesMacShortcuts ? 'Meta+N' : 'Control+N' : undefined}
         >
           <Plus size={17} aria-hidden="true" />
           <span>New</span>
-          <kbd aria-hidden="true">{usesMacShortcuts ? '⌘ N' : 'Ctrl N'}</kbd>
+          {newSessionShortcut ? <kbd aria-hidden="true">{usesMacShortcuts ? '⌘ N' : 'Ctrl N'}</kbd> : null}
         </button>
       </div> : null}
       <VirtualChatList

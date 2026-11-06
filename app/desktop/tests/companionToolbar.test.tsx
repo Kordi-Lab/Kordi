@@ -185,7 +185,7 @@ test('digest uses available snapshot and excludes dismissed entries', async () =
 });
 
 
-test('native titlebar keeps rename and panel actions working and clears them when leaving chat', async () => {
+for (const browser of [false, true]) test(`${browser ? 'browser' : 'native'} titlebar keeps rename and panel actions working and clears them when leaving chat`, async () => {
   const { root, dom, cleanup } = installDom();
   let renameRequests = 0;
   let selected: CompanionView = 'chat';
@@ -194,7 +194,7 @@ test('native titlebar keeps rename and panel actions working and clears them whe
     const [title, setTitle] = useState<HTMLDivElement | null>(null);
     const [actions, setActions] = useState<HTMLDivElement | null>(null);
     return <NativeChatTitlebarContext value={{ title, actions }}>
-      <NativeTitlebar titleHostRef={setTitle} actionsHostRef={setActions} windowTitle="Kordi"
+      <NativeTitlebar browser={browser} titleHostRef={setTitle} actionsHostRef={setActions} windowTitle="Kordi"
         leftWorkspaceWidth={296} collapseChatSessions={false} isDetailPanelCollapsed />
       <main>{inChat ? <MainChatHeader conversation={human}
         layout={{ showSessionToggle: false, sessionsCollapsed: false, onToggleSessions: noop, showDestinations: false, destination: 'messages', onSelectDestination: noop }}
@@ -206,6 +206,7 @@ test('native titlebar keeps rename and panel actions working and clears them whe
   try {
     await act(() => root.render(<Harness inChat />));
     const titlebar = document.querySelector('.app-native-titlebar')!;
+    assert.equal(titlebar.hasAttribute('data-tauri-drag-region'), !browser);
     const rename = titlebar.querySelector<HTMLButtonElement>('[data-chat-session-title-rename]')!;
     assert.equal(rename.textContent, human.name);
     await act(() => rename.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true })));

@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import {
   useCallback,
   useEffect,
@@ -95,8 +96,8 @@ type CloudAccountCollaborationStore = {
 };
 
 export function cloudMessagesUseBrowserCache(): boolean {
-  return typeof window === 'undefined'
-    || typeof window.__TAURI_INTERNALS__ === 'undefined';
+  return !isBrowserAppRuntime() && (typeof window === 'undefined'
+    || typeof window.__TAURI_INTERNALS__ === 'undefined');
 }
 
 export function useCloudAccountLifecycleState({
@@ -360,8 +361,8 @@ export function useCloudAccountLifecycleState({
         })
         .catch(() => {});
     } else if (accountId) {
-      // Native chat uses the crash-safe SQLite projection. Remove the obsolete
-      // browser cache so stale rows cannot shadow durable server ordering.
+      // Native and browser app chat use their scoped durable projections. Remove
+      // the obsolete account-only cache so it cannot shadow server ordering.
       hydratedCacheAccountRef.current = accountId;
       void messageCache.remove(accountId).catch(() => {});
     }

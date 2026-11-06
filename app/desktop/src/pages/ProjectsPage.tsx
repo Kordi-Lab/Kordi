@@ -1,5 +1,5 @@
-import {
-  useRef,
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { useRef,
   type Dispatch,
   type RefObject,
   type SetStateAction,
@@ -329,7 +329,7 @@ export function ProjectsPage({
       {!hasAnyAuth ? (
         <AuthNoticeBanner
           title="No provider connected yet"
-          description="Connect a provider, save an API key, or choose a local LM Studio/Ollama server before running project conversations."
+          description={isBrowserAppRuntime() ? 'Connect a hosted provider in Authentication. Local models require the desktop app.' : 'Connect a provider, save an API key, or choose a local LM Studio/Ollama server before running project conversations.'}
           actionLabel={authNoticeActionLabel}
           onAction={openAuthentication}
         />
