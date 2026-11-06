@@ -67,7 +67,7 @@ pub(super) fn shares_sql(profile: &str) -> String {
 /// linked there. Leaving a room withdraws it.
 pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
     format!(
-        "(EXISTS (
+        "(NOT cloud_accounts_blocked_either_way({viewer}, {other}) AND (EXISTS (
              SELECT 1 FROM cloud_common_ground_pairings pairing
              WHERE pairing.account_a = LEAST({viewer}, {other})
                AND pairing.account_b = GREATEST({viewer}, {other})
@@ -79,7 +79,7 @@ pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
                   AND theirs.left_at IS NULL
              WHERE mine.account_id = {viewer} AND mine.left_at IS NULL
                AND {mine_shares} AND {theirs_shares}
-         ))",
+         ))))",
         pairing_a = shares_sql("pairing.profile_a"),
         pairing_b = shares_sql("pairing.profile_b"),
         mine_shares = shares_sql("mine.profile_id"),
@@ -162,7 +162,7 @@ pub(super) async fn links(
     viewer: &str,
     other: &str,
 ) -> sqlx_core::Result<Vec<Link>> {
-    if viewer == other {
+    if viewer == other || crate::safety::blocks::blocked_either_way(pool, viewer, other).await? {
         return Ok(Vec::new());
     }
     let rows: Vec<(String, String, Option<bool>)> = query_as(&links_sql("", true))

@@ -82,6 +82,18 @@ pub(in crate::auth::routes) async fn get_profile(
     };
 
     let is_self = account_id == session.account_id;
+    // A block in either direction reads as an unknown Kordi ID.
+    if !is_self
+        && crate::safety::blocks::blocked_either_way(pool, &session.account_id, &account_id)
+            .await
+            .unwrap_or(true)
+    {
+        return err(
+            "account_missing",
+            "No account found with that Kordi ID.",
+            StatusCode::NOT_FOUND,
+        );
+    }
     let is_contact = if is_self {
         false
     } else {

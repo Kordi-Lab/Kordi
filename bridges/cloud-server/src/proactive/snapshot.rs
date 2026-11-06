@@ -275,12 +275,14 @@ pub(super) async fn build(
          WHERE message.conversation_id = $1 AND message.deleted_at IS NULL
            AND message.conversation_sequence <= $2
            AND message.message_kind IN ('text', 'voice')
+           AND NOT cloud_accounts_blocked_either_way($4, message.sender_account_id)
          ORDER BY message.conversation_sequence DESC
          LIMIT $3",
     )
     .bind(candidate.conversation_id)
     .bind(candidate.latest_sequence)
     .bind(SNAPSHOT_MESSAGES)
+    .bind(&agent.owner_account_id)
     .fetch_all(pool)
     .await?;
     rows.reverse();

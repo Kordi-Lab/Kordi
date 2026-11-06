@@ -256,6 +256,7 @@ pub(super) async fn around(
     let sql = format!(
         "SELECT * FROM ({}) present
          WHERE present.account_id <> $1
+           AND NOT cloud_accounts_blocked_either_way($1, present.account_id)
            AND present.latitude BETWEEN $2 - $4 AND $2 + $4
            AND ($5 >= 360 OR LEAST(abs(present.longitude - $3), 360 - abs(present.longitude - $3)) <= $5)
          ORDER BY power(present.latitude - $2, 2)
@@ -291,7 +292,7 @@ pub(super) async fn pair(
     viewer: &str,
     other: &str,
 ) -> sqlx_core::Result<Option<(Present, Present)>> {
-    if viewer == other {
+    if viewer == other || crate::safety::blocks::blocked_either_way(pool, viewer, other).await? {
         return Ok(None);
     }
     let (Some(mine), Some(mut theirs)) =

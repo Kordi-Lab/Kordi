@@ -100,11 +100,8 @@ pub(in crate::common_ground) async fn start_group(
     match crate::safety::blocks::any_blocked(pool, viewer, &ids).await {
         Ok(false) => {}
         Ok(true) => {
-            return err(
-                "blocked",
-                "You can't invite one of these people.",
-                StatusCode::FORBIDDEN,
-            )
+            // The same refusal for either direction, naming nobody.
+            return bad_request("Some of these people can't be added.");
         }
         Err(error) => return db_error(error),
     }
