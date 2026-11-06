@@ -9,7 +9,7 @@ import { createAiConsentClient, type AiConsentClient } from './aiConsentClient';
 import { saveAiConsent, useAiConsentState } from './aiConsentStore';
 
 export const AI_SHARING_LABEL = 'Share with AI models';
-export const AI_SHARING_CAPTION = 'OpenAI and Google process what agents work on.';
+export const AI_SHARING_CAPTION = 'Your AI provider, such as OpenAI, Anthropic or Google, processes what agents work on.';
 
 function openLink(url: string) {
   void openDesktopExternalUrl(url).catch(() => undefined);

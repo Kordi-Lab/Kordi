@@ -24,6 +24,9 @@ export const AI_CONSENT_USER_ACTION_WINDOW_MS = 10_000;
 
 export const AI_CONSENT_SAVE_ERROR = "Couldn't save. Try again.";
 
+/** Publish feedback when a save would turn agent work on without consent; the prompt says the rest. */
+export const AI_MODELS_OFF_PUBLISH_ERROR = 'AI models are off.';
+
 let state = INITIAL_STATE;
 let lastUserInputAt = Number.NEGATIVE_INFINITY;
 const listeners = new Set<() => void>();

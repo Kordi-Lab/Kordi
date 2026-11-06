@@ -165,7 +165,7 @@ test('after sign-in an undecided account sees the consent prompt once and Allow 
     await act(async () => root.render(createElement(AiConsentHost, { account: account('unset'), client })));
     const dialog = document.querySelector('[role="dialog"]')!;
     assert.match(dialog.textContent ?? '', /Kordi uses AI models/);
-    assert.match(dialog.textContent ?? '', /send the messages, files and calendar details they work on to AI providers such as OpenAI and Google\./);
+    assert.match(dialog.textContent ?? '', /send the messages, files and calendar details they work on to AI providers such as OpenAI, Anthropic and Google\./);
     assert.equal(dialog.querySelector('a')?.getAttribute('href'), 'https://kordi.ai/privacy');
     assert.ok(button("Don't allow"));
     await act(async () => { button('Allow').click(); });
@@ -213,7 +213,7 @@ test('Settings › Privacy switches sharing and links the legal pages', async ()
     await act(async () => root.render(createElement(AiConsentSettingsPanel, { client })));
     const text = document.body.textContent ?? '';
     assert.match(text, /Share with AI models/);
-    assert.match(text, /OpenAI and Google process what agents work on\./);
+    assert.match(text, /Your AI provider, such as OpenAI, Anthropic or Google, processes what agents work on\./);
     assert.match(text, /Privacy policy/);
     assert.match(text, /Terms of service/);
     const toggle = document.querySelector<HTMLButtonElement>('[role="switch"]')!;
@@ -227,4 +227,25 @@ test('Settings › Privacy switches sharing and links the legal pages', async ()
     assert.equal(document.querySelector('[role="switch"]'), null, 'servers without AI consent show only the links');
     await act(async () => root.unmount());
   });
+});
+
+test('turning Cooperative or Proactive on needs consent; turning them off does not', async () => {
+  const { publishDefaultAgentSettings } = await import('../src/kordi-app/agents/factoryProactiveDraft');
+  const calls: string[] = [];
+  const agent = {
+    publish: async (enabled: boolean) => { calls.push(`cooperative:${enabled}`); },
+    publishPersonal: async (proactive: boolean) => { calls.push(`proactive:${proactive}`); },
+  };
+  const change = [{ key: 'personalProactive', label: 'Proactive updated', detail: '' }];
+  const config = (personalProactive: boolean) => ({ personalProactive }) as unknown as Parameters<typeof publishDefaultAgentSettings>[2];
+
+  applyAiConsent('acct_1', 'unset');
+  await assert.rejects(publishDefaultAgentSettings(agent, change, config(true)), /AI models are off/);
+  assert.equal(getAiConsentState().prompt, 'consent');
+  await publishDefaultAgentSettings(agent, change, config(false));
+  assert.deepEqual(calls, ['proactive:false']);
+
+  applyAiConsent('acct_1', 'allowed');
+  await publishDefaultAgentSettings(agent, change, config(true));
+  assert.deepEqual(calls, ['proactive:false', 'proactive:true']);
 });

@@ -13,7 +13,7 @@ const dialogMuted = 'text-[color:var(--app-transient-muted-text)]';
 const dialogDanger = 'text-[color:var(--app-transient-danger-text)]';
 
 export const AI_CONSENT_TITLE = 'Kordi uses AI models';
-export const AI_CONSENT_BODY = 'Agents, the System agent, Digest and Grounding send the messages, files and calendar details they work on to AI providers such as OpenAI and Google.';
+export const AI_CONSENT_BODY = 'Agents, the System agent, Digest and Grounding send the messages, files and calendar details they work on to AI providers such as OpenAI, Anthropic and Google.';
 export const AI_MODELS_OFF_TITLE = 'AI models are off';
 export const AI_MODELS_OFF_BODY = 'Allow in Settings › Privacy to use agents.';
 

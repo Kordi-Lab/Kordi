@@ -1,3 +1,4 @@
+import { AI_MODELS_OFF_PUBLISH_ERROR, requireAiConsent } from '@/features/aiConsent/aiConsentStore';
 import { useCallback, useEffect, useState } from 'react';
 import type { CloudAgentPersonalAgent, CloudAgentProactive } from '@/features/cloud/cloudAgentsClient';
 import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
@@ -157,6 +158,10 @@ export async function publishDefaultAgentSettings(
   config: AgentStudioConfigDraft,
 ) {
   const update = cloudAgentSettingsUpdate(changes, config);
+  // Turning Cooperative or Proactive on starts agent work; turning either off never needs consent.
+  if ((update.proactive?.enabled || update.personalAgent?.proactive) && !requireAiConsent()) {
+    throw new Error(AI_MODELS_OFF_PUBLISH_ERROR);
+  }
   if (update.proactive) await defaultAgent.publish(update.proactive.enabled);
   if (update.personalAgent) await defaultAgent.publishPersonal(update.personalAgent.proactive);
 }

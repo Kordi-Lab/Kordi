@@ -1,3 +1,4 @@
+import { requireAiConsent } from '@/features/aiConsent/aiConsentStore';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
 import type { ComposerProviderOption } from '../components';
@@ -201,6 +202,7 @@ export function useAgentBuilderSession({
   ) => {
     const text = rawText.trim();
     if ((!text && attachments.length === 0) || !status || activeTurn || opening) return;
+    if (!requireAiConsent()) return;
     const generation = generationRef.current;
     setError(null);
     setOptimisticPrompt(text);
