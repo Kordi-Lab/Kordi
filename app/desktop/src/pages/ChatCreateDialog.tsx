@@ -207,7 +207,7 @@ export function ChatCreateDialog({
         <ChatCreateHeader
           title={mode === 'person' ? 'Chat with contact' : mode === 'agent' ? 'Chat with agent' : mode === 'add-contact' ? 'Add contact' : groupLinkTitle ?? 'Start group'}
           titleId={titleId}
-          subtitle={mode === 'group' && !groupLinkTitle ? 'Select at least 2 contacts.' : mode === 'add-contact' ? addContactSubtitle : undefined}
+          subtitle={mode === 'add-contact' ? addContactSubtitle : undefined}
         />
       )}
 

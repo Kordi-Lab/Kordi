@@ -4,7 +4,7 @@ import { Check, Copy, Link2, LoaderCircle, Share } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import type { CloudGroupInvitation, CloudGroupInvitationCreateInput } from '@/features/cloud/authClient';
-import { buildChatCreateGroupPersonOptions, canCreateGroup, groupDefaultName } from '@/features/chat/chatCreateFlows';
+import { buildChatCreateGroupPersonOptions, groupDefaultName } from '@/features/chat/chatCreateFlows';
 import type { Contact } from '@/kordi-app/types';
 import { GroupAvatarEditor } from '@/kordi-app/components/GroupAvatarEditor';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
@@ -45,26 +45,25 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
   const selected = options.filter((option) => selectedIds.includes(option.id));
   const contactIds = selected.map((option) => option.id);
   const defaultName = groupDefaultName(selected.map((option) => option.label));
-  const canSubmit = canCreateGroup(contactIds);
   const toggle = (id: string) => setSelectedIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
 
   const request = (inviteLink: boolean): CreateChatGroupRequest => ({ contactIds, name: name.trim() || null, avatarDataUrl, ...(inviteLink ? { inviteLink } : {}) });
   const create = async () => {
-    if (!canSubmit || busy) return;
+    if (busy) return;
     setBusy('create'); setError(null);
     try { await onCreateGroup(request(false)); onDone(); }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not create this group.'); }
     finally { setBusy(null); }
   };
   const inviteWithLink = async () => {
-    if (!onCreateGroupInvitation || (contactIds.length === 0 && !linkGroup) || busy) return;
+    if (!onCreateGroupInvitation || busy) return;
     setBusy('link'); setError(null);
     try {
       let group = linkGroup;
       if (!group) {
         const sessionId = await onCreateGroup(request(true));
         if (!sessionId) throw new Error('Could not create this group.');
-        group = { sessionId, title: name.trim() || defaultName || 'Group' };
+        group = { sessionId, title: name.trim() || defaultName };
         setLinkGroup(group);
       }
       const invitation = await onCreateGroupInvitation({ groupId: group.sessionId, groupSpaceId: group.sessionId, groupTitle: group.title });
@@ -125,17 +124,16 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
           aria-label="Group name"
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder={defaultName || 'Group name (optional)'}
+          placeholder={defaultName}
           className="app-input-shell h-8 min-w-0 flex-1 rounded-[8px] px-2.5 text-[12px] outline-none"
         />
       </div>
       {error ? <p role="alert" className="app-error-text text-[11px]">{error}</p> : null}
       <div className="app-dense-menu-items app-chat-create-option-list max-h-[min(15rem,calc(100vh-12rem))] overflow-auto" role="group" aria-label="People">
         {onCreateGroupInvitation ? (
-          <button type="button" disabled={(contactIds.length === 0 && !linkGroup) || Boolean(busy)} onClick={() => { void inviteWithLink(); }}>
+          <button type="button" disabled={Boolean(busy)} onClick={() => { void inviteWithLink(); }}>
             {busy === 'link' ? <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <Link2 aria-hidden="true" />}
             <span>Invite with a link</span>
-            {contactIds.length === 0 && !linkGroup ? <span className="app-chat-create-row-meta">Pick 1 person</span> : null}
           </button>
         ) : null}
         {options.length > 0 ? options.map((option) => {
@@ -151,8 +149,8 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
       </div>
       <div className="flex gap-1.5">
         <Button type="button" variant="quiet" className="h-8 flex-1 rounded-[8px] px-3 text-[12px]" onClick={onBack}>Back</Button>
-        <Button type="submit" className="h-8 flex-1 rounded-[8px] px-3 text-[12px]" disabled={Boolean(busy) || !canSubmit}>
-          {busy === 'create' ? 'Creating…' : canSubmit ? 'Create group' : 'Pick 2 people'}
+        <Button type="submit" className="h-8 flex-1 rounded-[8px] px-3 text-[12px]" disabled={Boolean(busy)}>
+          {busy === 'create' ? 'Creating…' : 'Create group'}
         </Button>
       </div>
     </form>

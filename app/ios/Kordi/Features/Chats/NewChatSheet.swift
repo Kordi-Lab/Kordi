@@ -105,7 +105,7 @@ struct NewChatView: View {
                     Button(isCreatingGroup ? "Creating…" : "Create") {
                         createGroup()
                     }
-                    .disabled(selectedGroupContactIDs.count < 2 || isCreatingGroup)
+                    .disabled(isCreatingGroup)
                 }
             }
         }
@@ -190,7 +190,7 @@ struct NewChatView: View {
                 ContentUnavailableView(
                     searchText.isEmpty ? "No contacts available" : "No contacts found",
                     systemImage: searchText.isEmpty ? "person.3" : "magnifyingglass",
-                    description: Text(searchText.isEmpty ? "Add contacts before starting a group." : "Try another name or Kordi ID.")
+                    description: searchText.isEmpty ? nil : Text("Try another name or Kordi ID.")
                 )
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -229,8 +229,6 @@ struct NewChatView: View {
                     }
                 } header: {
                     Text("People")
-                } footer: {
-                    Text("Select at least 2 people. Agents can be invited from the session later.")
                 }
             }
         }
@@ -269,7 +267,6 @@ struct NewChatView: View {
     private func createGroup() {
         guard !isCreatingGroup else { return }
         let selected = model.contacts.filter { selectedGroupContactIDs.contains($0.accountId) }
-        guard selected.count >= 2 else { return }
         isCreatingGroup = true
         Task {
             if let conversation = await model.createGroup(with: selected, title: groupName, avatarDataURL: groupAvatarDataURL) {

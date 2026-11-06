@@ -16,7 +16,6 @@ import {
   buildChatCreatePersonOptions,
   buildChatCreatePeopleContactLookup,
   buildParticipantSpaceContinuationMetadata,
-  canCreateGroup,
   chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
   chatSessionIdForPersonStart,
@@ -400,14 +399,10 @@ test('existingBlankSessionIdForAgentStart reuses the newest empty selected-agent
   assert.equal(existingBlankSessionIdForAgentStart(selectedAgent, conversations), 'session:self-agent:newest-blank');
 });
 
-test('canCreateGroup requires at least two unique people contacts', () => {
-  assert.equal(canCreateGroup([]), false);
-  assert.equal(canCreateGroup(['contact:alice']), false);
-  assert.equal(canCreateGroup(['contact:alice', 'contact:alice']), false);
-  assert.equal(canCreateGroup(['contact:alice', 'contact:bob']), true);
-});
-
 test('groupDefaultName uses people names only and truncates long groups', () => {
+  assert.equal(groupDefaultName([]), 'New group');
+  assert.equal(groupDefaultName(['', ' ']), 'New group');
+  assert.equal(groupDefaultName(['Alice']), 'Alice');
   assert.equal(groupDefaultName(['Alice', 'Bob']), 'Alice, Bob');
   assert.equal(groupDefaultName(['Alice', 'Bob', 'Chen', 'Dev']), 'Alice, Bob +2 more');
 });
