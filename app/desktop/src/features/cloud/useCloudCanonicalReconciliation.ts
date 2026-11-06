@@ -22,6 +22,7 @@ import {
 } from './cloudUnreadReconciliation';
 import { cloudGroupReadCursorsBySessionId } from './cloudSelfAgentCanonicalSync';
 import { isNativeDesktopShell } from '@/lib/desktop';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { cloudOptimisticReadSequences, createNativeCloudUnreadProjection, type NativeUnreadHead } from './nativeCloudUnreadProjection';
 import {
   CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT,
@@ -88,18 +89,21 @@ export function useCloudCanonicalReconciliation({
     setLocallyReadSessionIds,
     setPublishedContextKey,
   } = unread;
-  const nativeShell = isNativeDesktopShell();
+  // The Mac and the browser app both keep a local chat sync store whose unread
+  // heads follow the server read cursor. Message-history projection is only a
+  // fallback for a renderer without that store.
+  const localChatSync = isNativeDesktopShell() || isBrowserAppRuntime();
   const [nativeUnreadSnapshot, setNativeUnreadSnapshot] =
     useState<NativeUnreadSnapshot | null>(null);
   const [nativeUnreadRevision, setNativeUnreadRevision] = useState(0);
   useEffect(() => {
-    if (!nativeShell) return;
+    if (!localChatSync) return;
     const refreshUnread = () => setNativeUnreadRevision((current) => current + 1);
     window.addEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT, refreshUnread);
     return () => window.removeEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT, refreshUnread);
-  }, [nativeShell]);
+  }, [localChatSync]);
   const projectedUnreadBySessionId = useMemo(() => {
-    if (nativeShell || !account || !fullMessagesByPeer) return null;
+    if (localChatSync || !account || !fullMessagesByPeer) return null;
     return cloudUnreadCountsBySessionId({
       accountId: account.accountId,
       messagesByPeer: fullMessagesByPeer,
@@ -111,7 +115,7 @@ export function useCloudCanonicalReconciliation({
     account,
     canonicalState,
     fullMessagesByPeer,
-    nativeShell,
+    localChatSync,
     readInboundMessageIdsByPeer,
   ]);
   const optimisticReadSequences = useMemo(() => (
@@ -123,7 +127,7 @@ export function useCloudCanonicalReconciliation({
   );
 
   useEffect(() => {
-    if (!nativeShell || !account || !authoritative) {
+    if (!localChatSync || !account || !authoritative) {
       return;
     }
     let cancelled = false;
@@ -153,11 +157,11 @@ export function useCloudCanonicalReconciliation({
     canonicalState?.participants,
     messageIndex.revision,
     nativeUnreadRevision,
-    nativeShell,
+    localChatSync,
   ]);
 
   const unreadBySessionId = useMemo(() => {
-    if (!nativeShell) return projectedUnreadBySessionId;
+    if (!localChatSync) return projectedUnreadBySessionId;
     if (!account || nativeUnreadSnapshot?.accountId !== account.accountId) return null;
     return projectNativeUnread(
       nativeUnreadSnapshot.accountId,
@@ -168,7 +172,7 @@ export function useCloudCanonicalReconciliation({
   }, [
     account,
     locallyReadSessionIds,
-    nativeShell,
+    localChatSync,
     nativeUnreadSnapshot,
     optimisticReadSequences,
     projectNativeUnread,
@@ -176,7 +180,7 @@ export function useCloudCanonicalReconciliation({
   ]);
 
   useEffect(() => {
-    if (!nativeShell || !nativeUnreadSnapshot) return;
+    if (!localChatSync || !nativeUnreadSnapshot) return;
     setLocallyReadSessionIds((current) => {
       const next = new Set(current);
       for (const sessionId of current) {
@@ -186,7 +190,7 @@ export function useCloudCanonicalReconciliation({
       }
       return next.size === current.size ? current : next;
     });
-  }, [nativeShell, nativeUnreadSnapshot, setLocallyReadSessionIds]);
+  }, [localChatSync, nativeUnreadSnapshot, setLocallyReadSessionIds]);
 
   useEffect(() => {
     if (!account || !setCanonicalState) return;

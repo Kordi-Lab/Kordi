@@ -1,6 +1,7 @@
 import type { ApplyChatSyncRequest, ChatSyncLocalState, ChatSyncPendingOperation, ChatSyncOutboxPayload } from '@/lib/desktopChatSync';
 import type { ChatSyncConversation, ChatSyncMessage, ChatSyncPreferences } from '@/features/cloud/chatSyncTypes';
 import { browserCanonicalScope, updateBrowserStoredRecord } from '@web/runtime/browserCanonicalStorage';
+import { chatSyncConversationHeads } from '@web/runtime/browserChatSyncUnread';
 
 export type BrowserChatSyncState = ChatSyncLocalState & {
   deletedMessageIds: string[];
@@ -24,14 +25,10 @@ export function emptyBrowserChatSync(accountId: string): BrowserChatSyncState {
     pinEvents: [], pinCacheReady: false, visibility: null, deletedMessageIds: [], outbox: [] };
 }
 
-function heads(state: BrowserChatSyncState) {
-  return state.conversations.map(conversation => {
-    const viewer = conversation.members.find(member => member.account_id === state.accountId);
-    const lastReadSequence = viewer?.last_read_sequence ?? 0;
-    return { conversationId: conversation.id, sessionId: conversation.legacy_session_id ?? conversation.id,
-      latestMessageSequence: conversation.latest_message_sequence, lastReadSequence,
-      unreadCount: Math.max(0, conversation.latest_message_sequence - lastReadSequence) };
-  });
+function heads(state: BrowserChatSyncState, conversationIds?: ReadonlySet<string>) {
+  return chatSyncConversationHeads(state.accountId,
+    conversationIds ? state.conversations.filter(row => conversationIds.has(row.id)) : state.conversations,
+    conversationIds ? state.messages.filter(row => conversationIds.has(row.conversation_id)) : state.messages);
 }
 
 export function applyBrowserChatSyncBatch(state: BrowserChatSyncState, request: ApplyChatSyncRequest) {
@@ -107,7 +104,7 @@ export function applyBrowserChatSyncBatch(state: BrowserChatSyncState, request: 
   if (request.cursor != null && (request.lastStreamSeq ?? state.lastStreamSeq) >= state.lastStreamSeq) state.cursor = request.cursor;
   state.lastStreamSeq = Math.max(state.lastStreamSeq, request.lastStreamSeq ?? 0);
   return { accountId: state.accountId, cursor: state.cursor, lastStreamSeq: state.lastStreamSeq,
-    changedConversationHeads: heads(state).filter(head => (request.messages ?? []).some(row => row.conversation_id === head.conversationId)) };
+    changedConversationHeads: heads(state, new Set((request.messages ?? []).map(row => row.conversation_id))) };
 }
 
 function messageRows(state: BrowserChatSyncState, conversationId: unknown) {

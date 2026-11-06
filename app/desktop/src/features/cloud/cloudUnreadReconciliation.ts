@@ -157,20 +157,14 @@ export function patchCanonicalCloudUnreadCounts(
     const nextUnread = unreadBySessionId[session.id] ?? 0;
     if (existingUnread === nextUnread) return session;
     changed = true;
-    if (nextUnread > 0) {
-      return {
-        ...session,
-        metadata: {
-          ...metadata,
-          cloudUnreadCount: nextUnread,
-        },
-      };
-    }
-    const restMetadata = { ...metadata };
-    delete restMetadata.cloudUnreadCount;
+    // A read session keeps an explicit zero: the canonical store restores a
+    // missing count from its previous state (see carryDerivedCloudUnreadCounts).
     return {
       ...session,
-      metadata: restMetadata,
+      metadata: {
+        ...metadata,
+        cloudUnreadCount: nextUnread,
+      },
     };
   });
   return changed ? { ...state, sessions } : state;
