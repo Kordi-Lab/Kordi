@@ -19,6 +19,7 @@ All paths start with `/v1/cloud/account/security`.
 | `POST /email/change` | Send a code to a new email address. |
 | `POST /email/change/verify` | Make the new address the primary email. |
 | `DELETE /providers/:provider` | Unlink `google`, `github`, or `x`. |
+| `POST /delete` | Delete the account ([Account deletion](account-deletion.md)). |
 
 ## Overview
 
@@ -80,7 +81,8 @@ otherwise. The current session is listed first.
 - Audit events: `account.session.revoked`, `account.sessions.revoked_others`,
   `account.password_set`, `account.password_changed`,
   `account.security.password_check_failed`, `account.email_change.requested`,
-  `account.email_changed`, `account.provider_unlinked`.
+  `account.email_changed`, `account.provider_unlinked`, and
+  `account.deleted`, which keeps counts only and names no account.
 
 Codes live in `cloud_account_email_change_codes` and
 `cloud_account_reauth_codes` (migration 0170) and follow the signup code rules:

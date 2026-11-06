@@ -70,6 +70,27 @@ pub(super) async fn claim_cloud_agent_run(
             StatusCode::FORBIDDEN,
         );
     }
+    // The requester must not have declined AI; another person's agent runs
+    // only when its owner allowed AI (`crate::ai_consent`). Kordi Support's
+    // account is operated by Kordi, not a person, so only the requester
+    // counts there.
+    let owner = input.owner_account_id.trim();
+    let kordi_operated = state
+        .support()
+        .is_some_and(|support| support.config().owner_account_id == owner);
+    let refused = if kordi_operated {
+        crate::ai_consent::require(state.db_pool(), &[input.requester_account_id.trim()]).await
+    } else {
+        crate::ai_consent::require_for_run(
+            state.db_pool(),
+            input.requester_account_id.trim(),
+            owner,
+        )
+        .await
+    };
+    if let Err(response) = refused {
+        return *response;
+    }
     if let Some(Extension(rate_limiter)) = rate_limiter {
         if let RateLimitDecision::Limited { retry_after } =
             rate_limiter.observe_agent_run(&session.account_id).await

@@ -231,6 +231,11 @@ type SyncEventRow = (
     Value,
 );
 
+/// The text prefix of an encoded group message envelope.
+const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
+mod account_removal;
+mod account_scrub;
+pub use account_removal::{remove_account_from_conversations, ConversationRemoval};
 mod attachment_actions;
 mod blocked_writes;
 pub use attachment_actions::{delete_attachment, message_for_viewer, set_attachment_reaction};

@@ -233,6 +233,7 @@ pub(super) fn account_response_from_rows(
         birthday: None,
         account_number: None,
         kordi_id_change_available_at: None,
+        ai_consent: None,
     }
 }
 

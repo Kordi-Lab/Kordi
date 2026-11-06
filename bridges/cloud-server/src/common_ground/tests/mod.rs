@@ -1,6 +1,7 @@
 mod actions_contact_tests;
 mod actions_group_tests;
 mod actions_meet_tests;
+mod ai_consent_tests;
 mod block_visibility_tests;
 mod build_agents_tests;
 mod build_documents_tests;

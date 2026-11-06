@@ -63,8 +63,10 @@ pub async fn conversation(
         query(
             "INSERT INTO cloud_accounts (account_id, display_name, primary_email, created_at,
                  updated_at, avatar_source, avatar_style, avatar_seed, avatar_renderer_version,
-                 avatar_version, avatar_updated_at, avatar_url)
-             VALUES ($1, $2, $3, $4, $4, 'generated', 'lorelei', $1, 'eval', 1, $4, $5)",
+                 avatar_version, avatar_updated_at, avatar_url, ai_consent_status,
+                 ai_consent_decided_at)
+             VALUES ($1, $2, $3, $4, $4, 'generated', 'lorelei', $1, 'eval', 1, $4, $5,
+                 'allowed', now())",
         )
         .bind(&account_id)
         .bind(&member.name)

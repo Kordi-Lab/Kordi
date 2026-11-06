@@ -12,6 +12,8 @@ use super::envelopes::{
 };
 use super::{ClaimRunRequest, RunResult};
 
+#[cfg(test)]
+mod consent_tests;
 mod history;
 mod request_context;
 use history::{
@@ -140,6 +142,9 @@ pub(super) async fn fallback_prompt_for_claim(
            AND message.deleted_at IS NULL
            AND NOT EXISTS(SELECT 1 FROM cloud_chat_message_visibility hidden
                           WHERE hidden.message_id=message.message_id AND hidden.account_id=ANY($2))
+           AND NOT EXISTS(SELECT 1 FROM cloud_accounts consent
+                          WHERE consent.account_id=message.sender_account_id
+                            AND consent.ai_consent_status='declined')
            AND message.content #>> '{blocks,0,text}' IS NOT NULL
          ORDER BY message.conversation_sequence DESC LIMIT 256",
     )

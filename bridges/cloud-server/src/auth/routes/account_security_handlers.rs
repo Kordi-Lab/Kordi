@@ -9,6 +9,7 @@
 use super::*;
 use crate::auth::rate_limit::{ACCOUNT_SECURITY_CHANGE_LIMIT, ACCOUNT_SECURITY_PROOF_LIMIT};
 
+mod delete_account;
 mod email_change;
 mod overview;
 mod password;
@@ -31,6 +32,10 @@ pub(super) fn routes() -> Router<Arc<ServerState>> {
             post(sessions::revoke_session_by_id),
         )
         .route(&format!("{BASE}/password"), post(password::set_password))
+        .route(
+            &format!("{BASE}/delete"),
+            post(delete_account::delete_account),
+        )
         .route(
             &format!("{BASE}/password/code"),
             post(proof::send_reauthentication_code),

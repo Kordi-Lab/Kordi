@@ -126,6 +126,11 @@ pub(crate) async fn put_setting(
         Ok(setting) => setting,
         Err(message) => return error("invalid_proactive", &message, StatusCode::BAD_REQUEST),
     };
+    if setting.enabled {
+        if let Err(response) = crate::ai_consent::require(pool, &[&session.account_id]).await {
+            return *response;
+        }
+    }
     if default_owner(&agent_id).is_some() {
         if let Err(err) =
             super::setting::set_default(pool, &session.account_id, setting.enabled).await
@@ -228,6 +233,11 @@ pub(crate) async fn post_decision(
         );
     };
     let pool = state.db_pool();
+    if matches!(choice, Choice::Allow) {
+        if let Err(response) = crate::ai_consent::require(pool, &[&session.account_id]).await {
+            return *response;
+        }
+    }
     match decide(pool, &session.account_id, &agent_id, &proposal_id, choice).await {
         Ok(_) => match load_proposal(pool, &proposal_id).await {
             Ok(Some(proposal)) => Json(json!({"proposal": proposal})).into_response(),
