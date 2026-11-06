@@ -1,6 +1,6 @@
 //! Your rooms list and a room's lobby. Every member shows the profile they
 //! share in the room, and `hasCard` only while both their card and yours
-//! there are built and shared.
+//! there are built and shared, and they did not stop you from seeing it.
 
 use std::sync::Arc;
 
@@ -149,9 +149,9 @@ pub(in crate::common_ground) async fn view(
         None => false,
     };
     // Members arrive in join order; you are never in the list.
-    let members: Vec<MemberRow> = query_as(
+    let members: Vec<MemberRow> = query_as(&format!(
         "SELECT member.account_id, account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url,
-                COALESCE(card.built_at IS NOT NULL AND card.sharing_enabled, false),
+                COALESCE(card.built_at IS NOT NULL AND card.sharing_enabled, false) AND {allowed},
                 profile.profile_id, profile.kind, profile.name, profile.design,
                 profile.icon
          FROM cloud_common_ground_room_members member
@@ -160,7 +160,8 @@ pub(in crate::common_ground) async fn view(
          LEFT JOIN cloud_common_ground_cards card ON card.profile_id = member.profile_id
          WHERE member.room_id = $1 AND member.left_at IS NULL AND member.account_id <> $2
          ORDER BY member.joined_at, member.account_id",
-    )
+        allowed = crate::contact_permissions::card_allowed_sql("member.account_id", "$2"),
+    ))
     .bind(room_id)
     .bind(viewer)
     .fetch_all(pool)

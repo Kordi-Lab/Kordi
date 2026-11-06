@@ -46,6 +46,7 @@ enum KordiPreviewModePersistence {
         "--preview-consent", "--preview-privacy-settings", "--preview-delete-account", "--preview-delete-account-confirm",
         "--preview-settings-about",
         "--preview-blocked", "--preview-report", "--preview-blocked-message",
+        "--preview-contact-permissions",
     ]
 
     static func launchRequested(by arguments: [String]) -> Bool {

@@ -122,6 +122,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-settings-about` | Settings scrolled to the bottom to show the Account and About rows (Privacy, Privacy policy, Terms of service) |
 | `--preview-signup` | Account creation in the email form |
 | `--preview-contacts` | Contacts and requests |
+| `--preview-contact-permissions` | Turns on preview data by itself and opens Maya's profile on the Permissions page (See my card off); the switches flip locally. Combine with `--preview-data` |
 | `--preview-new-chat` | New-chat sheet |
 | `--preview-add-contact` | Add-contact search inside the new-chat sheet |
 | `--preview-new-group` | New-group flow inside the new-chat sheet |

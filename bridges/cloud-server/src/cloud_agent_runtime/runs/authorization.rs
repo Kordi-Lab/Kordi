@@ -39,7 +39,10 @@ pub async fn requester_can_target_owner(
     if requester_account_id == owner_account_id {
         return Ok(true);
     }
-    if is_service_owner(owner_account_id) {
+    if is_service_owner(owner_account_id)
+        || !crate::contact_permissions::agent_allowed(pool, owner_account_id, requester_account_id)
+            .await?
+    {
         return Ok(false);
     }
     if crate::safety::blocks::blocked_either_way(pool, requester_account_id, owner_account_id)
@@ -57,6 +60,20 @@ pub async fn requester_can_target_owner(
     Ok(row.is_some())
 }
 
+/// False when the owner stopped the requester from using their agents
+/// (docs/contact-permissions.md).
+pub async fn requester_may_use_owner_agents(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> RunResult<bool> {
+    Ok(crate::contact_permissions::agent_allowed(
+        pool,
+        &input.owner_account_id,
+        &input.requester_account_id,
+    )
+    .await?)
+}
+
 pub async fn validate_group_agent_claim(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<bool> {
     // Neither side of a block can use the other's agents, in any chat.
     let (requester, owner) = (
@@ -66,6 +83,9 @@ pub async fn validate_group_agent_claim(pool: &PgPool, input: &ClaimRunRequest) 
     if requester != owner
         && crate::safety::blocks::blocked_either_way(pool, requester, owner).await?
     {
+        return Ok(false);
+    }
+    if !requester_may_use_owner_agents(pool, input).await? {
         return Ok(false);
     }
     if let Some(allowed) = super::exchanges::validate_claim(pool, input).await? {
@@ -277,6 +297,9 @@ pub async fn validate_shared_cloud_agent_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
 ) -> RunResult<bool> {
+    if !requester_may_use_owner_agents(pool, input).await? {
+        return Ok(false);
+    }
     if let Some(allowed) = super::exchanges::validate_claim(pool, input).await? {
         return Ok(allowed);
     }

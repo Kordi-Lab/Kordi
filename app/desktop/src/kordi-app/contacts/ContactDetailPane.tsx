@@ -19,6 +19,7 @@ import {
 import type { Contact, ContactRequest } from '../types';
 import { CopyButton, DetailHeader, DetailTile, DetailTiles, InfoCard, type InfoCardRow } from './ContactDetailParts';
 import { CommonGroundCard } from './ContactCommonGround';
+import { ContactPermissionsCard } from './ContactPermissionsSection';
 import { DeleteContactCard, SharedWithYouCard, SharedWithYouLoading } from './ContactProfileCards';
 import { contactProfileKind, formatContactSince, type ContactProfileKind } from './contactProfileHost';
 import { MenuTile, MuteTile, SettingsTile, ShareTile, type TileMenuItem } from './ContactProfileTiles';
@@ -141,6 +142,7 @@ function ContactDetailBody({
       ];
   const showMenu = menuItems.length > 0 && (rich ? kind !== 'system' : canRemove);
   const showShared = rich && (kind === 'person' || kind === 'agent');
+  const permissionsHost = contactProfileHost?.permissions;
 
   const submitRemoveContact = async () => {
     if (!canRemove || removeState === 'saving') return;
@@ -203,6 +205,9 @@ function ContactDetailBody({
         />
       ) : null}
       {profile?.commonGround ? <CommonGroundCard card={profile.commonGround} /> : null}
+      {permissionsHost && profile && kind === 'person' && profile.kind === 'person' && !profile.isSelf ? (
+        <ContactPermissionsCard accountId={profile.accountId} initial={profile.permissions} host={permissionsHost} />
+      ) : null}
       {canRemove ? (
         <DeleteContactCard
           confirmOpen={isConfirmOpen}

@@ -59,7 +59,8 @@ struct ContactProfileView: View {
             canDelete: profileModel.canDelete,
             isPage: pageConversation != nil,
             memoryAvailable: MemoryPresentation.isAvailable(model.memoryCapabilities),
-            localShared: sharedConversation.flatMap(model.contactProfileSharedItems(for:))?.counts
+            localShared: sharedConversation.flatMap(model.contactProfileSharedItems(for:))?.counts,
+            permissionsAvailable: model.isContactPermissionsAvailable
         )
     }
 
@@ -158,6 +159,8 @@ struct ContactProfileView: View {
             case let .chat(conversation):
                 ConversationView(conversation: conversation)
                     .task { _ = await model.restoreConversationIfNeeded(conversation) }
+            case .permissions:
+                ContactPermissionsView(appModel: model, accountId: subject.accountId, initial: profileModel.profile?.permissions, onSaved: profileModel.applyPermissions)
             }
         }
     }
@@ -177,6 +180,7 @@ struct ContactProfileView: View {
                 if let ground = presentation.commonGround {
                     ContactProfileCommonGroundSection(ground: ground)
                 }
+                ContactProfilePermissionsEntry(presentation: presentation, route: $route)
                 if presentation.showsDelete {
                     ContactProfileDeleteRow { confirmsDelete = true }
                         .disabled(profileModel.isDeleting)

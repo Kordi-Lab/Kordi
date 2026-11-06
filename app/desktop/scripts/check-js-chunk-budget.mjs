@@ -33,7 +33,9 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // AI consent (the consent and AI-off dialogs, the send gates, Settings › Privacy) adds 8 kB.
 // Blocking and abuse reports (block and report dialogs, the blocked list, the safety client) add 14 kB.
 // Collapsing blocked accounts' group messages and silencing their message alerts add 2 kB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_772_000;
+// Per-person permissions (the contact pane switches and their client) add 2 kB.
+// Applying them on the Mac (the restricted list, context filtering, the member popover switches) adds 2 kB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_776_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 const MAX_WEB_APP_DIST_BYTES = 5_800_000;

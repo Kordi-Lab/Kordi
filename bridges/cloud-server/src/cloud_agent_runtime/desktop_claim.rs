@@ -85,6 +85,15 @@ async fn claim_request(
     if !input.run.is_well_formed() || input.run.owner_account_id != session.account_id {
         return denied();
     }
+    // A restricted requester gets the one generic refusal on every route, so
+    // the Mac drops the request without answering in the conversation.
+    match runs::requester_may_use_owner_agents(state.db_pool(), &input.run).await {
+        Ok(true) => {}
+        Ok(false) => return runs::agent_unavailable(),
+        Err(e) => {
+            return run_error_response("desktop claim", "Could not claim agent execution.", e)
+        }
+    }
     let people = [
         session.account_id.as_str(),
         input.run.requester_account_id.trim(),

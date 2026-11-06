@@ -450,6 +450,7 @@ export function ChatMainWorkspace({
           onMessageContact={models.senderProfiles.messageContact}
           onOpenCommonGroup={models.senderProfiles.openCommonGroup}
           loadProfile={models.senderProfiles.loadProfile}
+          permissionsHost={models.senderProfiles.permissionsHost}
           onClose={models.senderProfiles.close}
         />
       ) : null}

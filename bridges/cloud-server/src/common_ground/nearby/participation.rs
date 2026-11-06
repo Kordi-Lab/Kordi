@@ -242,7 +242,8 @@ pub(super) async fn present(pool: &PgPool, account: &str) -> sqlx_core::Result<O
 }
 
 /// Present people other than `viewer` within `range_m` of them, nearest
-/// first, at most `limit`.
+/// first, at most `limit`. People who stopped the viewer from seeing their
+/// card are left out.
 pub(super) async fn around(
     pool: &PgPool,
     viewer: &Present,
@@ -255,7 +256,7 @@ pub(super) async fn around(
     // wrap around the antimeridian.
     let sql = format!(
         "SELECT * FROM ({}) present
-         WHERE present.account_id <> $1
+         WHERE present.account_id <> $1 AND {allowed}
            AND NOT cloud_accounts_blocked_either_way($1, present.account_id)
            AND present.latitude BETWEEN $2 - $4 AND $2 + $4
            AND ($5 >= 360 OR LEAST(abs(present.longitude - $3), 360 - abs(present.longitude - $3)) <= $5)
@@ -264,7 +265,8 @@ pub(super) async fn around(
                         * cos(radians($2)), 2),
                   present.account_id
          LIMIT $6",
-        present_sql()
+        present_sql(),
+        allowed = crate::contact_permissions::card_allowed_sql("present.account_id", "$1"),
     );
     let rows: Vec<PresentRow> = query_as(&sql)
         .bind(&viewer.account_id)
@@ -285,14 +287,18 @@ pub(super) async fn around(
         .collect())
 }
 
-/// Both present and within the farthest range: the pair rule. Returns
-/// (viewer, other) with the other's distance set.
+/// Both present and within the farthest range, and `other` did not stop
+/// `viewer` from seeing their card: the pair rule. Returns (viewer, other)
+/// with the other's distance set.
 pub(super) async fn pair(
     pool: &PgPool,
     viewer: &str,
     other: &str,
 ) -> sqlx_core::Result<Option<(Present, Present)>> {
-    if viewer == other || crate::safety::blocks::blocked_either_way(pool, viewer, other).await? {
+    if viewer == other
+        || crate::safety::blocks::blocked_either_way(pool, viewer, other).await?
+        || !crate::contact_permissions::card_allowed(pool, other, viewer).await?
+    {
         return Ok(None);
     }
     let (Some(mine), Some(mut theirs)) =

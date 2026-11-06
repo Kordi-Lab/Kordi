@@ -12,6 +12,7 @@ mod common_ground_nearby_tests;
 mod common_ground_sources_tests;
 mod common_ground_tests;
 mod connectors_tests;
+mod contact_permission_tests;
 mod document_share_tests;
 mod email_verification_tests;
 mod identity_email_tests;

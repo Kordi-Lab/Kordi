@@ -79,6 +79,7 @@ fn system_profile(target: &str, config: &crate::support::SupportConfig) -> Conta
         contact_since: None,
         shared: SharedSummary::default(),
         common_ground: None,
+        permissions: None,
     }
 }
 
@@ -121,6 +122,11 @@ async fn person_profile(
     if let Some(common_ground) = common_ground.as_mut() {
         common_ground.r#match = crate::common_ground::contact_match(pool, viewer, target).await?;
     }
+    let permissions = if is_self {
+        None
+    } else {
+        Some(crate::contact_permissions::load(pool, viewer, target).await?)
+    };
     Ok(Some(ContactProfileResponse {
         account_id: account.account_id,
         kordi_id: Some(account.kordi_id),
@@ -142,6 +148,7 @@ async fn person_profile(
         contact_since,
         shared,
         common_ground,
+        permissions,
     }))
 }
 
@@ -188,5 +195,6 @@ async fn agent_profile(
         contact_since: None,
         shared: SharedSummary::default(),
         common_ground: None,
+        permissions: None,
     }))
 }

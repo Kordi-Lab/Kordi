@@ -56,6 +56,10 @@ pub(super) async fn queue_for(ctx: &Queueing<'_>, account: &str) -> sqlx_core::R
     }
     recipient(ctx, &me, &others).await?;
     for other in &others {
+        // `around` checked only that they let me see them.
+        if !crate::contact_permissions::card_allowed(ctx.pool, account, &other.account_id).await? {
+            continue;
+        }
         let mut back = me.clone();
         back.distance_m = other.distance_m;
         recipient(ctx, other, std::slice::from_ref(&back)).await?;

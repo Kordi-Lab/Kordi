@@ -470,6 +470,7 @@ fn capabilities_report_memory_version() {
         memory_version: 3,
         common_ground: Default::default(),
         contact_profile_version: CONTACT_PROFILE_VERSION,
+        contact_permissions_version: 1,
     })
     .unwrap();
     assert_eq!(value["memoryVersion"], 3);

@@ -18,6 +18,7 @@ pub mod cloud_agent_runtime;
 pub mod cloud_agents;
 pub mod common_ground;
 pub mod connectors;
+pub mod contact_permissions;
 pub mod deleted_account;
 pub mod digest;
 pub mod distribution;

@@ -383,6 +383,8 @@ mod quiet;
 
 #[path = "agent_exchange_failure.rs"]
 mod failure;
+#[path = "agent_exchange_permissions.rs"]
+mod permissions;
 
 #[tokio::test]
 async fn overlapping_roots_keep_their_leases_and_downstream_replies_separate() {

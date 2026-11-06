@@ -297,6 +297,25 @@ pub(super) async fn runner_response_from_row(
         row.1 = "cancelled".into();
         row.2.clear();
     }
+    // A run for someone the owner has since stopped from using their agents
+    // ends here instead of running.
+    if row.3 != row.4
+        && matches!(row.1.as_str(), "leased" | "running")
+        && !crate::contact_permissions::agent_allowed(pool, &row.3, &row.4).await?
+    {
+        sqlx_core::query::query(
+            "UPDATE cloud_agent_fallback_runs SET status = 'cancelled', \
+               cancel_requested_at = COALESCE(cancel_requested_at, now()), \
+               completed_at = now()::text, updated_at = now()::text \
+             WHERE run_id = $1 AND status IN ('leased', 'running')",
+        )
+        .bind(&row.0)
+        .execute(pool)
+        .await?;
+        crate::contact_permissions::publish_refusal(pool, &row.0).await;
+        row.1 = "cancelled".into();
+        row.2.clear();
+    }
     if subsession_id.is_some()
         && matches!(row.1.as_str(), "leased" | "running")
         && !super::super::subsession_execution::revalidate(pool, &row.0).await?

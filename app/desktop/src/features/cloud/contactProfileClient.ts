@@ -58,7 +58,12 @@ export type CloudContactProfile = {
     groups: CloudContactProfileGroup[];
   };
   commonGround: CloudContactProfileCommonGround | null;
+  /** What the viewer lets this person do; absent on older servers and on agents, system contacts and yourself. */
+  permissions?: CloudContactPermissionFlags | null;
 };
+
+/** Per-person restrictions the viewer set: using the viewer's agents, and seeing the viewer's card. */
+export type CloudContactPermissionFlags = { agentAccess: boolean; cardAccess: boolean };
 
 /** Contact profile route version a server advertises, or null when it offers none. */
 export function contactProfileVersionFromCapabilities(
@@ -81,15 +86,18 @@ async function sessionToken(): Promise<string | null> {
   return session?.token ?? null;
 }
 
-async function authorizedRequest<T>(path: string, method: string, options: FetchContactProfileOptions, fallback: string): Promise<T> {
+export async function authorizedRequest<T>(path: string, method: string, options: FetchContactProfileOptions, fallback: string, body?: unknown): Promise<T> {
   const token = await (options.token ?? sessionToken)();
   if (!token) throw new Error('Sign in again.');
   const request: ProfileRequest = options.request
     ?? ((target, init, message) => defaultCloudAuthClient().request(target, init, message));
-  return request<T>(path, { method, headers: { authorization: `Bearer ${token}` }, signal: options.signal }, fallback);
+  const headers: Record<string, string> = { authorization: `Bearer ${token}` };
+  if (body === undefined) return request<T>(path, { method, headers, signal: options.signal }, fallback);
+  headers['content-type'] = 'application/json';
+  return request<T>(path, { method, headers, body: JSON.stringify(body), signal: options.signal }, fallback);
 }
 
-const contactPath = (accountId: string) => {
+export const contactPath = (accountId: string) => {
   const trimmed = accountId.trim();
   if (!trimmed) throw new Error('Missing account.');
   return `/v1/cloud/contacts/${encodeURIComponent(trimmed)}`;
@@ -118,6 +126,13 @@ function count(value: unknown): number {
 function textList(value: unknown, limit = 4): string[] {
   if (!Array.isArray(value)) return [];
   return value.map(text).filter((item): item is string => Boolean(item)).slice(0, limit);
+}
+
+/** Both flags must be booleans; anything else reads as "not served". */
+export function normalizeContactPermissionFlags(value: unknown): CloudContactPermissionFlags | null {
+  const row = record(value);
+  if (!row || typeof row.agentAccess !== 'boolean' || typeof row.cardAccess !== 'boolean') return null;
+  return { agentAccess: row.agentAccess, cardAccess: row.cardAccess };
 }
 
 function normalizeAgent(value: unknown): CloudContactProfileAgent | null {
@@ -187,6 +202,7 @@ export function normalizeContactProfile(value: unknown): CloudContactProfile | n
       groups: normalizeGroups(shared?.groups),
     },
     commonGround: normalizeCommonGround(row.commonGround),
+    permissions: kind === 'person' && row.isSelf !== true ? normalizeContactPermissionFlags(row.permissions) : null,
   };
 }
 

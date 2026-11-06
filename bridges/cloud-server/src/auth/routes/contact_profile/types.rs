@@ -26,6 +26,9 @@ pub(super) struct ContactProfileResponse {
     pub contact_since: Option<String>,
     pub shared: SharedSummary,
     pub common_ground: Option<ProfileCommonGround>,
+    /// What the viewer allows this person; null for yourself, agents and
+    /// the system contact.
+    pub permissions: Option<crate::contact_permissions::Permissions>,
 }
 
 #[derive(Debug, Serialize)]
