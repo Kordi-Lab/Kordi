@@ -459,7 +459,7 @@ test('human panes do not show agent model controls while agent side panes use ag
   const source = readChatsPageImplementationSource();
 
   assert.match(source, /localRouting\.paneKind === 'agent'[\s\S]*&& !collaborationRouting\.enabled/);
-  assert.match(source, /paneKind === 'agent' \? 'Ask the agent…'/);
+  assert.match(source, /paneKind === 'agent' \|\| subsession \? 'Ask the agent…'/);
   assert.match(source, /companionShowsLocalAgentControls/);
   assert.match(source, /companionConversationIsCollaborationAgent/);
   assert.match(source, /companionPaneKind === 'agent' && !companionConversationIsCollaborationAgent/);
