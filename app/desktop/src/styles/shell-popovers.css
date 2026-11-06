@@ -361,8 +361,7 @@
 }
 
 .app-group-management-member-actions,
-.app-group-management-add-panel,
-.app-group-management-settings {
+.app-group-management-add-panel {
   border-color: var(--app-transient-divider);
 }
 
@@ -400,10 +399,6 @@
   color: var(--app-transient-danger-text);
 }
 
-.app-group-management-setting-row {
-  min-height: 48px;
-}
-
 @media (pointer: coarse) {
   .app-member-contact-icon-action {
     width: 44px;
@@ -420,8 +415,7 @@
   }
 
   .app-group-management-action-row,
-  .app-group-management-contact-row,
-  .app-group-management-setting-row {
+  .app-group-management-contact-row {
     min-height: 44px;
   }
 }
