@@ -1,15 +1,17 @@
-import { Bell, Brain, Gauge, KeyRound, Laptop, Palette, Plug, User } from 'lucide-react';
+import { Ban, Bell, Brain, Gauge, KeyRound, Laptop, Palette, Plug, User } from 'lucide-react';
 
 import type { SettingsNavGroup } from '@/kordi-app/components';
 
-export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'connectors' | 'memory' | 'usage' | 'appearance';
+export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'blocked' | 'auth' | 'notifications' | 'connectors' | 'memory' | 'usage' | 'appearance';
 
 export function cloudAccountSettingsNavGroups({
   connectorsAvailable,
   memoryAvailable = false,
+  blockedAvailable = false,
 }: {
   connectorsAvailable: boolean;
   memoryAvailable?: boolean;
+  blockedAvailable?: boolean;
 }): Array<SettingsNavGroup<CloudAccountSettingsTabId>> {
   return [
     {
@@ -17,6 +19,7 @@ export function cloudAccountSettingsNavGroups({
       items: [
         { id: 'profile', label: 'Profile', icon: User, keywords: ['name', 'avatar', 'sign out'] },
         { id: 'devices', label: 'Active sessions', icon: Laptop, keywords: ['devices'] },
+        ...(blockedAvailable ? [{ id: 'blocked' as const, label: 'Blocked', icon: Ban, keywords: ['block', 'unblock', 'report', 'privacy'] }] : []),
       ],
     },
     {
