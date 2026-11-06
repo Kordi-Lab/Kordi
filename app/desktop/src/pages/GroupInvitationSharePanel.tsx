@@ -3,6 +3,7 @@ import { Check, Copy, LoaderCircle, LockKeyhole } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { CopyToast } from '@/components/ui/copyFeedback';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
 import { useCopyFeedback } from '@/components/ui/useCopyFeedback';
 import { groupInvitationLinkErrorMessage, invitationExpiryLabel as expiryLabel } from '@/features/chat/groupCreateCopy';
 import type {
@@ -51,6 +52,8 @@ export function GroupInvitationSharePanel({
   onError,
 }: GroupInvitationSharePanelProps) {
   const [invitation, setInvitation] = useState<CloudGroupInvitation | null>(null);
+  // A failed link shows under the link button, not at the top of the dialog.
+  const [linkError, setLinkError] = useState<string | null>(null);
   const [activeInvitations, setActiveInvitations] = useState<CloudGroupInvitationSummary[]>([]);
   const [isLoadingActive, setIsLoadingActive] = useState(
     canShareInvitation && Boolean(onListGroupInvitations),
@@ -77,9 +80,10 @@ export function GroupInvitationSharePanel({
   const createInvitation = () => {
     if (!onCreateGroupInvitation || !canShareInvitation) return;
     if (!groupSpaceId) {
-      onError('This group is not ready to share yet.');
+      setLinkError('This group is not ready to share yet.');
       return;
     }
+    setLinkError(null);
     void runAction('create-group-invitation', async () => {
       let nextInvitation: CloudGroupInvitation;
       try {
@@ -89,7 +93,8 @@ export function GroupInvitationSharePanel({
           groupTitle: space.title,
         });
       } catch (error) {
-        throw new Error(groupInvitationLinkErrorMessage(error));
+        setLinkError(groupInvitationLinkErrorMessage(error));
+        return;
       }
       // A new link replaces the earlier ones.
       setInvitation(nextInvitation);
@@ -124,6 +129,16 @@ export function GroupInvitationSharePanel({
   if (hidden) return null;
   const busy = Boolean(pendingAction);
   const activeInvitation = activeInvitations[0] ?? null;
+  // Offer "Try again" only for a plain retry message, not "Try again later" or a fix-it hint.
+  const linkRetryable = linkError !== null && withoutTryAgain(linkError) !== linkError;
+  const linkErrorLine = linkError ? (
+    <ErrorLine
+      className="mt-2"
+      action={linkRetryable ? { label: 'Try again', onClick: createInvitation, disabled: busy } : null}
+    >
+      {linkRetryable ? withoutTryAgain(linkError) : linkError}
+    </ErrorLine>
+  ) : null;
   const spinner = <LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />;
   return (
     <div role="tabpanel" aria-label="Invite with a link" className="px-1 pb-2">
@@ -187,6 +202,7 @@ export function GroupInvitationSharePanel({
               </Button>
             ) : null}
           </div>
+          {linkErrorLine}
           <CopyToast visible={copied} />
         </>
       ) : (
@@ -201,6 +217,7 @@ export function GroupInvitationSharePanel({
               : pendingAction === 'create-group-invitation' ? <>{spinner} Creating…</>
                 : activeInvitation ? 'New link' : 'Create link'}
           </Button>
+          {linkErrorLine}
           {activeInvitation ? (
             <div className="mt-2 flex items-center gap-1 text-[9.5px] text-[color:var(--utility-muted-text)]">
               <span className="mr-auto">A link is active · {expiryLabel(activeInvitation.expiresAt).toLowerCase()}</span>

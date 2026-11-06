@@ -1,3 +1,4 @@
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { CloudContactPermissionFlags } from '@/features/cloud/contactProfileClient';
 import { SettingsSwitch } from '../components/settingsLayout';
 import { SectionLabel } from './ContactProfileCards';
@@ -38,7 +39,7 @@ export function ContactPermissionsSection({
         ))}
       </div>
       {error ? (
-        <div className="app-error-text app-contacts-error mx-1 mt-2 text-[12px] leading-5" aria-live="polite">{error}</div>
+        <ErrorLine className="mx-1 mt-2">{error}</ErrorLine>
       ) : null}
     </>
   );

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Ban, Check, LoaderCircle, MessageCircle, UserPlus } from 'lucide-react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { isApprovedCollaborationContact } from '@/features/chat/chatCreateFlows';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { useSafetyActions } from '@/features/safety/safetyActions';
@@ -189,7 +190,7 @@ export function MemberContactProfileContent({
       </div>
 
       {requestError ? (
-        <p role="alert" className="app-transient-status mt-2 text-rose-500">{requestError}</p>
+        <ErrorLine className="mt-2">{requestError}</ErrorLine>
       ) : null}
     </div>
   );

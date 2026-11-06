@@ -7,6 +7,7 @@ import {
   AppDialogDescription,
   AppDialogTitle,
 } from '@/components/ui/dialog';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { EditableIdentityAvatar } from '../components/EditableIdentityAvatar';
@@ -103,9 +104,7 @@ export function AgentDeleteConfirmDialog({
         <span className="mt-3 block">It is kept as an archived Cloud record, not hard-deleted forever.</span>
       </AppDialogDescription>
       {error ? (
-        <div className="app-error-text mt-4 rounded-[16px] border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100" role="alert">
-          {error}
-        </div>
+        <ErrorLine className="mt-4">{error}</ErrorLine>
       ) : null}
       <AppDialogActions className="mt-5 gap-3">
         <Button variant="quiet" className="rounded-full px-4" autoFocus disabled={isDeleting} onClick={onCancel}>Cancel</Button>
@@ -840,20 +839,22 @@ export function AgentDetailPane({
         />
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div
-          className={cn(
-            'text-[12px] leading-5',
-            routingSaveFeedback?.tone === 'error'
-              ? 'text-rose-300'
-              : routingSaveDirty
+        {routingSaveFeedback?.tone === 'error' ? (
+          <ErrorLine className="mt-0">{routingSaveFeedback.text}</ErrorLine>
+        ) : (
+          <div
+            className={cn(
+              'text-[12px] leading-5',
+              routingSaveDirty
                 ? 'text-amber-200'
                 : routingSaveFeedback?.tone === 'success'
                   ? 'text-emerald-300'
                   : 'app-agent-row-meta',
-          )}
-        >
-          {routingSaveFeedback?.text ?? (routingSaveDirty ? 'Unsaved route changes. Save when ready.' : routingIdleCopy)}
-        </div>
+            )}
+          >
+            {routingSaveFeedback?.text ?? (routingSaveDirty ? 'Unsaved route changes. Save when ready.' : routingIdleCopy)}
+          </div>
+        )}
         <div className="flex items-center gap-2">
           {routingDraftDirty ? (
             <Button variant="quiet" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={resetRoutingDraft} disabled={isRoutingSaving}>
@@ -885,15 +886,13 @@ export function AgentDetailPane({
             <div className="min-w-0">
               <div className="app-agent-panel-subtitle text-[12px] font-medium">Agent inspector</div>
               <div className="app-agent-hero-title mt-1 truncate text-[22px] font-semibold tracking-[-0.02em]">{activeAgent.name}</div>
-            {archiveFeedback || activeSaveFeedback ? (
+            {(archiveFeedback?.tone ?? activeSaveFeedback?.tone) === 'error' ? (
+              <ErrorLine className="mt-2">{archiveFeedback?.text ?? activeSaveFeedback?.text}</ErrorLine>
+            ) : archiveFeedback || activeSaveFeedback ? (
               <div
                 className={cn(
                   'mt-2 text-[12px]',
-                  (archiveFeedback?.tone ?? activeSaveFeedback?.tone) === 'success'
-                    ? 'text-emerald-300'
-                    : (archiveFeedback?.tone ?? activeSaveFeedback?.tone) === 'error'
-                      ? 'text-rose-300'
-                      : 'text-slate-400',
+                  (archiveFeedback?.tone ?? activeSaveFeedback?.tone) === 'success' ? 'text-emerald-300' : 'text-slate-400',
                 )}
               >
                 {archiveFeedback?.text ?? activeSaveFeedback?.text}

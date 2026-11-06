@@ -57,7 +57,6 @@
 .forward-empty h3 { font-size: 14px; color: var(--app-transient-text); margin: 12px 0 4px; }
 .forward-empty p { margin: 0 0 12px; font-size: 12px; }
 .forward-empty button { color: var(--forward-accent); }
-.forward-error { color: var(--app-transient-danger-text); background: var(--app-transient-danger-bg); padding: 8px 12px; border-radius: 8px; font-size: 12px; overflow-wrap: anywhere; }
 .forward-overlay.forward-confirmation-overlay { background: transparent !important; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .app-message-forward-dialog.forward-confirmation { width: fit-content; max-width: calc(100vw - 32px); background: color-mix(in srgb, var(--app-transient-surface-bg) 78%, transparent) !important; backdrop-filter: blur(24px) saturate(140%); -webkit-backdrop-filter: blur(24px) saturate(140%); animation: forward-confirmation-in 250ms cubic-bezier(.23, 1, .32, 1) both; transition: opacity 200ms ease-out, transform 200ms ease-out; }
 .forward-success { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 24px; outline: none; }

@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import { cn } from '@/lib/utils';
@@ -70,15 +71,13 @@ export function AgentContentPane({
             <div className="min-w-0">
               <div className="app-agent-panel-subtitle text-[12px] font-medium">System prompt</div>
               <div className="app-agent-content-title mt-1 truncate text-[18px] font-semibold tracking-[-0.02em]">{activeAgent.name}</div>
-              {activeSaveFeedback ? (
+              {activeSaveFeedback?.tone === 'error' ? (
+                <ErrorLine className="mt-2">{activeSaveFeedback.text}</ErrorLine>
+              ) : activeSaveFeedback ? (
                 <div
                   className={cn(
                     'mt-2 text-[12px]',
-                    activeSaveFeedback.tone === 'success'
-                      ? 'text-emerald-300'
-                      : activeSaveFeedback.tone === 'error'
-                        ? 'text-rose-300'
-                        : 'text-slate-400',
+                    activeSaveFeedback.tone === 'success' ? 'text-emerald-300' : 'text-slate-400',
                   )}
                 >
                   {activeSaveFeedback.text}
@@ -141,15 +140,13 @@ export function AgentContentPane({
             <div className="app-agent-panel-subtitle text-[12px] font-medium">File</div>
             <div className="app-agent-content-title mt-1 truncate text-[18px] font-semibold tracking-[-0.02em]">{parts[parts.length - 1] ?? filePath}</div>
             <div className="app-agent-row-meta mt-1 break-words text-[12px]">{filePath}</div>
-            {activeFileSaveFeedback ? (
+            {activeFileSaveFeedback?.tone === 'error' ? (
+              <ErrorLine className="mt-2">{activeFileSaveFeedback.text}</ErrorLine>
+            ) : activeFileSaveFeedback ? (
               <div
                 className={cn(
                   'mt-2 text-[12px]',
-                  activeFileSaveFeedback.tone === 'success'
-                    ? 'text-emerald-300'
-                    : activeFileSaveFeedback.tone === 'error'
-                      ? 'text-rose-300'
-                      : 'text-slate-400',
+                  activeFileSaveFeedback.tone === 'success' ? 'text-emerald-300' : 'text-slate-400',
                 )}
               >
                 {activeFileSaveFeedback.text}

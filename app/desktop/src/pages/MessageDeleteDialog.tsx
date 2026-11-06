@@ -7,6 +7,7 @@ import {
   AppDialogDescription,
   AppDialogTitle,
 } from '@/components/ui/dialog';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { Message } from '@/kordi-app/types';
 import { transcriptMessageIsOwnHuman } from '@/kordi-app/components/transcriptMessageHumanRole';
 
@@ -71,9 +72,7 @@ export function MessageDeleteDialog({
         </label>
       ) : null}
       {error ? (
-        <p className="app-error-text mt-2 text-[11px] leading-4 text-rose-500" role="alert">
-          {error}
-        </p>
+        <ErrorLine className="mt-2">{error}</ErrorLine>
       ) : null}
       <AppDialogActions className="mt-2.5 gap-1">
         <button

@@ -30,7 +30,7 @@ import { AgentStudioRoutingEditor } from './AgentStudioRoutingEditor';
 import { AgentStudioWorkspaceFooter } from './AgentStudioWorkspaceFooter';
 import { AgentStudioBlueprintView, type AgentProactiveControl } from './AgentStudioBlueprintView';
 import { RunsView } from './AgentStudioRunsView';
-import { EmptyWorkspaceState, WorkspaceHeading } from './AgentStudioWorkspaceParts';
+import { EmptyWorkspaceState, FileFeedback, WorkspaceHeading } from './AgentStudioWorkspaceParts';
 import { CLOUD_AGENT_TOOL_DESCRIPTIONS, type AgentModelRoutingDraft } from './factoryAgentUtils';
 
 type FilePreviewState = { status: 'idle' | 'loading' | 'ready' | 'error'; text: string; error?: string };
@@ -396,7 +396,7 @@ function FilesView({
                   : <button type="button" className="app-button-quiet app-agent-studio-button is-small" onClick={onStartFileEditing} disabled={activeFilePreview.status === 'loading'}>Edit file</button>
               ) : null}
             </div>
-            {fileFeedback && !isPrompt ? <div className={cn('app-agent-studio-file-feedback', fileFeedback.tone === 'error' && 'is-error')}>{fileFeedback.text}</div> : null}
+            {fileFeedback && !isPrompt ? <FileFeedback text={fileFeedback.text} tone={fileFeedback.tone} /> : null}
             {isPrompt ? (
               canEditPrompt ? <textarea value={prompt} onChange={(event) => {
                 if (creating && creationDraft) onCreationDraftChange({ ...creationDraft, systemPrompt: event.currentTarget.value });
@@ -486,7 +486,7 @@ function BuilderDraftFilesView({
               <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
             ) : !loading ? <span className="app-agent-studio-file-saved"><Check className="h-3 w-3" />Saved</span> : null}
           </div>
-          {error ? <div className="app-agent-studio-file-feedback is-error">{error}</div> : null}
+          {error ? <FileFeedback text={error} tone="error" /> : null}
           {loading ? <div className="app-agent-studio-runtime-note"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Loading draft file…</div> : (
             <textarea value={content} onChange={(event) => setContent(event.currentTarget.value)} spellCheck={false} />
           )}
@@ -735,7 +735,7 @@ export function AgentStudioWorkspace({
         ) : null}
         {activeTab === 'runs' ? <RunsView agent={agent} proactiveActivity={proactive?.activity} onOpenReachout={onOpenReachout} builderStatus={builderStatus} builderTesting={builderTesting} onTestBuilderDraft={onTestBuilderDraft} /> : null}
         {activeTab === 'history' ? <HistoryView entries={persisted?.editHistory ?? []} /> : null}
-        {publishFeedback?.text ? <div className={cn('app-agent-studio-toast', publishFeedback.tone === 'error' && 'is-error', publishFeedback.tone === 'success' && 'is-success')}>{publishFeedback.text}</div> : null}
+        {publishFeedback?.text && publishFeedback.tone !== 'error' ? <div className={cn('app-agent-studio-toast', publishFeedback.tone === 'success' && 'is-success')}>{publishFeedback.text}</div> : null}
         {routingOpen && canEditRouting ? (
           <AgentStudioRoutingEditor
             routing={routing}
@@ -752,7 +752,7 @@ export function AgentStudioWorkspace({
       </div>
       </fieldset>
       <AgentStudioWorkspaceFooter artifactKind={artifactKind} standaloneBuild={standaloneBuild} creating={creating} hasCreationDraft={Boolean(creationDraft)} hasAgent={Boolean(agent)} changeCount={changes.length} builderStatus={builderStatus}
-        builderTesting={builderTesting} publishing={publishing} publishDisabled={publishDisabled} draftMutationDisabled={draftMutationDisabled} onDiscard={onDiscard} onPublish={onPublish} />
+        builderTesting={builderTesting} publishing={publishing} publishDisabled={publishDisabled} draftMutationDisabled={draftMutationDisabled} onDiscard={onDiscard} onPublish={onPublish} publishError={publishFeedback?.tone === 'error' ? publishFeedback.text : null} />
     </section>
   );
 }

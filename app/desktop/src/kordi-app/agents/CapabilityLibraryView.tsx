@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Blocks, Check, FileText, LoaderCircle, Puzzle, Wrench } from 'lucide-react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import {
   fetchDesktopSkillLibraryDetail,
@@ -167,7 +168,7 @@ export function CapabilityLibraryView({
         </aside>
 
         <section className="app-factory-library-preview">
-          {error ? <div className="app-agent-studio-inline-error" role="alert">{error}</div> : null}
+          {error ? <ErrorLine className="mt-0 px-2.5 py-[7px]">{error}</ErrorLine> : null}
           {kind === 'skill' ? (
             <>
               <nav className="app-factory-library-file-tabs" aria-label={`${artifact.name} files`}>

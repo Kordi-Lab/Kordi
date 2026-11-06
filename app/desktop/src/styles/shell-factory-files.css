@@ -142,16 +142,10 @@
   white-space: pre;
 }
 
-.app-agent-studio-file-feedback,
-.app-agent-studio-inline-error {
+.app-agent-studio-file-feedback {
   padding: 7px 10px;
   color: var(--utility-muted-text);
   font-size: var(--agent-studio-type-secondary);
-}
-
-.app-agent-studio-file-feedback.is-error,
-.app-agent-studio-inline-error {
-  color: var(--agent-studio-danger);
 }
 
 .app-agent-studio-simple-list {
@@ -306,11 +300,6 @@
   color: var(--utility-muted-text);
   font-size: var(--agent-studio-type-secondary);
   backdrop-filter: blur(12px);
-}
-
-.app-agent-studio-toast.is-error {
-  border-color: color-mix(in oklab, var(--agent-studio-danger) 30%, transparent);
-  color: var(--agent-studio-danger);
 }
 
 .app-agent-studio-toast.is-success {
