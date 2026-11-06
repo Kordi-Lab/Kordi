@@ -349,7 +349,8 @@ function ChatDetailPanelView({
             onSelectArtifact={onSelectArtifact}
             previewBaseRoot={artifactPreviewBaseRoot}
             participants={activeConv.canonicalParticipants}
-            emptyMessage={activeConversationUsesCollaboration ? 'No generated code or docs in this chat yet.' : 'No generated code or docs in this session yet.'}
+            // The entries above show the empty state, like the Memory tab.
+            emptyMessage={null}
           />
         </div>
       </div>

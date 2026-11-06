@@ -21,7 +21,7 @@ type ArtifactInspectorProps = {
   artifacts: SessionArtifact[];
   activeArtifactId: string | null;
   onSelectArtifact: (artifactId: string | null) => void;
-  emptyMessage: string;
+  emptyMessage: string | null; // null: the caller shows the empty state
   previewBaseRoot?: string | null;
   folderBrowserRoot?: string | null;
   footer?: ReactNode;
@@ -383,7 +383,7 @@ export function ArtifactInspector({
 
   return (
     <div data-artifact-inspector="true" className="flex h-full min-h-0 flex-col">
-      <div data-artifact-file-list="true" className="shrink-0 overflow-y-auto overflow-x-hidden pr-1 max-h-[38%]">
+      <div data-artifact-file-list="true" className={cn('shrink-0 overflow-y-auto overflow-x-hidden pr-1', previewArtifact && !opensInCompanion ? 'max-h-[38%]' /* room for the preview */ : 'max-h-full')}>
         {folderBrowserRootPath ? (
           <section className="app-detail-section">
           <div className="app-detail-kicker">Project folder</div>
@@ -481,7 +481,7 @@ export function ArtifactInspector({
             onSelect={selectListArtifact}
           />
           </>
-        ) : (
+        ) : emptyMessage === null ? null : (
           <section className="app-detail-section">
             <div className="app-detail-kicker">Artifacts</div>
             <div className="app-inspector-empty">{emptyMessage}</div>
