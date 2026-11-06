@@ -120,6 +120,8 @@ struct ContactProfilePresentation: Equatable {
     var memoryAvailable: Bool = false
     /// Counts from the chat's whole history on this device; nil until it is loaded.
     var localShared: ContactProfileSharedItems.Counts? = nil
+    /// The server serves per-person permissions (`contactPermissionsVersion`).
+    var permissionsAvailable: Bool = false
 
     var kind: CloudContactProfile.Kind { profile?.kind ?? subject.kind }
     var name: String { profile?.displayName?.nonEmpty ?? subject.name }

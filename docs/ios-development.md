@@ -117,6 +117,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-email-sign-in` | Email and social login form, the fallback for servers without browser sign-in |
 | `--preview-signup` | Account creation in the email form |
 | `--preview-contacts` | Contacts and requests |
+| `--preview-contact-permissions` | Turns on preview data by itself and opens Maya's profile on the Permissions page (See my card off); the switches flip locally. Combine with `--preview-data` |
 | `--preview-new-chat` | New-chat sheet |
 | `--preview-add-contact` | Add-contact search inside the new-chat sheet |
 | `--preview-new-group` | New-group flow inside the new-chat sheet |

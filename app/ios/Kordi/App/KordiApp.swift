@@ -399,6 +399,8 @@ private struct RootView: View {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-native-design") {
             NativeDesignPreview()
+        } else if ContactPermissionsAvailability.isPreviewRequested() {
+            ContactPermissionsPreviewHost()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-contacts") {
             NavigationStack {
                 ContactsView()

@@ -109,10 +109,12 @@ struct CloudContactProfile: Decodable, Hashable {
     var contactSince: String? = nil
     var shared: Shared? = nil
     var commonGround: CommonGround? = nil
+    /// Your restrictions for this person; nil for yourself, agents, and older servers.
+    var permissions: CloudContactPermissions? = nil
 
     private enum CodingKeys: String, CodingKey {
         case accountId, kordiId, displayName, avatarUrl, about, kind, isSelf, isContact
-        case presence, defaultAgent, owner, contactSince, shared, commonGround
+        case presence, defaultAgent, owner, contactSince, shared, commonGround, permissions
     }
 
     init(
@@ -129,7 +131,8 @@ struct CloudContactProfile: Decodable, Hashable {
         owner: Owner? = nil,
         contactSince: String? = nil,
         shared: Shared? = nil,
-        commonGround: CommonGround? = nil
+        commonGround: CommonGround? = nil,
+        permissions: CloudContactPermissions? = nil
     ) {
         self.accountId = accountId
         self.kordiId = kordiId
@@ -145,6 +148,7 @@ struct CloudContactProfile: Decodable, Hashable {
         self.contactSince = contactSince
         self.shared = shared
         self.commonGround = commonGround
+        self.permissions = permissions
     }
 
     /// Unknown or malformed optional parts decode as nil instead of failing the whole profile.
@@ -164,6 +168,7 @@ struct CloudContactProfile: Decodable, Hashable {
         contactSince = try? c.decodeIfPresent(String.self, forKey: .contactSince)
         shared = try? c.decodeIfPresent(Shared.self, forKey: .shared)
         commonGround = try? c.decodeIfPresent(CommonGround.self, forKey: .commonGround)
+        permissions = (try? c.decodeIfPresent(CloudContactPermissions.self, forKey: .permissions)) ?? nil
     }
 }
 

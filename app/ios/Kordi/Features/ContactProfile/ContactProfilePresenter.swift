@@ -127,6 +127,7 @@ enum ContactProfileRoute: Hashable {
     case focused(ConversationSummary, SessionDetailTab)
     case shared(ContactProfileSharedPage, ConversationSummary)
     case chat(ConversationSummary)
+    case permissions
 }
 
 /// The header of a chat opens the contact profile page for a person and the

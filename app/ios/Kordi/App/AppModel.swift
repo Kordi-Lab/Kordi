@@ -43,6 +43,7 @@ enum KordiPreviewModePersistence {
         "--preview-group-detail", "--preview-group-memory", "--preview-group-invite", "--preview-media", "--preview-media-messages",
         "--preview-media-expanded", "--preview-media-separated", "--preview-photo-send",
         "--preview-connectors", "--preview-shared-document", "--preview-common-ground", "--preview-contact-profile",
+        "--preview-contact-permissions",
     ]
 
     static func launchRequested(by arguments: [String]) -> Bool {
