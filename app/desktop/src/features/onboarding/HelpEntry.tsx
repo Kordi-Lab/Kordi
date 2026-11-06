@@ -12,6 +12,8 @@ import { requestHelpGrounding } from './helpNavigation';
 import type { HelpTourId } from './helpTourSteps';
 import type { HelpAction } from './helpContent';
 import { HelpWelcome } from './HelpWelcome';
+import { MacAppPrompt } from './MacAppPrompt';
+import { dismissMacAppPrompt, MAC_DOWNLOAD_PATH, macAppPromptKey, macAppPromptVisible, macDownloadAvailable, readMacAppPromptDismissedAt } from './macAppPromptRules';
 import { HelpAvailabilityContext } from './helpAvailability';
 import type { HelpUpdateAction } from './HelpMenu';
 
@@ -50,6 +52,17 @@ function AccountHelpEntry({ setActiveNav, account, onOpenSupport, onOpenSession,
     return readHelpProgress(progressKey).welcome;
   });
   const invitationBusy = useGroupInvitationPromptBusy();
+  const browserApp = isBrowserAppRuntime();
+  const [macDownload] = useState(() => macDownloadAvailable(browserApp));
+  const macPromptKey = macAppPromptKey(accountId ?? 'local', cloudApiBaseUrl());
+  const [macDismissedAt, setMacDismissedAt] = useState(() => readMacAppPromptDismissedAt(macPromptKey));
+  const snoozeMacPrompt = () => {
+    const now = Date.now();
+    dismissMacAppPrompt(macPromptKey, now);
+    setMacDismissedAt(now);
+  };
+  const showMacPrompt = macAppPromptVisible({ browserApp, macBrowser: macDownload, signedIn: Boolean(accountId), welcome,
+    tour: Boolean(tour), helpOpen: open, invitationBusy, dismissedAt: macDismissedAt });
   const openHelp = () => {
     setAnchor(trigger.current?.getBoundingClientRect() ?? null);
     if (tourOpenedSettings.current) { account.setCloudAccountDialogTab?.(null); tourOpenedSettings.current = false; }
@@ -90,7 +103,8 @@ function AccountHelpEntry({ setActiveNav, account, onOpenSupport, onOpenSession,
           setWelcome(false);
           saveHelpProgress(progressKey, { ...readHelpProgress(progressKey), welcome: false });
         }} /> : null}
-    {open ? <Suspense fallback={<span role="status" className="sr-only">Loading help…</span>}><HelpMenu updateAction={updateAction} anchor={anchor} progressKey={progressKey} initialView={initialView} onStartTour={startTour} settingsAvailable={settingsAvailable} supportAvailable={Boolean(onOpenSupport)} onAction={action} onOpenSession={onOpenSession} onDismiss={() => setOpen(false)} /></Suspense> : null}
+    {showMacPrompt ? <MacAppPrompt trigger={trigger} onDownload={snoozeMacPrompt} onDismiss={snoozeMacPrompt} /> : null}
+    {open ? <Suspense fallback={<span role="status" className="sr-only">Loading help…</span>}><HelpMenu updateAction={updateAction} anchor={anchor} progressKey={progressKey} initialView={initialView} onStartTour={startTour} settingsAvailable={settingsAvailable} supportAvailable={Boolean(onOpenSupport)} onAction={action} onOpenSession={onOpenSession} onMacDownload={macDownload ? () => { snoozeMacPrompt(); window.location.assign(MAC_DOWNLOAD_PATH); } : undefined} onDismiss={() => setOpen(false)} /></Suspense> : null}
     {tour ? <Suspense fallback={<span role="status" className="sr-only">Loading tour…</span>}><HelpTour initialSection={tour === 'workspace' ? undefined : tour} progressKey={progressKey} settingsAvailable={settingsAvailable} onExit={exitTour} onPrepare={(step) => {
       if (step.settings && settingsAvailable) {
         tourOpenedSettings.current = true;
