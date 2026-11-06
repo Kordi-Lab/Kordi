@@ -89,7 +89,7 @@ async fn message_reports_copy_the_chosen_messages_verbatim() {
 }
 
 #[tokio::test]
-async fn evidence_must_come_from_a_conversation_the_reporter_is_still_in() {
+async fn evidence_must_come_from_a_conversation_the_reporter_was_in() {
     let Some(h) = harness().await else { return };
     let reporter = h.signup("Careful reporter").await;
     let reported = h.signup("Sender").await;
@@ -106,17 +106,23 @@ async fn evidence_must_come_from_a_conversation_the_reporter_is_still_in() {
         .await
         .unwrap();
 
-    for ids in [
-        vec![foreign],
-        vec![theirs, foreign],
-        vec![deleted],
-        vec![Uuid::now_v7()],
-    ] {
+    for ids in [vec![foreign], vec![theirs, foreign], vec![Uuid::now_v7()]] {
         assert!(
             rejected(h.report(&reporter, message_report(chat, &ids)).await),
             "{ids:?}"
         );
     }
+    // Deleting a message for everyone does not escape a report: its metadata
+    // is kept.
+    let (status, body) = h.report(&reporter, message_report(chat, &[deleted])).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let copied = evidence(&h.pool, &body["report"]["reportId"]).await;
+    assert_eq!(copied["messages"][0]["messageId"], json!(deleted));
+    assert!(!copied["messages"][0]["deletedAt"].is_null());
+    assert_eq!(
+        copied["messages"][0]["senderAccountId"],
+        reported.id.as_str()
+    );
     // Only the reporter's own messages: nobody to report.
     let (status, body) = h.report(&reporter, message_report(chat, &[own])).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -198,4 +204,68 @@ async fn deleting_a_reported_message_for_everyone_leaves_the_report_copy() {
         after["messages"][1]["attachments"][0]["sha256Hex"],
         "ab".repeat(32)
     );
+}
+
+#[tokio::test]
+async fn former_members_can_report_what_they_saw_before_leaving() {
+    let Some(h) = harness().await else { return };
+    let owner = h.signup("Group owner").await;
+    let reporter = h.signup("Former member").await;
+    let reported = h.signup("Group sender").await;
+    h.request_contact(&owner, &reporter, true).await;
+    h.request_contact(&owner, &reported, true).await;
+    let group_id = chat_store::create_conversation(
+        &h.pool,
+        &owner.id,
+        kordi_cloud_server::chat_sync::models::CreateConversationRequest {
+            client_operation_id: Uuid::now_v7(),
+            kind: kordi_cloud_server::chat_sync::models::ConversationKind::Group,
+            shared_title: Some("Team".to_string()),
+            client_session_id: format!("session:group:{}", Uuid::new_v4().simple()),
+            member_account_ids: vec![reporter.id.clone(), reported.id.clone()],
+            organization_id: None,
+        },
+    )
+    .await
+    .unwrap()
+    .value
+    .id;
+    let before = h
+        .message(&reported, group_id, "said while they were here")
+        .await;
+    query(
+        "UPDATE cloud_chat_conversation_members SET membership_state = 'left', \
+           left_at = now() WHERE conversation_id = $1 AND account_id = $2",
+    )
+    .bind(group_id)
+    .bind(&reporter.id)
+    .execute(&h.pool)
+    .await
+    .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    let after = h.message(&reported, group_id, "said after they left").await;
+
+    let (status, body) = h
+        .report(&reporter, message_report(group_id, &[before]))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert!(rejected(
+        h.report(&reporter, message_report(group_id, &[after]))
+            .await
+    ));
+}
+
+#[tokio::test]
+async fn refused_reports_do_not_spend_the_daily_budget() {
+    let Some(h) = harness().await else { return };
+    let reporter = h.signup("Budget reporter").await;
+    let reported = h.signup("Budget sender").await;
+    for _ in 0..25 {
+        let (status, _) = h
+            .report(&reporter, message_report(Uuid::new_v4(), &[Uuid::now_v7()]))
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let (status, body) = h.report(&reporter, account_report(&reported)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
 }

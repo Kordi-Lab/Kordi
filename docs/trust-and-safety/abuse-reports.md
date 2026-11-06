@@ -41,17 +41,20 @@ Checks, in order:
    failures return 400 `invalid_report`.
 2. A report with the same `clientReportId` returns the stored receipt (200)
    when the request is identical, or 409 `report_conflict` when it differs.
-   Replays never use the daily budget.
-3. Each account can send 20 reports per 24 hours (429 `rate_limited`).
-4. The reporter must still be an active member of the conversation, and every
-   chosen message must belong to it and not be deleted. When no account is
+3. The reporter must be, or have been, a member of the conversation, and
+   every chosen message must belong to it; someone who left can report
+   messages sent before they left. A message its sender deleted for everyone
+   stays reportable: the copy keeps its id, sender, times (including
+   `deletedAt`), and whatever content remains. When no account is
    named, the reported account is the sender of the first chosen message not
    written by the reporter; at least one chosen message must be from the
    reported account (an agent's messages are sent as its owner). Failures
    return 400 `invalid_report_evidence`.
-5. The reported account must exist (404 `account_missing`) and must not be the
+4. The reported account must exist (404 `account_missing`) and must not be the
    reporter (400 `self_report`).
-6. Evidence larger than 2 MiB returns 413 `report_too_large`.
+5. Evidence larger than 2 MiB returns 413 `report_too_large`.
+6. Each account can send 20 reports per 24 hours (429 `rate_limited`). Only
+   reports that passed every check above count; replays never count.
 
 A new report returns 201 with
 `{ "report": { reportId, reference, status, reason, targetKind,
@@ -70,8 +73,8 @@ and target kind. Server logs never contain report content.
 Each new report queues a notice to the support inbox (`KORDI_SUPPORT_INBOX`,
 sent with the `KORDI_SUPPORT_SMTP_*` settings the support tickets use). The
 notice carries only the reference, report id, reason, target kind, message
-count, the two account ids, and the operator query to open the report. It
-never contains the details or the copied messages. The server tries to send it
+count, the reported account id, and the operator query to open the report. It
+never contains the reporter, the details, or the copied messages. The server tries to send it
 right away; a worker retries every 30 seconds with backoff (1, 5, 15, 60, then
 360 minutes) and marks the notice `failed` after eight attempts. Without a
 configured mailer, reports wait in the queue view below with
@@ -79,6 +82,16 @@ configured mailer, reports wait in the queue view below with
 24 hours.
 
 ## Operator access
+
+The server has no operator role or admin route, so review happens in the
+database. The operations runbook covers access; the procedure is:
+
+1. Each day, list open reports with the queue view and start with the oldest.
+2. Read each report with `kordi_safety_view_report`, giving your name.
+3. Act in the product when needed: remove content, or restrict the account
+   through the operations runbook.
+4. Close the report with `kordi_safety_close_report` and the matching
+   resolution.
 
 Only named operators review reports, through the approved operator database
 access path. Never copy report content into tickets, chat, or exports; refer to

@@ -1,5 +1,6 @@
-//! Blocks and abuse reports against a real Postgres at `$DATABASE_URL`
-//! (skipped when it is not set). Every test uses fresh synthetic accounts.
+//! Blocks and abuse reports against a real Postgres at `$DATABASE_URL`.
+//! Skipped locally without it; CI fails instead unless a job opts out with
+//! `KORDI_CONNECTOR_DB_TESTS=skip`. Every test uses fresh synthetic accounts.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -41,7 +42,17 @@ struct Harness {
 }
 
 async fn harness() -> Option<Harness> {
-    let url = std::env::var("DATABASE_URL").ok()?;
+    // Like the Common ground fixture: CI must provide a database (see
+    // scripts/test-cloud-migrations.sh) unless a job opts out explicitly.
+    let url = match std::env::var("DATABASE_URL") {
+        Ok(url) if !url.trim().is_empty() => url,
+        _ if std::env::var("KORDI_CONNECTOR_DB_TESTS").as_deref() == Ok("skip") => return None,
+        _ if std::env::var_os("CI").is_some() => panic!(
+            "Block and report tests need DATABASE_URL in CI. Run them through \
+             scripts/test-cloud-migrations.sh, or set KORDI_CONNECTOR_DB_TESTS=skip."
+        ),
+        _ => return None,
+    };
     let pool = init_pool(&url).await.expect("migrate test database");
     let limiter = CloudRateLimiter::memory(CloudRateLimitConfig {
         per_ip_limit: 10_000,

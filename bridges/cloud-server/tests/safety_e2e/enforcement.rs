@@ -253,3 +253,101 @@ async fn reports_can_block_in_the_same_request_without_telling_anyone() {
         (StatusCode::CREATED, json!(false))
     );
 }
+
+#[tokio::test]
+async fn a_block_stops_edits_lookups_agents_and_unread_counts() {
+    let Some(h) = harness().await else { return };
+    let owner = h.signup("Edit owner").await;
+    let a = h.signup("Edit A").await;
+    let b = h.signup("Edit B").await;
+    h.request_contact(&a, &b, true).await;
+    h.request_contact(&owner, &a, true).await;
+    h.request_contact(&owner, &b, true).await;
+    let chat = h.direct_chat(&a, &b).await;
+    let shared = group(&h, &owner, &[&a, &b]).await.unwrap();
+    let written = try_message(&h, &a, chat).await.unwrap();
+    assert_eq!(h.block(&b, &a.id).await.0, StatusCode::OK);
+
+    let edit = chat_store::edit_message(
+        &h.pool,
+        &a.id,
+        chat,
+        written,
+        kordi_cloud_server::chat_sync::models::UpdateMessageRequest {
+            expected_version: 1,
+            text: "edited after the block".to_string(),
+        },
+    )
+    .await;
+    assert!(matches!(edit, Err(StoreError::Blocked)), "{:?}", edit.err());
+
+    // Looking either account up reads as an unknown id.
+    for (viewer, target) in [(&a, &b), (&b, &a)] {
+        let (status, body) = h
+            .send(
+                "GET",
+                &format!("/v1/cloud/accounts/{}/profile", target.id),
+                Some(&viewer.token),
+                Value::Null,
+            )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+        assert_eq!(body["errorCode"], "account_missing");
+    }
+
+    // Neither can ask the other's agent.
+    for (requester, owner_id) in [(&a, &b.id), (&b, &a.id)] {
+        assert!(
+            !kordi_cloud_server::cloud_agent_runtime::runs::requester_can_target_owner(
+                &h.pool,
+                &requester.id,
+                owner_id,
+            )
+            .await
+            .unwrap()
+        );
+    }
+
+    // The blocker's unread count leaves out the blocked account's messages.
+    try_message(&h, &a, shared).await.unwrap();
+    try_message(&h, &owner, shared).await.unwrap();
+    let attention = chat_store::thread_attention(&h.pool, &b.id, None)
+        .await
+        .unwrap();
+    let group_unread = attention
+        .iter()
+        .find(|row| row.conversation_id == shared)
+        .unwrap()
+        .unread_count;
+    assert_eq!(group_unread, 1);
+    let attention = chat_store::thread_attention(&h.pool, &owner.id, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        attention
+            .iter()
+            .find(|row| row.conversation_id == shared)
+            .unwrap()
+            .unread_count,
+        1,
+        "other members still count it"
+    );
+}
+
+#[tokio::test]
+async fn block_changes_have_a_budget() {
+    let Some(h) = harness().await else { return };
+    let blocker = h.signup("Busy blocker").await;
+    let target = h.signup("Busy target").await;
+    let mut limited = false;
+    for _ in 0..61 {
+        let (status, body) = h.block(&blocker, &target.id).await;
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            assert_eq!(body["errorCode"], "rate_limited");
+            limited = true;
+            break;
+        }
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+    assert!(limited, "the 61st change in an hour is refused");
+}
