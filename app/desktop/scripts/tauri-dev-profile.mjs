@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import {
   buildBeforeDevCommand,
   desktopDevCapabilities,
+  macDevAppBundleEnv,
   resolveDesktopDevUrl,
   resolveDesktopPreviewIcons,
 } from './tauri-dev-env.mjs';
@@ -108,11 +109,11 @@ function ensureTauriCli() {
   }
 }
 
-function run(command, args) {
+function run(command, args, extraEnv = {}) {
   const result = spawnSync(command, args, {
     cwd: appRoot,
     stdio: 'inherit',
-    env: process.env,
+    env: { ...process.env, ...extraEnv },
   });
 
   if (result.status !== 0) {
@@ -214,4 +215,13 @@ console.log(`[kordi] App identifier: ${identifier}`);
 console.log(`[kordi] Generated config: ${generatedConfigPath}`);
 
 run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'tauri:prepare-sidecars']);
-run(tauriBin, ['dev', '--config', generatedConfigPath]);
+const appBundleEnv = macDevAppBundleEnv({
+  identifier,
+  title,
+  targetTriple: hostTargetTriple(),
+  runnerPath: join(__dirname, 'macos-dev-app-runner.sh'),
+});
+if (Object.keys(appBundleEnv).length > 0) {
+  console.log('[kordi] Native binary runs from a signed dev app bundle for macOS permission prompts.');
+}
+run(tauriBin, ['dev', '--config', generatedConfigPath], appBundleEnv);

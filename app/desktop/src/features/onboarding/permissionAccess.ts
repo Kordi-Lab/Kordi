@@ -57,8 +57,12 @@ export async function readHelpPermission(id: PermissionId): Promise<PermissionSt
 
 export async function requestHelpPermission(id: PermissionId): Promise<void> {
   if (id === 'location') {
-    if (nativeMacPermissions()) await invokeDesktop<string>('desktop_nearby_location_permission', { request: true });
-    else {
+    if (nativeMacPermissions()) {
+      await invokeDesktop<string>('desktop_nearby_location_permission', { request: true }).catch(async (error: unknown) => {
+        const { nearbyNativeLocationError } = await import('../commonGround/nearbyLocationFix');
+        throw nearbyNativeLocationError(error);
+      });
+    } else {
       const { requestNearbyDeviceLocation } = await import('../commonGround/nearbyLocationFix');
       await requestNearbyDeviceLocation();
     }
