@@ -48,6 +48,13 @@ export function cloudBlocksSnapshot(accountId: string | null | undefined): Cloud
   return id ? stores.get(id)?.snapshot ?? EMPTY_SNAPSHOT : EMPTY_SNAPSHOT;
 }
 
+/** Listens for changes to one account's block list without loading it. */
+export function subscribeCloudBlocks(accountId: string, listener: () => void): () => void {
+  const store = storeFor(accountId);
+  store.listeners.add(listener);
+  return () => { store.listeners.delete(listener); };
+}
+
 /** Reloads the list; concurrent calls share one request and queue one more. */
 export function refreshCloudBlocks(accountId: string, deps: SafetyDeps = defaultSafetyDeps()): Promise<void> {
   const store = storeFor(accountId);
@@ -97,12 +104,7 @@ export type UseCloudBlocksResult = CloudBlocksSnapshot & { refresh(this: void): 
 
 export function useCloudBlocks(accountId: string | null | undefined, deps?: SafetyDeps): UseCloudBlocksResult {
   const id = accountId?.trim() || null;
-  const subscribe = useCallback((listener: () => void) => {
-    if (!id) return () => undefined;
-    const store = storeFor(id);
-    store.listeners.add(listener);
-    return () => { store.listeners.delete(listener); };
-  }, [id]);
+  const subscribe = useCallback((listener: () => void) => (id ? subscribeCloudBlocks(id, listener) : () => undefined), [id]);
   const getSnapshot = useCallback(() => cloudBlocksSnapshot(id), [id]);
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
