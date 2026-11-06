@@ -122,8 +122,8 @@ pub(crate) use contact_acceptance::{direct_person_session_id, open_direct_conver
 pub(crate) use contact_removal::delete_contact_pair;
 pub(crate) use contact_send::{send_request, ContactOutcome};
 pub(crate) use group_invitation_handlers::{
-    audit_join, create_invitation_in_transaction, redeem_group_invitation_by_id, Redemption,
-    ROOM_GROUP_MIN_MEMBERS,
+    audit_join, group_invitation_link_in_transaction, redeem_group_invitation_by_id, LinkOutcome,
+    LinkRequest, Redemption, ROOM_GROUP_MIN_MEMBERS,
 };
 pub use middleware::cloud_session_middleware;
 pub(crate) use session_forks::cloud_session_participants;
