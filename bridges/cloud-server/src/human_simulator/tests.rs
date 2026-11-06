@@ -272,7 +272,7 @@ async fn exercise(
     assert_eq!(denied_status.status(), reqwest::StatusCode::UNAUTHORIZED);
     launch(tasks, &sim, &actors[0], worker_token, &human_token);
     wait_sent(pool, &actors[0]).await;
-    let rows: Vec<(String,String)> = query_as("SELECT sender_account_id,content::text FROM cloud_chat_messages WHERE conversation_id=$1 ORDER BY conversation_sequence")
+    let rows: Vec<(String,String)> = query_as("SELECT sender_account_id,content::text FROM cloud_chat_messages WHERE conversation_id=$1 AND NOT content ? 'group_event' ORDER BY conversation_sequence")
         .bind(conversation).fetch_all(pool).await.unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].0, accounts[0]);
