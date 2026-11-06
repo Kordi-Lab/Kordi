@@ -54,7 +54,9 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // The dense popover help styles remove 5.5 kB, so it moves to 5.809 MB.
 // Folding long groups of background session rows adds 2.9 kB.
 // Running reply Stop on the status line with Fork on hover removes 1 kB, so it moves to 5.811 MB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_811_000;
+// Memory import from chosen files (the browser picker, its limits and the server
+// extraction call) and Import in the Memory tab add 5 kB, so it moves to 5.816 MB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_816_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.

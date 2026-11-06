@@ -30,7 +30,10 @@ use row::{memory_from_row, MemoryRow, MEMORY_SELECT};
 
 pub(crate) use groups::is_active_group_member;
 pub(crate) use profile_routing::{build_memories, count_since, profile_memories, ProfileTarget};
-pub(crate) use routing::{category_allowed_in_group, check_category, MEMORY_CONFIDENCES};
+pub(crate) use routing::{
+    category_allowed_in_group, check_category, DEFAULT_CATEGORY, MEMORY_CATEGORIES,
+    MEMORY_CONFIDENCES,
+};
 pub(crate) use runs::{
     clear_omp_state, leased_run, omp_state_count, write_memory_audit, LeasedRun,
 };

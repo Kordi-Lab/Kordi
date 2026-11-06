@@ -26,6 +26,7 @@ pub mod distribution;
 pub mod document_shares;
 pub mod events;
 pub mod human_simulator;
+pub(crate) mod memory_import;
 pub(crate) mod memory_store;
 pub mod notifications;
 pub mod organizations;
