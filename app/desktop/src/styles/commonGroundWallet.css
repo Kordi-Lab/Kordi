@@ -1,6 +1,6 @@
 /* Grounding Home and card page on the Mac: header, deck rail, one 540px column, 10px panels, hairlines. */
 
-.cg-page.is-wallet { flex-direction: column; --cg-rail-bg: color-mix(in oklab, var(--utility-foreground) 3%, var(--app-main-bg)); }
+.cg-page.is-wallet { flex-direction: column; container: cg-wallet / inline-size; --cg-rail-bg: color-mix(in oklab, var(--utility-foreground) 3%, var(--app-main-bg)); }
 .cg-wallet { display: flex; min-height: 0; min-width: 0; flex: 1; flex-direction: column; }
 .cg-wallet-head { display: flex; height: 52px; flex: none; align-items: center; gap: 10px; padding: 0 16px 0 24px; border-bottom: 1px solid var(--cg-line); }
 .cg-wallet-head h1 { min-width: 0; flex: 1; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; }
@@ -305,6 +305,23 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .cg-mem-tick { display: inline-grid; width: 14px; flex: none; place-items: center; }
 .cg-src-icon { display: grid; width: 26px; height: 26px; flex: none; place-items: center; border-radius: 7px; color: #fff; }
 .cg-cardpage-share { margin-top: 12px; }
+
+/* Narrow panes (the browser app on a phone): the deck sits above one scrolling column. */
+@container cg-wallet (max-width: 640px) {
+  .cg-wallet-head { padding: 0 12px 0 16px; }
+  .cg-wallet-body { display: block; overflow-y: auto; scrollbar-width: thin; }
+  .cg-deck-rail { overflow: visible; padding: 16px; border-right: 0; border-bottom: 0.5px solid var(--cg-line); }
+  .cg-deck { width: 176px; margin: 0 auto; }
+  .cg-wallet-main { overflow: visible; padding: 20px 16px 32px; }
+  .cg-paircode > .cg-pop { right: 0; left: 0; width: auto; }
+}
+@container cg-wallet (max-width: 420px) {
+  .cg-pair-row.is-code { flex-wrap: wrap; row-gap: 8px; }
+  .cg-pair-row.is-code .cg-pair-title { flex-basis: calc(100% - 36px); }
+  .cg-pair-row.is-code .cg-digits { margin-left: 36px; }
+  .cg-cardpage-head { flex-wrap: wrap; row-gap: 8px; }
+  .cg-cardpage-title { flex-basis: calc(100% - 38px); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .cg-deck-new, .cg-pop-card, .cg-design, .cg-line-act, .cg-look-icon, .cg-look-colour, .is-look { transition: none; }
