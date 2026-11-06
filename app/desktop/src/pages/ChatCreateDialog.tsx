@@ -1,7 +1,8 @@
-import { popoverGeometry, type ChatCreatePopoverAnchor } from './chatCreateGeometry';
+import type { ChatCreatePopoverAnchor } from './chatCreateGeometry';
+import { ChatCreateHeader, ChatCreateMenuHeader, ChatCreateMenuRow, ChatCreatePopover } from './chatCreatePopover';
 export type { ChatCreatePopoverAnchor } from './chatCreateGeometry';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Bot, MessageSquare, UserPlus, Users, X } from 'lucide-react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import { Bot, MessageSquare, UserPlus, Users } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -52,73 +53,6 @@ export type ChatCreateDialogProps = {
 
 export type ChatCreateMode = 'menu' | 'person' | 'agent' | 'group' | 'add-contact';
 type CreateMode = ChatCreateMode;
-function DialogCard({ children, onClose, anchorRect }: { children: ReactNode; onClose: () => void; anchorRect?: ChatCreatePopoverAnchor | null }) {
-  const { style, arrowStyle, placement } = popoverGeometry(anchorRect);
-
-  return (
-    <>
-      <button
-        type="button"
-        className="fixed inset-0 z-40 cursor-default bg-transparent"
-        aria-label="Close create chat"
-        onClick={onClose}
-      />
-      <div
-        data-create-surface="side-popover"
-        data-popover-placement={placement}
-        className="app-transient-surface app-frosted-popover app-chat-create-popover app-chat-create-popover-enter fixed z-50 w-[min(17.75rem,calc(100vw-1.25rem))] overflow-hidden rounded-[18px] p-2.5"
-        style={style}
-      >
-        {placement !== 'floating' ? (
-          <div
-            aria-hidden="true"
-            className={cn(
-              'app-chat-create-popover-arrow absolute h-3.5 w-3.5 rotate-45',
-              placement === 'right' ? '-left-[0.45rem]' : '-right-[0.45rem]',
-            )}
-            style={arrowStyle}
-          />
-        ) : null}
-        <div className="relative">{children}</div>
-      </div>
-    </>
-  );
-}
-
-function CreateDialogHeader({ title, subtitle, onClose }: { title: string; subtitle?: string; onClose: () => void }) {
-  return (
-    <div className="mb-2 flex items-start justify-between gap-2">
-      <div className="min-w-0">
-        <div className="truncate text-[13px] font-semibold leading-5 text-[color:var(--utility-foreground)]">{title}</div>
-        {subtitle ? <div className="mt-px text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">{subtitle}</div> : null}
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-      className="app-button-quiet app-chat-create-close grid h-6 w-6 shrink-0 place-items-center rounded-[9px] p-0"
-        aria-label="Close create chat"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  );
-}
-
-function ChoiceButton({ icon, title, onClick }: { icon: ReactNode; title: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="app-chat-create-choice flex w-full items-center gap-2 rounded-[13px] px-2 py-2 text-left transition"
-    >
-      <span className="app-chat-create-icon grid h-7 w-7 shrink-0 place-items-center rounded-[10px]">{icon}</span>
-      <span className="min-w-0">
-        <span className="block truncate text-[12.5px] font-semibold leading-4 text-[color:var(--utility-foreground)]">{title}</span>
-      </span>
-    </button>
-  );
-}
-
 export function ChatCreateDialog({
   isOpen,
   contacts,
@@ -135,6 +69,7 @@ export function ChatCreateDialog({
   anchorRect = null,
 }: ChatCreateDialogProps) {
   const [mode, setMode] = useState<CreateMode>(initialMode);
+  const titleId = useId();
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
   const [groupAvatarDataUrl, setGroupAvatarDataUrl] = useState<string | null>(null);
@@ -279,21 +214,24 @@ export function ChatCreateDialog({
   };
 
   return (
-    <DialogCard onClose={close} anchorRect={anchorRect}>
-      <CreateDialogHeader
-        title={mode === 'menu' ? 'Start a chat' : mode === 'person' ? 'Chat with contact' : mode === 'agent' ? 'Chat with agent' : mode === 'add-contact' ? 'Add contact' : 'Start group'}
-        subtitle={mode === 'group' ? 'Select at least 2 contacts.' : mode === 'add-contact' ? addContactSubtitle : undefined}
-        onClose={close}
-      />
-
+    <ChatCreatePopover onClose={close} anchorRect={anchorRect} dense={mode === 'menu'} titleId={titleId} focusKey={mode}>
       {mode === 'menu' ? (
-        <div className="space-y-1">
-          <ChoiceButton icon={<MessageSquare className="h-3.5 w-3.5" />} title="Chat with contact" onClick={() => setMode('person')} />
-          <ChoiceButton icon={<Bot className="h-3.5 w-3.5" />} title="Chat with agent" onClick={() => setMode('agent')} />
-          <ChoiceButton icon={<Users className="h-3.5 w-3.5" />} title="Start group" onClick={() => setMode('group')} />
-          <ChoiceButton icon={<UserPlus className="h-3.5 w-3.5" />} title="Add contacts" onClick={() => setMode('add-contact')} />
-        </div>
-      ) : null}
+        <>
+          <ChatCreateMenuHeader title="Start a chat" titleId={titleId} />
+          <div className="app-dense-menu-items">
+            <ChatCreateMenuRow icon={MessageSquare} title="Chat with contact" onClick={() => setMode('person')} />
+            <ChatCreateMenuRow icon={Bot} title="Chat with agent" onClick={() => setMode('agent')} />
+            <ChatCreateMenuRow icon={Users} title="Start group" onClick={() => setMode('group')} />
+            <ChatCreateMenuRow icon={UserPlus} title="Add contacts" onClick={() => setMode('add-contact')} />
+          </div>
+        </>
+      ) : (
+        <ChatCreateHeader
+          title={mode === 'person' ? 'Chat with contact' : mode === 'agent' ? 'Chat with agent' : mode === 'add-contact' ? 'Add contact' : 'Start group'}
+          titleId={titleId}
+          subtitle={mode === 'group' ? 'Select at least 2 contacts.' : mode === 'add-contact' ? addContactSubtitle : undefined}
+        />
+      )}
 
       {mode === 'person' ? (
         <div className="space-y-2">
@@ -561,6 +499,6 @@ export function ChatCreateDialog({
           </div>
         </form>
       ) : null}
-    </DialogCard>
+    </ChatCreatePopover>
   );
 }

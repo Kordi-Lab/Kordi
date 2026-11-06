@@ -237,7 +237,6 @@
   animation: app-chat-create-popover-enter 180ms var(--app-motion-ease) both;
 }
 
-.app-chat-create-popover-arrow,
 .app-dialog-popover-arrow {
   border: 1px solid var(--app-transient-border);
   border-right-color: transparent;
@@ -254,22 +253,15 @@
   color: var(--app-transient-text);
 }
 
-.app-chat-create-choice,
 .app-chat-create-list-item {
   border-color: transparent;
   background: var(--app-transient-raised-bg);
   color: var(--app-transient-text);
 }
 
-.app-chat-create-choice:hover,
 .app-chat-create-list-item:hover {
   border-color: var(--app-transient-border);
   background: var(--app-transient-hover-bg);
-}
-
-.app-chat-create-icon {
-  background: var(--app-transient-icon-bg);
-  color: var(--app-transient-text);
 }
 
 .app-chat-create-list-item-selected {

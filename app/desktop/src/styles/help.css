@@ -35,22 +35,11 @@
 .help-tour-card button:disabled { opacity: .4; cursor: not-allowed; }
 
 .help-menu-backdrop { z-index: 310; }
-.help-menu { top: auto !important; bottom: 12px; width: min(260px, calc(100vw - 80px)); padding: 5px; border-radius: 12px; color: var(--app-transient-text); }
+.help-menu { top: auto !important; bottom: 12px; }
+/* Surface, header, rows and divider come from the shared app-dense-menu styles. */
 .help-menu-detail { width: min(360px, calc(100vw - 80px)); }
-.help-menu > .app-dialog-popover-arrow { display: none; }
-.help-menu-header { display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px 8px; }
-.help-menu-header h2 { flex: 1; font-size: 13px; font-weight: 600; }
-.help-menu-header .help-icon-button { width: 24px; height: 24px; border-radius: 6px; }
-.help-menu-items { display: grid; }
-/* Dense one-line rows, matching the account menu. */
-.help-menu-items > button { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 4px 8px; border-radius: 6px; font-size: 12px; line-height: 16px; text-align: left; }
-.help-menu-items > button > svg { width: 14px; height: 14px; flex-shrink: 0; }
-.help-menu-items > button > svg:last-child:not(:first-child) { width: 12px; height: 12px; color: var(--app-transient-subtle-text); }
 .help-menu .help-menu-section-label { margin: 2px 8px; }
 .help-menu .help-menu-note { margin: 2px 8px 6px; }
-.help-menu-items > button > span { flex: 1; }
-.help-menu-items > button:hover, .help-menu-header button:hover { background: var(--app-transient-hover-bg); }
-.help-menu-divider { border-top: 1px solid var(--app-transient-border); margin: 4px 6px; }
 .help-menu-content { padding: 0 10px 10px; max-height: min(500px, calc(100dvh - 100px)); overflow: auto; overscroll-behavior: contain; }
 .help-menu-content h3 { font-size: 12px; font-weight: 600; margin: 0 0 4px; }
 .help-menu-content p { font-size: 12px; line-height: 1.5; color: var(--app-transient-muted-text); margin: 6px 0 12px; }
@@ -62,7 +51,6 @@
 .help-menu-content summary::marker { content: ''; }
 .help-menu-content summary > svg { flex-shrink: 0; color: var(--app-transient-muted-text); transform: rotate(-90deg); }
 .help-menu-content details[open] > summary > svg { transform: none; }
-.help-menu :focus-visible { outline: 2px solid var(--app-transient-focus-ring); outline-offset: 2px; }
 .help-menu-error { font-size: 12px; padding: 8px; }
 .help-menu-content .help-device-permission { display: block; padding: 9px 0; border-bottom-color: color-mix(in srgb, var(--app-transient-border) 55%, transparent); }
 .help-device-permission:last-child { border-bottom: 0; }
@@ -81,31 +69,21 @@
   .help-permission-action { min-height: 44px; }
 }
 
-/* Frosted glass keeps the workspace visible through the small help surfaces. */
-.kordi-app .help-menu, .help-tour-card {
-  --help-glass-bg: color-mix(in srgb, var(--app-transient-surface-bg) 68%, transparent);
+/* The menu takes its frosted glass from the shared app-dense-menu surface. */
+.help-tour-card {
+  --help-glass-bg: var(--app-transient-surface-bg);
   background: var(--help-glass-bg) !important;
   backdrop-filter: blur(24px) saturate(1.3);
   -webkit-backdrop-filter: blur(24px) saturate(1.3);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 12%), 0 12px 40px rgb(0 0 0 / 24%) !important;
-}
-.help-tour-card {
-  --help-glass-bg: var(--app-transient-surface-bg);
   box-shadow: inset 0 1px 0 var(--app-glass-highlight), var(--app-transient-shadow) !important;
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .help-tour-card { backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
 .help-tour-arrow[data-side="right"] { border-right-color: var(--help-glass-bg); }
 .help-tour-arrow[data-side="left"] { border-left-color: var(--help-glass-bg); }
 .help-tour-arrow[data-side="bottom"] { border-bottom-color: var(--help-glass-bg); }
 .help-tour-arrow[data-side="top"] { border-top-color: var(--help-glass-bg); }
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .kordi-app .help-menu, .help-tour-card {
-    --help-glass-bg: var(--app-transient-surface-bg);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-}
-
-.help-menu-items > button:disabled { opacity: .45; cursor: default; }
 .help-menu-note { margin: 2px 10px 10px; font-size: 11px; line-height: 1.5; color: var(--app-transient-muted-text); }
 
 .help-menu-section-label { margin: 4px 10px; font-size: 11px; color: var(--app-transient-muted-text); }
