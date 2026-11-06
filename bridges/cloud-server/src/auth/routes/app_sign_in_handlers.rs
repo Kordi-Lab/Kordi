@@ -345,7 +345,10 @@ async fn authorize_with_delivery(
     params: AppAuthorizationParams,
     delivery: CodeDelivery,
 ) -> Response {
-    if let RateLimitDecision::Limited { retry_after } = rate_limiter.observe_ip(peer_ip).await {
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_address_limit(APP_AUTHORIZE_ADDRESS_LIMIT, peer_ip)
+        .await
+    {
         return limited_response(retry_after);
     }
     let pool = state.db_pool();

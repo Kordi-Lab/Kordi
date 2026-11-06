@@ -227,8 +227,6 @@ pub(super) async fn revoke_session_by_id(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Response {
     let caller = Caller {
@@ -236,7 +234,7 @@ pub(super) async fn revoke_session_by_id(
         rate_limiter: &rate_limiter,
         session: &session,
     };
-    if let Err(response) = caller.charge_change(&headers, connect_info.as_ref()).await {
+    if let Err(response) = caller.charge_change().await {
         return *response;
     }
     let pool = caller.pool();
@@ -308,15 +306,13 @@ pub(super) async fn revoke_other_sessions(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
 ) -> Response {
     let caller = Caller {
         state: &state,
         rate_limiter: &rate_limiter,
         session: &session,
     };
-    if let Err(response) = caller.charge_change(&headers, connect_info.as_ref()).await {
+    if let Err(response) = caller.charge_change().await {
         return *response;
     }
     let devices = super::super::device_handlers::revoke_devices(

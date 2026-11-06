@@ -121,10 +121,12 @@ async fn signing_out_closes_that_sessions_v1_and_v2_sockets() {
     let state = Arc::new(signup_email_fixture::state(pool));
     let router = router_with_rate_limiter(
         state,
-        CloudRateLimiter::memory(CloudRateLimitConfig {
-            per_ip_limit: 10_000,
-            ..CloudRateLimitConfig::production()
-        }),
+        CloudRateLimiter::memory(CloudRateLimitConfig::production()).with_budget_overrides(
+            kordi_cloud_server::auth::rate_limit::BudgetOverrides::unauthenticated(
+                10_000,
+                std::time::Duration::from_secs(60),
+            ),
+        ),
     );
     let address = serve(router.clone()).await;
     let (target, _) = signup_account(&router, "realtime-sign-out").await;

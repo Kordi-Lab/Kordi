@@ -18,21 +18,13 @@ pub(super) struct AccountEmailVerificationRequest {
     verification_code: String,
 }
 
-/// Resolves the email to verify after the cheap checks, charging the client
-/// address first and the account only for requests that will do code work.
+/// Resolves the email to verify after the cheap checks, charging the account
+/// only for requests that will do code work.
 async fn prepare<'state>(
     state: &'state ServerState,
     rate_limiter: &CloudRateLimiter,
     session: &CloudSession,
-    headers: &HeaderMap,
-    connect_info: Option<&ConnectInfo<SocketAddr>>,
 ) -> Result<(&'state SignupEmailService, String), Box<Response>> {
-    if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(headers, connect_info))
-        .await
-    {
-        return Err(Box::new(limited_response(retry_after)));
-    }
     let email = account_email_to_verify(state.db_pool(), &session.account_id)
         .await
         .map_err(|error| Box::new(account_email_error(error)))?;
@@ -75,18 +67,8 @@ pub(super) async fn send_account_email_verification_code(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
 ) -> Response {
-    let (service, email) = match prepare(
-        &state,
-        &rate_limiter,
-        &session,
-        &headers,
-        connect_info.as_ref(),
-    )
-    .await
-    {
+    let (service, email) = match prepare(&state, &rate_limiter, &session).await {
         Ok(value) => value,
         Err(response) => return *response,
     };
@@ -100,19 +82,9 @@ pub(super) async fn verify_account_email_code(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
     Json(req): Json<AccountEmailVerificationRequest>,
 ) -> Response {
-    let (service, _) = match prepare(
-        &state,
-        &rate_limiter,
-        &session,
-        &headers,
-        connect_info.as_ref(),
-    )
-    .await
-    {
+    let (service, _) = match prepare(&state, &rate_limiter, &session).await {
         Ok(value) => value,
         Err(response) => return *response,
     };

@@ -13,6 +13,7 @@ import {
 import { canonicalMessageRole } from '../src/features/canonical/readModel/messageRole';
 import { sessionChatActivityAtMs } from '../src/features/canonical/readModel/conversationMapping';
 import type { CloudGroupInvitationCreateInput } from '../src/features/cloud/authClient';
+import { CloudAuthError } from '../src/features/cloud/cloudAuthError';
 import type { CreateChatGroupRequest } from '../src/app/kordiShellSlots.types';
 import type { CanonicalSessionMessage, CanonicalSessionState, Contact } from '../src/kordi-app/types';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
@@ -325,4 +326,8 @@ test('link failures name the cause the server gave', () => {
   assert.equal(groupInvitationLinkErrorMessage(new Error('This group cannot create a share link.')), "This group can't share a link yet. Try again in a moment.");
   assert.equal(groupInvitationLinkErrorMessage(new Error('Only a verified group admin can create this invitation link.')), 'Only group admins can share a link.');
   assert.equal(groupInvitationLinkErrorMessage(new Error('Could not create invitation.')), "Couldn't create the link. Try again.");
+  assert.equal(
+    groupInvitationLinkErrorMessage(new CloudAuthError('rate_limited', 'Too many attempts. Try again in 30 seconds.', 429, 30)),
+    'Too many links right now. Try again in 30 seconds.',
+  );
 });

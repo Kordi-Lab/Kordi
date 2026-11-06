@@ -81,10 +81,7 @@ pub(super) async fn harness() -> Harness {
     let state = Arc::new(
         ServerState::new(pool.clone(), crate::events::EventBus::noop()).with_signup_email(service),
     );
-    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig {
-        per_ip_limit: 10_000,
-        ..CloudRateLimitConfig::production()
-    });
+    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::production());
     let app =
         crate::auth::routes::routes_with_config(state, PasswordHasherConfig::for_tests(), limiter);
     Harness { app, pool, sender }

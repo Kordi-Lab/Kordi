@@ -53,20 +53,25 @@ pub(super) fn pkce() -> Pkce {
 }
 
 pub(super) async fn harness() -> Harness {
-    harness_with_limit(10_000).await
+    harness_with_budgets("").await
 }
 
-pub(super) async fn harness_with_limit(per_ip_limit: u32) -> Harness {
+/// Sign-in code exchanges limited to `limit` per address.
+pub(super) async fn harness_with_limit(limit: u32) -> Harness {
+    harness_with_budgets(&format!("app-token-address={limit}/1m")).await
+}
+
+/// A harness whose limiter applies `overrides` (see
+/// [`crate::auth::rate_limit::BudgetOverrides::parse`]).
+pub(super) async fn harness_with_budgets(overrides: &str) -> Harness {
     let url = std::env::var("DATABASE_URL").expect("a disposable database is required");
     let pool = crate::pg::init_pool(&url).await.unwrap();
     let state = Arc::new(ServerState::new(
         pool.clone(),
         crate::events::EventBus::noop(),
     ));
-    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig {
-        per_ip_limit,
-        ..CloudRateLimitConfig::production()
-    });
+    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::production())
+        .with_budget_overrides(crate::auth::rate_limit::BudgetOverrides::parse(overrides).unwrap());
     let app =
         crate::auth::routes::routes_with_config(state, PasswordHasherConfig::for_tests(), limiter);
     Harness { app, pool }

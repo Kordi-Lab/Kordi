@@ -8,7 +8,9 @@ use std::time::Duration;
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
+use kordi_cloud_server::auth::rate_limit::{
+    BudgetOverrides, CloudRateLimitConfig, CloudRateLimiter,
+};
 use kordi_cloud_server::chat_sync::models::SendMessageRequest;
 use kordi_cloud_server::chat_sync::store as chat_store;
 use kordi_cloud_server::pg::init_pool;
@@ -55,12 +57,14 @@ async fn harness() -> Option<Harness> {
     };
     let pool = init_pool(&url).await.expect("migrate test database");
     let limiter = CloudRateLimiter::memory(CloudRateLimitConfig {
-        per_ip_limit: 10_000,
-        per_ip_window: Duration::from_secs(60),
         per_email_failure_limit: 5,
         per_email_lockout: Duration::from_secs(900),
         per_email_global_failure_limit: 50,
-    });
+    })
+    .with_budget_overrides(BudgetOverrides::unauthenticated(
+        10_000,
+        Duration::from_secs(60),
+    ));
     let router =
         router_with_rate_limiter(Arc::new(signup_email_fixture::state(pool.clone())), limiter);
     Some(Harness { pool, router })

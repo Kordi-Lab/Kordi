@@ -1,5 +1,6 @@
 use super::rendering::{rasterize_svg, render_png};
 use super::*;
+use crate::auth::rate_limit::CloudRateLimitConfig;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 const ONE_PIXEL_PNG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -278,11 +279,12 @@ fn regenerate_requires_an_explicit_seed() {
 }
 
 #[test]
-fn avatar_rate_limit_uses_forwarded_ips_only_from_private_proxies() {
+fn avatar_renders_resolve_addresses_like_every_other_route() {
     let mut headers = HeaderMap::new();
     headers.insert("x-real-ip", "203.0.113.8".parse().unwrap());
     let proxy = ConnectInfo("127.0.0.1:4000".parse().unwrap());
     let public_peer = ConnectInfo("198.51.100.2:4000".parse().unwrap());
+    let untrusted_hop = ConnectInfo("[fd00::7]:4000".parse().unwrap());
 
     assert_eq!(
         avatar_request_ip(&headers, Some(&proxy)),
@@ -291,6 +293,12 @@ fn avatar_rate_limit_uses_forwarded_ips_only_from_private_proxies() {
     assert_eq!(
         avatar_request_ip(&headers, Some(&public_peer)),
         Some("198.51.100.2".parse().unwrap())
+    );
+    // A private hop that is not a configured trusted proxy cannot name the
+    // client, so a client cannot choose its own render bucket.
+    assert_eq!(
+        avatar_request_ip(&headers, Some(&untrusted_hop)),
+        Some("fd00::7".parse().unwrap())
     );
 }
 

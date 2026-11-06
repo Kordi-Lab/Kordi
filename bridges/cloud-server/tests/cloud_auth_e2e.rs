@@ -20,7 +20,9 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use kordi_cloud_server::auth::password::PasswordHasherConfig;
-use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
+use kordi_cloud_server::auth::rate_limit::{
+    BudgetOverrides, CloudRateLimitConfig, CloudRateLimiter,
+};
 use kordi_cloud_server::auth::routes::routes_with_config;
 use kordi_cloud_server::events::EventBus;
 use kordi_cloud_server::pg::init_pool;
@@ -40,14 +42,16 @@ async fn try_pool() -> Option<sqlx_postgres::PgPool> {
 
 fn fast_router(state: Arc<ServerState>) -> axum::Router {
     let limiter = CloudRateLimiter::memory(CloudRateLimitConfig {
-        per_ip_limit: 10_000,
-        per_ip_window: Duration::from_secs(60),
         per_email_failure_limit: 5,
         per_email_lockout: Duration::from_secs(900),
         per_email_global_failure_limit: 50,
-    });
+    })
+    .with_budget_overrides(BudgetOverrides::unauthenticated(
+        10_000,
+        Duration::from_secs(60),
+    ));
     routes_with_config(state.clone(), PasswordHasherConfig::for_tests(), limiter).merge(
-        kordi_cloud_server::avatars::routes(state, &CloudRateLimiter::default()),
+        kordi_cloud_server::avatars::routes(state, &Arc::new(CloudRateLimiter::default())),
     )
 }
 

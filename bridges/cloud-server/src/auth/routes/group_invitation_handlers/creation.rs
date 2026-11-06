@@ -4,12 +4,10 @@ pub(crate) async fn create_group_invitation(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
     Json(req): Json<CreateGroupInvitationRequest>,
 ) -> Response {
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(&headers, connect_info.as_ref()))
+        .observe_account_limit(GROUP_INVITATION_CREATE_LIMIT, &session.account_id)
         .await
     {
         return limited_response(retry_after);
@@ -179,7 +177,10 @@ pub(crate) async fn get_group_invitation(
     axum::extract::Path(token): axum::extract::Path<String>,
 ) -> Response {
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(&headers, connect_info.as_ref()))
+        .observe_address_limit(
+            INVITATION_VIEW_ADDRESS_LIMIT,
+            client_ip(&headers, connect_info.as_ref()),
+        )
         .await
     {
         return limited_response(retry_after);
@@ -220,9 +221,16 @@ pub(crate) async fn get_group_invitation(
 
 pub(crate) async fn list_active_group_invitations(
     State(state): State<Arc<ServerState>>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
     axum::extract::Path(group_space_id): axum::extract::Path<String>,
 ) -> Response {
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_account_limit(GROUP_INVITATION_CREATE_LIMIT, &session.account_id)
+        .await
+    {
+        return limited_response(retry_after);
+    }
     let group_space_id = group_space_id.trim();
     if group_space_id.is_empty() || group_space_id.len() > 256 {
         return err(

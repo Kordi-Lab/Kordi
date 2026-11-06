@@ -19,3 +19,18 @@ test('weak password errors show the server message and fall back to the full rul
     'Password must have at least 8 characters, with an uppercase letter, a lowercase letter, and a number.',
   );
 });
+
+test('rate-limit errors name the wait the server asked for', () => {
+  assert.equal(
+    cloudLoginErrorMessage(new CloudAuthError('rate_limited', '', 429, 42), false),
+    'Too many attempts. Try again in 42 seconds.',
+  );
+  assert.equal(
+    cloudLoginErrorMessage(new CloudAuthError('rate_limited', '', 429, 600), false),
+    'Too many attempts. Try again in 10 minutes.',
+  );
+  assert.equal(
+    cloudLoginErrorMessage(new CloudAuthError('rate_limited', '', 429), false),
+    'Too many attempts. Wait a moment, then try again.',
+  );
+});

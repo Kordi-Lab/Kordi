@@ -62,19 +62,9 @@ pub(super) struct Caller<'a> {
 }
 
 impl Caller<'_> {
-    /// Charges the client address and the account's change budget.
-    pub(super) async fn charge_change(
-        &self,
-        headers: &HeaderMap,
-        connect_info: Option<&ConnectInfo<SocketAddr>>,
-    ) -> Result<(), Box<Response>> {
-        if let RateLimitDecision::Limited { retry_after } = self
-            .rate_limiter
-            .observe_ip(client_ip(headers, connect_info))
-            .await
-        {
-            return Err(Box::new(limited_response(retry_after)));
-        }
+    /// Charges the account's change budget. Changes count per account, so
+    /// people who share an address never spend each other's budget.
+    pub(super) async fn charge_change(&self) -> Result<(), Box<Response>> {
         self.charge(ACCOUNT_SECURITY_CHANGE_LIMIT).await
     }
 
