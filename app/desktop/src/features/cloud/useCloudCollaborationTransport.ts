@@ -14,6 +14,7 @@ import type {
   useCloudCollaborationStores,
 } from './useCloudCollaborationStores';
 import { useCloudDirectMessaging } from './useCloudDirectMessaging';
+import { useCloudDirectRequestReconcile } from './useCloudDirectRequestReconcile';
 import { useCloudFreshGroupFallbackClaim } from './useCloudFreshGroupFallbackClaim';
 import { useCloudMessageSync } from './useCloudMessageSync';
 import { deleteCanonicalCloudMessage } from '@/features/canonical/canonicalMessageSources';
@@ -171,6 +172,14 @@ export function useCloudCollaborationTransport({
     messageIndexRef: stores.messages.indexRef,
     initialMessagesSettled,
     desktopExecutionReadyRef: stores.agentRequests.desktopExecutionReadyRef,
+    reportWarning: reportAvailabilityWarning,
+  });
+  useCloudDirectRequestReconcile({
+    account,
+    client,
+    messageIndex: stores.messages.index,
+    initialMessagesSettled,
+    refreshMessages: refreshCloudMessages,
     reportWarning: reportAvailabilityWarning,
   });
   const directMessaging = useCloudDirectMessaging({

@@ -60,6 +60,8 @@ export type {
 export const CLOUD_AGENT_NO_PROVIDER_NOTICE = 'No provider configured yet.';
 export const CLOUD_AGENT_MODEL_UNAVAILABLE_NOTICE = 'This model is not available for the selected account.';
 export const CLOUD_AGENT_SIGN_IN_AGAIN_NOTICE = 'Sign in again to use this account.';
+/** Shown to the agent's owner when their Mac could not load the account the agent runs on. */
+export const CLOUD_AGENT_RECONNECT_ACCOUNT_NOTICE = 'Reconnect your account to run your agent.';
 
 export type CloudAgentFallbackRunStatus = 'queued' | 'leased' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
 
@@ -149,6 +151,24 @@ export function isCloudAgentSignInAgainError(value: unknown): boolean {
   return normalized.includes('oauth credentials are not usable') || normalized === CLOUD_AGENT_SIGN_IN_AGAIN_NOTICE.toLowerCase();
 }
 
+/**
+ * The owner's Mac could not load the hosted account for a claimed run, so the
+ * turn ended before the model was called.
+ */
+export function isCloudAgentHostedCredentialUnavailableError(value: unknown): boolean {
+  const normalized = normalizedErrorText(value);
+  return normalized.includes('hosted provider credentials are unavailable')
+    || normalized.includes('hosted provider requests require an active desktop execution lease')
+    || normalized.includes('hosted provider route is unavailable')
+    || normalized === CLOUD_AGENT_RECONNECT_ACCOUNT_NOTICE.toLowerCase();
+}
+
+/** The neutral reply other members see when the agent could not answer. */
+export function cloudAgentCouldNotAnswerText(agentName: string | null | undefined): string {
+  const name = agentName?.trim();
+  return name ? `${name} couldn't answer.` : "The agent couldn't answer.";
+}
+
 /** Older builds stored an unknown model as a no-provider failure; stored history still reads that way. */
 export function isCloudAgentStoredNoProviderFailure(value: unknown): boolean {
   return isCloudAgentNoProviderConfiguredError(value) || isCloudAgentModelUnavailableError(value);
@@ -157,13 +177,16 @@ export function isCloudAgentStoredNoProviderFailure(value: unknown): boolean {
 /** The short notice for an account or model failure, or null for any other error. */
 export function cloudAgentProviderFailureNotice(value: unknown): string | null {
   if (isCloudAgentSignInAgainError(value)) return CLOUD_AGENT_SIGN_IN_AGAIN_NOTICE;
+  if (isCloudAgentHostedCredentialUnavailableError(value)) return CLOUD_AGENT_RECONNECT_ACCOUNT_NOTICE;
   if (isCloudAgentModelUnavailableError(value)) return CLOUD_AGENT_MODEL_UNAVAILABLE_NOTICE;
   return isCloudAgentNoProviderConfiguredError(value) ? CLOUD_AGENT_NO_PROVIDER_NOTICE : null;
 }
 
 /** Failures the Authentication page can fix: a missing account or an expired sign-in. */
 export function cloudAgentProviderFailureNeedsAuthentication(value: unknown): boolean {
-  return isCloudAgentSignInAgainError(value) || isCloudAgentNoProviderConfiguredError(value);
+  return isCloudAgentSignInAgainError(value)
+    || isCloudAgentHostedCredentialUnavailableError(value)
+    || isCloudAgentNoProviderConfiguredError(value);
 }
 
 export type CloudAgentCancelEnvelope = {

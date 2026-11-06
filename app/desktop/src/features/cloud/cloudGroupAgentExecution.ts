@@ -25,17 +25,19 @@ import { publishModelSubsessions } from './agentSubsessionSync';
 import { cloudGroupBackgroundFollowUpRoute } from './cloudGroupBackgroundFollowUp';
 import { cloudAgentPublicBackgroundToolsFromTurn } from './cloudAgentBackgroundSessions';
 import {
+  cloudAgentCouldNotAnswerText,
   cloudAgentProviderFailureNotice,
+  isCloudAgentHostedCredentialUnavailableError,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import {
   cloudGroupAgentRequestRuntimeSessionId,
 } from './cloudAgentRuntime';
 import { cloudAgentTurnReplyText } from './cloudAgentReplyText';
-import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
+import { cloudAgentRuntimeRouteForTargetCloudAgent, ownerRequestRoute } from './cloudAgentTargetRuntimeRoute';
 import { agentRestrictedAccountIds } from './agentRestrictions';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
-import { handBackDesktopRun } from './cloudDesktopRunHandback';
+import { desktopTurnNeedsCloudHandBack, handBackDesktopRun } from './cloudDesktopRunHandback';
 import type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
 import { handleCloudGroupAgentFailure } from './cloudGroupAgentFailure';
 import {
@@ -146,7 +148,8 @@ export async function respondToCloudGroupAgentMention(
         routesByRuntimeSessionId: runtime.routesBySessionId,
         runtimeSessionId,
         fallbackRoute: runtime.defaultRoute,
-        requestRoute: message.agentRuntimeRoute,
+        // Another member's message never picks the owner's account or model.
+        requestRoute: ownerRequestRoute(message.agentRuntimeRoute, message.senderAccountId, account.accountId),
       });
   const lease = await acquireDesktopExecutionLease(runtime.client, session.token, {
     requestMessageId: cloudMessage.messageId, sessionId: envelope.groupId,
@@ -333,6 +336,19 @@ export async function respondToCloudGroupAgentMention(
   rememberLocalTurn(finalTurn);
   finalTurn = rememberedTurn ?? finalTurn;
   void publishModelSubsessions(finalTurn).catch(() => undefined);
+  // This Mac could not load the owner's hosted account before the model ran.
+  // The cloud runner resolves it on the server and answers instead.
+  if (desktopTurnNeedsCloudHandBack(finalTurn) && !signal.aborted
+    && await handBackDesktopRun(runtime.client, session.token, lease)) {
+    runtime.setLocalTurns((current) => {
+      if (!(message.id in current)) return current;
+      const next = { ...current };
+      delete next[message.id];
+      return next;
+    });
+    void runtime.syncDiff();
+    return;
+  }
   if (finalTurn.status === 'cancelled') {
     await lease.cancel();
     await persistCloudGroupAgentCancellation(
@@ -345,8 +361,12 @@ export async function respondToCloudGroupAgentMention(
 
   const responseText = cloudAgentTurnReplyText(finalTurn);
   const succeeded = responseText.length > 0;
+  const failureDetail = withoutProviderResponse(finalTurn.error) || finalTurn.message;
   const failureMessage = succeeded
     ? null
+    // Every member reads this row; the owner's own turn shows how to reconnect.
+    : isCloudAgentHostedCredentialUnavailableError(failureDetail)
+      ? cloudAgentCouldNotAnswerText(presentation.displayName)
     : cloudAgentProviderFailureNotice(withoutProviderResponse(finalTurn.error) || finalTurn.message)
       ?? (withoutProviderResponse(finalTurn.error)?.trim()
         || finalTurn.message?.trim()

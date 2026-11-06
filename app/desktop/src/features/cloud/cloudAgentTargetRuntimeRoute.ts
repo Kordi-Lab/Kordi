@@ -97,3 +97,19 @@ export function cloudAgentRuntimeRouteForTargetCloudAgent(input: {
       : hostRoute.authChoice ?? effectiveRequestRoute.authChoice,
   });
 }
+
+/**
+ * The route a request carries, kept only when the agent's owner sent it.
+ * The owner's Mac runs another person's request with the owner's own choice
+ * of account and model, so a requester never selects which saved account the
+ * owner's agent uses.
+ */
+export function ownerRequestRoute(
+  route: DesktopChatMessageRoute | null | undefined,
+  requesterAccountId: string | null | undefined,
+  ownerAccountId: string | null | undefined,
+): DesktopChatMessageRoute | null {
+  const requester = requesterAccountId?.trim();
+  const owner = ownerAccountId?.trim();
+  return route && requester && owner && requester === owner ? route : null;
+}

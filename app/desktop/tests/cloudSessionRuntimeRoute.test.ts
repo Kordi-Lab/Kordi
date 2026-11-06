@@ -233,7 +233,7 @@ test('group execution falls back to the configured provider when a persisted req
   });
 });
 
-test('direct and group executors pass each immutable request route to the Mac runtime', () => {
+test("direct and group executors pass the owner's immutable request route to the Mac runtime", () => {
   const directSource = readFileSync(
     new URL('../src/features/cloud/useCloudDirectAgentExecution.ts', import.meta.url),
     'utf8',
@@ -245,7 +245,7 @@ test('direct and group executors pass each immutable request route to the Mac ru
 
   assert.match(
     directSource,
-    /requestRoute:\s*cloudDirectMessageAgentRuntimeRoute\(message\.body\)/,
+    /requestRoute:\s*ownerRequestRoute\(\s*cloudDirectMessageAgentRuntimeRoute\(message\.body\),\s*message\.fromAccountId,\s*account\.accountId,\s*\)/,
   );
   assert.match(
     directSource,
@@ -253,7 +253,7 @@ test('direct and group executors pass each immutable request route to the Mac ru
   );
   assert.match(
     groupSource,
-    /requestRoute:\s*message\.agentRuntimeRoute/,
+    /requestRoute:\s*ownerRequestRoute\(message\.agentRuntimeRoute,\s*message\.senderAccountId,\s*account\.accountId\)/,
   );
 });
 
