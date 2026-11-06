@@ -5,6 +5,7 @@ import type { ContactProfileHost } from '@/kordi-app/contacts/contactProfileHost
 import { cloudApiBaseUrl, defaultCloudAuthClient, type CloudAccount } from './authClient';
 import { useCloudAuthCapabilitiesState } from './cloudAuthCapabilities';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
+import { contactPermissionsVersionFromCapabilities, fetchContactPermissions, updateContactPermissions } from './contactPermissionsClient';
 import { contactProfileVersionFromCapabilities, fetchContactProfile, removeCloudContact } from './contactProfileClient';
 import { dispatchCloudGroupInvitationAccepted } from './groupInvitationDeepLink';
 
@@ -56,12 +57,14 @@ export function useCloudContactProfileHost(options: ContactProfileHostOptions): 
   const authClient = useMemo(() => defaultCloudAuthClient(), []);
   const { capabilities } = useCloudAuthCapabilitiesState(authClient, cloudApiBaseUrl());
   const available = contactProfileVersionFromCapabilities(capabilities) !== null;
+  const permissionsAvailable = contactPermissionsVersionFromCapabilities(capabilities) !== null;
   const latest = useRef(options);
   useEffect(() => { latest.current = options; });
   const selfAccountId = options.account.accountId;
 
   const host = useMemo<ContactProfileHost | undefined>(() => {
     if (!available) return undefined;
+    const request = <T,>(path: string, init: RequestInit, fallback: string) => authClient.request<T>(path, init, fallback);
     return {
       accountIdFor: (contact) => {
         if (contact.sourceHostId !== CLOUD_HOST_SENTINEL || contact.classType === 'my-agents') return null;
@@ -82,8 +85,12 @@ export function useCloudContactProfileHost(options: ContactProfileHostOptions): 
       openGroup: (group) => {
         dispatchCloudGroupInvitationAccepted({ groupId: group.groupId, groupSpaceId: group.groupId, groupTitle: group.title });
       },
+      permissions: permissionsAvailable ? {
+        load: (accountId, signal) => fetchContactPermissions(accountId, { signal, request }),
+        save: (accountId, patch) => updateContactPermissions(accountId, patch, { request }),
+      } : undefined,
     };
-  }, [authClient, available, selfAccountId]);
+  }, [authClient, available, permissionsAvailable, selfAccountId]);
 
   const removeContact = useCallback((contact: Contact) => cloudContactRemover({
     remove: (accountId) => removeCloudContact(accountId, { request: (path, init, fallback) => authClient.request(path, init, fallback) }),

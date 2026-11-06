@@ -8,4 +8,5 @@ export type CloudAuthCapabilities = {
   commonGroundVersion?: number | null; // Present when the server serves /v1/cloud/common-ground.
   commonGroundNearbyVersion?: number | null; // Present when the server serves /v1/cloud/common-ground/nearby.
   contactProfileVersion?: number | null; // Present when the server serves /v1/cloud/contacts/{id}/profile.
+  contactPermissionsVersion?: number | null; // Present when the server serves /v1/cloud/contacts/{id}/permissions.
 };
