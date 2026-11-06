@@ -12,7 +12,7 @@ import { readHelpProgress } from './helpProgress';
 import { publicAssetPath } from '@/lib/publicAsset';
 import { helpTourAvailable, type HelpTourId } from './helpTourSteps';
 import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
-import type { HelpAction } from './helpContent';
+import { isLicensesDocument, type HelpAction } from './helpContent';
 import '@/styles/help.css';
 
 export type HelpUpdateAction = {
@@ -41,6 +41,7 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
   const [view, setView] = useState<'home' | 'permissions' | 'updates' | 'licenses'>(initialView);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [licensesMissing, setLicensesMissing] = useState(false);
   const progress = readHelpProgress(progressKey);
   const client = useMemo(() => defaultCloudAuthClient(), []);
   const capabilities = useCloudAuthCapabilitiesState(client, cloudApiBaseUrl());
@@ -82,7 +83,8 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
       {supportAvailable ? <button disabled={busy} onClick={() => void action({ kind: 'support' })}><span>Contact support</span></button> : null}
       {updateAction ? <button onClick={(event) => { updateAction.onClick(event); onDismiss(); }}><span>{updateAction.label}</span><ArrowRight size={14} /></button> : null}
     </div> : <div className="help-menu-content">
-      {view === 'licenses' ? <iframe title="Open-source licenses" src={publicAssetPath('licenses/index.html')} className="help-license-frame" onLoad={(event) => {
+      {view === 'licenses' ? licensesMissing ? <p className="help-menu-note">Licenses are included in release builds.</p> : <iframe title="Open-source licenses" src={publicAssetPath('licenses/index.html')} className="help-license-frame" onLoad={(event) => {
+        if (!isLicensesDocument(event.currentTarget.contentDocument)) { setLicensesMissing(true); return; }
         event.currentTarget.contentDocument?.addEventListener('click', (click) => {
           const href = (click.target as Element | null)?.closest?.('a')?.getAttribute('href');
           if (!href?.startsWith('https://')) return;

@@ -7,6 +7,7 @@ import { publicDesktopConfiguration } from '../../shared/configuration/distribut
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { resolveCloudDevApiBase } from './scripts/cloud-dev-endpoint.mjs'
+import { devLicensesPlugin } from './scripts/dev-licenses.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -28,7 +29,7 @@ export function desktopViteConfig({ command, mode }, environment) {
       __KORDI_DISTRIBUTION__: JSON.stringify(selection ? publicDesktopConfiguration(selection.profile) : null),
       'import.meta.env.VITE_KORDI_WEB_APP': JSON.stringify('0'),
     },
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), devLicensesPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),
