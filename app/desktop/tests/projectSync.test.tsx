@@ -5,6 +5,7 @@ import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useProjectSync } from '../src/features/projects/projectSync';
 import { __setSessionBackendForTests } from '../src/features/cloud/session';
+import { nativeShellInvoke } from './helpers/nativeHttp';
 
 test('remote moves publish opaque membership before acknowledgement', async () => {
   const dom = new JSDOM('<div id="root"></div>');
@@ -33,11 +34,11 @@ test('remote moves publish opaque membership before acknowledgement', async () =
     },
   };
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
-  Object.assign(dom.window, { __TAURI_INTERNALS__: { invoke: async (command: string) => {
+  Object.assign(dom.window, { __TAURI_INTERNALS__: { invoke: nativeShellInvoke(globals.fetch, async (command: string) => {
     if (command === 'desktop_project_prepare_remote_session') { events.push('prepared'); return; }
     if (command === 'desktop_chat_move_session_to_project') { assigned = true; events.push('moved'); }
     return { activeSessionId: 'session', projects: [{ root: '/fixture/private-project', name: 'Example', sessions: assigned ? [{ id: 'session' }] : [] }] };
-  } } });
+  }) } });
   __setSessionBackendForTests({ load: async () => ({ token: 'synthetic-token', accountId: 'owner', deviceId: 'mac', expiresAt: '' }), save: async () => {}, clear: async () => {} });
   const root = createRoot(document.getElementById('root')!);
   function Probe() { useProjectSync(true, 'owner'); return null; }
@@ -75,13 +76,13 @@ test('worktree sessions publish an opaque worktree ID and older servers still ge
     },
   };
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
-  Object.assign(dom.window, { __TAURI_INTERNALS__: { invoke: async (command: string, args?: { sessionIds?: string[] }) => {
+  Object.assign(dom.window, { __TAURI_INTERNALS__: { invoke: nativeShellInvoke(globals.fetch, async (command: string, args?: { sessionIds?: string[] }) => {
     if (command === 'desktop_project_session_workspace_ids') {
       assert.deepEqual(args?.sessionIds, ['in-worktree', 'in-root']);
       return { 'in-worktree': worktreeId, 'in-root': 'not-an-id', unlisted: worktreeId };
     }
     return { projects: [{ root: '/fixture/private-project', name: 'Example', sessions: [{ id: 'in-worktree' }, { id: 'in-root' }] }] };
-  } } });
+  }) } });
   __setSessionBackendForTests({ load: async () => ({ token: 'synthetic-token', accountId: 'owner', deviceId: 'mac', expiresAt: '' }), save: async () => {}, clear: async () => {} });
   const root = createRoot(document.getElementById('root')!);
   function Probe() { useProjectSync(true, 'owner'); return null; }

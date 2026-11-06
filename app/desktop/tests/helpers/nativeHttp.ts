@@ -63,3 +63,18 @@ export function mockNativeHttpInvoke(fetchImpl: typeof fetch, fallback?: Invoke)
     openResources: () => requests.size + abortSenders.size + responses.size,
   });
 }
+
+/**
+ * A desktop-shell invoke whose native Cloud requests reach `fetchImpl` with a
+ * text body, as a WebView fetch would; every other command goes to `fallback`.
+ */
+export function nativeShellInvoke(
+  fetchImpl: (url: string, init: RequestInit) => Promise<Response>,
+  fallback: (command: string, args?: never) => Promise<unknown>,
+): NativeHttpInvoke {
+  return mockNativeHttpInvoke((async (url: string, init: RequestInit = {}) => fetchImpl(String(url), {
+    ...init,
+    headers: new Headers(init.headers),
+    body: init.body ? new TextDecoder().decode(init.body as Uint8Array) : undefined,
+  })) as typeof fetch, fallback as Invoke);
+}

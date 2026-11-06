@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import { loadPinnedOmpCatalog, type OmpCatalogEntry } from '@/kordi-app/auth/ompCatalog';
+import { readableAccountLabel } from '@/kordi-app/auth/accountLabel';
+import { loadedPinnedOmpCatalog, loadPinnedOmpCatalog, ompProviderName, type OmpCatalogEntry } from '@/kordi-app/auth/ompCatalog';
 import type { CloudProviderAuthSnapshot } from './cloudAgentRuntimeTypes';
 import { setHostedAccountChoices } from './hostedAccountRegistry';
 import { createCloudProviderAuthApi } from './providerAuthClient';
@@ -17,12 +18,19 @@ export type HostedAccount = {
   needsReconnect: boolean;
 };
 
+/** The provider name an account without a readable name is called by, once the catalog has loaded. */
+function hostedProviderName(provider: string) {
+  const entry = loadedPinnedOmpCatalog()?.providers.find((candidate) => candidate.id === provider);
+  return entry ? ompProviderName(entry.id, entry) : null;
+}
+
 export function hostedAccountsFromSnapshots(snapshots: CloudProviderAuthSnapshot[]): HostedAccount[] {
   return snapshots
     .filter((snapshot) => !snapshot.revokedAt)
     .map((snapshot) => ({
       authChoice: snapshot.authChoice,
-      label: snapshot.label?.trim() || (snapshot.provider === 'custom' ? 'Custom API' : 'Saved account'),
+      label: readableAccountLabel(snapshot.label, hostedProviderName(snapshot.provider), snapshot.createdAt)
+        ?? (snapshot.provider === 'custom' ? 'Custom API' : 'Saved account'),
       provider: snapshot.provider,
       model: snapshot.modelHint?.trim() || null,
       needsReconnect: snapshot.status === 'needs-reconnect' || snapshot.status === 'needs_reconnect',

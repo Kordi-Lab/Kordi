@@ -420,6 +420,14 @@ test('a desktop sign-in whose hosted copy expired asks to reconnect', async ({ p
   await expect(account(page, 'Work').getByRole('button', { name: 'Reconnect' })).toHaveCount(0);
 });
 
+test('the providers list shows accounts that need reconnecting, never named by a raw account ID', async ({ page }) => {
+  await openPreview(page, 'settings', { flags: ['migratedAccounts'] });
+  await expect(providerRow(page, 'OpenAI')).toContainText('2 need reconnecting');
+  await openProvider(page, 'openai', 'OpenAI');
+  await expect(account(page, 'ChatGPT account · Oct 26')).toContainText('Account needs reconnecting');
+  await expect(section(page, 'Saved accounts')).not.toContainText('00000000-0000-4000-8000-000000000000');
+});
+
 test('the start gate renders the same rows for the list and provider detail', async ({ page }) => {
   const offOrigin = await openPreview(page, 'start');
   await expect(page.getByRole('heading', { name: 'Your providers' })).toBeVisible();
