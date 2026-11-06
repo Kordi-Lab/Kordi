@@ -176,7 +176,7 @@ pub fn routes_with_shared_rate_limiter(
         .route("/v1/cloud/auth/oauth/:provider/start", get(oauth_start))
         .route(
             "/v1/cloud/auth/oauth/:provider/callback",
-            get(oauth_callback),
+            get(oauth_callback).post(oauth_form_post_callback),
         )
         .route(
             "/v1/cloud/auth/app/authorize",

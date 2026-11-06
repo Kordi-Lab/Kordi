@@ -4,10 +4,12 @@ use crate::organizations::admission::{SignInEvidence, SignInMethod};
 
 #[cfg(test)]
 mod account_linking_tests;
+mod apple;
 mod completion;
 mod email_linking;
 #[cfg(test)]
 mod verified_email_tests;
+pub(super) use apple::oauth_form_post_callback;
 #[cfg(test)]
 use completion::complete_oauth_login;
 use completion::{complete_oauth_sign_in, OAuthSignIn};
@@ -21,6 +23,8 @@ type OAuthStateRow = (
     String,
     Option<String>,
     String,
+    Option<String>,
+    Option<String>,
     Option<String>,
     Option<String>,
     Option<String>,
@@ -192,6 +196,14 @@ pub(super) async fn oauth_authorization_url(
         )));
     }
 
+    if provider == OAuthProvider::Apple {
+        return Ok(crate::auth::oauth::apple::authorization_url(
+            &config.client_id,
+            &config.redirect_uri,
+            &state_id,
+            &crate::auth::oauth::apple::web_nonce(&code_verifier),
+        ));
+    }
     let mut auth_url = url::Url::parse(provider.auth_url()).expect("valid OAuth provider auth url");
     auth_url
         .query_pairs_mut()
@@ -243,7 +255,8 @@ pub(super) async fn oauth_callback(
          RETURNING provider, redirect_after, code_verifier, expires_at, device_name, \
                    device_public_key, device_key_algorithm, device_platform, \
                    device_os_version, device_app_version, device_approximate_location, \
-                   browser_binding_hash, replaces_session_token_id",
+                   browser_binding_hash, replaces_session_token_id, form_post_code, \
+                   form_post_user",
     )
     .bind(state_id)
     .fetch_optional(pool)
@@ -272,6 +285,8 @@ pub(super) async fn oauth_callback(
         device_approximate_location,
         browser_binding_hash,
         replaces_session_token_id,
+        form_post_code,
+        form_post_user,
     )) = state_row
     else {
         return err(
@@ -312,28 +327,25 @@ pub(super) async fn oauth_callback(
     if let Some(provider_error) = query_params.error.as_deref() {
         return redirect_with_oauth_error(&redirect_after, provider_error);
     }
-    let Some(code) = query_params
-        .code
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
+    // Apple's code arrives only through its form post, never in this URL.
+    let code = if provider == OAuthProvider::Apple {
+        form_post_code.as_deref()
+    } else {
+        query_params.code.as_deref()
+    };
+    let Some(code) = code.map(str::trim).filter(|value| !value.is_empty()) else {
         return redirect_with_oauth_error(&redirect_after, "Missing OAuth code.");
     };
-    let config = match oauth_config(provider) {
-        Ok(config) => config,
+    let (profile, apple_tokens) = match apple::callback_profile(
+        provider,
+        code,
+        code_verifier.as_deref(),
+        form_post_user.as_deref(),
+    )
+    .await
+    {
+        Ok(found) => found,
         Err(message) => return redirect_with_oauth_error(&redirect_after, &message),
-    };
-    let http = reqwest::Client::new();
-    let tokens = match exchange_oauth_code(&http, &config, code, code_verifier.as_deref()).await {
-        Ok(tokens) => tokens,
-        Err(_) => {
-            return redirect_with_oauth_error(&redirect_after, "Could not exchange OAuth code.");
-        }
-    };
-    let profile = match fetch_oauth_profile(&http, &config, &tokens).await {
-        Ok(Some(profile)) if !profile.provider_subject.trim().is_empty() => profile,
-        _ => return redirect_with_oauth_error(&redirect_after, "Could not load OAuth profile."),
     };
     let evidence_email = profile
         .email
@@ -362,10 +374,10 @@ pub(super) async fn oauth_callback(
             is_new_authorization,
             evidence_verified,
         }) => {
-            let method = match provider {
-                OAuthProvider::Google => SignInMethod::Google,
-                OAuthProvider::Github => SignInMethod::Github,
-            };
+            if let Some(tokens) = apple_tokens {
+                apple::keep_refresh_token(&state, &body.account.account_id, tokens).await;
+            }
+            let method = sign_in_method(provider);
             let evidence = SignInEvidence {
                 method,
                 email: evidence_email.as_deref(),
@@ -425,6 +437,14 @@ pub(super) async fn oauth_callback(
             eprintln!("[oauth] finish {} login: {error}", provider.id());
             redirect_with_oauth_error(&redirect_after, "Could not finish OAuth login.")
         }
+    }
+}
+
+fn sign_in_method(provider: OAuthProvider) -> SignInMethod {
+    match provider {
+        OAuthProvider::Google => SignInMethod::Google,
+        OAuthProvider::Github => SignInMethod::Github,
+        OAuthProvider::Apple => SignInMethod::Apple,
     }
 }
 

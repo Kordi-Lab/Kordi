@@ -28,7 +28,7 @@ limit falls back to a bounded server default, never to unlimited.
 | `admission.claimedDomains` | Lowercase domains, at most 20. |
 | `admission.domainMatch` | `exact` (the domain only) or `subdomains` (the domain and its subdomains; lookalike domains never match). |
 | `admission.requireGoogleHostedDomain` | Google sign-in also needs the ID token's `hd` in a claimed domain. |
-| `admission.autoJoinMethods` | Which verified evidence joins: `google`, `email_code`, `github`. GitHub joins only when listed. |
+| `admission.autoJoinMethods` | Which verified evidence joins: `google`, `email_code`, `github`, `apple`. GitHub and Apple join only when listed; an Apple private relay address never proves a domain. |
 | `admission.reverifyIntervalMonths` | 1-120, or `null` for no re-verification. |
 | `admission.googleSignInReverifies` | Whether a qualifying Google sign-in renews a membership. When `false`, Google joins only an account never admitted before; renewing needs an email code. |
 | `admission.stripSubaddress` | Optional, default `true`: `local+tag@domain` counts as `local@domain` for the one-account-per-inbox rule. |

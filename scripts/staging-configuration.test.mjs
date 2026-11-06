@@ -37,6 +37,22 @@ test('OAuth bindings are resolved only by the service launcher with no inherited
   assert.ok(!JSON.stringify(serviceEnvironment(value,'server')).includes('synthetic-TEST_GOOGLE_SECRET'));
   delete env.TEST_APPROVED;assert.throws(()=>authenticationBindings(value,env),/approved-email/);
 });
+test('Apple bindings resolve only when configured and keep the PEM key intact',()=>{
+  const value=profile();
+  const env={TEST_APPROVED:'[]'};
+  for(const binding of Object.values(value.authentication.oauthBindings))env[binding]='synthetic-'+binding;
+  const without=authenticationBindings(value,env);
+  assert.ok(!Object.keys(without).some((name)=>name.startsWith('KORDI_OAUTH_APPLE_')));
+  Object.assign(value.authentication.oauthBindings,{appleClientId:'TEST_APPLE_ID',appleTeamId:'TEST_APPLE_TEAM',appleKeyId:'TEST_APPLE_KEY_ID',applePrivateKey:'TEST_APPLE_KEY'});
+  assert.equal(validateAuthentication(value.authentication,target),value.authentication);
+  assert.throws(()=>authenticationBindings(value,env),/binding/);
+  Object.assign(env,{TEST_APPLE_ID:'test.services.id',TEST_APPLE_TEAM:'TEAM000001',TEST_APPLE_KEY_ID:'KEY0000001',TEST_APPLE_KEY:'-----BEGIN SYNTHETIC-----\nAAAA\n-----END SYNTHETIC-----\n'});
+  const resolved=authenticationBindings(value,env);
+  assert.equal(resolved.KORDI_OAUTH_APPLE_CLIENT_ID,'test.services.id');
+  assert.equal(resolved.KORDI_OAUTH_APPLE_PRIVATE_KEY,env.TEST_APPLE_KEY);
+  env.TEST_APPLE_ID='two\nlines';assert.throws(()=>authenticationBindings(value,env),/binding/);
+  delete value.authentication.oauthBindings.appleKeyId;assert.throws(()=>validateAuthentication(value.authentication,target));
+});
 test('Research production requires a verified-domain policy and exact, bounded page settings',()=>{
   const value=authentication();value.admission='verified-domain';value.verifiedDomains=['example.edu'];
   const research={...target,edition:'research',environment:'production'};

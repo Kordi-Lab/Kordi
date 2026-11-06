@@ -88,6 +88,8 @@ unset KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY KORDI_CLOUD_RUNNER_TOKEN
 unset KORDI_OMP_ROUTE_WORKER_TOKEN
 unset KORDI_OAUTH_GOOGLE_CLIENT_ID KORDI_OAUTH_GOOGLE_CLIENT_SECRET
 unset KORDI_OAUTH_GITHUB_CLIENT_ID KORDI_OAUTH_GITHUB_CLIENT_SECRET
+unset KORDI_OAUTH_APPLE_CLIENT_ID KORDI_OAUTH_APPLE_TEAM_ID KORDI_OAUTH_APPLE_KEY_ID
+unset KORDI_OAUTH_APPLE_PRIVATE_KEY
 
 echo "[kordi-operator] Verified allowlisted GitHub account @$github_login."
 echo "[kordi-operator] Connecting the desktop to the approved remote API; database credentials remain server-side."

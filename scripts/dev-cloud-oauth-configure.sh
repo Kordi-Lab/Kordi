@@ -139,6 +139,8 @@ unset client_id client_secret
 # Compose gives parent-shell variables precedence over --env-file. Clear the
 # OAuth values so only the ignored, development-only env file is used.
 unset KORDI_OAUTH_GITHUB_CLIENT_ID KORDI_OAUTH_GITHUB_CLIENT_SECRET
+unset KORDI_OAUTH_APPLE_CLIENT_ID KORDI_OAUTH_APPLE_TEAM_ID KORDI_OAUTH_APPLE_KEY_ID
+unset KORDI_OAUTH_APPLE_PRIVATE_KEY
 unset KORDI_OAUTH_GOOGLE_CLIENT_ID KORDI_OAUTH_GOOGLE_CLIENT_SECRET
 
 docker compose --env-file "$env_file" -f "$compose_file" \
