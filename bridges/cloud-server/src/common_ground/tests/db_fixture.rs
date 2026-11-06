@@ -40,8 +40,9 @@ pub(crate) async fn account(pool: &PgPool, label: &str) -> String {
     query(
         "INSERT INTO cloud_accounts \
          (account_id, display_name, primary_email, created_at, updated_at, avatar_source, \
-          avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at) \
-         VALUES ($1, $2, $3, $4, $4, 'generated', 'lorelei', $1, 'fixture', 1, $4)",
+          avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at, \
+          ai_consent_status) \
+         VALUES ($1, $2, $3, $4, $4, 'generated', 'lorelei', $1, 'fixture', 1, $4, 'allowed')",
     )
     .bind(&account_id)
     .bind(label)

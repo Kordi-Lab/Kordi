@@ -90,6 +90,19 @@ pub(super) async fn queue(
     need: &Need,
     people: &[&Present],
 ) -> sqlx_core::Result<()> {
+    // The request's owner must not have declined AI, and only people who
+    // allowed it are checked (`crate::ai_consent`). Background callers check
+    // the owner allowed it first.
+    if crate::ai_consent::is_declined(pool, &need.account_id).await? {
+        return Ok(());
+    }
+    let ids: Vec<String> = people.iter().map(|p| p.account_id.clone()).collect();
+    let excluded = crate::ai_consent::not_allowed_among(pool, &ids).await?;
+    let people: Vec<&Present> = people
+        .iter()
+        .copied()
+        .filter(|person| !excluded.contains(&person.account_id))
+        .collect();
     if people.is_empty() {
         return Ok(());
     }

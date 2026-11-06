@@ -19,18 +19,24 @@ pub const SYSTEM_DISPLAY_NAME: &str = "System";
 /// Conversation kinds System may join.
 const SYSTEM_CONVERSATION_KINDS: &[&str] = &["group"];
 
-/// Whether `account_id` is a server-managed account: System, or the System
-/// agent when it runs on this server.
+/// Whether `account_id` is a server-managed account: System, the Deleted
+/// account stand-in, or the System agent when it runs on this server.
 pub fn is_service_account(account_id: &str) -> bool {
-    account_id == SYSTEM_ACCOUNT_ID || crate::system_agent::service_account_id() == Some(account_id)
+    account_id == SYSTEM_ACCOUNT_ID
+        || account_id == crate::deleted_account::DELETED_ACCOUNT_ID
+        || crate::system_agent::service_account_id() == Some(account_id)
 }
 
 /// Every server-managed account id, System first.
 pub fn service_account_ids() -> Vec<String> {
-    std::iter::once(SYSTEM_ACCOUNT_ID)
-        .chain(crate::system_agent::service_account_id())
-        .map(str::to_string)
-        .collect()
+    [
+        SYSTEM_ACCOUNT_ID,
+        crate::deleted_account::DELETED_ACCOUNT_ID,
+    ]
+    .into_iter()
+    .chain(crate::system_agent::service_account_id())
+    .map(str::to_string)
+    .collect()
 }
 
 /// Creates System's account and the default agent profile that member

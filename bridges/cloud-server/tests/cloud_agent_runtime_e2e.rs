@@ -158,10 +158,21 @@ async fn signup(router: &axum::Router, prefix: &str, display_name: &str) -> Test
         .unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
     let body = read_json(response).await;
-    TestAccount {
+    let account = TestAccount {
         account_id: body["account"]["accountId"].as_str().unwrap().to_string(),
         token: body["session"]["token"].as_str().unwrap().to_string(),
-    }
+    };
+    // People in these tests allowed AI; background work and other people's
+    // requests to their agents need it (docs/development/ai-consent.md).
+    let mut allow = post_json_with_token(
+        "/v1/cloud/account/ai-consent",
+        &account.token,
+        json!({"status": "allowed"}),
+    );
+    *allow.method_mut() = axum::http::Method::PUT;
+    let response = router.clone().oneshot(allow).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    account
 }
 
 async fn accept_contacts(router: &axum::Router, from: &TestAccount, to: &TestAccount) {

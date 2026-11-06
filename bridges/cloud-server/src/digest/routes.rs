@@ -188,6 +188,10 @@ async fn refresh(
     Extension(session): Extension<CloudSession>,
     Query(prefs): Query<Preferences>,
 ) -> Response {
+    if let Err(response) = crate::ai_consent::require(state.db_pool(), &[&session.account_id]).await
+    {
+        return *response;
+    }
     if prefs
         .locale
         .as_ref()

@@ -138,6 +138,16 @@ pub(super) async fn send(
     }
     let targets = directory(pool, parent).await?;
     let target = resolve_target(&targets, target_ref)?;
+    // Another person's agent runs only when its owner allowed AI; the
+    // requester's own agents only when they did not decline it.
+    let ready = if target.owner_account_id == parent.requester {
+        !crate::ai_consent::is_declined(pool, &target.owner_account_id).await?
+    } else {
+        crate::ai_consent::is_allowed(pool, &target.owner_account_id).await?
+    };
+    if !ready {
+        return Err(RunError::AiConsentRequired);
+    }
     let id = Uuid::new_v4();
     let run = format!("car_exchange_{}", id.simple());
     let request = format!("{PREFIX}{id}:request");

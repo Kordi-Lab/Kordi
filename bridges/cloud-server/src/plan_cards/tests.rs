@@ -4,7 +4,7 @@ use sqlx_core::query::query;
 use uuid::Uuid;
 
 pub(crate) async fn seed_account(pool: &sqlx_postgres::PgPool, account_id: &str) {
-    query("INSERT INTO cloud_accounts(account_id,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at,avatar_url) VALUES($1,$2,$2,'generated','lorelei',$1,'test',1,$2,$3)")
+    query("INSERT INTO cloud_accounts(account_id,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at,avatar_url,ai_consent_status) VALUES($1,$2,$2,'generated','lorelei',$1,'test',1,$2,$3,'allowed')")
         .bind(account_id)
         .bind(chrono::Utc::now().to_rfc3339())
         .bind(crate::avatars::generated_avatar_marker("lorelei", account_id, 1))

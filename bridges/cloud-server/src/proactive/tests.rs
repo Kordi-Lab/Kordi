@@ -4,6 +4,7 @@
 //! `KORDI_CONNECTOR_DB_TESTS=skip`. `scripts/test-cloud-migrations.sh` runs
 //! them against its own database. Every test uses uuid-suffixed data.
 
+mod consent_db;
 mod decision_db;
 mod default_agent_db;
 mod definition_db;

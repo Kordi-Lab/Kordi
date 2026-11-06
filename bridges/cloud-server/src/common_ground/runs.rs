@@ -46,6 +46,10 @@ pub(super) async fn insert(
     service: &crate::system_agent::SystemAgentConfig,
     run: NewRun<'_>,
 ) -> sqlx_core::Result<bool> {
+    // A member who declined AI gets no Grounding run (`crate::ai_consent`).
+    if crate::ai_consent::is_declined(&mut **tx, run.requester).await? {
+        return Ok(false);
+    }
     let organization_id: Option<String> =
         match (run.conversation_id, run.organization_id) {
             (Some(conversation_id), _) => query_scalar(
