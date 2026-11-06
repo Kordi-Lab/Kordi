@@ -33,7 +33,10 @@ function ActivityGroup({ tools, unavailable = 0, label, renderTool, thinkingText
   </section>;
 }
 
-/** One compact header stays in place through completion; plain replies need no progress section. */
+/**
+ * One compact header stays in place through completion; plain replies need no progress section.
+ * `trailing` (the running reply's Stop) follows the elapsed time while the turn is live.
+ */
 export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
   turn: DesktopChatTurnSnapshot; trailing?: ReactNode; renderTool: (tool: DesktopChatToolSnapshot) => ReactNode; legacyAnswer?: ReactNode;
 }) {
@@ -52,7 +55,8 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
   const standaloneReasoning = !hasActivity && turn.tools.length === 0;
   const [trajectoryExpanded, setTrajectoryExpanded] = useState(false);
   const hasTrace = hasActivity || turn.tools.length > 0 || Boolean(turn.thinkingText);
-  const showHeader = Boolean(turn.agentExchangeStatus) || hasTrace || (live && (ordered || !legacyAnswer));
+  // A running reply with a Stop keeps its status line, so Stop never moves while text streams.
+  const showHeader = Boolean(turn.agentExchangeStatus) || hasTrace || (live && (ordered || !legacyAnswer || Boolean(trailing)));
   const expandable = hasTrace || (live && ordered);
   const progressLabel = turnProgressLabel(turn);
   const statusLabel = live && standaloneReasoning && turn.thinkingText && ['Working', 'Thinking'].includes(progressLabel) ? 'Reasoning' : progressLabel;

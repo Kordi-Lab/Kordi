@@ -25,8 +25,12 @@ test('a text-only reply keeps its shell and answer mounted across final public s
   const card = await page.locator('.app-live-turn-card').elementHandle();
   await page.getByRole('button', { name: 'Answer text' }).click();
   await expect(page.locator('.app-live-assistant-answer')).toBeVisible();
+  // A running reply keeps its status line (with Stop) while text streams.
+  const statusLine = page.locator('.app-live-turn-card .app-turn-header-line');
+  await expect(statusLine.locator('[data-agent-request-stop="status"]')).toBeVisible();
+  const statusLineHeight = (await statusLine.boundingBox())!.height;
   await page.evaluate(async () => { for (let i = 0; i < 20; i++) await new Promise(requestAnimationFrame); });
-  const recording = page.evaluate(async () => {
+  const record = () => page.evaluate(async () => {
     const nodes = ['.app-shell', '[data-testid="header"]', '[data-testid="composer"]', '.app-live-assistant-answer'].map(selector => document.querySelector(selector)!);
     const viewport = document.querySelector('[data-virtual-transcript-scroll]')!;
     const initialScroll = viewport.scrollTop;
@@ -37,9 +41,17 @@ test('a text-only reply keeps its shell and answer mounted across final public s
     }
     return samples;
   });
+  // Completion only folds the live status line away, as it does for ordered replies.
+  const completing = record();
   await page.getByRole('button', { name: 'Local completion' }).click();
+  const completion = await completing;
+  expect(completion.every(sample => sample.mounted)).toBe(true);
+  expect(Math.max(...completion.map(sample => sample.scrollDelta))).toBeLessThanOrEqual(statusLineHeight + 1);
+  await expect(statusLine).toHaveCount(0);
+  // Public synchronization then moves nothing.
+  const syncing = record();
   await page.getByRole('button', { name: 'Public sync' }).click();
-  const samples = await recording;
+  const samples = await syncing;
   expect(samples.every(sample => sample.mounted)).toBe(true);
   expect(Math.max(...samples.map(sample => sample.scrollDelta))).toBeLessThanOrEqual(1);
   expect(await card!.evaluate(element => element.isConnected)).toBe(true);
@@ -60,7 +72,7 @@ test('a pending reply shows a compact indicator and a quiet quote, and keeps its
   const pending = row.locator('.app-live-turn-response-panel');
   await expect(pending.locator('.app-turn-progress-bird')).toBeVisible();
   expect((await pending.boundingBox())!.height).toBeLessThan(60);
-  await expect(row.locator('[data-agent-request-stop="header"]')).toBeVisible();
+  await expect(row.locator('[data-agent-request-stop="status"]')).toBeVisible();
   await expect(row.locator('.app-source-message-quote')).toContainText('Synthetic Owner: @SyntheticAgent From now on');
   // The transcript stays pinned to its tail, so compare offsets inside the row.
   const offsets = () => row.evaluate((root) => ['.app-message-meta', '.app-live-turn-response-panel']
