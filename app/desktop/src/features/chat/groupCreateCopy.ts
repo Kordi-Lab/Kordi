@@ -40,6 +40,11 @@ export function groupInvitationLinkErrorMessage(error: unknown, { asCreator = fa
   const text = errorText(error);
   if (isOffline(text)) return OFFLINE;
   if (!asCreator && /admin|permission|not allowed|forbidden/.test(text)) return 'Only group admins can share a link.';
+  // Known server refusals get their own short line, so a failure names its cause.
+  if (/enter a group name/.test(text)) return 'Name the group before sharing a link.';
+  if (/cannot create a share link/.test(text)) return "This group can't share a link yet. Try again in a moment.";
+  if (/member count|fewer than|at least/.test(text)) return 'Add someone to the group before sharing a link.';
+  if (/too many|rate limit|429/.test(text)) return 'Too many links right now. Try again later.';
   return "Couldn't create the link. Try again.";
 }
 

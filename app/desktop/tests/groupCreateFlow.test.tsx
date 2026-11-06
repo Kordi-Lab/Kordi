@@ -319,3 +319,10 @@ test('only a group admin may dissolve a channel, and never the group\'s first ch
   const memberSpace = channelSpace([]) as { sessions: unknown[] };
   assert.equal(dissolvableChannelTarget(memberSpace as never, memberSpace.sessions[0] as never), null);
 });
+
+test('link failures name the cause the server gave', () => {
+  assert.equal(groupInvitationLinkErrorMessage(new Error('Enter a group name before sharing an invitation.')), 'Name the group before sharing a link.');
+  assert.equal(groupInvitationLinkErrorMessage(new Error('This group cannot create a share link.')), "This group can't share a link yet. Try again in a moment.");
+  assert.equal(groupInvitationLinkErrorMessage(new Error('Only a verified group admin can create this invitation link.')), 'Only group admins can share a link.');
+  assert.equal(groupInvitationLinkErrorMessage(new Error('Could not create invitation.')), "Couldn't create the link. Try again.");
+});
