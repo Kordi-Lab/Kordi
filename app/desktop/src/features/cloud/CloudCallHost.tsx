@@ -42,13 +42,7 @@ import {
 import type { CloudCallsController } from './cloudCallController';
 import { callPermissionCopy } from './callMediaPermission';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
-import { Button } from '@/components/ui/button';
-import {
-  AppDialog,
-  AppDialogActions,
-  AppDialogDescription,
-  AppDialogTitle,
-} from '@/components/ui/dialog';
+import { MediaPermissionDialog } from './MediaPermissionDialog';
 
 function CallSurface({ controller }: { controller: CloudCallsController }) {
   const current = controller.currentCall;
@@ -350,29 +344,13 @@ function CallError({ controller }: { controller: CloudCallsController }) {
 function CallPermissionDialog({ controller }: { controller: CloudCallsController }) {
   const issue = controller.permissionIssue;
   if (!issue) return null;
-  const copy = callPermissionCopy(issue);
   return (
-    <AppDialog
-      titleId="call-permission-title"
-      descriptionId="call-permission-description"
-      onDismiss={() => controller.dismissPermissionIssue()}
-      className="max-w-sm rounded-[20px]"
-    >
-      <AppDialogTitle id="call-permission-title">{copy.title}</AppDialogTitle>
-      <AppDialogDescription id="call-permission-description">{copy.description}</AppDialogDescription>
-      <AppDialogActions>
-        {issue.canOpenSettings ? (
-          <>
-            <Button variant="quiet" className="rounded-full px-4" onClick={() => controller.dismissPermissionIssue()}>Cancel</Button>
-            <Button className="rounded-full px-4" autoFocus onClick={() => { void controller.openPermissionSettings(); }}>
-              Open System Settings
-            </Button>
-          </>
-        ) : (
-          <Button className="rounded-full px-4" autoFocus onClick={() => controller.dismissPermissionIssue()}>OK</Button>
-        )}
-      </AppDialogActions>
-    </AppDialog>
+    <MediaPermissionDialog
+      issue={issue}
+      copy={callPermissionCopy(issue)}
+      onCancel={() => controller.dismissPermissionIssue()}
+      onOpenSettings={() => { void controller.openPermissionSettings(); }}
+    />
   );
 }
 

@@ -65,6 +65,11 @@
   user-select: none;
 }
 
+/* Zero specificity so a surface can still tone a status line differently. */
+:where(.app-error-text) {
+  color: var(--app-error-text);
+}
+
 :where(.app-error-text, [role="alert"]) {
   min-width: 0;
   max-width: 100%;

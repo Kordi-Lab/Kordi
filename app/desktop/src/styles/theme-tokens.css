@@ -323,6 +323,9 @@
   --app-transient-danger-hover-bg: rgb(244 63 94 / 0.17);
   --app-transient-danger-border: rgb(251 113 133 / 0.24);
   --app-transient-danger-text: rgb(253 164 175);
+  /* The one error color: ErrorLine, .app-error-text and failure accents. */
+  --app-error-text: rgb(253 164 175);
+  --app-danger-text: var(--app-error-text);
   --app-transient-shadow:
     0 0 0 1px rgb(255 255 255 / 0.025),
     0 18px 46px rgb(0 0 0 / 0.38),
@@ -353,6 +356,8 @@
   --app-transient-danger-hover-bg: rgb(225 29 72 / 0.12);
   --app-transient-danger-border: rgb(190 18 60 / 0.18);
   --app-transient-danger-text: rgb(159 18 57);
+  --app-error-text: rgb(159 18 57);
+  --app-danger-text: var(--app-error-text);
   --app-transient-shadow:
     0 0 0 1px rgb(15 23 42 / 0.025),
     0 18px 44px rgb(15 23 42 / 0.14),

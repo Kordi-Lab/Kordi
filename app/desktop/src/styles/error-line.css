@@ -1,0 +1,63 @@
+/* One error form for failed actions and background problems: a single
+   12px line in the error color, with an optional action. No box, icon or
+   dismiss button. Blocking decisions use AppDialog instead. */
+.app-error-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  min-width: 0;
+  margin: 6px 0 0;
+  color: var(--app-error-text);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.app-error-line[data-align='end'] {
+  justify-content: flex-end;
+  text-align: end;
+}
+
+.app-error-line[data-align='center'] {
+  justify-content: center;
+  text-align: center;
+}
+
+.app-error-line-separator {
+  color: var(--utility-muted-text, currentColor);
+}
+
+.app-error-line-action {
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: var(--app-error-action-text, var(--utility-foreground, currentColor));
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, currentColor 35%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.app-error-line-action:hover {
+  text-decoration-color: currentColor;
+}
+
+.app-error-line-action:focus-visible {
+  outline: 2px solid var(--app-transient-focus-ring);
+  outline-offset: 2px;
+}
+
+.app-error-line-action:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.app-transient-surface .app-error-line-action {
+  --app-error-action-text: var(--app-transient-text);
+}

@@ -107,12 +107,20 @@ function deviceNames(sources: CallMediaSource[]): string {
   return hasCamera ? 'camera' : 'microphone';
 }
 
-export function callPermissionCopy(issue: CallPermissionIssue): { title: string; description: string } {
+/** Copy for a microphone or camera permission dialog; `retry` ends the line. */
+export function mediaPermissionCopy(
+  issue: CallPermissionIssue,
+  retry = 'call again',
+): { title: string; description: string } {
   const names = deviceNames(issue.sources);
   const title = `Allow ${names} access`;
   if (!issue.canOpenSettings) {
-    return { title, description: `Allow ${names} in your browser's site settings, then call again.` };
+    return { title, description: `Allow ${names} in your browser's site settings, then ${retry}.` };
   }
   const panes = names === 'microphone and camera' ? 'Microphone and Camera' : names === 'camera' ? 'Camera' : 'Microphone';
-  return { title, description: `Turn on Kordi in Privacy & Security › ${panes}, then call again.` };
+  return { title, description: `Turn on Kordi in Privacy & Security › ${panes}, then ${retry}.` };
+}
+
+export function callPermissionCopy(issue: CallPermissionIssue): { title: string; description: string } {
+  return mediaPermissionCopy(issue, 'call again');
 }
