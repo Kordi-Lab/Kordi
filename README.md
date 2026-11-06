@@ -1,177 +1,114 @@
 <p align="center">
-  <img src=".github/assets/kordi-title.png" width="920" alt="Kordi — Building AI-Native Supercollaboration">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/kordi-bird-dark.svg">
+    <img src="docs/assets/kordi-bird-light.svg" width="96" alt="Kordi bird logo">
+  </picture>
 </p>
+
+<h1 align="center">Kordi</h1>
 
 <p align="center">
-  Kordi is an AI-native collaboration workspace for humans and their agents.
+  <strong>Building AI-native supercollaboration.</strong><br>
+  Every communication in one place, with AI that is proactive and cooperative.
 </p>
+
+<h3 align="center">
+  <a href="https://kordi.ai/download/mac">Download for Mac</a> &nbsp;·&nbsp; <a href="https://kordi.ai">Open kordi.ai</a>
+</h3>
 
 <p align="center">
-  <a href="https://github.com/Kordi-AI/Kordi/releases"><img src="https://img.shields.io/badge/release-beta-111111?style=flat-square" alt="Beta releases"></a>
-  <img src="https://img.shields.io/badge/platform-macOS-111111?style=flat-square" alt="macOS">
-  <img src="https://img.shields.io/badge/platform-iPhone-111111?style=flat-square" alt="iPhone">
-  <img src="https://img.shields.io/badge/desktop-Tauri%20%2B%20React-111111?style=flat-square" alt="Tauri and React">
+  <a href="https://kordi.ai/iphone">iPhone (TestFlight)</a> ·
+  <a href="docs/vps-deployment.md">Self-host</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-<p align="center">
-  <a href="#why-kordi">Why Kordi</a> ·
-  <a href="#community">Community</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#how-kordi-works">Architecture</a> ·
-  <a href="CHANGELOG.md">Changelog</a> ·
-  <a href="#development">Development</a> ·
-  <a href="CONTRIBUTING.md">Contributing</a>
-</p>
+<!-- Product image: add one public product screenshot or GIF here (light and dark via <picture>). -->
 
----
+## Get Kordi
 
-## Why Kordi
+- **Mac:** [download the app](https://kordi.ai/download/mac). Requires macOS 13 or later.
+- **Web:** use Kordi in your browser at [kordi.ai](https://kordi.ai).
+- **iPhone:** [apply for TestFlight](https://kordi.ai/iphone). Requires iOS 17 or later.
+- **Self-host:** run your own server with the [VPS guide](docs/vps-deployment.md). The released apps connect to kordi.ai, so point a [source build](docs/run-cloud-desktop.md) at your server.
 
-AI assistants are usually designed as private, one-person tools. Collaboration is not. Real work happens in shared conversations—with teammates, decisions, context, and different agents that can help at the right moment.
+## What it does
 
-Kordi treats AI as a participant in the conversation. People can chat one-to-one or in groups, bring personal agents into the same shared space, and keep the experience synchronized through native desktop and iPhone apps.
+- **People and agents in one chat.** Message contacts and groups, and mention your agent, or someone else's, in the thread where the context already is.
+- **Your Mac runs your agent first.** When your Mac is online, your agent runs there with your tools and model sign-ins. When it is offline, the cloud runner takes over in a sandbox.
+- **Cooperative and personal agents.** A cooperative agent follows your groups and asks you before it helps. A personal agent can message you first with updates.
+- **Memory and connectors you control.** Memories are sorted by category and card, the Mac can import your `AGENTS.md` and `CLAUDE.md` files, and agents can use Google Calendar, Gmail, GitHub, Slack, and your Mac calendars and contacts.
+- **Digests and plans.** Each chat becomes a digest of decisions and next steps, and the System agent keeps group plans and reminders.
+- **Grounding.** Build profile cards from sources you choose, then find shared interests by tapping phones, joining a room code, or Nearby.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><strong>People and agents, together</strong><br>Invite an agent into the conversation instead of moving the conversation into a separate AI tool.</td>
-    <td width="50%" valign="top"><strong>Familiar social primitives</strong><br>Accounts, contacts, direct chats, groups, unread state, and synchronized history.</td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><strong>Agent-native groups</strong><br>Mention your own Kordi agent—or another participant's agent—inside the group where the context already lives.</td>
-    <td width="50%" valign="top"><strong>Hosted continuity</strong><br>A hosted API and agent runner keep collaboration and execution available beyond one local process.</td>
-  </tr>
-</table>
+## Repository
 
-## Community
+| Path | What it is |
+| --- | --- |
+| [`app/desktop`](app/desktop) | Mac app (Tauri + React) |
+| [`app/ios`](app/ios) | iPhone app (SwiftUI) |
+| [`app/web`](app/web) | Web app, built on the desktop React pages |
+| [`bridges/cloud-server`](bridges/cloud-server) | Hosted API (Rust) |
+| [`bridges/cloud-agent-runner`](bridges/cloud-agent-runner) | Cloud agent runner and sandbox |
+| [`shared/omp-runtime`](shared/omp-runtime) | Agent worker used on the Mac and in the cloud |
+| [`agent`](agent) | Rust agent runtime: providers, tools, sessions |
+| [`shared`](shared) | Cross-platform contracts and fixtures |
+| [`docs`](docs) | Guides and design notes |
 
-Kordi is in active beta development, and community feedback and contributions help shape how people and agents collaborate.
+## Develop
 
-You can contribute by:
-
-- Trying the beta and opening a focused [bug report or feature proposal](https://github.com/Kordi-AI/Kordi/issues)
-- Improving the desktop experience, accessibility, performance, or visual polish
-- Fixing account, messaging, synchronization, attachment, or agent-runtime behavior
-- Adding regression tests, clearer errors, examples, or documentation
-
-New contributors do not need production infrastructure access. The supported workflow runs an isolated backend and test data on your own machine.
-
-Start with the [community contributor guide](docs/community-contributor-guide.md), then use [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, validation, and review checklist.
-
-## Quick start
-
-### Try the beta
-
-Kordi is under active development. macOS beta builds are published on the [Releases page](https://github.com/Kordi-AI/Kordi/releases).
-
-Kordi Desktop requires macOS 13 or later. Kordi for iPhone requires iOS 17 or later.
-
-### Run from source
-
-You will need:
-
-- macOS with the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) installed
-- Node.js 22+
-- pnpm 10.29.3+
-- a Rust toolchain installed with [`rustup`](https://rustup.rs/)
-- Docker Desktop or Docker Engine with Compose v2
+You need macOS with the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), Node.js 22+, pnpm 10.29.3+, a Rust toolchain from [rustup](https://rustup.rs/), and Docker with Compose v2.
 
 ```bash
 git clone https://github.com/Kordi-AI/Kordi.git
 cd Kordi
 pnpm install --frozen-lockfile
 pnpm debug:cloud:up
+
 VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
 VITE_KORDI_DEV_PROFILE=community \
-pnpm dev:desktop:profile -- \
-  --profile dev-isolated --title "Kordi Dev" --port 1422
+pnpm dev:desktop:profile -- --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
-Kordi opens in account login mode against an isolated Docker backend on your machine. Development launches require an explicit non-production API origin, reject the production origin, and use a gray app icon. Product and allowlisted operator previews use the color icon.
+This starts an isolated backend in Docker and opens a development build with a gray icon. Development builds refuse the production API, so use test accounts only. Before any other preview, follow [Development environments](docs/development-environments.md) and the [required preflight](docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug).
 
-> [!IMPORTANT]
-> Do not run destructive, load, or throwaway multi-account tests against production. The local Docker environment is the default contributor workflow. When an approved shared staging environment is required, set its API origin explicitly:
->
-> ```bash
-> VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \
-> VITE_KORDI_DEV_PROFILE=community \
-> pnpm dev:desktop:profile -- \
->   --profile approved-staging --title "Kordi Staging" --port 1422
-> ```
-
-Core-maintainer operator work has an additional mandatory preflight. If the requested settings, code, or test will affect or require restarting the product server, develop and test on the corresponding product-server machine and run end-to-end validation through `https://kordi.ai`. Desktop-only remote previews use the allowlisted `https://kordi.ai` operator launcher. Start with [Development environment isolation](docs/development-environments.md), then use [Required preflight before preview or debug](docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug) for product paths.
-
-For prerequisites, multi-user testing, logs, troubleshooting, and cleanup, follow the [local development guide](docs/self-hosted-debug.md).
-
-## How Kordi works
-
-```mermaid
-flowchart LR
-    desktop["Kordi Desktop<br/>React + Tauri"] --> api["Hosted API"]
-    iphone["Kordi for iPhone<br/>SwiftUI"] --> api
-    api --> social["Accounts, contacts,<br/>chats, groups & sync"]
-    api --> runner["Hosted agent runner"]
-    runner --> execution["Sandbox, model loop,<br/>tools & artifacts"]
-```
-
-The repository contains the complete product stack:
-
-```text
-kordi/
-  app/desktop/                 # React + Tauri desktop application
-  app/ios/                     # Native SwiftUI iPhone application
-  bridges/cloud-server/        # Auth, chat, sync, and runner coordination API
-  bridges/cloud-agent-runner/  # Hosted agent execution and sandboxing
-  agent/                       # Shared agent/runtime internals
-  shared/                      # Cross-process Rust and TypeScript contracts
-  docs/                        # Architecture, development, and release guides
-```
-
-Read [Architecture](docs/architecture.md) for the boundaries between the desktop app, hosted services, runner, and shared runtime.
-
-## Development
-
-Install dependencies once with `pnpm install --frozen-lockfile`, then use the root command surface:
-
-| Task | Command |
-| --- | --- |
-| Start the isolated backend | `pnpm debug:cloud:up` |
-| Check the isolated backend | `pnpm debug:cloud:smoke` |
-| Start Kordi Desktop | Use the named-profile command in [Development environment isolation](docs/development-environments.md#local-isolated-backend) |
-| Test Kordi Beta for iPhone | `xcodebuild -project app/ios/Kordi.xcodeproj -scheme 'Kordi Beta' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test` |
-| Test Kordi for iPhone | `xcodebuild -project app/ios/Kordi.xcodeproj -scheme Kordi -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test` |
-| Start isolated test users | `VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev:cloud:multi -- --reset --users user1,user2` |
-| Build the desktop package | `pnpm build:desktop` |
-| Build the web UI | `pnpm build:web` |
-| Lint and typecheck | `pnpm lint && pnpm typecheck:web` |
-| Check the Rust workspace | `pnpm check:rust` |
-| Run the common validation suite | `pnpm check` |
-
-### Documentation
-
-| Guide | What it covers |
-| --- | --- |
-| [Community contributor guide](docs/community-contributor-guide.md) | Contribution areas, issues, safe setup, testing, bug reports, and review expectations |
-| [Development environment isolation](docs/development-environments.md) | Local, IAP-tunneled development, production preview, OAuth, and fail-closed environment selection |
-| [Shared backend configuration](shared/configuration/README.md) | Versioned backend routing contract, private ops ownership, validation and compatibility boundaries |
-| [Local development](docs/self-hosted-debug.md) | Isolated Docker backend, desktop launch, multi-user testing, safety, and cleanup |
-| [Deploy on a VPS](docs/vps-deployment.md) | SSH-based self-hosting, shared API domains, persistent storage, and operator-owned model configuration |
-| [Run Kordi Desktop](docs/run-cloud-desktop.md) | Local startup, API selection, multi-user testing, and troubleshooting |
-| [Develop Kordi for iPhone](docs/ios-development.md) | Xcode setup, previews, tests, physical devices, architecture, and TestFlight |
-| [Development commands](docs/development.md) | Full command map and package-specific workflows |
-| [Architecture](docs/architecture.md) | Product topology and layer responsibilities |
-| [Hosted cloud guide](docs/hosted-cloud-developer-guide.md) | Hosted testing, deployment, and redaction rules |
-| [Changelog](CHANGELOG.md) | User-facing changes since the latest beta release |
-| [Dual-platform release runbook](docs/development/dual-platform-release-runbook.md) | Joint preflight and standard macOS beta plus iOS TestFlight release path |
-| [Release guide](docs/release.md) | Desktop packaging and release responsibilities |
+Run `pnpm check` for lint, type checks and the Rust workspace check. More guides: [local development](docs/self-hosted-debug.md), [commands](docs/development.md), [iPhone development](docs/ios-development.md) and [architecture](docs/architecture.md).
 
 ## Contributing
 
-Contributions start with a GitHub issue and land through a reviewed pull request. If this is your first Kordi contribution, read the [community contributor guide](docs/community-contributor-guide.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for the detailed branch workflow, validation commands, and PR checklist.
+Start with an issue, then open a focused pull request. The [community contributor guide](docs/community-contributor-guide.md) covers setup and testing, and [CONTRIBUTING.md](CONTRIBUTING.md) has the branch workflow and checklist. Kordi is in beta, so interfaces may still change.
 
-Kordi currently targets macOS and iPhone and is in beta. Product behavior, hosted interfaces, and contributor workflows may evolve as the project approaches a stable release.
+## Thanks
+
+Kordi is built on open source. Thank you to
+[oh-my-pi](https://github.com/can1357/oh-my-pi),
+[Bun](https://bun.sh),
+[Tauri](https://tauri.app),
+[React](https://react.dev),
+[TypeScript](https://www.typescriptlang.org),
+[Vite](https://vite.dev),
+[Tailwind CSS](https://tailwindcss.com),
+[Radix UI](https://www.radix-ui.com),
+[Framer Motion](https://motion.dev),
+[Lucide](https://lucide.dev),
+[TanStack Virtual](https://tanstack.com/virtual),
+[Tiptap](https://tiptap.dev),
+[ProseMirror](https://prosemirror.net),
+[Yjs](https://yjs.dev),
+[Tokio](https://tokio.rs),
+[Axum](https://github.com/tokio-rs/axum),
+[SQLx](https://github.com/launchbadge/sqlx),
+[PostgreSQL](https://www.postgresql.org),
+[Redis](https://redis.io),
+[NATS](https://nats.io),
+[MinIO](https://min.io),
+[Rustls](https://github.com/rustls/rustls),
+[RustCrypto](https://github.com/RustCrypto),
+[LiveKit](https://livekit.io),
+[resvg](https://github.com/linebender/resvg),
+[DiceBear](https://www.dicebear.com),
+[Noto Emoji](https://github.com/googlefonts/noto-emoji)
+and [Geist](https://vercel.com/font).
 
 ## License
 
-Kordi is licensed under the [MIT License](LICENSE), except for third-party components and assets that carry their own licenses. See [NOTICE](NOTICE) for preserved copyright and attribution notices.
-
-App and Research release inputs are selected through the [ops distribution contract](docs/distribution-configuration.md).
+[MIT](LICENSE). Third-party components keep their own licenses; see [NOTICE](NOTICE).
