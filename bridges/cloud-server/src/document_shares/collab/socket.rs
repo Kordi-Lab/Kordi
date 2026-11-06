@@ -4,6 +4,11 @@
 //! sends them: sync (0) and awareness (1), plus awareness queries (3). Close
 //! codes: 4401 bad or used ticket, 4403 access revoked, 4409 unsupported
 //! message, 1011 server error, 1013 the client fell too far behind.
+//!
+//! Sign-out and device revocation arrive as session signals and close the
+//! socket at once. Document access is rechecked every ~30 s (jittered); a
+//! database error retries with backoff and closes only after the failure
+//! grace, so a short outage does not disconnect every editor.
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -17,10 +22,13 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
+use tokio::time::Instant;
 
 use super::rooms::{Room, RoomError};
 use super::tickets::{consume_ticket, ConsumedTicket, TicketError};
 use crate::auth::routes::CloudSession;
+use crate::auth::session_signals::{SessionSignalSubscription, SignalVerdict};
+use crate::chat_sync::realtime::retry::{jittered, Backoff, FAILURE_GRACE};
 use crate::document_shares::access::authorized_document;
 use crate::document_shares::canonical::can_edit;
 use crate::server::ServerState;
@@ -85,20 +93,32 @@ async fn close(mut socket: WebSocket, code: u16, reason: &'static str) {
         .await;
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Access {
+    Allowed,
+    Denied,
+    /// The database could not answer; the verdict is unknown.
+    Unavailable,
+}
+
 /// Whether the ticket's session is still signed in and its account may
 /// still edit the document it was issued for.
-pub(crate) async fn still_allowed(state: &ServerState, ticket: &ConsumedTicket) -> bool {
+pub(crate) async fn check_access(state: &ServerState, ticket: &ConsumedTicket) -> Access {
     let pool = state.db_pool();
-    let active = crate::auth::session::session_is_active(
+    match crate::auth::session::session_is_active(
         pool,
         &ticket.account_id,
         &ticket.device_id,
         &ticket.session_token_id,
     )
     .await
-    .unwrap_or(false);
-    if !active {
-        return false;
+    {
+        Ok(true) => {}
+        Ok(false) => return Access::Denied,
+        Err(error) => {
+            eprintln!("[document-collab] revalidate session: {error}");
+            return Access::Unavailable;
+        }
     }
     let session = CloudSession {
         token_id: ticket.session_token_id.clone(),
@@ -106,19 +126,28 @@ pub(crate) async fn still_allowed(state: &ServerState, ticket: &ConsumedTicket) 
         device_id: ticket.device_id.clone(),
     };
     match authorized_document(state, &session, &ticket.requested_attachment_id).await {
-        Ok((record, viewer)) => {
-            record.attachment_id == ticket.attachment_id
-                && can_edit(pool, &record, viewer, &ticket.account_id)
-                    .await
-                    .unwrap_or(false)
-        }
-        Err(_) => false,
+        Ok((record, _)) if record.attachment_id != ticket.attachment_id => Access::Denied,
+        Ok((record, viewer)) => match can_edit(pool, &record, viewer, &ticket.account_id).await {
+            Ok(true) => Access::Allowed,
+            Ok(false) => Access::Denied,
+            Err(_) => Access::Unavailable,
+        },
+        Err(response) if response.status().is_server_error() => Access::Unavailable,
+        Err(_) => Access::Denied,
     }
 }
 
 async fn run(mut socket: WebSocket, state: Arc<ServerState>, ticket: ConsumedTicket) {
-    if !still_allowed(&state, &ticket).await {
-        return close(socket, CLOSE_FORBIDDEN, "forbidden").await;
+    // Subscribe before checking, so a revocation after the check still lands.
+    let mut signals = state.session_signals().subscribe(
+        &ticket.account_id,
+        &ticket.device_id,
+        Some(&ticket.session_token_id),
+    );
+    match check_access(&state, &ticket).await {
+        Access::Allowed => {}
+        Access::Denied => return close(socket, CLOSE_FORBIDDEN, "forbidden").await,
+        Access::Unavailable => return close(socket, CLOSE_SERVER_ERROR, "unavailable").await,
     }
     let pool = state.db_pool().clone();
     let registry = state.document_rooms();
@@ -131,7 +160,15 @@ async fn run(mut socket: WebSocket, state: Arc<ServerState>, ticket: ConsumedTic
     };
     let conn = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
     let mut clients = HashSet::new();
-    let close_code = serve(&mut socket, &state, &room, &ticket, conn, &mut clients).await;
+    let close_code = serve(
+        &mut socket,
+        &state,
+        &room,
+        (&ticket, &mut signals),
+        conn,
+        &mut clients,
+    )
+    .await;
     registry.leave(&pool, &room, conn, &clients).await;
     if let Some((code, reason)) = close_code {
         close(socket, code, reason).await;
@@ -143,7 +180,7 @@ async fn serve(
     socket: &mut WebSocket,
     state: &ServerState,
     room: &Arc<Room>,
-    ticket: &ConsumedTicket,
+    (ticket, signals): (&ConsumedTicket, &mut SessionSignalSubscription),
     conn: u64,
     clients: &mut HashSet<yrs::ClientID>,
 ) -> Option<(u16, &'static str)> {
@@ -154,8 +191,9 @@ async fn serve(
             return None;
         }
     }
-    let mut revalidate = tokio::time::interval(REVALIDATE_EVERY);
-    revalidate.tick().await;
+    let mut next_check = Instant::now() + jittered(REVALIDATE_EVERY);
+    let mut failing_since = None;
+    let mut backoff = Backoff::default();
     loop {
         tokio::select! {
             incoming = socket.recv() => match incoming {
@@ -189,9 +227,25 @@ async fn serve(
                 Err(RecvError::Lagged(_)) => return Some((CLOSE_TRY_AGAIN, "behind")),
                 Err(RecvError::Closed) => return None,
             },
-            _ = revalidate.tick() => {
-                if !still_allowed(state, ticket).await {
-                    return Some((CLOSE_FORBIDDEN, "forbidden"));
+            verdict = signals.recv() => match verdict {
+                SignalVerdict::Close => return Some((CLOSE_FORBIDDEN, "forbidden")),
+                SignalVerdict::Recheck => next_check = Instant::now(),
+            },
+            _ = tokio::time::sleep_until(next_check) => {
+                let now = Instant::now();
+                match check_access(state, ticket).await {
+                    Access::Allowed => {
+                        failing_since = None;
+                        backoff = Backoff::default();
+                        next_check = now + jittered(REVALIDATE_EVERY);
+                    }
+                    Access::Denied => return Some((CLOSE_FORBIDDEN, "forbidden")),
+                    Access::Unavailable => {
+                        if now.duration_since(*failing_since.get_or_insert(now)) >= FAILURE_GRACE {
+                            return Some((CLOSE_SERVER_ERROR, "unavailable"));
+                        }
+                        next_check = now + backoff.next_delay();
+                    }
                 }
             }
         }

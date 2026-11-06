@@ -238,6 +238,20 @@ pub(super) async fn lookup_group_invitation_by_id(
     Ok(lookup_from_row(row))
 }
 
+/// The invitation with this id, read outside a transaction.
+pub(super) async fn lookup_group_invitation_by_id_in_pool(
+    pool: &PgPool,
+    invitation_id: &str,
+) -> Result<GroupInvitationLookup, sqlx_core::Error> {
+    let row: Option<GroupInvitationRow> = query_as(&format!(
+        "{GROUP_INVITATION_SELECT} WHERE invite.invitation_id = $1 AND invite.revoked_at IS NULL"
+    ))
+    .bind(invitation_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(lookup_from_row(row))
+}
+
 fn lookup_from_row(row: Option<GroupInvitationRow>) -> GroupInvitationLookup {
     let Some((
         invitation_id,

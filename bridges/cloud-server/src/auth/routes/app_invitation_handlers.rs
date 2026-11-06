@@ -4,10 +4,12 @@ use sha2::{Digest, Sha256};
 
 const APP_INVITE_TOKEN_PREFIX: &str = "kordi_ai_";
 const APP_INVITE_LIFETIME_DAYS: i64 = 7;
-fn homepage_url() -> String {
+pub(super) fn homepage_url() -> String {
     format!("{}/", crate::distribution::public_origin())
 }
-const KORDI_FAVICON_URL: &str = "/assets/favicon.png";
+/// The Kordi bird mark used in page headers.
+pub(super) const KORDI_BIRD_SVG: &str = "<svg viewBox='64 58 384 384' aria-hidden='true'><mask id='kordi-bird-cut' maskUnits='userSpaceOnUse' x='-100' y='-100' width='712' height='712'><ellipse cx='262' cy='292' rx='150' ry='136' fill='#fff'/><path d='M400,342 C436,322 462,272 470,204 C448,236 420,244 386,218Z' fill='#fff' stroke='#fff' stroke-width='4' stroke-linejoin='round'/><circle cx='194' cy='266' r='17'/><path d='M269.6,333.2 C292,299.6 348,282 397.6,285.2 C381.6,325.2 336.8,357.2 288.8,355.6 C272.8,354 264.8,344.4 269.6,333.2Z'/></mask><g transform='translate(256,250) scale(0.94) translate(-270,-292)'><path d='M120,276 L82,294 L120,312Z' fill='currentColor' stroke='currentColor' stroke-width='12' stroke-linejoin='round'/><rect x='-100' y='-100' width='712' height='712' fill='currentColor' mask='url(#kordi-bird-cut)'/></g></svg>";
+pub(super) const KORDI_FAVICON_URL: &str = "/assets/favicon.png";
 
 struct AppInvitationRecord {
     display_name: Option<String>,
@@ -96,7 +98,7 @@ pub(super) fn configured_release_download_url() -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn safe_release_download_url(candidate: Option<&str>) -> Option<String> {
+pub(super) fn safe_release_download_url(candidate: Option<&str>) -> Option<String> {
     let url = url::Url::parse(candidate?.trim()).ok()?;
     let homepage = url::Url::parse(&homepage_url()).expect("valid Kordi homepage URL");
     if url.scheme() != "https"
@@ -223,7 +225,7 @@ pub(super) fn invitation_landing_document_with_open_action(
     <header>
       <div class="wrap">
         <a class="brand" href="{homepage}" aria-label="Kordi home">
-          <svg viewBox='64 58 384 384' aria-hidden='true'><mask id='kordi-bird-cut' maskUnits='userSpaceOnUse' x='-100' y='-100' width='712' height='712'><ellipse cx='262' cy='292' rx='150' ry='136' fill='#fff'/><path d='M400,342 C436,322 462,272 470,204 C448,236 420,244 386,218Z' fill='#fff' stroke='#fff' stroke-width='4' stroke-linejoin='round'/><circle cx='194' cy='266' r='17'/><path d='M269.6,333.2 C292,299.6 348,282 397.6,285.2 C381.6,325.2 336.8,357.2 288.8,355.6 C272.8,354 264.8,344.4 269.6,333.2Z'/></mask><g transform='translate(256,250) scale(0.94) translate(-270,-292)'><path d='M120,276 L82,294 L120,312Z' fill='currentColor' stroke='currentColor' stroke-width='12' stroke-linejoin='round'/><rect x='-100' y='-100' width='712' height='712' fill='currentColor' mask='url(#kordi-bird-cut)'/></g></svg>
+          {bird}
           <span>kordi</span>
         </a>
       </div>
@@ -244,6 +246,7 @@ pub(super) fn invitation_landing_document_with_open_action(
 </body>
 </html>"#,
         favicon_url = KORDI_FAVICON_URL,
+        bird = KORDI_BIRD_SVG,
     )
 }
 

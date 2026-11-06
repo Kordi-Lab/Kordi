@@ -117,8 +117,10 @@ request organization.
 
 Grounding runs a request starts resolve their resource pool from the request
 organization when they work outside a conversation, and from the
-conversation's organization inside one. Background work with no request uses
-the requester's personal organization as before.
+conversation's organization inside one. Nearby work the sweep queues later
+uses the organization stored when it was created (a request's own, or the one
+Nearby was turned on in) while the person still belongs to it; other
+background work with no request uses the requester's personal organization.
 
 ## Rollout
 

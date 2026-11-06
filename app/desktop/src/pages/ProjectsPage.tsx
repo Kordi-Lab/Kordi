@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
-import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
+import { ProviderConnectTray } from '@/components/ProviderConnectTray';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -167,7 +167,6 @@ export function ProjectsPage({
 }: ProjectsPageProps) {
   const projectComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const openAuthentication = onOpenAccountAuthentication ?? onOpenAuthSettings;
-  const authNoticeActionLabel = 'Open authentication';
   const canSubmitProjectMessage = projectComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
   const activeProjectLiveTurn = desktopLiveTurn?.sessionId === activeProjectSession.id ? desktopLiveTurn : undefined;
   const transcriptMessages = suppressLiveTurnEchoMessages(activeProjectSession.messages, activeProjectLiveTurn);
@@ -326,15 +325,6 @@ export function ProjectsPage({
         </div>
       </div>
 
-      {!hasAnyAuth ? (
-        <AuthNoticeBanner
-          title="No provider connected yet"
-          description="Connect a provider, save an API key, or choose a local LM Studio/Ollama server before running project conversations."
-          actionLabel={authNoticeActionLabel}
-          onAction={openAuthentication}
-        />
-      ) : null}
-
       <div className="min-h-0 flex-1 overflow-hidden">
         <ScrollArea
           ref={chatTranscriptScrollRef}
@@ -357,6 +347,7 @@ export function ProjectsPage({
       </div>
 
       <div className="shrink-0 px-5 pb-4 pt-3">
+        <ProviderConnectTray needsProvider={!hasAnyAuth} onConnect={openAuthentication} />
         <div className="app-composer-shell rounded-[26px] p-3">
           <div className="relative">
             {filteredProjectSlashCommands.length > 0 ? (

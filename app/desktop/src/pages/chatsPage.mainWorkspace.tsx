@@ -1,6 +1,6 @@
 import type { CompanionToolbarProps } from './chatsPage.companionToolbar';
 import { PinnedMessageShelf } from './PinnedMessageShelf';
-import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
+import { ProviderConnectTray } from '@/components/ProviderConnectTray';
 import { ChatPaneLayout } from '@/pages/ChatPaneLayout';
 import {
   localOwnedAgentSenderLabel,
@@ -240,17 +240,6 @@ export function ChatMainWorkspace({
             data-chat-destination-scope="main"
           >
             <ConversationCallBanner conversation={activeConv} />
-            {needsProvider ? (
-              <AuthNoticeBanner
-                title="No provider connected yet"
-                description={auth.onOpenAccountAuthentication
-                  ? 'Connect a provider, save an API key, or choose a local LM Studio/Ollama server before starting AI chats.'
-                  : 'Connect a cloud provider, save an API key, or choose a local LM Studio/Ollama server in Authentication before starting AI chats.'}
-                actionLabel="Open authentication"
-                onAction={openAuthentication}
-              />
-            ) : null}
-
             <PinnedMessageShelf
                 key={activeConv.id}
                 items={models.pins.pinnedMessages}
@@ -418,6 +407,7 @@ export function ChatMainWorkspace({
                           presentation.prefersReducedMotion,
                         placeholder: chatComposerPlaceholder(activeConv),
                         onOpenAuthentication: openAuthentication,
+                        notice: <ProviderConnectTray needsProvider={needsProvider} onConnect={openAuthentication} />,
                       }}
                       onSend={handleSend}
                       stop={composerStop}

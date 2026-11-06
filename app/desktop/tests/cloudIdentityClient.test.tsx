@@ -115,3 +115,42 @@ test('group invitation preview resolves without authentication', async () => {
   assert.equal(calls[0]?.url, 'http://srv/v1/cloud/invitations/groups/resolve/kordi_gi_a%2Fb');
   assert.deepEqual(calls[0]?.init?.headers, undefined);
 });
+
+test('pending group invitation methods claim, list, accept, and dismiss with bearer auth', async () => {
+  const calls: Array<{ url: string; method: string | undefined; auth: string | null }> = [];
+  const item = {
+    id: 'gpi_1', invitationId: 'groupinv_1', groupName: 'Reading group',
+    inviterName: 'Maya Chen', memberCount: 3, expiresAt: '2026-08-15T00:00:00Z',
+  };
+  const responses = [
+    { pending: item, deepLink: 'kordi://group-invite/kordi_gi_token' },
+    { invitations: [item] },
+    { conversationId: 'session:group:1', status: 'joined', groupId: 'session:group:1', groupSpaceId: 'session:group:1', groupTitle: 'Reading group' },
+    null,
+  ];
+  const fetchImpl: typeof fetch = (input, init) => {
+    calls.push({ url: input.toString(), method: init?.method, auth: new Headers(init?.headers).get('authorization') });
+    const body = responses.shift();
+    return Promise.resolve(new Response(body === null ? null : JSON.stringify(body), {
+      status: body === null ? 204 : 200,
+      headers: body === null ? undefined : { 'content-type': 'application/json' },
+    }));
+  };
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const claim = await client.claimGroupInvitation('kordi_cs_me', 'kordi_gi_token');
+  const list = await client.listPendingGroupInvitations('kordi_cs_me');
+  const accepted = await client.acceptPendingGroupInvitation('kordi_cs_me', 'gpi_1');
+  await client.dismissPendingGroupInvitation('kordi_cs_me', 'gpi_1');
+
+  assert.equal(claim.pending.id, 'gpi_1');
+  assert.equal(list[0]?.groupName, 'Reading group');
+  assert.equal(accepted.groupSpaceId, 'session:group:1');
+  assert.deepEqual(calls.map(({ url, method }) => `${method} ${url}`), [
+    'POST http://srv/v1/cloud/invitations/groups/claim/kordi_gi_token',
+    'GET http://srv/v1/cloud/invitations/groups/pending',
+    'POST http://srv/v1/cloud/invitations/groups/pending/gpi_1/accept',
+    'DELETE http://srv/v1/cloud/invitations/groups/pending/gpi_1',
+  ]);
+  assert.ok(calls.every(({ auth }) => auth === 'Bearer kordi_cs_me'));
+});
