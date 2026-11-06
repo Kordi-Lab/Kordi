@@ -24,7 +24,6 @@ struct AIConsentSheet: View {
             if let error {
                 SettingsErrorLabel(error)
             }
-            Spacer(minLength: 4)
             VStack(spacing: 10) {
                 choiceButton("Allow", status: .allowed, primary: true)
                 choiceButton("Don't allow", status: .declined, primary: false)
@@ -33,8 +32,7 @@ struct AIConsentSheet: View {
         .padding(.horizontal, 24)
         .padding(.top, 28)
         .padding(.bottom, 16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(uiColor: .systemBackground))
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func choiceButton(_ title: String, status: AIConsentStatus, primary: Bool) -> some View {
@@ -88,8 +86,14 @@ enum AIConsentPresenter {
         let controller = UIHostingController(rootView: sheet)
         holder.controller = controller
         controller.isModalInPresentation = true
+        // Size the sheet to its content at the screen's width instead of a fixed half height.
+        let width = host.view.window?.bounds.width ?? host.view.bounds.width
         if let sheetController = controller.sheetPresentationController {
-            sheetController.detents = [.medium(), .large()]
+            sheetController.detents = [.custom(identifier: .init("ai-consent")) { [weak controller] context in
+                let fitting = CGSize(width: width, height: .greatestFiniteMagnitude)
+                let height = controller?.sizeThatFits(in: fitting).height ?? 0
+                return height > 0 ? min(height, context.maximumDetentValue) : context.maximumDetentValue * 0.5
+            }]
             sheetController.prefersGrabberVisible = false
         }
         presented = controller
@@ -168,6 +172,12 @@ struct PrivacySettingsView: View {
         error = await model.setAIConsent(status)
         isSaving = false
     }
+}
+
+/// Kordi's public legal pages.
+enum KordiLegalLinks {
+    static let terms = URL(string: "https://kordi.ai/terms")!
+    static let privacy = URL(string: "https://kordi.ai/privacy")!
 }
 
 /// A settings row that opens one of Kordi's legal pages in Safari.

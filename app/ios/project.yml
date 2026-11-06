@@ -87,8 +87,6 @@ targets:
       path: Kordi/Supporting/Kordi.entitlements
       properties:
         aps-environment: $(APNS_ENVIRONMENT)
-        com.apple.developer.applesignin:
-          - Default
         com.apple.security.application-groups:
           - $(KORDI_SHARE_APP_GROUP)
         keychain-access-groups:

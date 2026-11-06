@@ -10,12 +10,10 @@ struct WelcomeView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.colorScheme) private var colorScheme
 
     /// Set once the server is known to lack browser sign-in; picks the form's mode.
     @State private var fallback: AppSignInIntent? = WelcomeView.previewFallback
     @State private var activeIntent: AppSignInIntent?
-    @State private var isSigningInWithApple = false
     /// Restores a sign-in kept after a failed launch. Log in and Sign up stay
     /// usable meanwhile; tapping one cancels the restore.
     @State private var resumeTask: Task<Void, Never>?
@@ -97,32 +95,9 @@ struct WelcomeView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 4)
             }
-            appleButton
             actionButton(.login, title: "Log in", primary: true)
             actionButton(.signup, title: "Sign up", primary: false)
-            Text(KordiLegalLinks.agreement)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .tint(.primary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 4)
-                .accessibilityIdentifier("welcome-legal")
         }
-    }
-
-    /// Apple's button in the style that stands apart from the ink Log in:
-    /// white with an outline in light mode, white in dark mode (Apple's
-    /// guidelines rule out the black style on a dark background).
-    private var appleButton: some View {
-        AppleSignInButton(style: colorScheme == .dark ? .white : .whiteOutline, cornerRadius: 26) {
-            Task { await startApple() }
-        }
-        .id(colorScheme)
-        .frame(maxWidth: .infinity, minHeight: 52, maxHeight: 52)
-        .disabled(activeIntent != nil || isSigningInWithApple)
-        .opacity(activeIntent != nil || isSigningInWithApple ? 0.6 : 1)
-        .accessibilityIdentifier("welcome-apple")
     }
 
     private func actionButton(_ intent: AppSignInIntent, title: String, primary: Bool) -> some View {
@@ -140,7 +115,7 @@ struct WelcomeView: View {
             .frame(maxWidth: .infinity, minHeight: 52)
         }
         .buttonStyle(WelcomeButtonStyle(primary: primary))
-        .disabled(activeIntent != nil || isSigningInWithApple)
+        .disabled(activeIntent != nil)
         .accessibilityLabel(title)
     }
 
@@ -158,20 +133,8 @@ struct WelcomeView: View {
         }
     }
 
-    private func startApple() async {
-        guard activeIntent == nil, !isSigningInWithApple else { return }
-        resumeTask?.cancel()
-        resumeTask = nil
-        isSigningInWithApple = true
-        defer { isSigningInWithApple = false }
-        guard await model.signInWithApple() else { return }
-#if canImport(UIKit)
-        UIAccessibility.post(notification: .announcement, argument: "Signed in")
-#endif
-    }
-
     private func start(_ intent: AppSignInIntent) async {
-        guard activeIntent == nil, !isSigningInWithApple else { return }
+        guard activeIntent == nil else { return }
         resumeTask?.cancel()
         resumeTask = nil
         activeIntent = intent

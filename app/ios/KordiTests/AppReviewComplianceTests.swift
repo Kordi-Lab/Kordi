@@ -1,7 +1,7 @@
 import XCTest
 @testable import Kordi
 
-/// AI consent, Sign in with Apple, and account deletion (App Store review fixes).
+/// AI consent and account deletion (App Store review fixes).
 final class AppReviewComplianceTests: XCTestCase {
     // MARK: AI consent
 
@@ -63,52 +63,6 @@ final class AppReviewComplianceTests: XCTestCase {
         let refusal = CloudAPIError(code: "ai_consent_required", message: "AI is off.", statusCode: 403)
         XCTAssertTrue(AIConsentGate.isConsentRequired(refusal))
         XCTAssertFalse(AIConsentGate.isConsentRequired(CloudAPIError(code: "forbidden", message: "", statusCode: 403)))
-    }
-
-    // MARK: Sign in with Apple
-
-    func testNonceHashIsLowercaseSHA256Hex() {
-        XCTAssertEqual(
-            AppleSignInNonce.sha256Hex("abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        )
-        XCTAssertEqual(
-            AppleSignInNonce.sha256Hex(""),
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        )
-    }
-
-    func testNonceIsRandomAndURLSafe() {
-        let first = AppleSignInNonce.make()
-        let second = AppleSignInNonce.make()
-        XCTAssertEqual(first.count, 32)
-        XCTAssertNotEqual(first, second)
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
-        XCTAssertTrue(first.unicodeScalars.allSatisfy { allowed.contains($0) && $0.isASCII })
-    }
-
-    func testAppleNativeRequestSendsRawNonceAndTrimsOptionalName() throws {
-        let device = CloudDeviceRegistration(
-            displayName: "iPhone", platform: "ios", osVersion: "27.0", appVersion: "0.0.2",
-            approximateLocation: "", publicKey: "key", keyAlgorithm: "p256"
-        )
-        let request = AppleNativeSignInRequest(
-            credential: AppleSignInCredential(
-                identityToken: "id.token", authorizationCode: "code", givenName: " Maya ", familyName: "", email: nil
-            ),
-            nonce: "raw-nonce",
-            device: device
-        )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .sortedKeys
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(request)) as? [String: Any])
-        XCTAssertEqual(json["identityToken"] as? String, "id.token")
-        XCTAssertEqual(json["authorizationCode"] as? String, "code")
-        XCTAssertEqual(json["nonce"] as? String, "raw-nonce")
-        XCTAssertEqual(json["givenName"] as? String, "Maya")
-        XCTAssertNil(json["familyName"])
-        XCTAssertNil(json["email"])
-        XCTAssertEqual((json["device"] as? [String: Any])?["platform"] as? String, "ios")
     }
 
     // MARK: Account deletion

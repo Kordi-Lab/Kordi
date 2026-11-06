@@ -70,23 +70,6 @@ enum AccountDeletionCleanup {
 }
 
 extension AppModel {
-    func signInWithApple() async -> Bool {
-        errorMessage = nil
-        guard !isPreviewMode else { return false }
-        let nonce = AppleSignInNonce.make()
-        do {
-            let credential = try await AppleSignInController().signIn(hashedNonce: AppleSignInNonce.sha256Hex(nonce))
-            let response = try await api.signInWithApple(credential, nonce: nonce)
-            try await completeAuthentication(response)
-            return true
-        } catch where AppleSignInError.isCancellation(error) {
-            return false
-        } catch {
-            errorMessage = userFacing(error, fallback: "Could not sign in with Apple.")
-            return false
-        }
-    }
-
     func accountDeletionProofMode() async -> AccountDeletionProofMode {
         if isPreviewMode { return .password(allowsEmailCode: false) }
         guard let (api, token, _) = try? projectContext(),

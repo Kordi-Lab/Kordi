@@ -34,7 +34,7 @@ struct LoginView: View {
     }
 
     private enum Field { case displayName, email, password, confirmPassword, verificationCode }
-    private enum Submission: Equatable { case form, apple, social(CloudOAuthProvider) }
+    private enum Submission: Equatable { case form, social(CloudOAuthProvider) }
 
     init(signup: Bool = ProcessInfo.processInfo.arguments.contains("--preview-signup")) {
         _mode = State(initialValue: signup ? .signup : .login)
@@ -122,24 +122,6 @@ struct LoginView: View {
 
     private var socialSignIn: some View {
         HStack(spacing: 18) {
-            Button {
-                Task { await submitApple() }
-            } label: {
-                ZStack {
-                    Image(systemName: "apple.logo")
-                        .font(.system(size: 21, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .opacity(activeSubmission == .apple ? 0 : 1)
-                    if activeSubmission == .apple {
-                        ProgressView()
-                    }
-                }
-                .frame(width: 50, height: 50)
-            }
-            .buttonStyle(KordiSocialButtonStyle())
-            .disabled(isBusy)
-            .accessibilityLabel("Sign in with Apple")
-            .accessibilityIdentifier("login-apple")
             ForEach(CloudOAuthProvider.allCases) { provider in
                 Button {
                     Task { await submitSocial(provider) }
@@ -469,14 +451,6 @@ struct LoginView: View {
         }
         uploadedAvatarDataURL = prepared.dataURL
         model.errorMessage = nil
-    }
-
-    private func submitApple() async {
-        guard !isBusy else { return }
-        activeSubmission = .apple
-        model.errorMessage = nil
-        defer { activeSubmission = nil }
-        announceSuccess(await model.signInWithApple())
     }
 
     private func submitSocial(_ provider: CloudOAuthProvider) async {

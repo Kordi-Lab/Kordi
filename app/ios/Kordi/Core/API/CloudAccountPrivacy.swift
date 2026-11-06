@@ -32,40 +32,6 @@ struct AIConsentUpdateRequest: Encodable, Equatable {
     let status: AIConsentStatus
 }
 
-// MARK: Sign in with Apple
-
-/// What Apple returned to the native sign-in sheet. Name and email arrive only
-/// on the first authorization for this app.
-struct AppleSignInCredential: Equatable {
-    let identityToken: String
-    let authorizationCode: String
-    var givenName: String? = nil
-    var familyName: String? = nil
-    var email: String? = nil
-}
-
-/// `POST /v1/cloud/auth/oauth/apple/native`. `nonce` is the raw value; the
-/// server compares its SHA-256 with the token's nonce claim.
-struct AppleNativeSignInRequest: Encodable, Equatable {
-    let identityToken: String
-    let authorizationCode: String
-    let nonce: String
-    let givenName: String?
-    let familyName: String?
-    let email: String?
-    let device: CloudDeviceRegistration
-
-    init(credential: AppleSignInCredential, nonce: String, device: CloudDeviceRegistration) {
-        identityToken = credential.identityToken
-        authorizationCode = credential.authorizationCode
-        self.nonce = nonce
-        givenName = credential.givenName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-        familyName = credential.familyName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-        email = credential.email?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-        self.device = device
-    }
-}
-
 // MARK: Account deletion
 
 /// The proof body shared by the account security routes: the current password,
@@ -111,18 +77,6 @@ extension CloudAPIClient {
             body: AIConsentUpdateRequest(status: status),
             fallback: "Could not save your AI choice."
         )
-    }
-
-    func signInWithApple(_ credential: AppleSignInCredential, nonce: String) async throws -> CloudAuthResponse {
-        let device = try await deviceRegistration()
-        let response: CloudAuthResponse = try await send(
-            path: "/v1/cloud/auth/oauth/apple/native",
-            method: "POST",
-            body: AppleNativeSignInRequest(credential: credential, nonce: nonce, device: device),
-            fallback: "Could not sign in with Apple."
-        )
-        activateAccount(response.account.accountId)
-        return response
     }
 
     func accountSecurityOverview(token: String) async throws -> CloudAccountSecurityOverview {

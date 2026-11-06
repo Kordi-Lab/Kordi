@@ -109,7 +109,6 @@
 		384CEA6FD6D3803D7750D658 /* DigestCalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6B70D03EA8C02F0F10917A6 /* DigestCalendarService.swift */; };
 		3944D8D3F65FF85635C5F966 /* CommonGroundCardDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509B7E9F27B599320FB93D6B /* CommonGroundCardDesign.swift */; };
 		3B05C6EC8DDE3B8793B5CC38 /* AppSignInClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71D5BE11ECF1B8B596622615 /* AppSignInClientTests.swift */; };
-		3B894235AB00D8F99A0AD10D /* AppleSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAEDFA305C8A1AAE41DF385E /* AppleSignIn.swift */; };
 		3BD3A3D1C8A3CCECFFA523CD /* ProviderLoginMethodTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADB7FC1E4F59FD3D947E2DE0 /* ProviderLoginMethodTests.swift */; };
 		3C0B3DEC6C27850CAE0349E4 /* VoiceTranscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45D11E3168D8265F3579537 /* VoiceTranscription.swift */; };
 		3C0D1EFE87F4929F5963E148 /* ProviderLoginControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEFE5854F35FB895C4354C9D /* ProviderLoginControllerTests.swift */; };
@@ -862,7 +861,6 @@
 		C895B1E21D180A3B8DAC028C /* CloudPresencePublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudPresencePublisher.swift; sourceTree = "<group>"; };
 		C89A8FB63D5B1DFD7576809C /* MarkdownMessageContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMessageContent.swift; sourceTree = "<group>"; };
 		CADF6F494B299ED8073CA3BF /* SystemAccountIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAccountIdentityTests.swift; sourceTree = "<group>"; };
-		CAEDFA305C8A1AAE41DF385E /* AppleSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignIn.swift; sourceTree = "<group>"; };
 		CB6037E13EA0BCC18AA44625 /* AttachmentReactionMutationQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentReactionMutationQueue.swift; sourceTree = "<group>"; };
 		CC9D282C0E391AFB2885E0C1 /* CommonGroundTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundTests.swift; sourceTree = "<group>"; };
 		CCAF2EDCCD5927A31300D1C3 /* CommonGroundRoomList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundRoomList.swift; sourceTree = "<group>"; };
@@ -1111,7 +1109,6 @@
 		3CE1FA2605A71586BFD1C1ED /* Auth */ = {
 			isa = PBXGroup;
 			children = (
-				CAEDFA305C8A1AAE41DF385E /* AppleSignIn.swift */,
 				F9EAECC27E3B8C88C21CBA73 /* AppSignInClient.swift */,
 				D340A0F91322419771BCFA62 /* AppSignInController.swift */,
 				151CB7A492FFA22F02806ED0 /* CloudOAuthSession.swift */,
@@ -2141,7 +2138,6 @@
 				FF29267EE96DBAB9E4239CD3 /* AppSignInClient.swift in Sources */,
 				6F6AA16D551A349AC85BB561 /* AppSignInController.swift in Sources */,
 				ADE37759632E00D9F3220153 /* AppearanceSettingsView.swift in Sources */,
-				3B894235AB00D8F99A0AD10D /* AppleSignIn.swift in Sources */,
 				85F8CFC2AC23D0C91408C596 /* AttachmentFileStore.swift in Sources */,
 				B6CD1BEE84B0B1ACFDBA10C3 /* AttachmentReactionMutationQueue.swift in Sources */,
 				1AC36BD7EB5D806BCCE18ABB /* AttachmentTransfer.swift in Sources */,
