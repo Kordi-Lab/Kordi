@@ -139,7 +139,7 @@ pub(crate) async fn revoke_tokens(
     outcome
 }
 
-async fn revoke_one(
+pub(super) async fn revoke_one(
     cipher: Option<&dyn ProviderAuthCipher>,
     config: Option<&AppleConfig>,
     api: &dyn AppleApi,

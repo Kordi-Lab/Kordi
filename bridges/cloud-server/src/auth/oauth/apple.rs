@@ -9,7 +9,8 @@
 //! code is exchanged with an ES256 client secret, the identity token is
 //! verified against Apple's keys, and the refresh token is kept (encrypted)
 //! so it can be revoked when the account is deleted or Apple is unlinked
-//! ([`revoke_apple_tokens_for_account`]).
+//! ([`revoke_apple_tokens_for_account`]). Tokens a deleted account could not
+//! have revoked are retried from a queue ([`revocations`]).
 
 use std::sync::Arc;
 
@@ -22,6 +23,7 @@ pub(crate) mod api;
 pub(crate) mod client_secret;
 pub(crate) mod config;
 pub(crate) mod id_token;
+pub(crate) mod revocations;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub(crate) mod tokens;
@@ -29,6 +31,7 @@ pub(crate) mod tokens;
 pub(crate) use api::{AppleApi, AppleApiError, AppleHttp};
 pub(crate) use config::{apple_is_configured, AppleConfig};
 pub(crate) use id_token::IdTokenError;
+pub use revocations::spawn as spawn_revocation_worker;
 pub use tokens::revoke_apple_tokens_for_account;
 pub(crate) use tokens::store_refresh_token;
 

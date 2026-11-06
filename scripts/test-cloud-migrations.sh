@@ -92,8 +92,9 @@ tests=(
   organization_claim_tests::upgrade_from_170_adds_organization_claims
   identity_email_tests::upgrade_from_167_backfills_identity_matching_email
   resource_pool_tests::upgrade_from_173_adds_usage_pauses
-  contact_permission_tests::upgrade_from_174_adds_contact_permissions
   safety_tests::upgrade_from_180_adds_blocks_and_reports
+  contact_permission_tests::upgrade_from_183_adds_contact_permissions
+  apple_token_tests::upgrade_from_184_adds_apple_token_revocations
 )
 index=0
 for test_name in "${tests[@]}"; do
