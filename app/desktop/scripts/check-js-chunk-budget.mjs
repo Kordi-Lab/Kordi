@@ -37,11 +37,13 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Applying them on the Mac (the restricted list, context filtering, the member popover switches) adds 2 kB.
 // Blocking and per-person permissions together in the same contact and member views add 2 kB.
 // Real group avatars in the Groups in common row add 2 kB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_780_000;
+// Removing deleted and blocked contacts at once and Unblock on profiles add 2 kB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_782_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.
-const MAX_WEB_APP_DIST_BYTES = 5_812_000;
+// Removing deleted and blocked contacts at once and Unblock on profiles add 3 kB there.
+const MAX_WEB_APP_DIST_BYTES = 5_815_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;

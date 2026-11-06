@@ -12,21 +12,27 @@ import { SafetyActionsProvider } from '../src/features/safety/SafetyActionsProvi
 import type { CloudBlockedAccount, CloudReportInput, ReportTarget } from '../src/features/safety/safetyTypes';
 import { __resetCloudBlocksForTests } from '../src/features/safety/useCloudBlocks';
 import { MessageContextMenuContent } from '../src/kordi-app/components/messageContextMenuContent';
-import type { Message } from '../src/kordi-app/types';
+import type { ConversationParticipant, Message } from '../src/kordi-app/types';
+import { MemberContactProfileContent } from '../src/pages/MemberContactProfilePopover';
 import { flushReactUpdates, installDom } from './helpers/transcriptAttachmentDom';
 
 const CONVERSATION_ID = '0b9f6c1e-3c1e-4b8a-9d55-1f2a3b4c5d6e';
 const MESSAGE_ID = '7d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6';
 
-type Recorded = { blocked: string[]; unblocked: string[]; reports: CloudReportInput[]; contactRefreshes: number };
+type Recorded = { blocked: string[]; unblocked: string[]; reports: CloudReportInput[]; contactRefreshes: number; forgotten: string[] };
 
-function fakeDeps(initial: CloudBlockedAccount[], options: { failFirstReport?: boolean; listStatus?: 404 } = {}) {
-  const recorded: Recorded = { blocked: [], unblocked: [], reports: [], contactRefreshes: 0 };
+function fakeDeps(initial: CloudBlockedAccount[], options: { failFirstReport?: boolean; listStatus?: 404; failFirstList?: boolean } = {}) {
+  const recorded: Recorded = { blocked: [], unblocked: [], reports: [], contactRefreshes: 0, forgotten: [] };
+  let failList = options.failFirstList ?? false;
   let blocks = [...initial];
   let failReport = options.failFirstReport ?? false;
   const client: SafetyClient = {
     listBlocks: async () => {
       if (options.listStatus === 404) throw new CloudAuthError('unknown', 'Not found', 404);
+      if (failList) {
+        failList = false;
+        throw new CloudAuthError('server_error', 'Could not load blocked people.', 500);
+      }
       return blocks;
     },
     block: async (_token, accountId) => {
@@ -67,8 +73,9 @@ async function mount(children: ReactNode, deps: SafetyDeps, recorded: Recorded) 
   document.body.append(host);
   const root = createRoot(host);
   const refreshContacts = async () => { recorded.contactRefreshes += 1; };
+  const forgetContact = (accountId: string) => { recorded.forgotten.push(accountId); };
   await act(async () => {
-    root.render(createElement(SafetyActionsProvider, { accountId: 'acct_me', refreshContacts, deps, children }));
+    root.render(createElement(SafetyActionsProvider, { accountId: 'acct_me', refreshContacts, forgetContact, deps, children }));
   });
   await flushReactUpdates();
   const click = (element: Element | null | undefined) => act(async () => {
@@ -126,6 +133,7 @@ test('the report dialog sends one report per choice set and can also block', asy
     });
     assert.match(page.dialog()?.textContent ?? '', /Report sent/);
     assert.equal(recorded.contactRefreshes, 1, 'an also-block refreshes contacts');
+    assert.deepEqual(recorded.forgotten, ['acct_sam']);
 
     await page.click(page.button('Done'));
     assert.equal(page.dialog(), null);
@@ -144,6 +152,7 @@ test('blocking confirms with the approved copy, refreshes contacts, and runs the
     await page.click(page.button('Block'));
     await flushReactUpdates();
     assert.deepEqual(recorded.blocked, ['acct_sam']);
+    assert.deepEqual(recorded.forgotten, ['acct_sam'], 'the contact row leaves at once');
     assert.equal(recorded.contactRefreshes, 1);
     assert.equal(closed, 1);
     assert.equal(page.dialog(), null);
@@ -199,6 +208,67 @@ test('Block and Report turn on only when the server supports blocking', async ()
     assert.match(page.body(), /Block:offReport:off/);
   } finally {
     await page.cleanup();
+  }
+});
+
+test('a blocked person’s menu offers Unblock in place of Block', async () => {
+  const sam = { accountId: 'acct_sam', kordiId: '100200300', displayName: 'Sam Rivera', avatarUrl: null, blockedAt: '2026-11-05T00:00:00Z' };
+  const { deps, recorded } = fakeDeps([sam]);
+  function UnblockProbe() {
+    const items = useContactSafetyMenuItems('acct_sam', 'Sam Rivera');
+    return createElement('div', null, items.map((item) => (
+      item.kind === 'item' ? createElement('button', { key: item.key, type: 'button', disabled: item.disabled, onClick: item.onSelect }, item.label) : null
+    )));
+  }
+  const page = await mount(createElement(UnblockProbe), deps, recorded);
+  try {
+    assert.equal(page.button('Block'), undefined);
+    await page.click(page.button('Unblock'));
+    assert.equal(page.dialog()?.textContent, 'Unblock Sam Rivera?CancelUnblock');
+    await page.click([...(page.dialog()?.querySelectorAll('button') ?? [])].find((button) => button.textContent === 'Unblock'));
+    await flushReactUpdates();
+    assert.deepEqual(recorded.unblocked, ['acct_sam']);
+    assert.ok(page.button('Block'), 'the menu offers Block again');
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test('a blocked group member offers Unblock where Add contact was', async () => {
+  const sam = { accountId: 'acct_sam', kordiId: '100200300', displayName: 'Sam Rivera', avatarUrl: null, blockedAt: '2026-11-05T00:00:00Z' };
+  const { deps, recorded } = fakeDeps([sam]);
+  const member = { id: 'human:acct_sam', name: 'Sam Rivera', humanId: 'acct_sam', kind: 'human' } as ConversationParticipant;
+  const page = await mount(createElement(MemberContactProfileContent, { participant: member, contacts: [], onAddContact: () => undefined }), deps, recorded);
+  try {
+    assert.equal(document.body.querySelector('[data-member-contact-action="add"]'), null);
+    await page.click(document.body.querySelector('[data-member-contact-action="unblock"]'));
+    assert.equal(page.dialog()?.textContent, 'Unblock Sam Rivera?CancelUnblock');
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test('a failed load keeps Settings › Blocked reachable with a retry', async () => {
+  const sam = { accountId: 'acct_sam', kordiId: '100200300', displayName: 'Sam Rivera', avatarUrl: null, blockedAt: '2026-11-05T00:00:00Z' };
+  const { deps, recorded } = fakeDeps([sam], { failFirstList: true });
+  function AvailabilityProbe() {
+    return createElement('output', null, useSafetyActions().available ? 'available' : 'hidden');
+  }
+  __resetCloudBlocksForTests();
+  const page = await mount(createElement('div', null, createElement(AvailabilityProbe)), deps, recorded);
+  try {
+    assert.match(page.body(), /available/, 'an error other than a missing route keeps blocking on');
+  } finally {
+    await page.cleanup();
+  }
+
+  const again = fakeDeps([sam], { failFirstList: true });
+  const panel = await mount(createElement(BlockedAccountsPanel), again.deps, again.recorded);
+  try {
+    // The page reloads on open, so the failure is already behind it.
+    assert.match(panel.body(), /Sam Rivera/);
+  } finally {
+    await panel.cleanup();
   }
 });
 

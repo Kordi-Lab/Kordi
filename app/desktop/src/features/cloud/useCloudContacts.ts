@@ -17,14 +17,17 @@ import {
   type CloudPublicProfile,
 } from './authClient';
 import { cloudContactSummaryKey } from './cloudContactTypes';
+import { cloudContactToContact, cloudRequestToContactRequest } from './cloudContactMapping';
 import {
-  CLOUD_HOST_SENTINEL,
-  cloudContactInitials,
-  cloudContactToContact,
-} from './cloudContactMapping';
-import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
-import {
+  applyAcceptedCloudContactRequest,
   applyCloudContactsRefreshSnapshot,
+  cloudContactAcceptedSyncDetail,
+  cloudContactAddedActorAccountId,
+  cloudContactAddedOccurredAt,
+  mergeCloudContactRequestSnapshot,
+  mergeCloudContactSummarySnapshot,
+  removeCloudContactRequestSnapshot,
+  removeCloudContactSummarySnapshot,
   type CloudContactsSnapshot,
 } from './cloudContactsSnapshot';
 import { loadSession } from './session';
@@ -35,10 +38,26 @@ import {
   type CloudSupportTicketInput,
   type CloudSupportTicketResult,
 } from './supportClient';
-import { formatKordiHandle } from './kordiId';
+import { removeCloudContact } from './contactProfileClient';
 
-export { applyCloudContactsRefreshSnapshot } from './cloudContactsSnapshot';
-export { CLOUD_HOST_SENTINEL, cloudContactToContact, isCloudContact } from './cloudContactMapping';
+export {
+  acceptedCloudContactPeerAccountId,
+  applyAcceptedCloudContactRequest,
+  applyCloudContactsRefreshSnapshot,
+  cloudContactAcceptedSyncDetail,
+  cloudContactAddedActorAccountId,
+  mergeCloudContactRequestSnapshot,
+  mergeCloudContactSummarySnapshot,
+  removeCloudContactRequestSnapshot,
+  removeCloudContactSummarySnapshot,
+} from './cloudContactsSnapshot';
+export {
+  CLOUD_HOST_SENTINEL,
+  cloudContactToContact,
+  cloudRequestToContactRequest,
+  isCloudContact,
+  isPendingIncomingCloudContactRequest,
+} from './cloudContactMapping';
 export type { CloudContactsSnapshot } from './cloudContactsSnapshot';
 
 export type UseCloudContactsResult = {
@@ -52,11 +71,14 @@ export type UseCloudContactsResult = {
   lookupProfile(accountId: string): Promise<CloudPublicProfile | null>;
   acceptRequest(requestId: string): Promise<void>;
   rejectRequest(requestId: string): Promise<void>;
+  /** Deletes a contact in both directions; the row leaves at once and returns if the server refuses. */
+  removeContact(this: void, peerAccountId: string): Promise<void>;
   submitSupportRequest: (input: CloudSupportTicketInput) => Promise<CloudSupportTicketResult>;
   getSupportRequest: (clientSubmissionId: string) => Promise<CloudSupportTicketResult | null>;
 };
 
 const REFRESH_INTERVAL_MS = 15_000;
+const RECENTLY_ADDED_GRACE_MS = 60_000; // A contact added here outlives a server list that lacks it this long.
 export const CLOUD_CONTACT_ACCEPTED_SYNC_EVENT = 'kordi.cloud.contact.accepted-sync';
 
 export type CloudContactsStoreSnapshot = CloudContactsSnapshot & {
@@ -80,6 +102,10 @@ type CloudContactsStore = {
   pollTimer: ReturnType<typeof window.setInterval> | null;
   ws: WebSocket | null;
   wsOpening: boolean;
+  /** Contacts added here (summary key → expiry), kept until the server lists them. */
+  recentlyAdded: Map<string, number>;
+  /** People being removed here; refreshes skip them until the delete settles. */
+  removing: Set<string>;
 };
 
 const EMPTY_CLOUD_CONTACTS_SNAPSHOT: CloudContactsStoreSnapshot = {
@@ -90,6 +116,8 @@ const EMPTY_CLOUD_CONTACTS_SNAPSHOT: CloudContactsStoreSnapshot = {
   initialLoadSettled: true,
 };
 const cloudContactStores = new Map<string, CloudContactsStore>();
+/** Every mounted store, including the per-mount ones the browser app creates. */
+const mountedCloudContactStores = new Set<CloudContactsStore>();
 
 export function selectCloudContactsSnapshotForAccount(
   state: CloudContactsSnapshotState,
@@ -99,95 +127,11 @@ export function selectCloudContactsSnapshotForAccount(
   return state.accountId === accountId ? state.snapshot : fallback;
 }
 
-export function mergeCloudContactRequestSnapshot(
-  snapshot: CloudContactsSnapshot,
-  request: CloudContactRequest,
-): CloudContactsSnapshot {
-  const nextRequests = snapshot.requests.filter((item) => item.requestId !== request.requestId);
-  if (request.status === 'pending') nextRequests.unshift(request);
-  return { ...snapshot, requests: nextRequests };
-}
-
-export function mergeCloudContactSummarySnapshot(
-  snapshot: CloudContactsSnapshot,
-  contact: CloudContactSummary,
-): CloudContactsSnapshot {
-  const contactKey = cloudContactSummaryKey(contact);
-  const existing = snapshot.contacts.find((item) => cloudContactSummaryKey(item) === contactKey);
-  const contacts = existing
-    ? snapshot.contacts.map((item) => (cloudContactSummaryKey(item) === contactKey ? { ...item, ...contact } : item))
-    : [contact, ...snapshot.contacts];
-  return { ...snapshot, contacts };
-}
-
-export function applyAcceptedCloudContactRequest(
-  snapshot: CloudContactsSnapshot,
-  request: CloudContactRequest,
-): CloudContactsSnapshot {
-  const nextRequests = snapshot.requests.filter((item) => item.requestId !== request.requestId);
-  const counterpart = request.counterpart;
-  if (!counterpart) return { ...snapshot, requests: nextRequests };
-  const acceptedContact: CloudContactSummary = {
-    ...counterpart,
-    createdAt: counterpart.createdAt || request.decidedAt || new Date().toISOString(),
-  };
-  return mergeCloudContactSummarySnapshot({ ...snapshot, requests: nextRequests }, acceptedContact);
-}
-
-function cleanText(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-export function cloudContactAddedActorAccountId(payload: unknown, accountId: string): string | null {
-  const record = objectRecord(payload);
-  const actorId = cleanText(record?.actor_account_id);
-  const peerId = cleanText(record?.peer_account_id);
-  const selfId = accountId.trim();
-  if (!actorId || !peerId || !selfId || peerId !== selfId || actorId === selfId) return null;
-  return actorId;
-}
-
-export function acceptedCloudContactPeerAccountId(request: CloudContactRequest, accountId: string): string | null {
-  const selfId = accountId.trim();
-  if (request.status !== 'accepted' || !selfId) return null;
-  if (request.fromAccountId === selfId) return request.toAccountId;
-  if (request.toAccountId === selfId) return request.fromAccountId;
-  return null;
-}
-
-export function cloudContactAcceptedSyncDetail(
-  request: CloudContactRequest,
-  accountId: string,
-  helloMessage?: CloudMessage | null,
-): { requestId: string; peerAccountId: string; message?: CloudMessage } | null {
-  const peerAccountId = acceptedCloudContactPeerAccountId(request, accountId);
-  if (!peerAccountId) return null;
-  return {
-    requestId: request.requestId,
-    peerAccountId,
-    ...(helloMessage ? { message: helloMessage } : {}),
-  };
-}
-
 function dispatchCloudContactAcceptedSync(request: CloudContactRequest, accountId: string, helloMessage?: CloudMessage | null): void {
   if (typeof window === 'undefined') return;
   const detail = cloudContactAcceptedSyncDetail(request, accountId, helloMessage);
   if (!detail) return;
   window.dispatchEvent(new CustomEvent(CLOUD_CONTACT_ACCEPTED_SYNC_EVENT, { detail }));
-}
-
-export function removeCloudContactRequestSnapshot(
-  snapshot: CloudContactsSnapshot,
-  requestId: string,
-): CloudContactsSnapshot {
-  return {
-    ...snapshot,
-    requests: snapshot.requests.filter((item) => item.requestId !== requestId),
-  };
 }
 
 function cloudContactsStoreFor(accountId: string, fresh = false): CloudContactsStore {
@@ -203,6 +147,8 @@ function cloudContactsStoreFor(accountId: string, fresh = false): CloudContactsS
     pollTimer: null,
     ws: null,
     wsOpening: false,
+    recentlyAdded: new Map(),
+    removing: new Set(),
   };
   if (!fresh) cloudContactStores.set(accountId, store);
   return store;
@@ -234,6 +180,40 @@ function applyCloudContactsSnapshot(
   publishCloudContactsStore(store, next);
 }
 
+function rememberRecentlyAdded(store: CloudContactsStore, contact: CloudContactSummary) {
+  store.recentlyAdded.set(cloudContactSummaryKey(contact), Date.now() + RECENTLY_ADDED_GRACE_MS);
+}
+
+function recentlyAddedKeys(store: CloudContactsStore): Set<string> {
+  const now = Date.now();
+  for (const [key, expiresAt] of store.recentlyAdded) if (expiresAt <= now) store.recentlyAdded.delete(key);
+  return new Set(store.recentlyAdded.keys());
+}
+
+/**
+ * Takes a person out of every loaded contact list of `ownerAccountId` at once.
+ * `commit` keeps them out; `rollback` puts the rows back after a failed delete.
+ */
+export function beginCloudContactRemoval(ownerAccountId: string, peerAccountId: string) {
+  const peer = peerAccountId.trim();
+  const touched: Array<{ store: CloudContactsStore; removed: CloudContactSummary[] }> = [];
+  for (const store of new Set([...cloudContactStores.values(), ...mountedCloudContactStores])) {
+    if (store.accountId !== ownerAccountId || !peer) continue;
+    const removed = store.snapshot.contacts.filter((contact) => contact.contactKind !== 'system_agent' && contact.accountId === peer);
+    for (const contact of removed) store.recentlyAdded.delete(cloudContactSummaryKey(contact));
+    store.removing.add(peer);
+    applyCloudContactsSnapshot(store, (current) => removeCloudContactSummarySnapshot(current, peer));
+    touched.push({ store, removed });
+  }
+  const settle = (restore: boolean) => {
+    for (const { store, removed } of touched.splice(0)) {
+      store.removing.delete(peer);
+      if (restore) applyCloudContactsSnapshot(store, (current) => removed.reduceRight(mergeCloudContactSummarySnapshot, current));
+    }
+  };
+  return { commit: () => settle(false), rollback: () => settle(true) };
+}
+
 async function refreshCloudContactsStore(store: CloudContactsStore, client: CloudAuthClient): Promise<void> {
   if (store.refreshPromise) {
     store.refreshAgain = true;
@@ -252,11 +232,14 @@ async function refreshCloudContactsStore(store: CloudContactsStore, client: Clou
         client.listContacts(session.token),
         client.listContactRequests(session.token),
       ]);
+      const listed = contacts.filter((contact) => contact.contactKind === 'system_agent' || !store.removing.has(contact.accountId));
       const next = applyCloudContactsRefreshSnapshot(
         { contacts: store.snapshot.contacts, requests: store.snapshot.requests },
-        { contacts, requests },
+        { contacts: listed, requests },
         { startedMutationRevision, currentMutationRevision: store.mutationRevision },
+        recentlyAddedKeys(store),
       );
+      for (const contact of listed) store.recentlyAdded.delete(cloudContactSummaryKey(contact));
       publishCloudContactsStore(store, { ...next, loading: false, error: null, initialLoadSettled: true });
     } catch (err) {
       publishCloudContactsStore(store, {
@@ -293,13 +276,15 @@ function ensureCloudContactsWebSocket(store: CloudContactsStore, client: CloudAu
           if (addedPeerId) {
             void client.getProfile(session.token, addedPeerId)
               .then((profile) => {
-                applyCloudContactsSnapshot(store, (current) => mergeCloudContactSummarySnapshot(current, {
+                const added: CloudContactSummary = {
                   accountId: profile.accountId,
                   displayName: profile.displayName,
                   avatarUrl: profile.avatarUrl,
                   nodeId: profile.nodeId,
-                  createdAt: cleanText(objectRecord(frame?.payload)?.occurred_at) || new Date().toISOString(),
-                }));
+                  createdAt: cloudContactAddedOccurredAt(frame?.payload) || new Date().toISOString(),
+                };
+                rememberRecentlyAdded(store, added);
+                applyCloudContactsSnapshot(store, (current) => mergeCloudContactSummarySnapshot(current, added));
               })
               .catch(() => undefined)
               .finally(() => void refreshCloudContactsStore(store, client));
@@ -359,12 +344,14 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
     const listener = () => publishSnapshot();
     const refreshDirectory = () => { void refreshCloudContactsStore(store, client); };
     store.listeners.add(listener);
+    mountedCloudContactStores.add(store);
     startCloudContactsStore(store, client);
     if (typeof window !== 'undefined') window.addEventListener(CLOUD_DIRECTORY_SYNC_EVENT, refreshDirectory);
     return () => {
       store.listeners.delete(listener);
       if (typeof window !== 'undefined') window.removeEventListener(CLOUD_DIRECTORY_SYNC_EVENT, refreshDirectory);
       if (store.listeners.size === 0) {
+        mountedCloudContactStores.delete(store);
         if (store.pollTimer && typeof window !== 'undefined') window.clearInterval(store.pollTimer);
         store.pollTimer = null;
         store.ws?.close();
@@ -409,6 +396,7 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
       if (!session?.token) throw new Error('Not signed in.');
       try {
         const result = await client.acceptContactRequest(session.token, requestId);
+        if (result.request.counterpart) rememberRecentlyAdded(store, result.request.counterpart);
         applyCloudContactsSnapshot(store, (current) => applyAcceptedCloudContactRequest(current, result.request));
         dispatchCloudContactAcceptedSync(result.request, store.accountId, result.helloMessage);
       } catch (error) {
@@ -431,6 +419,23 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
       } catch (error) {
         void refreshCloudContactsStore(store, client);
         throw error;
+      }
+    },
+    [client, store],
+  );
+
+  const removeContact = useCallback(
+    async (peerAccountId: string) => {
+      if (!store) throw new Error('Not signed in.');
+      const removal = beginCloudContactRemoval(store.accountId, peerAccountId);
+      try {
+        await removeCloudContact(peerAccountId, { request: (path, init, fallback) => client.request(path, init, fallback) });
+        removal.commit();
+      } catch (error) {
+        removal.rollback();
+        throw error;
+      } finally {
+        void refreshCloudContactsStore(store, client);
       }
     },
     [client, store],
@@ -480,37 +485,15 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
     lookupProfile,
     acceptRequest,
     rejectRequest,
+    removeContact,
     submitSupportRequest,
     getSupportRequest,
   };
 }
 
-export function isPendingIncomingCloudContactRequest(request: Pick<ContactRequest, 'direction' | 'status'>): boolean {
-  return request.direction === 'incoming' && request.status === 'pending';
-}
-
-export function cloudRequestToContactRequest(row: CloudContactRequest): ContactRequest {
-  const counterpartKordiHandle = formatKordiHandle(row.counterpart?.kordiId);
-  const counterpartName = row.counterpart?.displayName?.trim() || counterpartKordiHandle || 'Kordi user';
-  const counterpartId = row.direction === 'incoming' ? row.fromAccountId : row.toAccountId;
-  const title = row.direction === 'incoming'
-    ? `${counterpartName} wants to connect`
-    : `Request sent to ${counterpartName}`;
-  return {
-    id: `cloud:${row.requestId}`,
-    initials: cloudContactInitials(counterpartName),
-    title,
-    detail: row.message?.trim() || counterpartKordiHandle || 'Kordi ID unavailable',
-    time: row.createdAt,
-    profileImageUrl: cloudAvatarImageUrl(row.counterpart?.avatarUrl),
-    avatarSeed: cloudAvatarSeedForAccount(counterpartId, row.counterpart?.avatarUrl),
-    avatarName: counterpartName,
-    source: 'collaboration',
-    sourceHostId: CLOUD_HOST_SENTINEL,
-    sourceRequestId: row.requestId,
-    requesterNodeId: row.fromAccountId,
-    targetNodeId: row.toAccountId,
-    status: row.status,
-    direction: row.direction,
-  };
+/** Test seam: a registered store holding `contacts`, as a refresh leaves it. */
+export function __cloudContactsStoreForTests(accountId: string, contacts: CloudContactSummary[]) {
+  const store = cloudContactsStoreFor(accountId);
+  publishCloudContactsStore(store, { contacts, initialLoadSettled: true });
+  return { store, clear: () => cloudContactStores.delete(accountId) };
 }
