@@ -1542,23 +1542,40 @@ struct CloudCanonicalHistory: Codable, Hashable {
     }
 }
 
+/// A server group event, such as "group.created", that a System notice
+/// describes. Its presence marks the notice as a timeline line.
+struct CloudChatGroupEvent: Codable, Hashable {
+    let type: String?
+    let actorAccountId: String?
+    let actorDisplayName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case actorAccountId = "actor_account_id"
+        case actorDisplayName = "actor_display_name"
+    }
+}
+
 struct CloudChatContent: Codable, Hashable {
     let schema: Int
     let blocks: [CloudChatBlock]
     let legacyAttachments: [CloudMessageAttachment]
     let canonicalHistory: CloudCanonicalHistory?
+    let groupEvent: CloudChatGroupEvent?
 
     init(body: String, attachments: [CloudMessageAttachment], voiceMessage: VoiceMessage? = nil) {
         schema = 1
         blocks = [CloudChatBlock(text: body)] + (voiceMessage.map { [CloudChatBlock(voiceMessage: $0)] } ?? [])
         legacyAttachments = voiceMessage == nil ? attachments : []
         canonicalHistory = nil
+        groupEvent = nil
     }
 
     enum CodingKeys: String, CodingKey {
         case schema, blocks
         case legacyAttachments = "legacy_attachments"
         case canonicalHistory = "canonical_history"
+        case groupEvent = "group_event"
     }
 
     init(from decoder: Decoder) throws {
@@ -1568,6 +1585,8 @@ struct CloudChatContent: Codable, Hashable {
         legacyAttachments = try container.decodeIfPresent([CloudMessageAttachment].self, forKey: .legacyAttachments) ?? []
         // Older or malformed optional history metadata must not hide the message.
         canonicalHistory = (try? container.decodeIfPresent(CloudCanonicalHistory.self, forKey: .canonicalHistory))?.validated
+        // Malformed event metadata leaves the notice as an ordinary message.
+        groupEvent = (try? container.decodeIfPresent(CloudChatGroupEvent.self, forKey: .groupEvent)) ?? nil
     }
 
     var body: String { blocks.compactMap(\.text).joined() }

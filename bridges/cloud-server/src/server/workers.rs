@@ -34,6 +34,7 @@ pub(super) fn spawn_background_workers(
     crate::cloud_agent_runtime::runs::terminal_backfill::spawn(state.db_pool().clone());
     crate::organizations::admission::spawn(state.clone());
     crate::account_deletion::objects::spawn(state.clone());
+    crate::auth::oauth::apple::spawn_revocation_worker(state.clone());
     if let Some(notifications) = state.notifications() {
         notifications.spawn_message_notification_worker(state.db_pool().clone());
         notifications.spawn_calendar_worker(state.db_pool().clone());

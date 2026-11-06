@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  Ban,
   Check,
   Copy,
   LoaderCircle,
@@ -17,6 +18,7 @@ import { formatKordiHandle } from '@/features/cloud/kordiId';
 import type { CloudPresenceAccount } from '@/features/cloud/presence';
 import { useCloudCallContext } from '@/features/cloud/useCloudCallContext';
 import { useContactPresenceLabel } from '@/features/cloud/useCloudPresence';
+import { useSafetyActions } from '@/features/safety/safetyActions';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { ContactCommonGroundLoader, type ContactProfileLoader } from '@/kordi-app/contacts/ContactCommonGround';
 import { ContactPermissionsCard } from '@/kordi-app/contacts/ContactPermissionsSection';
@@ -157,7 +159,10 @@ export function ContactInfoPopover({
   const isExistingContact = Boolean(contact && isApprovedCollaborationContact(contact));
   const contactStatus = contact?.contactStatus?.trim().toLowerCase() ?? '';
   const requestPending = contactStatus === 'pending' || requestState === 'sent';
-  const canAddContact = Boolean(onAddContact && accountId && !isExistingContact && !requestPending);
+  const safety = useSafetyActions();
+  // A blocked person offers Unblock where Add contact was.
+  const isBlocked = Boolean(safety.available && accountId && safety.blockedAccountIds.has(accountId));
+  const canAddContact = Boolean(onAddContact && accountId && !isExistingContact && !requestPending && !isBlocked);
   const canMessage = Boolean(onMessageContact && contact && isExistingContact);
   const resolvedPresence = presence?.status
     ?? presenceStatus
@@ -376,7 +381,13 @@ export function ContactInfoPopover({
                   </>
                 )
               ) : null}
-              {canAddContact || requestPending ? (
+              {isBlocked ? (
+                <ProfileAction
+                  icon={<Ban className="h-4 w-4" />}
+                  label="Unblock"
+                  onClick={() => safety.openUnblock({ accountId, name: participant.name })}
+                />
+              ) : canAddContact || requestPending ? (
                 <ProfileAction
                   icon={requestState === 'sending'
                     ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" />

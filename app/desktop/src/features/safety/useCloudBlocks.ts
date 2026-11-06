@@ -71,7 +71,8 @@ export function refreshCloudBlocks(accountId: string, deps: SafetyDeps = default
       if (isMissingRoute(error)) {
         publish(store, { blocks: [], loaded: true, available: false, error: null });
       } else {
-        publish(store, { error: error instanceof Error ? error.message : 'Could not load blocked people.' });
+        // Any answer but an empty 404 means the route exists; Settings › Blocked shows the error and retries.
+        publish(store, { loaded: true, error: error instanceof Error ? error.message : 'Could not load blocked people.' });
       }
     } finally {
       store.refreshPromise = null;

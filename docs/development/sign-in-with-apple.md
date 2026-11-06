@@ -73,9 +73,12 @@ sealed with the provider-auth cipher
 kept and nothing can be revoked, so set it wherever Apple is enabled.
 `crate::auth::oauth::apple::revoke_apple_tokens_for_account(&state, account_id)`
 sends every stored token to `https://appleid.apple.com/auth/revoke` and deletes
-the revoked rows; tokens that fail are kept and counted. Account deletion must
-call it before deleting the account, whose deletion removes the rows. Unlinking
-Apple in account security calls it after the identity is removed.
+the revoked rows; tokens that fail are kept and counted. Account deletion calls
+it before its transaction. Tokens it could not revoke move, in the deletion
+transaction, to `cloud_apple_token_revocations`, which keeps no account ID. A
+background worker retries them with backoff, up to one day apart, and drops a
+token after 24 failed attempts (about two weeks). Unlinking Apple in account
+security calls it after the identity is removed.
 
 ## Server configuration
 

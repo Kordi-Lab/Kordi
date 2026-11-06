@@ -1,20 +1,18 @@
-import { popoverGeometry, type ChatCreatePopoverAnchor } from './chatCreateGeometry';
+import type { ChatCreatePopoverAnchor } from './chatCreateGeometry';
+import { ChatCreateHeader, ChatCreateMenuHeader, ChatCreateMenuRow, ChatCreatePopover } from './chatCreatePopover';
+import { ChatCreateGroupForm } from './chatCreateGroupForm';
 export type { ChatCreatePopoverAnchor } from './chatCreateGeometry';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Bot, MessageSquare, UserPlus, Users, X } from 'lucide-react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import { Bot, MessageSquare, UserPlus, Users } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
   buildChatCreateAgentOptions,
-  buildChatCreateGroupPersonOptions,
   buildChatCreatePersonOptions,
-  canCreateGroup,
-  groupDefaultName,
 } from '@/features/chat/chatCreateFlows';
 import type { Agent, Contact } from '@/kordi-app/types';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
-import { cn } from '@/lib/utils';
-import { GroupAvatarEditor } from '@/kordi-app/components/GroupAvatarEditor';
+import type { CloudGroupInvitation, CloudGroupInvitationCreateInput } from '@/features/cloud/authClient';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 
@@ -36,7 +34,8 @@ export type ChatCreateDialogProps = {
   onClose: () => void;
   onStartPerson: (contact: Contact) => Promise<void> | void;
   onStartAgent: (agent: Agent) => Promise<void> | void;
-  onCreateGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
+  onCreateGroup: (request: CreateChatGroupRequest) => Promise<string | void> | void;
+  onCreateGroupInvitation?: (input: CloudGroupInvitationCreateInput) => Promise<CloudGroupInvitation>;
   onAddContact?: (nodeId: string) => Promise<void> | void;
   /** Optional account lookup. When provided the Add-contacts mode shows
    * a search-first UX (input → search → profile preview → Add) instead
@@ -52,73 +51,6 @@ export type ChatCreateDialogProps = {
 
 export type ChatCreateMode = 'menu' | 'person' | 'agent' | 'group' | 'add-contact';
 type CreateMode = ChatCreateMode;
-function DialogCard({ children, onClose, anchorRect }: { children: ReactNode; onClose: () => void; anchorRect?: ChatCreatePopoverAnchor | null }) {
-  const { style, arrowStyle, placement } = popoverGeometry(anchorRect);
-
-  return (
-    <>
-      <button
-        type="button"
-        className="fixed inset-0 z-40 cursor-default bg-transparent"
-        aria-label="Close create chat"
-        onClick={onClose}
-      />
-      <div
-        data-create-surface="side-popover"
-        data-popover-placement={placement}
-        className="app-transient-surface app-frosted-popover app-chat-create-popover app-chat-create-popover-enter fixed z-50 w-[min(17.75rem,calc(100vw-1.25rem))] overflow-hidden rounded-[18px] p-2.5"
-        style={style}
-      >
-        {placement !== 'floating' ? (
-          <div
-            aria-hidden="true"
-            className={cn(
-              'app-chat-create-popover-arrow absolute h-3.5 w-3.5 rotate-45',
-              placement === 'right' ? '-left-[0.45rem]' : '-right-[0.45rem]',
-            )}
-            style={arrowStyle}
-          />
-        ) : null}
-        <div className="relative">{children}</div>
-      </div>
-    </>
-  );
-}
-
-function CreateDialogHeader({ title, subtitle, onClose }: { title: string; subtitle?: string; onClose: () => void }) {
-  return (
-    <div className="mb-2 flex items-start justify-between gap-2">
-      <div className="min-w-0">
-        <div className="truncate text-[13px] font-semibold leading-5 text-[color:var(--utility-foreground)]">{title}</div>
-        {subtitle ? <div className="mt-px text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">{subtitle}</div> : null}
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-      className="app-button-quiet app-chat-create-close grid h-6 w-6 shrink-0 place-items-center rounded-[9px] p-0"
-        aria-label="Close create chat"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  );
-}
-
-function ChoiceButton({ icon, title, onClick }: { icon: ReactNode; title: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="app-chat-create-choice flex w-full items-center gap-2 rounded-[13px] px-2 py-2 text-left transition"
-    >
-      <span className="app-chat-create-icon grid h-7 w-7 shrink-0 place-items-center rounded-[10px]">{icon}</span>
-      <span className="min-w-0">
-        <span className="block truncate text-[12.5px] font-semibold leading-4 text-[color:var(--utility-foreground)]">{title}</span>
-      </span>
-    </button>
-  );
-}
-
 export function ChatCreateDialog({
   isOpen,
   contacts,
@@ -128,6 +60,7 @@ export function ChatCreateDialog({
   onStartPerson,
   onStartAgent,
   onCreateGroup,
+  onCreateGroupInvitation,
   onAddContact,
   onLookupContact,
   addContactPlaceholder,
@@ -135,11 +68,9 @@ export function ChatCreateDialog({
   anchorRect = null,
 }: ChatCreateDialogProps) {
   const [mode, setMode] = useState<CreateMode>(initialMode);
-  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
-  const [groupName, setGroupName] = useState('');
-  const [groupAvatarDataUrl, setGroupAvatarDataUrl] = useState<string | null>(null);
-  const [groupCreateError, setGroupCreateError] = useState<string | null>(null);
-  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const titleId = useId();
+  // The new group's name once its invitation link is showing.
+  const [groupLinkTitle, setGroupLinkTitle] = useState<string | null>(null);
   const [contactNodeId, setContactNodeId] = useState('');
   const [addContactState, setAddContactState] = useState<'idle' | 'saving' | 'sent' | 'pending' | 'error'>('idle');
   const [addContactError, setAddContactError] = useState('');
@@ -149,7 +80,6 @@ export function ChatCreateDialog({
   const [lookupError, setLookupError] = useState('');
   const [lookupResult, setLookupResult] = useState<AddContactLookupResult | null>(null);
   const personOptions = useMemo(() => buildChatCreatePersonOptions(contacts), [contacts]);
-  const groupPersonOptions = useMemo(() => buildChatCreateGroupPersonOptions(contacts), [contacts]);
   const agentOptions = useMemo(() => buildChatCreateAgentOptions(agents), [agents]);
   const visibleAddableContacts = useMemo(() => addableContacts.filter((contact) => contact.sourceParticipantId?.trim()), [addableContacts]);
 
@@ -162,10 +92,7 @@ export function ChatCreateDialog({
     // on every open and close, and made an exit animation impossible -- see
     // WorkspaceSidebar.tsx).
     setMode(initialMode);
-    setSelectedContactIds([]);
-    setGroupName('');
-    setGroupAvatarDataUrl(null);
-    setGroupCreateError(null);
+    setGroupLinkTitle(null);
     setContactNodeId('');
     setAddContactState('idle');
     setAddContactError('');
@@ -176,10 +103,6 @@ export function ChatCreateDialog({
     setLookupResult(null);
   }, [initialMode, isOpen]);
 
-  const selectedPeople = groupPersonOptions.filter((option) => selectedContactIds.includes(option.id));
-  const selectedGroupContactIds = selectedPeople.map((option) => option.id);
-  const defaultGroupName = groupDefaultName(selectedPeople.map((option) => option.label));
-  const canSubmitGroup = canCreateGroup(selectedGroupContactIds);
   const addContactSubtitle = 'Send an approval request by Kordi ID.';
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
 
@@ -187,10 +110,7 @@ export function ChatCreateDialog({
 
   const close = () => {
     setMode(initialMode);
-    setSelectedContactIds([]);
-    setGroupName('');
-    setGroupAvatarDataUrl(null);
-    setGroupCreateError(null);
+    setGroupLinkTitle(null);
     setContactNodeId('');
     setAddContactState('idle');
     setAddContactError('');
@@ -270,30 +190,26 @@ export function ChatCreateDialog({
       || (status === 'pending' && (direction === 'outgoing' || direction === 'incoming'));
   };
 
-  const toggleContact = (contactId: string) => {
-    setSelectedContactIds((current) => (
-      current.includes(contactId)
-        ? current.filter((id) => id !== contactId)
-        : [...current, contactId]
-    ));
-  };
 
   return (
-    <DialogCard onClose={close} anchorRect={anchorRect}>
-      <CreateDialogHeader
-        title={mode === 'menu' ? 'Start a chat' : mode === 'person' ? 'Chat with contact' : mode === 'agent' ? 'Chat with agent' : mode === 'add-contact' ? 'Add contact' : 'Start group'}
-        subtitle={mode === 'group' ? 'Select at least 2 contacts.' : mode === 'add-contact' ? addContactSubtitle : undefined}
-        onClose={close}
-      />
-
+    <ChatCreatePopover onClose={close} anchorRect={anchorRect} dense={mode === 'menu'} titleId={titleId} focusKey={mode}>
       {mode === 'menu' ? (
-        <div className="space-y-1">
-          <ChoiceButton icon={<MessageSquare className="h-3.5 w-3.5" />} title="Chat with contact" onClick={() => setMode('person')} />
-          <ChoiceButton icon={<Bot className="h-3.5 w-3.5" />} title="Chat with agent" onClick={() => setMode('agent')} />
-          <ChoiceButton icon={<Users className="h-3.5 w-3.5" />} title="Start group" onClick={() => setMode('group')} />
-          <ChoiceButton icon={<UserPlus className="h-3.5 w-3.5" />} title="Add contacts" onClick={() => setMode('add-contact')} />
-        </div>
-      ) : null}
+        <>
+          <ChatCreateMenuHeader title="Start a chat" titleId={titleId} />
+          <div className="app-dense-menu-items">
+            <ChatCreateMenuRow icon={MessageSquare} title="Chat with contact" onClick={() => setMode('person')} />
+            <ChatCreateMenuRow icon={Bot} title="Chat with agent" onClick={() => setMode('agent')} />
+            <ChatCreateMenuRow icon={Users} title="Start group" onClick={() => setMode('group')} />
+            <ChatCreateMenuRow icon={UserPlus} title="Add contacts" onClick={() => setMode('add-contact')} />
+          </div>
+        </>
+      ) : (
+        <ChatCreateHeader
+          title={mode === 'person' ? 'Chat with contact' : mode === 'agent' ? 'Chat with agent' : mode === 'add-contact' ? 'Add contact' : groupLinkTitle ?? 'Start group'}
+          titleId={titleId}
+          subtitle={mode === 'add-contact' ? addContactSubtitle : undefined}
+        />
+      )}
 
       {mode === 'person' ? (
         <div className="space-y-2">
@@ -508,59 +424,15 @@ export function ChatCreateDialog({
       ) : null}
 
       {mode === 'group' ? (
-        <form
-          className="space-y-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!canSubmitGroup || isCreatingGroup) return;
-            setIsCreatingGroup(true); setGroupCreateError(null);
-            void Promise.resolve().then(() => onCreateGroup({ contactIds: selectedGroupContactIds, name: groupName.trim() || null, avatarDataUrl: groupAvatarDataUrl }))
-              .then(close).catch((error: unknown) => setGroupCreateError(error instanceof Error ? error.message : 'Could not create this group.'))
-              .finally(() => setIsCreatingGroup(false));
-          }}
-        >
-          <div className="flex justify-center pb-1">
-            <GroupAvatarEditor avatars={selectedPeople.map((person) => ({ kind: 'human', seed: person.avatarSeed || person.id, imageUrl: person.profileImageUrl }))} imageUrl={groupAvatarDataUrl} name={groupName || 'Group'} disabled={isCreatingGroup} onUpload={(dataUrl) => setGroupAvatarDataUrl(dataUrl)} onRemove={() => setGroupAvatarDataUrl(null)} />
-          </div>
-          {groupCreateError ? <div role="alert" className="app-error-text text-[11px]">{groupCreateError}</div> : null}
-          <input
-            value={groupName}
-            onChange={(event) => setGroupName(event.target.value)}
-            placeholder={defaultGroupName || 'Group name (optional)'}
-            className="app-input-shell h-8 w-full rounded-[12px] px-2.5 text-[12px] outline-none"
-          />
-          <div className="app-chat-create-option-list max-h-[min(14.5rem,calc(100vh-10rem))] space-y-1 overflow-auto pr-1">
-            {groupPersonOptions.length > 0 ? groupPersonOptions.map((option) => {
-              const selected = selectedContactIds.includes(option.id);
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => toggleContact(option.id)}
-                  className={cn(
-                    'app-chat-create-list-item flex w-full items-center justify-between gap-2 rounded-[12px] border px-2.5 py-2 text-left transition',
-                    selected && 'app-chat-create-list-item-selected',
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-[12.5px] font-medium leading-4 text-[color:var(--utility-foreground)]">{option.label}</span>
-                    <span className="mt-px block truncate text-[10.5px] text-[color:var(--utility-muted-text)]">{option.detail}</span>
-                  </span>
-                  <span className={cn('app-chat-create-check grid h-[1.125rem] w-[1.125rem] shrink-0 place-items-center rounded-full border text-[9px]', selected && 'app-chat-create-check-selected')}>✓</span>
-                </button>
-              );
-            }) : (
-              <div className="app-chat-create-empty rounded-[12px] border px-2.5 py-2.5 text-[11px]">No approved contacts available.</div>
-            )}
-          </div>
-          <div className="flex gap-1.5">
-            <Button type="button" variant="quiet" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
-            <Button type="submit" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" disabled={isCreatingGroup || !canSubmitGroup}>
-              {isCreatingGroup ? 'Creating…' : canSubmitGroup ? 'Create group' : 'Pick 2 people'}
-            </Button>
-          </div>
-        </form>
+        <ChatCreateGroupForm
+          contacts={contacts}
+          onCreateGroup={onCreateGroup}
+          onCreateGroupInvitation={onCreateGroupInvitation}
+          onBack={() => setMode('menu')}
+          onDone={close}
+          onLinkShown={setGroupLinkTitle}
+        />
       ) : null}
-    </DialogCard>
+    </ChatCreatePopover>
   );
 }

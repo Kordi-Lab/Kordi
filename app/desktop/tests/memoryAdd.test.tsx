@@ -249,6 +249,28 @@ test('a project Memory tab adds to the project root', async () => {
   });
 });
 
+test('an empty chat Memory tab opens the editor from its centered button and adds the first memory', async () => {
+  const { client, added } = recordingClient();
+  await withRendered(<ChatMemoryTab conversation={{ id: 'empty-chat', name: 'Empty chat' }} client={client} />, async (host, window) => {
+    assert.ok(host.querySelector('[data-memory-empty] [data-memory-add] button'));
+    await click(addRow(host), window);
+    assert.equal(host.querySelector('[data-memory-empty]'), null);
+    assert.equal(host.querySelector('[data-memory-new] textarea')?.getAttribute('aria-label'), 'New memory');
+    await click(buttonByText(host, 'Cancel'), window);
+    assert.ok(host.querySelector('[data-memory-empty]'));
+
+    await click(addRow(host), window);
+    await type(host, window, 'Keep the launch notes in one thread.');
+    await click(buttonByText(host, 'Save'), window);
+    assert.deepEqual(added.map(([target]) => target), [{ scope: 'conversation', scopeId: 'empty-chat', scopeLabel: 'Empty chat' }]);
+    assert.deepEqual(rowIds(host), ['lesson-added-1']);
+    assert.equal(host.querySelector('[data-memory-empty]'), null);
+    // With a memory listed, the sync status and Add memory share one row above it.
+    const header = host.querySelector('[data-memory-add]');
+    assert.match(header?.textContent ?? '', /^Synced with taylor@memory\.example.*Add memory$/);
+  });
+});
+
 test('a failed add keeps the draft and shows the error inline', async () => {
   const client: MemoryClient = createPreviewMemoryClient({ latencyMs: 0 });
   client.createLesson = async () => { throw new Error('Memories cannot include health details.'); };

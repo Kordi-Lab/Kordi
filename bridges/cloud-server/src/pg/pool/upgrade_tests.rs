@@ -7,6 +7,7 @@ use uuid::Uuid;
 mod account_email_tests;
 mod account_handle_tests;
 mod agent_avatar_tests;
+mod apple_token_tests;
 mod common_ground_daily_tests;
 mod common_ground_nearby_tests;
 mod common_ground_sources_tests;

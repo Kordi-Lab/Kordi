@@ -22,10 +22,11 @@ pub(super) use pending::pending_routes;
 const GROUP_INVITE_TOKEN_PREFIX: &str = "kordi_gi_";
 const GROUP_INVITE_LIFETIME_DAYS: i64 = 7;
 const GROUP_INVITE_MAX_MEMBERS: usize = 50;
-const GROUP_INVITE_MIN_MEMBERS: usize = 2;
-/// A group started from a Common ground room may invite while it has only its
-/// creator.
-pub(crate) const ROOM_GROUP_MIN_MEMBERS: usize = 1;
+/// A group may invite while it has only its creator: the link is how the first
+/// other people join.
+const GROUP_INVITE_MIN_MEMBERS: usize = 1;
+/// A group started from a Common ground room follows the same rule.
+pub(crate) const ROOM_GROUP_MIN_MEMBERS: usize = GROUP_INVITE_MIN_MEMBERS;
 const GROUP_INVITE_MAX_TITLE_CHARS: usize = 120;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

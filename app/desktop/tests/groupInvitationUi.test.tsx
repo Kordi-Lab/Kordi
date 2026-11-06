@@ -93,15 +93,15 @@ test('a group admin can create and revoke a preview-first invitation link', asyn
     assert.ok(button('Add'));
     await act(async () => { button('Add')?.click(); });
     step = 'open share link';
-    assert.ok(button('Share link'));
-    await act(async () => { button('Share link')?.click(); });
+    assert.ok(button('Invite with a link'));
+    await act(async () => { button('Invite with a link')?.click(); });
 
     step = 'check compact share panel';
     assert.doesNotMatch(host.textContent ?? '', /preview the group and choose whether to join/i);
     assert.doesNotMatch(host.textContent ?? '', /No contact requests are created automatically/);
     step = 'create link';
-    assert.ok(button('Create invitation link'));
-    await act(async () => { button('Create invitation link')?.click(); });
+    assert.ok(button('Create link'));
+    await act(async () => { button('Create link')?.click(); });
 
     assert.deepEqual(createInput, {
       groupId: 'session:group:invite-ui',
@@ -112,27 +112,46 @@ test('a group admin can create and revoke a preview-first invitation link', asyn
       host.querySelector<HTMLInputElement>('input[aria-label="Group invitation link"]')?.value,
       'https://kordi.ai/g/kordi_gi_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO12',
     );
+    step = 'copy link';
+    let copiedText = '';
+    const clipboard = Object.getOwnPropertyDescriptor(globalThis.navigator, 'clipboard');
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => { copiedText = text; } },
+    });
+    try {
+      await act(async () => {
+        host.querySelector<HTMLButtonElement>('button[aria-label="Copy link"]')?.click();
+        await Promise.resolve();
+      });
+    } finally {
+      if (clipboard) Object.defineProperty(globalThis.navigator, 'clipboard', clipboard);
+      else delete (globalThis.navigator as { clipboard?: unknown }).clipboard;
+    }
+    assert.equal(copiedText, 'https://kordi.ai/g/kordi_gi_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO12');
+    assert.ok(host.querySelector('button[aria-label="Link copied"]'), 'the copy icon turns into a check');
+    assert.equal(dom.window.document.querySelector('.app-copy-toast[role="status"]')?.textContent, 'Link copied');
     step = 'reopen active link';
     await act(async () => {
       host.querySelector<HTMLButtonElement>('button[aria-label="Back to group members"]')?.click();
     });
     await act(async () => { button('Add')?.click(); });
-    await act(async () => { button('Share link')?.click(); });
+    await act(async () => { button('Invite with a link')?.click(); });
     await act(async () => { await Promise.resolve(); });
     assert.doesNotMatch(host.textContent ?? '', /invitation link is already active/i);
     assert.doesNotMatch(host.textContent ?? '', /revoke it before creating another link/i);
     step = 'replace active link';
-    assert.ok(button('Create new share link'));
-    await act(async () => { button('Create new share link')?.click(); });
+    assert.ok(button('New link'));
+    await act(async () => { button('New link')?.click(); });
     assert.equal(
       host.querySelector<HTMLInputElement>('input[aria-label="Group invitation link"]')?.value,
       'https://kordi.ai/g/kordi_gi_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO12',
     );
     step = 'revoke generated link';
-    assert.ok(button('Revoke link'));
-    await act(async () => { button('Revoke link')?.click(); });
+    assert.ok(button('Revoke'));
+    await act(async () => { button('Revoke')?.click(); });
     assert.equal(revokedId, 'groupinv_ui');
-    assert.ok(button('Create invitation link'));
+    assert.ok(button('Create link'));
   } catch (error) {
     const detail = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error);
     throw new Error(`${step}: ${detail}`);
@@ -212,12 +231,12 @@ test('a regular member can find invitation links and sees who can grant access',
     const button = (label: string) => [...host.querySelectorAll('button')]
       .find((candidate) => candidate.textContent?.trim() === label) as HTMLButtonElement | undefined;
     await act(async () => { button('Add')?.click(); });
-    assert.ok(button('Share link'), 'Share link should remain discoverable to regular members');
-    await act(async () => { button('Share link')?.click(); });
+    assert.ok(button('Invite with a link'), 'Share link should remain discoverable to regular members');
+    await act(async () => { button('Invite with a link')?.click(); });
 
-    assert.match(host.textContent ?? '', /Only group admins can create invitation links/);
+    assert.match(host.textContent ?? '', /Only group admins can share a link/);
     assert.match(host.textContent ?? '', /Ask Maya Chen to share a link or make you an admin/);
-    assert.equal(button('Create invitation link'), undefined);
+    assert.equal(button('Create link'), undefined);
     assert.equal(listCalls, 0);
     assert.equal(createCalls, 0);
   } finally {

@@ -711,6 +711,22 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(legacy.chatAttachment.kind, .image)
     }
 
+    func testSystemNoticeWithGroupEventBecomesTimelineLine() throws {
+        let payload = Data(#"""
+        {"schema":1,"blocks":[{"type":"text","text":"Ava created the group"}],"legacy_attachments":[],
+         "group_event":{"type":"group.created","actor_account_id":"acct_ava","actor_display_name":"Ava"}}
+        """#.utf8)
+        let content = try JSONDecoder().decode(CloudChatContent.self, from: payload)
+
+        XCTAssertEqual(content.body, "Ava created the group")
+        XCTAssertEqual(content.groupEvent?.type, "group.created")
+        let kind = KordiSystemIdentity.timelineMessageKind(kind: "system-notice", hasGroupEvent: content.groupEvent != nil)
+        XCTAssertEqual(kind, ChatMessage.groupEventNoticeMessageKind)
+        XCTAssertTrue(KordiSystemIdentity.isSystemNotice(kind: kind))
+        XCTAssertEqual(KordiSystemIdentity.timelineMessageKind(kind: "system-notice", hasGroupEvent: false), "system-notice")
+        XCTAssertEqual(KordiSystemIdentity.timelineMessageKind(kind: "text", hasGroupEvent: true), "text")
+    }
+
     func testCanonicalChatContentEncodesMemeMetadataForOtherClients() throws {
         let content = CloudChatContent(
             body: "",

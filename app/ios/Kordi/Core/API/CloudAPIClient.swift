@@ -2558,7 +2558,10 @@ actor CloudAPIClient {
             direction: outgoing ? "outgoing" : "incoming",
             sessionId: conversation.legacySessionId ?? conversation.id,
             attachments: message.content.legacyAttachments,
-            messageKind: message.kind,
+            messageKind: KordiSystemIdentity.timelineMessageKind(
+                kind: message.kind,
+                hasGroupEvent: message.content.groupEvent != nil
+            ),
             voiceMessage: message.content.voiceMessage,
             planCard: message.content.planCard,
             conversationId: conversation.id,

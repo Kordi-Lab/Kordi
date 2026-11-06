@@ -310,43 +310,44 @@ test('a failed profile request leaves today\'s info card in place', async () => 
   }
 });
 
-test('hosted removal deletes the contact, refreshes the list, then closes the pane', async () => {
+test('hosted removal deletes the contact, then closes the pane', async () => {
   const requests: { path: string; method: string | undefined }[] = [];
   const steps: string[] = [];
   const remove = cloudContactRemover({
-    remove: (accountId) => removeCloudContact(accountId, {
-      token: async () => 'tok',
-      request: async <T,>(path: string, init: RequestInit) => {
-        requests.push({ path, method: init.method });
-        steps.push('delete');
-        return undefined as T;
-      },
-    }),
-    refresh: async () => { steps.push('refresh'); },
+    remove: async (accountId) => {
+      await removeCloudContact(accountId, {
+        token: async () => 'tok',
+        request: async <T,>(path: string, init: RequestInit) => {
+          requests.push({ path, method: init.method });
+          steps.push('delete');
+          return undefined as T;
+        },
+      });
+    },
     close: () => { steps.push('close'); },
   });
   await remove(nadia);
   assert.deepEqual(requests, [{ path: '/v1/cloud/contacts/acct_nadia', method: 'DELETE' }]);
-  assert.deepEqual(steps, ['delete', 'refresh', 'close']);
+  assert.deepEqual(steps, ['delete', 'close']);
 
   await assert.rejects(remove(support), /cannot be deleted/);
   const failing = cloudContactRemover({
     remove: async () => { throw new Error('Could not delete contact.'); },
-    refresh: async () => { steps.push('refresh-after-failure'); },
     close: () => { steps.push('close-after-failure'); },
   });
   await assert.rejects(failing(nadia), /Could not delete contact/);
-  assert.deepEqual(steps, ['delete', 'refresh', 'close'], 'a failed delete neither refreshes nor closes');
+  assert.deepEqual(steps, ['delete', 'close'], 'a failed delete keeps the pane open');
 });
 
 test('the confirm step drives the hosted removal handler', async () => {
   const removed: string[] = [];
+  let closed = 0;
   const page = await mount({
     activeContact: nadia,
     contactProfileHost: hostFor({ acct_nadia: profile() }, newCalls()),
+    onCloseOverlay: () => { closed += 1; },
     onRemoveContact: cloudContactRemover({
       remove: async (accountId) => { removed.push(accountId); },
-      refresh: async () => undefined,
       close: () => undefined,
     }),
   });
@@ -356,6 +357,28 @@ test('the confirm step drives the hosted removal handler', async () => {
     assert.deepEqual(removed, []);
     await page.click([...page.host.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Delete'));
     assert.deepEqual(removed, ['acct_nadia']);
+    assert.equal(closed, 1, 'the pane closes once, after the delete lands');
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test('a failed delete keeps the pane open with a short error', async () => {
+  let closed = 0;
+  const page = await mount({
+    activeContact: nadia,
+    contactProfileHost: hostFor({ acct_nadia: profile() }, newCalls()),
+    onCloseOverlay: () => { closed += 1; },
+    onRemoveContact: cloudContactRemover({
+      remove: async () => { throw new Error('Could not delete contact.'); },
+      close: () => { closed += 1; },
+    }),
+  });
+  try {
+    await page.click(page.button('Delete contact'));
+    await page.click([...page.host.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Delete'));
+    assert.equal(closed, 0);
+    assert.match(page.text(), /Could not delete contact\./);
   } finally {
     await page.cleanup();
   }

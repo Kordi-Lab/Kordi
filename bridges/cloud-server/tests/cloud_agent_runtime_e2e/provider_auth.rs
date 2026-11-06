@@ -2,6 +2,8 @@ use super::*;
 
 #[path = "provider_auth/desktop_claim.rs"]
 mod desktop_claim;
+#[path = "provider_auth/shared_desktop.rs"]
+mod shared_desktop;
 
 #[path = "provider_auth/cross_account.rs"]
 mod cross_account;

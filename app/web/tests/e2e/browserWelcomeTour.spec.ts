@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { installApiFixture } from './apiFixture';
+import { installApiFixture, isCancelledFixtureRequest } from './apiFixture';
 
 const welcome = (page: Page) => page.getByRole('complementary', { name: 'Welcome to Kordi', exact: true });
 const tourCard = (page: Page) => page.locator('.help-tour-card[data-positioned="true"]');
@@ -7,7 +7,7 @@ const tourCard = (page: Page) => page.locator('.help-tour-card[data-positioned="
 for (const width of [1440, 390]) {
   test(`a new web account gets the welcome prompt once and a browser tour at ${width}px`, async ({ page, baseURL }, testInfo) => {
     const errors: string[] = [];
-    page.on('pageerror', error => errors.push(error.message));
+    page.on('pageerror', error => { if (!isCancelledFixtureRequest(error.message)) errors.push(error.message); });
     await page.setViewportSize({ width, height: width === 390 ? 844 : 960 });
     await installApiFixture(page, baseURL!, true);
     await page.goto('/app/?welcome=1');

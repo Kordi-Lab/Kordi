@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Check, LoaderCircle, MessageCircle, UserPlus } from 'lucide-react';
+import { Ban, Check, LoaderCircle, MessageCircle, UserPlus } from 'lucide-react';
 
 import { isApprovedCollaborationContact } from '@/features/chat/chatCreateFlows';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import { useSafetyActions } from '@/features/safety/safetyActions';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { Contact, ConversationParticipant } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
@@ -69,7 +70,9 @@ export function MemberContactProfileContent({
   const contactStatus = contact?.contactStatus?.trim().toLowerCase() ?? '';
   const isExistingContact = Boolean(contact && isApprovedCollaborationContact(contact));
   const requestPending = contactStatus === 'pending' || requestState === 'sent';
-  const canRequestContact = Boolean(onAddContact && accountId && !isSelf && !isExistingContact);
+  const safety = useSafetyActions();
+  const isBlocked = Boolean(safety.available && accountId && !isSelf && safety.blockedAccountIds.has(accountId));
+  const canRequestContact = Boolean(onAddContact && accountId && !isSelf && !isExistingContact && !isBlocked);
   const resolvedPresence = presenceStatus ?? contact?.presenceStatus ?? participant.presenceStatus ?? 'offline';
   const relationshipLabel = isSelf ? 'You' : isExistingContact ? 'Contact' : requestPending ? 'Request pending' : '';
   const profileDetail = readableContactDetail(contact, accountId);
@@ -155,6 +158,18 @@ export function MemberContactProfileContent({
             <Check className="h-3 w-3" aria-hidden="true" />
             In contacts
           </div>
+        ) : null}
+
+        {isBlocked ? (
+          <button
+            type="button"
+            data-member-contact-action="unblock"
+            className="app-transient-flat-action app-transient-action-row app-group-management-action-row inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] px-2 py-1 transition"
+            onClick={() => safety.openUnblock({ accountId, name: participant.name })}
+          >
+            <Ban className="app-transient-action-icon" />
+            <span className="app-transient-action-label">Unblock</span>
+          </button>
         ) : null}
 
         {canRequestContact ? (

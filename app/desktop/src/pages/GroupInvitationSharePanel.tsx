@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Check, Copy, Link2, LoaderCircle, LockKeyhole } from 'lucide-react';
+import { Check, Copy, LoaderCircle, LockKeyhole } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { CopyToast } from '@/components/ui/copyFeedback';
+import { useCopyFeedback } from '@/components/ui/useCopyFeedback';
+import { groupInvitationLinkErrorMessage, invitationExpiryLabel as expiryLabel } from '@/features/chat/groupCreateCopy';
 import type {
   CloudGroupInvitation,
   CloudGroupInvitationCreateInput,
@@ -35,17 +38,6 @@ function groupSpaceIdFromViewModel(space: ParticipantSpaceViewModel) {
   return id.startsWith('group:') ? id.slice('group:'.length) : id;
 }
 
-function invitationExpiryLabel(value: string) {
-  const expiresAt = new Date(value);
-  if (!Number.isFinite(expiresAt.getTime())) return 'Invitation expires soon';
-  return `Expires ${new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(expiresAt)}`;
-}
-
 export function GroupInvitationSharePanel({
   hidden,
   space,
@@ -63,7 +55,7 @@ export function GroupInvitationSharePanel({
   const [isLoadingActive, setIsLoadingActive] = useState(
     canShareInvitation && Boolean(onListGroupInvitations),
   );
-  const [copied, setCopied] = useState(false);
+  const { copied, copy, reset: resetCopied } = useCopyFeedback();
 
   const groupSpaceId = groupSpaceIdFromViewModel(space);
   useEffect(() => {
@@ -89,14 +81,20 @@ export function GroupInvitationSharePanel({
       return;
     }
     void runAction('create-group-invitation', async () => {
-      const nextInvitation = await onCreateGroupInvitation({
-        groupId: groupSpaceId,
-        groupSpaceId,
-        groupTitle: space.title,
-      });
+      let nextInvitation: CloudGroupInvitation;
+      try {
+        nextInvitation = await onCreateGroupInvitation({
+          groupId: groupSpaceId,
+          groupSpaceId,
+          groupTitle: space.title,
+        });
+      } catch (error) {
+        throw new Error(groupInvitationLinkErrorMessage(error));
+      }
+      // A new link replaces the earlier ones.
       setInvitation(nextInvitation);
       setActiveInvitations([]);
-      setCopied(false);
+      resetCopied();
     });
   };
 
@@ -104,10 +102,9 @@ export function GroupInvitationSharePanel({
     if (!invitation?.inviteUrl) return;
     onError(null);
     try {
-      await navigator.clipboard.writeText(invitation.inviteUrl);
-      setCopied(true);
+      await copy(invitation.inviteUrl);
     } catch {
-      onError('Kordi could not copy the link. Select it and copy it manually.');
+      onError("Couldn't copy the link. Select it and copy it.");
     }
   };
 
@@ -117,26 +114,19 @@ export function GroupInvitationSharePanel({
       'revoke-group-invitation',
       () => onRevokeGroupInvitation(invitationId),
       () => {
-        setInvitation(null);
+        setInvitation((current) => (current?.invitationId === invitationId ? null : current));
         setActiveInvitations((current) => current.filter((item) => item.invitationId !== invitationId));
-        setCopied(false);
+        resetCopied();
       },
     );
   };
 
   if (hidden) return null;
+  const busy = Boolean(pendingAction);
+  const activeInvitation = activeInvitations[0] ?? null;
+  const spinner = <LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />;
   return (
-    <div role="tabpanel" className="px-1 py-2">
-      <div className="flex items-center gap-2.5">
-        <Link2
-          className="h-4 w-4 shrink-0 text-[color:var(--utility-muted-text)]"
-          aria-hidden="true"
-        />
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold">Invite people to “{space.title}”</p>
-        </div>
-      </div>
-
+    <div role="tabpanel" aria-label="Invite with a link" className="px-1 pb-2">
       {!canShareInvitation ? (
         <div className="mt-3 flex items-start gap-2.5 py-1">
           <LockKeyhole
@@ -144,10 +134,12 @@ export function GroupInvitationSharePanel({
             aria-hidden="true"
           />
           <div className="min-w-0">
-            <p className="text-[10.5px] font-medium">Only group admins can create invitation links</p>
-            <p className="mt-1 text-[9.5px] leading-4 text-[color:var(--utility-muted-text)]">
-              {permissionHint}
-            </p>
+            <p className="text-[10.5px] font-medium">Only group admins can share a link</p>
+            {permissionHint ? (
+              <p className="mt-1 text-[9.5px] leading-4 text-[color:var(--utility-muted-text)]">
+                {permissionHint}
+              </p>
+            ) : null}
           </div>
         </div>
       ) : invitation ? (
@@ -163,55 +155,70 @@ export function GroupInvitationSharePanel({
             <button
               type="button"
               className="app-button-primary grid h-9 w-9 shrink-0 place-items-center rounded-[10px] p-0"
-              aria-label={copied ? 'Invitation link copied' : 'Copy invitation link'}
+              aria-label={copied ? 'Link copied' : 'Copy link'}
               title={copied ? 'Copied' : 'Copy link'}
               onClick={() => { void copyInvitation(); }}
             >
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
             </button>
           </div>
-          <div className="mt-2 flex items-center justify-between gap-3 text-[9.5px] text-[color:var(--utility-muted-text)]">
-            <span>{invitationExpiryLabel(invitation.expiresAt)}</span>
+          <div className="mt-2 flex items-center gap-1 text-[9.5px] text-[color:var(--utility-muted-text)]">
+            <span className="mr-auto">{expiryLabel(invitation.expiresAt)}</span>
+            <Button
+              type="button"
+              variant="quiet"
+              size="sm"
+              className="h-7 rounded-[8px] px-2.5 text-[10.5px] font-medium"
+              disabled={busy}
+              onClick={createInvitation}
+            >
+              {pendingAction === 'create-group-invitation' ? 'Creating…' : 'New link'}
+            </Button>
             {onRevokeGroupInvitation ? (
               <Button
                 type="button"
                 variant="quiet"
                 size="sm"
                 className="h-7 rounded-[8px] px-2.5 text-[10.5px] font-medium"
-                disabled={Boolean(pendingAction)}
+                disabled={busy}
                 onClick={() => revokeInvitation(invitation.invitationId)}
               >
-                {pendingAction === 'revoke-group-invitation' ? 'Revoking…' : 'Revoke link'}
+                {pendingAction === 'revoke-group-invitation' ? 'Revoking…' : 'Revoke'}
               </Button>
             ) : null}
           </div>
+          <CopyToast visible={copied} />
         </>
-      ) : activeInvitations[0] ? (
-        <div className="mt-3">
+      ) : (
+        <>
           <Button
             type="button"
-            className="h-9 w-full rounded-[11px] text-[11px]"
-            disabled={Boolean(pendingAction)}
+            className="mt-3 h-9 w-full rounded-[11px] text-[11px]"
+            disabled={isLoadingActive || busy}
             onClick={createInvitation}
           >
-            {pendingAction === 'create-group-invitation' ? (
-              <><LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Creating…</>
-            ) : 'Create new share link'}
+            {isLoadingActive ? <>{spinner} Checking…</>
+              : pendingAction === 'create-group-invitation' ? <>{spinner} Creating…</>
+                : activeInvitation ? 'New link' : 'Create link'}
           </Button>
-        </div>
-      ) : (
-        <Button
-          type="button"
-          className="mt-3 h-9 w-full rounded-[11px] text-[11px]"
-          disabled={!canShareInvitation || isLoadingActive || Boolean(pendingAction)}
-          onClick={createInvitation}
-        >
-          {isLoadingActive ? (
-            <><LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Checking…</>
-          ) : pendingAction === 'create-group-invitation' ? (
-            <><LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Creating…</>
-          ) : 'Create invitation link'}
-        </Button>
+          {activeInvitation ? (
+            <div className="mt-2 flex items-center gap-1 text-[9.5px] text-[color:var(--utility-muted-text)]">
+              <span className="mr-auto">A link is active · {expiryLabel(activeInvitation.expiresAt).toLowerCase()}</span>
+              {onRevokeGroupInvitation ? (
+                <Button
+                  type="button"
+                  variant="quiet"
+                  size="sm"
+                  className="h-7 rounded-[8px] px-2.5 text-[10.5px] font-medium"
+                  disabled={busy}
+                  onClick={() => revokeInvitation(activeInvitation.invitationId)}
+                >
+                  {pendingAction === 'revoke-group-invitation' ? 'Revoking…' : 'Revoke'}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );

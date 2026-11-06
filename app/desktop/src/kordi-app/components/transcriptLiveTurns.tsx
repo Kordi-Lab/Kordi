@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { useVisibleLiveTurn } from '@/features/chat/useVisibleLiveTurn';
-import { cloudAgentProviderFailureNeedsAuthentication, cloudAgentProviderFailureNotice } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentProviderFailureNeedsAuthentication, cloudAgentProviderFailureNotice } from '@/features/cloud/cloudAgentFailureNotices';
 import { cn } from '@/lib/utils';
 import { SourceMessageQuoteRow } from './transcriptReplyAttribution';
 import { MarkdownContent } from './markdown';
