@@ -2,7 +2,7 @@ import {
   fetchDesktopChatTurnState,
 } from '@/lib/desktop';
 import type { DesktopChatTurnSnapshot } from '@/kordi-app/types';
-import { cloudAgentProviderFailureNotice } from './cloudAgentMessages';
+import { cloudAgentProviderFailureNotice } from './cloudAgentFailureNotices';
 import type {
   CloudAccount,
   CloudAuthClient,
