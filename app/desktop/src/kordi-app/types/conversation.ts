@@ -34,6 +34,8 @@ export type Conversation = {
   type: ConversationType;
   subtitle: string;
   unread: number;
+  /** Main-transcript share of `unread`; unread discussion replies are excluded. */
+  transcriptUnread?: number;
   unreadMentions?: number;
   threadAttention?: import('@/features/cloud/threadAttention').ThreadAttention;
   collaborationSources: string[];

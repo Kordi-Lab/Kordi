@@ -291,3 +291,41 @@ test('switching sessions keeps the previous optimistic read hidden without clear
     projectedUnreadBySessionId: { [firstSessionId]: 1 },
   })[firstSessionId], 1);
 });
+
+test('discussion replies are left to their thread read cursor', () => {
+  const sessionId = 'session:group:discussion';
+  const groupMessage = (id: string, extra: Record<string, unknown> = {}): CloudMessage => ({
+    messageId: `wire-${id}`,
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: encodeCloudGroupControl({
+      kind: 'group-message',
+      groupId: sessionId,
+      groupSpaceId: sessionId,
+      groupTitle: 'Discussion',
+      createdByAccountId: 'acct_peer',
+      actor: { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+      participants: [
+        { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'admin' },
+        { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+      ],
+      message: {
+        id, senderAccountId: 'acct_peer', senderDisplayName: 'Peer', senderKind: 'human',
+        text: id, createdAtMs: 1_000, ...extra,
+      } as never,
+    }),
+    createdAt: new Date(1_000).toISOString(),
+    deliveredAt: new Date(1_000).toISOString(),
+    readAt: null,
+    direction: 'incoming',
+    sessionId,
+  });
+  const thread = {
+    schemaVersion: 1, kind: 'thread',
+    source: { sourceSessionId: sessionId, sourceMessageId: 'root', senderLabel: 'Peer' },
+  };
+  assert.deepEqual(cloudUnreadCountsBySessionId({
+    accountId: 'acct_me',
+    messagesByPeer: { acct_peer: [groupMessage('root'), groupMessage('reply', { messageAction: thread })] },
+  }), { [sessionId]: 1 });
+});
