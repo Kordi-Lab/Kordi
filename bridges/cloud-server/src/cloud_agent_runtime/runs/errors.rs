@@ -17,6 +17,9 @@ pub enum RunError {
     AgentUnavailable,
     #[error("Cloud agent run persistence failed: {0}")]
     Persistence(#[from] sqlx_core::Error),
+    /// The owner or requester declined AI models (`crate::ai_consent`).
+    #[error("The agent's owner hasn't turned on AI models.")]
+    AiConsentRequired,
 }
 
 pub type RunResult<T> = Result<T, RunError>;
@@ -28,7 +31,7 @@ impl RunError {
         match self {
             Self::Persistence(error) => error,
             Self::NotFound => sqlx_core::Error::Protocol(self.to_string()),
-            Self::ContextUnavailable(_) | Self::AgentUnavailable => {
+            Self::ContextUnavailable(_) | Self::AgentUnavailable | Self::AiConsentRequired => {
                 sqlx_core::Error::Protocol(self.to_string())
             }
         }
@@ -84,6 +87,7 @@ pub(crate) fn run_error_response(
             "Cloud agent run was not found for this runner.",
             StatusCode::NOT_FOUND,
         ),
+        RunError::AiConsentRequired => crate::ai_consent::required_response(),
         RunError::Persistence(source) => {
             eprintln!("[cloud_agent_runtime] {context}: {source}");
             error_response(

@@ -137,6 +137,8 @@ const ELIGIBLE: &str = concat!(
     // Proactive runs need no project folder (`proactive::needs_no_project_folder`).
     "AND (starts_with(candidate.run_id, 'proactive_eval_') OR starts_with(candidate.run_id, 'proactive_run_') OR starts_with(candidate.run_id, 'personal_agent_eval_') OR NOT EXISTS(SELECT 1 FROM cloud_project_devices p JOIN cloud_devices d USING(device_id), jsonb_array_elements(p.projects) project WHERE p.account_id=candidate.owner_account_id AND (project->'sessions') ? candidate.session_id AND d.revoked_at IS NULL AND (candidate.execution_backend='desktop' OR p.updated_at>now()-make_interval(secs=>$3)))) ",
     "AND NOT candidate.legacy_duplicate AND candidate.cancel_requested_at IS NULL ",
+    // Nothing runs for an owner or requester who declined AI (`crate::ai_consent`).
+    "AND NOT EXISTS(SELECT 1 FROM cloud_accounts consent WHERE consent.account_id IN (candidate.owner_account_id, candidate.requester_account_id) AND consent.ai_consent_status='declined') ",
     // Memory imports and Factory tests stay on the Mac that started them.
     "AND NOT starts_with(candidate.run_id, 'import_') ",
     "AND NOT starts_with(candidate.run_id, 'factory_') ",

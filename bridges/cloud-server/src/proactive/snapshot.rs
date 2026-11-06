@@ -274,6 +274,7 @@ pub(super) async fn build(
          FROM cloud_chat_messages message
          JOIN cloud_accounts account ON account.account_id = message.sender_account_id
          WHERE message.conversation_id = $1 AND message.deleted_at IS NULL
+           AND account.ai_consent_status <> 'declined'
            AND message.conversation_sequence <= $2
            AND message.message_kind IN ('text', 'voice') AND {allowed}
          ORDER BY message.conversation_sequence DESC

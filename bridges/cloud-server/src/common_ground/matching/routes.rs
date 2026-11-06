@@ -122,7 +122,26 @@ pub(in crate::common_ground) async fn results(
         .filter(|o| !fresh.contains_key(&o.profile_id))
         .cloned()
         .collect();
-    let theme_members: Vec<SharedCard> = cards.iter().take(MAX_THEME_MEMBERS).cloned().collect();
+    // Room themes leave out the viewer if they declined AI and anyone else
+    // who has not allowed it (`crate::ai_consent`).
+    let ids: Vec<String> = others.iter().map(|c| c.account_id.clone()).collect();
+    let mut excluded = match crate::ai_consent::not_allowed_among(pool, &ids).await {
+        Ok(excluded) => excluded,
+        Err(error) => return db_error(error),
+    };
+    match crate::ai_consent::is_declined(pool, account).await {
+        Ok(true) => {
+            excluded.insert(account.to_string());
+        }
+        Ok(false) => {}
+        Err(error) => return db_error(error),
+    }
+    let theme_members: Vec<SharedCard> = cards
+        .iter()
+        .filter(|c| !excluded.contains(&c.account_id))
+        .take(MAX_THEME_MEMBERS)
+        .cloned()
+        .collect();
     let key = store::members_key(&theme_members);
     let themes = if open {
         store::stored_themes(pool, room_id, &key).await
@@ -151,6 +170,7 @@ pub(in crate::common_ground) async fn results(
         .await;
         match queued {
             Ok(Queued::Pending(state)) => pending = Some(state),
+            Ok(Queued::Skipped) => {}
             Ok(Queued::Limited(retry_after)) => return limited(retry_after),
             Err(error) => return db_error(error),
         }
@@ -168,6 +188,7 @@ pub(in crate::common_ground) async fn results(
         .await;
         match queued {
             Ok(Queued::Pending(state)) => pending = pending.or(Some(state)),
+            Ok(Queued::Skipped) => {}
             Ok(Queued::Limited(retry_after)) => return limited(retry_after),
             Err(error) => return db_error(error),
         }
@@ -323,6 +344,11 @@ pub(in crate::common_ground) async fn match_detail(
             Err(error) => db_error(error),
         },
         Ok(Queued::Limited(retry_after)) => limited(retry_after),
+        Ok(Queued::Skipped) => crate::common_ground::err(
+            "common_ground_match_not_found",
+            "No match was saved for this person.",
+            StatusCode::NOT_FOUND,
+        ),
         Err(error) => db_error(error),
     }
 }

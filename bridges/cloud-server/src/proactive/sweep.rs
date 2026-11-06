@@ -308,6 +308,12 @@ pub(super) async fn evaluate(
     let Some(agent) = load_agent(pool, &candidate.agent_id).await? else {
         return Ok(Outcome::Skipped);
     };
+    // Background work needs an owner who allowed AI; otherwise the messages
+    // are passed over, never read (`crate::ai_consent`).
+    if !crate::ai_consent::is_allowed(pool, &agent.owner_account_id).await? {
+        advance(pool, candidate).await?;
+        return Ok(Outcome::Skipped);
+    }
     let snapshot = build(pool, &agent, candidate).await?;
     if snapshot.collaborator_texts.is_empty()
         || snapshot.mentions_agent

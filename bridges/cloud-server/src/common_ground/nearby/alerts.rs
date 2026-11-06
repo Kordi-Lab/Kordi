@@ -74,6 +74,10 @@ async fn recipient(
     others: &[Present],
 ) -> sqlx_core::Result<()> {
     let pool = ctx.pool;
+    // Alerts are background work: only for someone who allowed AI.
+    if !crate::ai_consent::is_allowed(pool, &recipient.account_id).await? {
+        return Ok(());
+    }
     let settings = settings::load(pool, &recipient.account_id, false).await?;
     if settings.alert_requests {
         let needs = needs::active(pool, &recipient.account_id).await?;

@@ -94,6 +94,7 @@ pub(super) async fn read(
          FROM cloud_chat_messages m WHERE conversation_id=$1 AND deleted_at IS NULL AND conversation_sequence<$2
          AND (NOT $3 OR message_id::text=ANY($4))
          AND NOT EXISTS(SELECT 1 FROM cloud_chat_message_visibility v WHERE v.message_id=m.message_id AND v.account_id=ANY($5))
+         AND NOT EXISTS(SELECT 1 FROM cloud_accounts consent WHERE consent.account_id=m.sender_account_id AND consent.ai_consent_status='declined')
          AND {allowed}
          ORDER BY conversation_sequence DESC LIMIT $6",
         allowed = crate::contact_permissions::agent_allowed_sql("$7", "m.sender_account_id"),

@@ -240,6 +240,10 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
 }
 
 pub async fn refresh_as(pool: &PgPool, account: &str, trigger: Trigger) -> Result<()> {
+    // An owner who declined AI gets no digest run (`crate::ai_consent`).
+    if crate::ai_consent::is_declined(pool, account).await? {
+        return Ok(());
+    }
     type DigestState = (
         String,
         String,

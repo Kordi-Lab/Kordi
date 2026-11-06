@@ -63,6 +63,9 @@ pub(super) async fn tasks(
         );
     }
     let pool = state.db_pool();
+    if let Err(response) = crate::ai_consent::require(pool, &[&session.account_id]).await {
+        return *response;
+    }
     match import_runs::is_owner_mac(pool, &session).await {
         Ok(true) => {}
         Ok(false) => return denied(),

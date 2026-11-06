@@ -14,7 +14,7 @@ async fn upgrade_from_112_adds_account_email_codes() {
     latest_version(&pool).await;
     // Migrations 139 and 140 add empty profile columns.
     let after: Vec<(Value,)> =
-        query_as("SELECT to_jsonb(a) - ARRAY['public_handle','about','location','time_zone','website','birthday','public_handle_changed_at'] FROM cloud_accounts a ORDER BY account_id")
+        query_as("SELECT to_jsonb(a) - ARRAY['public_handle','about','location','time_zone','website','birthday','public_handle_changed_at','ai_consent_status','ai_consent_decided_at'] FROM cloud_accounts a ORDER BY account_id")
             .fetch_all(&pool)
             .await
             .unwrap();
@@ -56,8 +56,9 @@ async fn upgrade_from_169_adds_account_security_codes() {
             .unwrap();
     apply_migrations(&pool).await.unwrap();
     latest_version(&pool).await;
+    // Migration 180 adds the AI consent columns.
     let after: Vec<(Value,)> =
-        query_as("SELECT to_jsonb(a) FROM cloud_accounts a ORDER BY account_id")
+        query_as("SELECT to_jsonb(a) - ARRAY['ai_consent_status','ai_consent_decided_at'] FROM cloud_accounts a ORDER BY account_id")
             .fetch_all(&pool)
             .await
             .unwrap();
