@@ -1,8 +1,9 @@
 import {MessagesSquare} from 'lucide-react';
 import {refreshThreadAttention} from '@/features/cloud/threadAttention';
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type PointerEvent as ReactPointerEvent } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type PointerEvent as ReactPointerEvent } from 'react';
 import { X } from 'lucide-react';
 
+import { NativeChatTitlebarContext } from '@/app/nativeChatTitlebarContext';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
@@ -22,7 +23,6 @@ export function ChatThreadPanel({
   conversation,
   thread,
   navigationMessageId,firstUnreadMessageId,nextAfterSequence,onLoadMore,onNextUnread,unreadThreadCount,
-  replyCount,
   liveTurn,
   liveTurnSender,
   actions,
@@ -47,7 +47,6 @@ export function ChatThreadPanel({
   conversation: Conversation;
   thread: MessageThread;
   navigationMessageId?:string|null; firstUnreadMessageId?:string|null; nextAfterSequence?:number|null; onLoadMore?:()=>void; onNextUnread?:()=>void; unreadThreadCount?:number;
-  replyCount: number;
   liveTurn?: DesktopChatTurnSnapshot | null;
   liveTurnSender: string;
   actions: ChatSessionPaneActions;
@@ -69,6 +68,7 @@ export function ChatThreadPanel({
   readCursors?: Record<string,number> | null;
   onMarkRead?: (rootId:string, sequence:number) => Promise<void>;
 }) {
+  const nativeTitlebar = useContext(NativeChatTitlebarContext);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -217,17 +217,14 @@ export function ChatThreadPanel({
       >
         <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[color:var(--app-divider)] transition group-hover:bg-[color:var(--app-sidebar-accent)] group-focus-visible:bg-[color:var(--app-sidebar-accent)]" aria-hidden="true" />
       </div>
-      <header className="app-page-header app-chat-pane-header relative flex shrink-0 items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="app-page-header-title-row app-chat-pane-title-row flex items-center">
-            <h2 className="truncate text-[17px] font-semibold text-[color:var(--utility-foreground)]">Discussion</h2>
-          </div>
-          <p className="text-[11px] leading-5 text-[color:var(--utility-muted-text)]">{replyCount} message{replyCount === 1 ? '' : 's'}</p>
+      <header className="app-page-header app-chat-pane-header app-thread-panel-header relative shrink-0" data-native-titlebar={nativeTitlebar ? true : undefined}>
+        <div className="app-thread-panel-header-row">
+          <h2 className="app-thread-panel-title">Discussion</h2>
+          {unreadThreadCount ? <button type="button" onClick={onNextUnread} aria-label="Jump to next unread discussion" title="Next unread discussion" className="app-button-quiet grid h-7 w-7 shrink-0 place-items-center rounded-full text-[color:var(--app-sidebar-accent)]"><MessagesSquare className="h-4 w-4"/></button>:null}
+          <button type="button" className="app-button-quiet grid h-7 w-7 shrink-0 place-items-center rounded-full" onClick={onClose} aria-label="Close discussion">
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
-        {unreadThreadCount ? <button type="button" onClick={onNextUnread} aria-label="Jump to next unread discussion" title="Next unread discussion" className="app-button-quiet grid h-9 w-9 place-items-center rounded-full text-[color:var(--app-sidebar-accent)]"><MessagesSquare className="h-4 w-4"/></button>:null}
-        <button type="button" className="app-button-quiet grid h-9 w-9 place-items-center rounded-full" onClick={onClose} aria-label="Close discussion">
-          <X className="h-4 w-4" aria-hidden="true" />
-        </button>
       </header>
       <ChatSessionPane
         presentation={{
@@ -244,12 +241,12 @@ export function ChatThreadPanel({
           messages,
           navigationRequest:navigationMessageId?{id:navigationMessageId,nonce:0,sessionKey:`${conversation.id}:thread:${rootId}`}:null,
           scrollRef,
-          scrollClassName: 'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain px-1',
+          scrollClassName: 'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain',
           queuedMessages,
           onEditQueuedMessage: editQueuedMessage,
           onCancelQueuedMessage,
           composer: (
-            <div className="shrink-0 px-3 pb-4 pt-3">
+            <div className="shrink-0 px-5 pb-4 pt-3">
               {nextAfterSequence!=null?<button type="button" onClick={onLoadMore} className="app-button-quiet mb-2 w-full rounded-lg p-2 text-xs">Load more replies</button>:null}
               <div className="app-composer-shell relative rounded-[26px] p-3">
                 <ComposerMentionMenu
