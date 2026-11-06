@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 import { Button } from '@/components/ui/button';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
@@ -15,17 +17,21 @@ function blockedAccountName(block: CloudBlockedAccount): string {
 /** Settings › Blocked: the people the signed-in account blocked, with Unblock. */
 export function BlockedAccountsPanel() {
   const safety = useSafetyActions();
-  const { blocks } = safety;
+  const { blocks, refreshBlocks } = safety;
+  // Opening the page reloads the list, so a block from another device shows up.
+  useEffect(() => { void refreshBlocks(); }, [refreshBlocks]);
 
   return (
     <div className="app-cloud-account-settings-section max-w-[680px] py-1">
       <h2 className={cn('m-0', settingsType.heading)}>Blocked</h2>
       {safety.blocksError && blocks.length === 0 ? (
-        <div className="app-error-text mt-4 rounded-[12px] bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100" role="alert">
-          {safety.blocksError}
+        <div className="app-error-text mt-4 flex items-center gap-3 rounded-[12px] bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100" role="alert">
+          <span className="min-w-0 flex-1">{safety.blocksError}</span>
+          <Button variant="secondary" className="h-7 shrink-0 rounded-full px-2.5 text-[12px]" onClick={() => { void refreshBlocks(); }}>
+            Try again
+          </Button>
         </div>
-      ) : null}
-      {!safety.blocksLoaded && blocks.length === 0 ? (
+      ) : !safety.blocksLoaded && blocks.length === 0 ? (
         <div className="grid min-h-32 place-items-center text-[12px] text-slate-400" role="status">Loading…</div>
       ) : blocks.length === 0 ? (
         <div className="grid min-h-32 place-items-center text-center">

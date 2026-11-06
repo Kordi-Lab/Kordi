@@ -5,7 +5,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 
 import { CloudAuthError, type CloudAccount } from '@/features/cloud/authClient';
-import { useCloudContacts } from '@/features/cloud/useCloudContacts';
+import { beginCloudContactRemoval, useCloudContacts } from '@/features/cloud/useCloudContacts';
 
 import { BlockAccountDialog } from './BlockAccountDialog';
 import { ReportDialog } from './ReportDialog';
@@ -24,12 +24,14 @@ type SafetyActionsProviderProps = {
   accountId: string | null;
   /** Reloads contacts after a block or unblock, as after deleting a contact. */
   refreshContacts: () => Promise<void>;
+  /** Takes a blocked person out of the contact lists at once; the server removed the contact. */
+  forgetContact?: (accountId: string) => void;
   /** Client and session override for previews and tests. */
   deps?: SafetyDeps;
   children: ReactNode;
 };
 
-export function SafetyActionsProvider({ accountId, refreshContacts, deps: depsOverride, children }: SafetyActionsProviderProps) {
+export function SafetyActionsProvider({ accountId, refreshContacts, forgetContact, deps: depsOverride, children }: SafetyActionsProviderProps) {
   const deps = useMemo(() => depsOverride ?? defaultSafetyDeps(), [depsOverride]);
   const blocks = useCloudBlocks(accountId, deps);
   const [dialog, setDialog] = useState<SafetyDialog | null>(null);
@@ -44,8 +46,9 @@ export function SafetyActionsProvider({ accountId, refreshContacts, deps: depsOv
   const block = useCallback(async (target: SafetyAccountTarget) => {
     const result = await deps.client.block(await safetySessionToken(deps, accountId), target.accountId);
     if (accountId) rememberBlockedAccount(accountId, result.block);
+    forgetContact?.(target.accountId);
     afterDirectoryChange();
-  }, [accountId, afterDirectoryChange, deps]);
+  }, [accountId, afterDirectoryChange, deps, forgetContact]);
 
   const unblock = useCallback(async (target: SafetyAccountTarget) => {
     await deps.client.unblock(await safetySessionToken(deps, accountId), target.accountId);
@@ -70,9 +73,10 @@ export function SafetyActionsProvider({ accountId, refreshContacts, deps: depsOv
         avatarUrl: null,
         blockedAt: new Date().toISOString(),
       });
+      forgetContact?.(input.reportedAccountId);
       afterDirectoryChange();
     }
-  }, [accountId, afterDirectoryChange, deps]);
+  }, [accountId, afterDirectoryChange, deps, forgetContact]);
 
   const value = useMemo<SafetyActions>(() => ({
     available,
@@ -136,8 +140,12 @@ export function SafetyActionsProvider({ accountId, refreshContacts, deps: depsOv
 export function CloudSafetyActionsProvider({ account, children }: { account: CloudAccount | null; children: ReactNode }) {
   const contacts = useCloudContacts(account);
   const refreshContacts = useCallback(() => contacts.refresh(), [contacts]);
+  const ownerAccountId = account?.accountId ?? null;
+  const forgetContact = useCallback((peerAccountId: string) => {
+    if (ownerAccountId) beginCloudContactRemoval(ownerAccountId, peerAccountId).commit();
+  }, [ownerAccountId]);
   return (
-    <SafetyActionsProvider accountId={account?.accountId ?? null} refreshContacts={refreshContacts}>
+    <SafetyActionsProvider accountId={ownerAccountId} refreshContacts={refreshContacts} forgetContact={forgetContact}>
       {children}
     </SafetyActionsProvider>
   );

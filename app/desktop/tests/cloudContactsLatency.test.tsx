@@ -7,11 +7,14 @@ import {
   acceptedCloudContactPeerAccountId,
   applyAcceptedCloudContactRequest,
   cloudContactAcceptedSyncDetail,
+  __cloudContactsStoreForTests,
   applyCloudContactsRefreshSnapshot,
+  beginCloudContactRemoval,
   cloudContactAddedActorAccountId,
   mergeCloudContactRequestSnapshot,
   mergeCloudContactSummarySnapshot,
   removeCloudContactRequestSnapshot,
+  removeCloudContactSummarySnapshot,
   selectCloudContactsSnapshotForAccount,
   shouldShowCloudContactsLoading,
   shouldRefreshCloudContactsForWsSubject,
@@ -80,7 +83,7 @@ test('stale contact refreshes do not overwrite newer accepted contacts', () => {
   assert.deepEqual(applyCloudContactsRefreshSnapshot(current, stale, {
     startedMutationRevision: 2,
     currentMutationRevision: 2,
-  }), { contacts: [summary()], requests: [] });
+  }, new Set(['account:acct_peer'])), { contacts: [summary()], requests: [] });
 });
 
 test('contact refresh preserves locally accepted contacts while the server snapshot catches up', () => {
@@ -90,7 +93,60 @@ test('contact refresh preserves locally accepted contacts while the server snaps
   assert.deepEqual(applyCloudContactsRefreshSnapshot(current, delayed, {
     startedMutationRevision: 1,
     currentMutationRevision: 1,
-  }), current);
+  }, new Set(['account:acct_accepted'])), current);
+});
+
+test('contact refresh drops contacts the server no longer lists and keeps the rest in place', () => {
+  const nadia = summary({ accountId: 'acct_nadia', displayName: 'Nadia' });
+  const sam = summary({ accountId: 'acct_sam', displayName: 'Sam' });
+  const priya = summary({ accountId: 'acct_priya', displayName: 'Priya' });
+  const current = { contacts: [nadia, sam, priya], requests: [] };
+  const revisions = { startedMutationRevision: 3, currentMutationRevision: 3 };
+
+  // Deleted or blocked elsewhere: the server list wins.
+  const next = applyCloudContactsRefreshSnapshot(current, { contacts: [structuredClone(priya), structuredClone(nadia)], requests: [] }, revisions);
+  assert.deepEqual(next.contacts.map((item) => item.accountId), ['acct_nadia', 'acct_priya']);
+  assert.equal(next.contacts[0], nadia, 'unchanged rows keep their identity');
+
+  const added = summary({ accountId: 'acct_lee', displayName: 'Lee' });
+  assert.deepEqual(
+    applyCloudContactsRefreshSnapshot(next, { contacts: [nadia, priya, added], requests: [] }, revisions).contacts.map((item) => item.accountId),
+    ['acct_nadia', 'acct_priya', 'acct_lee'],
+  );
+});
+
+test('removing a contact leaves a system agent on the same account', () => {
+  const human = summary({ accountId: 'acct_support' });
+  const systemAgent = summary({ contactId: 'cloud-system:kordi-support', contactKind: 'system_agent', accountId: 'acct_support' });
+  const snapshot = { contacts: [human, systemAgent, summary()], requests: [] };
+
+  const next = removeCloudContactSummarySnapshot(snapshot, 'acct_support');
+  assert.deepEqual(next.contacts, [systemAgent, summary()]);
+  assert.equal(removeCloudContactSummarySnapshot(next, 'acct_missing'), next);
+});
+
+test('a contact removal leaves every loaded list at once and returns after a failed delete', () => {
+  const nadia = summary({ accountId: 'acct_nadia', displayName: 'Nadia' });
+  const sam = summary({ accountId: 'acct_sam', displayName: 'Sam' });
+  const seeded = __cloudContactsStoreForTests('acct_owner', [nadia, sam]);
+  try {
+    const failed = beginCloudContactRemoval('acct_owner', 'acct_nadia');
+    assert.deepEqual(seeded.store.snapshot.contacts.map((item) => item.accountId), ['acct_sam']);
+    assert.ok(seeded.store.removing.has('acct_nadia'), 'refreshes skip the person until the delete settles');
+    failed.rollback();
+    assert.deepEqual(seeded.store.snapshot.contacts.map((item) => item.accountId), ['acct_nadia', 'acct_sam']);
+    assert.equal(seeded.store.removing.size, 0);
+
+    const blocked = beginCloudContactRemoval('acct_owner', 'acct_sam');
+    blocked.commit();
+    assert.deepEqual(seeded.store.snapshot.contacts.map((item) => item.accountId), ['acct_nadia']);
+    assert.equal(seeded.store.removing.size, 0);
+
+    beginCloudContactRemoval('acct_other', 'acct_nadia').commit();
+    assert.deepEqual(seeded.store.snapshot.contacts.map((item) => item.accountId), ['acct_nadia'], 'other accounts are untouched');
+  } finally {
+    seeded.clear();
+  }
 });
 
 test('equivalent contact refresh preserves contact and request array identities', () => {

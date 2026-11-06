@@ -7,7 +7,7 @@ import { useCloudAuthCapabilitiesState } from './cloudAuthCapabilities';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import { contactPermissionsVersionFromCapabilities } from './contactPermissionsClient';
 import { cloudContactPermissionsHost } from './contactPermissionsHost';
-import { contactProfileVersionFromCapabilities, fetchContactProfile, removeCloudContact } from './contactProfileClient';
+import { contactProfileVersionFromCapabilities, fetchContactProfile } from './contactProfileClient';
 import { dispatchCloudGroupInvitationAccepted } from './groupInvitationDeepLink';
 
 type ContactProfileHostOptions = {
@@ -16,7 +16,8 @@ type ContactProfileHostOptions = {
   onMessageContact?: (contact: Contact) => void;
   onSelectContact: (groupId: ContactClass, contactId: string) => void;
   onCloseOverlay: () => void;
-  refreshContacts: () => Promise<void>;
+  /** The contacts store's delete, which takes the row out at once and puts it back on failure. */
+  removeContact: (accountId: string) => Promise<void>;
 };
 
 export type CloudContactProfileAccess = {
@@ -25,17 +26,15 @@ export type CloudContactProfileAccess = {
   removeContact: ((contact: Contact) => Promise<void>) | undefined;
 };
 
-/** Deletes the contact, refreshes the list, then closes the pane; errors reach the pane's confirm. */
+/** Deletes the contact, then closes the pane; errors keep the pane open at its confirm. */
 export function cloudContactRemover(deps: {
   remove: (accountId: string) => Promise<void>;
-  refresh: () => Promise<void>;
   close: () => void;
 }) {
   return async (contact: Contact) => {
     const accountId = cloudContactAccountId(contact);
     if (!accountId || contact.systemContact || contact.locked) throw new Error('This contact cannot be deleted.');
     await deps.remove(accountId);
-    await deps.refresh().catch(() => undefined);
     deps.close();
   };
 }
@@ -91,10 +90,9 @@ export function useCloudContactProfileHost(options: ContactProfileHostOptions): 
   }, [authClient, available, permissionsAvailable, selfAccountId]);
 
   const removeContact = useCallback((contact: Contact) => cloudContactRemover({
-    remove: (accountId) => removeCloudContact(accountId, { request: (path, init, fallback) => authClient.request(path, init, fallback) }),
-    refresh: () => latest.current.refreshContacts(),
+    remove: (accountId) => latest.current.removeContact(accountId),
     close: () => latest.current.onCloseOverlay(),
-  })(contact), [authClient]);
+  })(contact), []);
 
   return { host, removeContact: available ? removeContact : undefined };
 }
