@@ -463,4 +463,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
     migration!(182, "abuse reports", "0182_abuse_reports.sql"),
     migration!(183, "sign in with apple", "0183_sign_in_with_apple.sql"),
     migration!(184, "contact permissions", "0184_contact_permissions.sql"),
+    migration!(
+        185,
+        "apple token revocations",
+        "0185_apple_token_revocations.sql"
+    ),
 ];
