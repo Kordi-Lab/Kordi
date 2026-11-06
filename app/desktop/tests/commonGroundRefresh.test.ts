@@ -120,3 +120,16 @@ test('a match response started before withdrawal cannot restore a cached shared 
   await pending;
   assert.deepEqual(store.getSnapshot().matches, {});
 });
+
+test('returning to Home refreshes Recent with the match just opened', async () => {
+  const { client } = mockServer({
+    'GET rooms': { status: 200, body: { rooms: [] } },
+    'GET recent': { status: 200, body: { people: [{ person: person('peer'), score: 80, headline: 'Shared work' }] } },
+  });
+  const store = new CommonGroundStore(client);
+  store.set({ loaded: true, owner: owner(), stack: [{ name: 'home' }, { name: 'match', accountId: 'peer' }], matches: { peer: match }, recent: [] });
+  store.back();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(store.top().name, 'home');
+  assert.deepEqual(store.getSnapshot().recent.map((entry) => entry.person.accountId), ['peer']);
+});
