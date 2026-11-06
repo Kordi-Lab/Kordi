@@ -18,14 +18,15 @@ import {
   buildChatCreateGroupCollaborationInviteTargets,
   buildChatCreateGroupMetadata,
   contactCanonicalIdentityRequest,
-  groupDefaultName,
   isApprovedCollaborationContact,
 } from '@/features/chat/chatCreateFlows';
+import { groupCreationErrorMessage } from '@/features/chat/groupCreateCopy';
 import type {
   CanonicalSessionState,
   Contact,
 } from '@/kordi-app/types';
 import {
+  deleteDesktopChatSessionForever,
   openOrCreateCanonicalSessionFast,
   upsertCanonicalIdentityFast,
 } from '@/lib/desktop';
@@ -34,7 +35,7 @@ import {
   mergeCanonicalIdentity,
   mergeOpenCanonicalSessionResult,
 } from './canonicalSessionStateMutations';
-import { uniqueStrings } from './useKordiAppModelHelpers';
+import { removeSessionFromCanonicalState, uniqueStrings } from './useKordiAppModelHelpers';
 import { rememberSessionOrganization } from '@/features/organizations/sessionOrganization';
 
 type UseKordiGroupCreationArgs = {
@@ -62,6 +63,15 @@ export function useKordiGroupCreation({
   setCanonicalState,
   setDesktopError,
 }: UseKordiGroupCreationArgs) {
+  const rollBackGroup = useCallback(async (sessionId: string, previousState: CanonicalSessionState) => {
+    setCanonicalState((current) => removeSessionFromCanonicalState(current ?? previousState, sessionId));
+    await deleteDesktopChatSessionForever(sessionId).catch(() => undefined);
+    const login = await loadSession().catch(() => null);
+    if (login?.token) {
+      await defaultCloudAuthClient().dissolveGroup(login.token, sessionId).catch(() => undefined);
+    }
+  }, [setCanonicalState]);
+
   return useCallback(async (request: {
     avatarDataUrl?: string | null;
     name?: string | null;
@@ -69,6 +79,8 @@ export function useKordiGroupCreation({
     inviteLink?: boolean;
   }): Promise<string | undefined> => {
     if (!isNativeShell) return undefined;
+    const groupDisplayName = request.name?.trim() ?? '';
+    if (!groupDisplayName) throw new Error('Enter a group name.');
     setDesktopError(null);
     const creatorIdentityId =
       canonicalState?.profile.humanIdentityId?.trim();
@@ -121,13 +133,12 @@ export function useKordiGroupCreation({
 
     const participantIdentityIds = uniqueStrings(identityIds);
     const selectedNames = contacts.map((contact) => contact.name);
-    const groupDisplayName =
-      request.name?.trim() || groupDefaultName(selectedNames);
     const login = request.avatarDataUrl ? await loadSession() : null;
     if (request.avatarDataUrl && (!login?.token || !account)) throw new Error('Sign in before setting a group image.');
     const groupAvatar = request.avatarDataUrl && login?.token && account
       ? { imageUrl: await defaultCloudAuthClient().uploadGroupAvatarAsset(login.token, request.avatarDataUrl, account.accountId), updatedAtMs: Date.now() } : null;
     const sessionId = `session:group:${crypto.randomUUID()}`;
+    const createdAtMs = Date.now();
     const openResult = await openOrCreateCanonicalSessionFast({
       id: sessionId,
       kind: 'group',
@@ -146,10 +157,13 @@ export function useKordiGroupCreation({
       }), ...(groupAvatar ? { groupAvatar } : {}) },
     });
     rememberSessionOrganization(sessionId, account?.accountId);
+    const stateBeforeGroup = nextCanonicalState;
     nextCanonicalState = mergeOpenCanonicalSessionResult(
       nextCanonicalState,
       openResult,
     );
+    // A new group goes to the top of Chats before its first message arrives.
+    nextCanonicalState = withSessionActivityAt(nextCanonicalState, sessionId, createdAtMs);
     setCanonicalState(nextCanonicalState);
 
     const inviteTargets =
@@ -173,13 +187,13 @@ export function useKordiGroupCreation({
             account,
             contacts,
           ),
+          transient: true,
         });
       } catch (error) {
-        setDesktopError(
-          `Group created, but Cloud invites failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
+        // Never leave a half-created group behind: undo the local group, and
+        // the server group if its conversation was made before the failure.
+        await rollBackGroup(sessionId, stateBeforeGroup);
+        throw new Error(groupCreationErrorMessage(error));
       }
     }
 
@@ -190,9 +204,26 @@ export function useKordiGroupCreation({
     canonicalState,
     contactById,
     isNativeShell,
+    rollBackGroup,
     selectNewSession,
     sendCloudGroupControl,
     setCanonicalState,
     setDesktopError,
   ]);
+}
+
+/** Marks a session's last activity, so the Chats list orders it by that time. */
+export function withSessionActivityAt(
+  state: CanonicalSessionState,
+  sessionId: string,
+  atMs: number,
+): CanonicalSessionState {
+  return {
+    ...state,
+    sessions: state.sessions.map((session) => (
+      session.id === sessionId && (session.lastMessageAtMs ?? 0) < atMs
+        ? { ...session, lastMessageAtMs: atMs }
+        : session
+    )),
+  };
 }

@@ -99,50 +99,85 @@ test('Start a chat menu keyboard: first row focus, Tab cycles, Escape returns to
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
+// Copying works without clipboard permission prompts in the preview.
+async function stubClipboard(page: Page) {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { (window as unknown as { copied?: string }).copied = text; } } });
+  });
+}
+
 for (const theme of ['light', 'dark'] as const) {
-  test(`Start group uses dense people rows and invites with a link (${theme})`, async ({ page }) => {
+  test(`Start group needs a name, uses dense people rows and invites with a link (${theme})`, async ({ page }) => {
+    await stubClipboard(page);
     await page.goto(`${preview}?theme=${theme}&mode=group&show=create`);
     const dialog = page.getByRole('dialog', { name: 'Start group', exact: true });
     await expect(dialog).toBeVisible();
     await settle(page);
     await expect(dialog.getByText('Kordi contact')).toHaveCount(0);
-    await expect(dialog.getByText(/Select at least|Pick \d/)).toHaveCount(0);
+    await expect(dialog.getByText(/Select at least|Pick \d|verified group admin/)).toHaveCount(0);
     const people = dialog.getByRole('group', { name: 'People' });
     const maya = people.getByRole('button', { name: 'Maya Chen' });
     const box = await rowBox(maya);
     expect(box.height).toBeLessThanOrEqual(32);
     await expect(maya).toHaveCSS('font-size', '12px');
 
-    // One person can start a group: nobody else needs to be picked.
+    // The name comes first: it has focus, and both actions wait for it.
+    const name = dialog.getByRole('textbox', { name: 'Group name' });
+    await expect(name).toBeFocused();
+    await expect(name).toHaveAttribute('placeholder', 'Group name');
     const invite = people.getByRole('button', { name: /Invite with a link/ });
+    const create = dialog.getByRole('button', { name: 'Create group', exact: true });
+    await expect(invite).toBeDisabled();
+    await expect(create).toBeDisabled();
+    await page.screenshot({ path: test.info().outputPath(`start-group-empty-${theme}.png`) });
+    await name.fill('   ');
+    await expect(create).toBeDisabled();
+    await name.fill('Launch QA');
     await expect(invite).toBeEnabled();
-    await expect(dialog.getByRole('textbox', { name: 'Group name' })).toHaveAttribute('placeholder', 'New group');
-    await expect(dialog.getByRole('button', { name: 'Create group', exact: true })).toBeEnabled();
-    await page.screenshot({ path: test.info().outputPath(`start-group-${theme}.png`) });
+    await expect(create).toBeEnabled();
 
     await maya.focus();
     await page.keyboard.press('Space');
     await expect(maya).toHaveAttribute('aria-pressed', 'true');
-    await expect(dialog.getByRole('textbox', { name: 'Group name' })).toHaveAttribute('placeholder', 'Maya Chen');
+    await expect(name).toHaveValue('Launch QA');
+    await settle(page);
+    await page.screenshot({ path: test.info().outputPath(`start-group-named-${theme}.png`) });
     await page.keyboard.press('Space');
     await expect(maya).toHaveAttribute('aria-pressed', 'false');
 
     await invite.click();
-    await expect(page.getByTestId('started')).toHaveText('group:0:link');
-    const shared = page.getByRole('dialog', { name: 'New group', exact: true });
+    await expect(page.getByTestId('started')).toHaveText('group:0:link:Launch QA');
+    const shared = page.getByRole('dialog', { name: 'Launch QA', exact: true });
     await expect(shared.getByRole('textbox', { name: 'Group invitation link' })).toHaveValue(/\/g\/kordi_gi_/);
     await expect(shared.getByText('Expires in 7 days')).toBeVisible();
-    await expect(shared.getByRole('button', { name: 'Copy invitation link' })).toBeVisible();
-    await page.screenshot({ path: test.info().outputPath(`start-group-link-${theme}.png`) });
+    const copy = shared.getByRole('button', { name: 'Copy link', exact: true });
+    const [sharedBox, copyBox] = [await rowBox(shared), await rowBox(copy)];
+    expect(copyBox.x + copyBox.width).toBeLessThanOrEqual(sharedBox.x + sharedBox.width - 8);
+    await copy.focus();
+    await page.keyboard.press('Enter');
+    await expect(shared.getByRole('button', { name: 'Link copied', exact: true })).toBeVisible();
+    const toast = page.getByRole('status').filter({ hasText: 'Link copied' });
+    await expect(toast).toBeVisible();
+    await expect(toast).toHaveCSS('opacity', '1');
+    expect(await page.evaluate(() => (window as unknown as { copied?: string }).copied)).toMatch(/\/g\/kordi_gi_/);
+    await settle(page);
+    await page.screenshot({ path: test.info().outputPath(`start-group-link-copied-${theme}.png`) });
+    await expect(page.getByRole('status').filter({ hasText: 'Link copied' })).toHaveCount(0, { timeout: 3_000 });
+    await expect(shared.getByRole('button', { name: 'Copy link', exact: true })).toBeVisible();
     await shared.getByRole('button', { name: 'Done', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 }
 
-test('Start group creates a group with only its creator', async ({ page }) => {
+test('Start group creates a named group with only its creator on Enter and closes', async ({ page }) => {
   await page.goto(`${preview}?theme=light&mode=group&show=create`);
   const dialog = page.getByRole('dialog', { name: 'Start group', exact: true });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Create group', exact: true }).click();
-  await expect(page.getByTestId('started')).toHaveText('group:0');
+  const name = dialog.getByRole('textbox', { name: 'Group name' });
+  await name.press('Enter');
+  await expect(page.getByTestId('started')).toHaveText('');
+  await name.fill('Launch QA');
+  await name.press('Enter');
+  await expect(page.getByTestId('started')).toHaveText('group:0:Launch QA');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 });

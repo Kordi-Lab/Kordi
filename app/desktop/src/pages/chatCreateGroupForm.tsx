@@ -2,9 +2,12 @@ import { useMemo, useState } from 'react';
 import { Check, Copy, Link2, LoaderCircle, Share } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { CopyToast } from '@/components/ui/copyFeedback';
+import { useCopyFeedback } from '@/components/ui/useCopyFeedback';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import type { CloudGroupInvitation, CloudGroupInvitationCreateInput } from '@/features/cloud/authClient';
-import { buildChatCreateGroupPersonOptions, groupDefaultName } from '@/features/chat/chatCreateFlows';
+import { buildChatCreateGroupPersonOptions } from '@/features/chat/chatCreateFlows';
+import { groupCreationErrorMessage, groupInvitationLinkErrorMessage, groupNameIsValid, invitationExpiryLabel as expiryLabel } from '@/features/chat/groupCreateCopy';
 import type { Contact } from '@/kordi-app/types';
 import { GroupAvatarEditor } from '@/kordi-app/components/GroupAvatarEditor';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
@@ -23,11 +26,6 @@ export type ChatCreateGroupFormProps = {
 
 type SharedLink = { url: string; expiresAt: string };
 
-function expiryLabel(expiresAt: string) {
-  const remaining = Date.parse(expiresAt) - Date.now();
-  const days = Number.isFinite(remaining) ? Math.max(1, Math.round(remaining / 86_400_000)) : 7;
-  return `Expires in ${days} ${days === 1 ? 'day' : 'days'}`;
-}
 
 /** Start group: a dense contact picker, plus a link for people who are not on Kordi yet. */
 export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvitation, onBack, onDone, onLinkShown }: ChatCreateGroupFormProps) {
@@ -40,43 +38,52 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
   const [link, setLink] = useState<SharedLink | null>(null);
   // A group created for a link whose invitation then failed: retrying reuses it.
   const [linkGroup, setLinkGroup] = useState<{ sessionId: string; title: string } | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy: copyText } = useCopyFeedback();
 
   const selected = options.filter((option) => selectedIds.includes(option.id));
   const contactIds = selected.map((option) => option.id);
-  const defaultName = groupDefaultName(selected.map((option) => option.label));
+  const trimmedName = name.trim();
+  const nameIsValid = groupNameIsValid(name);
   const toggle = (id: string) => setSelectedIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
 
-  const request = (inviteLink: boolean): CreateChatGroupRequest => ({ contactIds, name: name.trim() || null, avatarDataUrl, ...(inviteLink ? { inviteLink } : {}) });
+  const request = (inviteLink: boolean): CreateChatGroupRequest => ({ contactIds, name: trimmedName, avatarDataUrl, ...(inviteLink ? { inviteLink } : {}) });
   const create = async () => {
-    if (busy) return;
+    if (busy || !nameIsValid) return;
+    // The group already exists when only its link failed: finish with it.
+    if (linkGroup) { onDone(); return; }
     setBusy('create'); setError(null);
     try { await onCreateGroup(request(false)); onDone(); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not create this group.'); }
+    catch (caught) { setError(groupCreationErrorMessage(caught)); }
     finally { setBusy(null); }
   };
   const inviteWithLink = async () => {
-    if (!onCreateGroupInvitation || busy) return;
+    if (!onCreateGroupInvitation || busy || !nameIsValid) return;
     setBusy('link'); setError(null);
+    let group = linkGroup;
     try {
-      let group = linkGroup;
       if (!group) {
         const sessionId = await onCreateGroup(request(true));
         if (!sessionId) throw new Error('Could not create this group.');
-        group = { sessionId, title: name.trim() || defaultName };
+        group = { sessionId, title: trimmedName };
         setLinkGroup(group);
       }
+    } catch (caught) {
+      setError(groupCreationErrorMessage(caught));
+      setBusy(null);
+      return;
+    }
+    try {
       const invitation = await onCreateGroupInvitation({ groupId: group.sessionId, groupSpaceId: group.sessionId, groupTitle: group.title });
       setLink({ url: invitation.inviteUrl, expiresAt: invitation.expiresAt });
       onLinkShown?.(group.title);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not create the link.');
+      setError(groupInvitationLinkErrorMessage(caught, { asCreator: true }));
     } finally { setBusy(null); }
   };
   const copy = async () => {
     if (!link) return;
-    try { await navigator.clipboard.writeText(link.url); setCopied(true); setError(null); }
-    catch { setError('Could not copy the link. Select it and copy it.'); }
+    try { await copyText(link.url); setError(null); }
+    catch { setError("Couldn't copy the link. Select it and copy it."); }
   };
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
@@ -92,7 +99,7 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
             onFocus={(event) => event.currentTarget.select()}
             className="app-input-shell h-8 min-w-0 flex-1 rounded-[8px] px-2.5 text-[11px] outline-none"
           />
-          <button type="button" className="app-chat-create-icon-button" aria-label={copied ? 'Invitation link copied' : 'Copy invitation link'} title={copied ? 'Copied' : 'Copy link'} onClick={() => { void copy(); }}>
+          <button type="button" className="app-chat-create-icon-button" aria-label={copied ? 'Link copied' : 'Copy link'} title={copied ? 'Copied' : 'Copy link'} onClick={() => { void copy(); }}>
             {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
           </button>
           {canShare ? (
@@ -104,6 +111,7 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
         <p className="app-chat-create-group-note">{expiryLabel(link.expiresAt)}</p>
         {error ? <p role="alert" className="app-error-text text-[11px]">{error}</p> : null}
         <Button type="button" className="h-8 w-full rounded-[8px] text-[12px]" onClick={onDone}>Done</Button>
+        <CopyToast visible={copied} />
       </div>
     );
   }
@@ -123,15 +131,18 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
         <input
           aria-label="Group name"
           value={name}
+          autoFocus
+          required
+          maxLength={120}
           onChange={(event) => setName(event.target.value)}
-          placeholder={defaultName}
+          placeholder="Group name"
           className="app-input-shell h-8 min-w-0 flex-1 rounded-[8px] px-2.5 text-[12px] outline-none"
         />
       </div>
       {error ? <p role="alert" className="app-error-text text-[11px]">{error}</p> : null}
       <div className="app-dense-menu-items app-chat-create-option-list max-h-[min(15rem,calc(100vh-12rem))] overflow-auto" role="group" aria-label="People">
         {onCreateGroupInvitation ? (
-          <button type="button" disabled={Boolean(busy)} onClick={() => { void inviteWithLink(); }}>
+          <button type="button" disabled={Boolean(busy) || !nameIsValid} onClick={() => { void inviteWithLink(); }}>
             {busy === 'link' ? <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <Link2 aria-hidden="true" />}
             <span>Invite with a link</span>
           </button>
@@ -149,7 +160,7 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
       </div>
       <div className="flex gap-1.5">
         <Button type="button" variant="quiet" className="h-8 flex-1 rounded-[8px] px-3 text-[12px]" onClick={onBack}>Back</Button>
-        <Button type="submit" className="h-8 flex-1 rounded-[8px] px-3 text-[12px]" disabled={Boolean(busy)}>
+        <Button type="submit" className="h-8 flex-1 rounded-[8px] px-3 text-[12px]" disabled={Boolean(busy) || !nameIsValid}>
           {busy === 'create' ? 'Creating…' : 'Create group'}
         </Button>
       </div>

@@ -106,6 +106,28 @@ export function participantSpaceCanRenameSessions(space: ParticipantSpaceItem) {
   return [...selfIdentityIds].some((identityId) => adminIdentityIds.has(identityId));
 }
 
+/**
+ * The group a channel row belongs to, when the viewer may dissolve that
+ * channel: group admins only, and never the group's first channel, which is
+ * the group itself (dissolve the group from its Info instead).
+ */
+export function dissolvableChannelTarget(
+  space: ParticipantSpaceItem,
+  session: ParticipantSpaceItem['sessions'][number],
+): { groupSpaceId: string } | null {
+  if (space.kind !== 'group' || space.sessions.length < 2) return null;
+  if (!participantSpaceCanRenameSessions(space)) return null;
+  const groupSpaceId = groupSpacePreferenceId(space.id);
+  const sessionId = participantSpaceSessionPreferenceId(session);
+  const first = space.sessions.find((candidate) => participantSpaceSessionPreferenceId(candidate) === groupSpaceId)
+    ?? [...space.sessions].sort((left, right) => (
+      (left.conversation.canonicalCreatedAtMs ?? Number.MAX_SAFE_INTEGER)
+      - (right.conversation.canonicalCreatedAtMs ?? Number.MAX_SAFE_INTEGER)
+    ))[0];
+  if (!first || participantSpaceSessionPreferenceId(first) === sessionId) return null;
+  return { groupSpaceId };
+}
+
 export function participantSpaceKindText(space: ParticipantSpaceItem) {
   if (space.kind === 'self') return 'Personal';
   if (space.kind === 'direct-human') return 'Person';

@@ -355,6 +355,7 @@ export function useCloudGroupControlSender({
             ...(clientCreatedAt ? { clientCreatedAt } : {}),
             conversationKind: 'group',
             memberAccountIds: targetAccountIds,
+            ...(input.transient ? { transient: true } : {}),
             ...(input.channelCreated ? { sharedTitle: sessionTitle?.title, sourceGroupSpaceId: input.groupSpaceId ?? undefined } : {}),
           },
         );

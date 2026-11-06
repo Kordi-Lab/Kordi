@@ -1,4 +1,4 @@
-import { isSystemNoticeKind } from './systemNotice';
+import { isGroupEventNotice, isSystemNoticeKind } from './systemNotice';
 import type { CanonicalIdentity, CanonicalSessionMessage, Message } from '@/kordi-app/types';
 
 export function canonicalMessageRole(
@@ -8,7 +8,10 @@ export function canonicalMessageRole(
 ): Message['role'] {
   const { senderRole, messageKind } = message;
   if (messageKind === 'agent-model-change') return 'system';
-  if (isSystemNoticeKind(messageKind)) return 'person'; // Server notices keep the multi-line bubble.
+  if (isSystemNoticeKind(messageKind)) {
+    // Group events ("Ava created the group") are centered lines; other server notices keep the multi-line bubble.
+    return isGroupEventNotice(messageKind, message.content) ? 'system' : 'person';
+  }
   if (['system', 'user', 'owned-agent', 'external-agent', 'person'].includes(senderRole)) {
     if (
       senderRole === 'external-agent'

@@ -1133,6 +1133,9 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     static let groupTitleUpdateMessageKind = "group-title-update"
     static let channelTitleUpdateMessageKind = "channel-title-update"
     static let channelCreatedMessageKind = "channel-created"
+    /// A System notice that describes a group event, such as "Ava created
+    /// the group"; shown as a centered timeline line, not a bubble.
+    static let groupEventNoticeMessageKind = "system-notice-group-event"
     private static let agentModelChangePrefix = "Switched model to "
     private static let agentRuntimeRouteNoticePrefix = "Model: "
     private static let agentRuntimeRouteNoticeSeparator = " · Thinking effort: "
@@ -1222,6 +1225,10 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         messageKind == Self.groupMemberJoinMessageKind
     }
 
+    var isGroupEventNotice: Bool {
+        messageKind == Self.groupEventNoticeMessageKind
+    }
+
     var isTitleUpdateNotice: Bool {
         messageKind == Self.groupTitleUpdateMessageKind
             || messageKind == Self.channelTitleUpdateMessageKind
@@ -1231,6 +1238,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var isSystemNotice: Bool {
         messageKind == "session_pin_activity" || isAgentModelChangeNotice
             || isGroupMemberJoinNotice
+            || isGroupEventNotice
             || isTitleUpdateNotice
             || callActivity != nil
     }

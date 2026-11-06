@@ -44,7 +44,9 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // The dense Start group picker and its Invite with a link step add 4 kB.
 // Handing a Mac run without hosted credentials back to the cloud and reconciling a
 // requester's ended runs add 3 kB, so it moves to 5.794 MB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_794_000;
+// Group names before creating, dissolving groups and channels, the Link copied toast and
+// the group created line add 9 kB, so it moves to 5.803 MB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_803_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.

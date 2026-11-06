@@ -52,3 +52,25 @@
 .app-chat-create-icon-button > svg { width: 14px; height: 14px; }
 .app-chat-create-group-avatar > span[aria-hidden="true"] { right: -3px; bottom: -3px; width: 14px; height: 14px; border-width: 1.5px; border-radius: 5px; }
 .app-chat-create-group-avatar > span[aria-hidden="true"] > svg { width: 8px; height: 8px; }
+
+/* "Link copied": a brief toast at the bottom of the window after a copy. */
+.app-copy-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 1000;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border: 1px solid var(--app-transient-border);
+  border-radius: 9px;
+  background: var(--app-transient-surface-bg);
+  box-shadow: var(--app-transient-shadow);
+  color: var(--app-transient-text);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: app-copy-toast-in 140ms ease-out;
+}
+@keyframes app-copy-toast-in { from { opacity: 0; transform: translate(-50%, 4px); } }
+@media (prefers-reduced-motion: reduce) { .app-copy-toast { animation: none; } }

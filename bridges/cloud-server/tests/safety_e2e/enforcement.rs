@@ -319,7 +319,8 @@ async fn a_block_stops_edits_lookups_agents_and_unread_counts() {
         .find(|row| row.conversation_id == shared)
         .unwrap()
         .unread_count;
-    assert_eq!(group_unread, 1);
+    // The owner's "created the group" line and the owner's message; not the blocked account's.
+    assert_eq!(group_unread, 2);
     let attention = chat_store::thread_attention(&h.pool, &owner.id, None)
         .await
         .unwrap();

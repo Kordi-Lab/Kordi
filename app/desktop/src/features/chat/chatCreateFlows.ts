@@ -441,16 +441,6 @@ export function existingSessionIdForPersonStart(contact: Contact, conversations:
   return existingConversation?.canonicalSessionId ?? existingConversation?.id ?? null;
 }
 
-/** The name a group gets when none is typed. A group may start with only its creator. */
-export const NEW_GROUP_NAME = 'New group';
-
-export function groupDefaultName(names: string[]) {
-  const clean = uniqueNonEmpty(names);
-  if (clean.length === 0) return NEW_GROUP_NAME;
-  if (clean.length <= 2) return clean.join(', ');
-  return `${clean.slice(0, 2).join(', ')} +${clean.length - 2} more`;
-}
-
 export type ChatCreateGroupCollaborationInviteTarget = {
   hostId: string;
   nodeId: string;

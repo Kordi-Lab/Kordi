@@ -202,6 +202,8 @@ export function useKordiAppShellComposition({
       handleSetChatGroupMuted: chatSession.handleSetChatGroupMuted,
       handleSetChatGroupArchived: chatSession.handleSetChatGroupArchived,
       handleDeleteChatSession: chatSession.handleDeleteChatSession,
+      handleDissolveChatGroup: chatSession.handleDissolveChatGroup,
+      handleDissolveChatChannel: chatSession.handleDissolveChatChannel,
       handleMoveChatSessionToProject:
         projectActions.handleMoveChatSessionToProject,
       handleCreateProjectFromFolder:

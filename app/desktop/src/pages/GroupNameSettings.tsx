@@ -48,6 +48,8 @@ export function GroupNameSettings({
             id={nameInputId}
             value={nameDraft}
             onChange={(event) => onNameDraftChange(event.target.value)}
+            placeholder="Group name"
+            required
             className="app-input-shell h-9 w-full rounded-[11px] px-3 text-[12px] outline-none"
           />
           <div className="mt-2 flex justify-end gap-1.5">

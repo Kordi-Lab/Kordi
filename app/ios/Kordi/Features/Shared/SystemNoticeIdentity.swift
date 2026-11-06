@@ -19,7 +19,15 @@ enum KordiSystemIdentity {
     }
 
     static func isSystemNotice(kind: String?) -> Bool {
-        kind?.trimmingCharacters(in: .whitespacesAndNewlines) == messageKind
+        let kind = kind?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return kind == messageKind || kind == ChatMessage.groupEventNoticeMessageKind
+    }
+
+    /// The local kind for a server message: a System notice that carries a
+    /// `group_event` becomes a timeline line; every other kind is unchanged.
+    static func timelineMessageKind(kind: String, hasGroupEvent: Bool) -> String {
+        guard hasGroupEvent, kind.trimmingCharacters(in: .whitespacesAndNewlines) == messageKind else { return kind }
+        return ChatMessage.groupEventNoticeMessageKind
     }
 
     static func matches(seed: String?) -> Bool {

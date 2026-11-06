@@ -15,6 +15,7 @@ import { GroupDetailsDialog } from '@/pages/GroupDetailsDialog';
 import type { GroupManagementPopoverAnchor } from '@/pages/GroupDetailsDialog';
 import {
   DeleteSessionDialog,
+  DissolveDialog,
   GroupContextMenu,
   ProjectCreateDialog,
   RenameSessionDialog,
@@ -122,6 +123,8 @@ export function WorkspaceSidebar({
     onSetChatGroupMuted,
     onSetChatGroupArchived,
     onDeleteChatSession,
+    onDissolveChatGroup,
+    onDissolveChatChannel,
     onOpenAgentSettings,
   } = chats;
   const {
@@ -165,6 +168,8 @@ export function WorkspaceSidebar({
     useState<SessionActionTarget | null>(null);
   const [renameSessionTarget, setRenameSessionTarget] =
     useState<SessionActionTarget | null>(null);
+  const [dissolveChannelTarget, setDissolveChannelTarget] =
+    useState<(SessionActionTarget & { groupSpaceId: string }) | null>(null);
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] =
     useState(false);
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
@@ -367,6 +372,7 @@ export function WorkspaceSidebar({
           onSetMuted={(sessionId, muted) => { void onSetChatSessionMuted(sessionId, muted); }}
           onSetUnread={(sessionId, unread) => { void onSetChatSessionUnread(sessionId, unread); }}
           onDelete={setRemoveSessionTarget}
+          onDissolveChannel={onDissolveChatChannel ? setDissolveChannelTarget : undefined}
         />
       ) : null}
       {groupContextMenu ? (
@@ -401,6 +407,15 @@ export function WorkspaceSidebar({
           target={renameSessionTarget}
           onCancel={closeSessionDialogs}
           onConfirm={onRenameChatSession}
+        />
+      ) : null}
+      {dissolveChannelTarget && onDissolveChatChannel ? (
+        <DissolveDialog
+          scope="channel"
+          name={dissolveChannelTarget.sessionName.trim().replace(/^#\s*/, '') || 'this channel'}
+          anchorRect={dissolveChannelTarget.anchorRect}
+          onCancel={() => setDissolveChannelTarget(null)}
+          onConfirm={() => onDissolveChatChannel(dissolveChannelTarget.groupSpaceId, dissolveChannelTarget.sessionId)}
         />
       ) : null}
       {removeSessionTarget ? (
@@ -448,6 +463,11 @@ export function WorkspaceSidebar({
         onCreateGroupInvitation={onCreateGroupInvite}
         onListGroupInvitations={onListGroupInvites}
         onRevokeGroupInvitation={onRevokeGroupInvite}
+        onDissolveGroup={onDissolveChatGroup ? async (groupSpaceId, sessionIds) => {
+          await onDissolveChatGroup(groupSpaceId, sessionIds);
+          setIsGroupDetailsDialogOpen(false);
+          setGroupDetailsAnchor(null);
+        } : undefined}
         onMessageContact={async (contact) => {
           setIsGroupDetailsDialogOpen(false);
           setGroupDetailsAnchor(null);

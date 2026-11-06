@@ -120,6 +120,9 @@ export type WorkspaceSidebarChats = {
     isAdmin: boolean,
   ) => Promise<void> | void;
   onDeleteChatSession: (sessionId: string) => void | Promise<void>;
+  /** Group owners and admins: dissolve the whole group, or one channel other than its first. */
+  onDissolveChatGroup?: (groupSpaceId: string, sessionIds: string[]) => Promise<void>;
+  onDissolveChatChannel?: (groupSpaceId: string, sessionId: string) => Promise<void>;
   onArchiveChatSession: (sessionId: string) => void | Promise<void>;
   onRestoreChatSession: (sessionId: string) => void | Promise<void>;
   onSetChatSessionPinned: (sessionId: string, pinned: boolean) => void | Promise<void>;

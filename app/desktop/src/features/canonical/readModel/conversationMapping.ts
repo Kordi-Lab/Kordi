@@ -347,7 +347,11 @@ export function sessionChatActivityAtMs(
   const latestRealMessageAtMs = rawMessages
     .filter(canonicalMessageCountsForLastActive)
     .reduce((latest, message) => Math.max(latest, message.createdAtMs), 0);
-  return latestRealMessageAtMs || (session.lastMessageAtMs ?? 0);
+  // A group that has no message yet sorts by when it was created, so a new
+  // group starts at the top of Chats instead of the bottom.
+  return latestRealMessageAtMs
+    || (session.lastMessageAtMs ?? 0)
+    || (session.kind === 'group' ? session.createdAtMs ?? 0 : 0);
 }
 
 export function sessionUnreadCount(session: CanonicalSessionState['sessions'][number]) {

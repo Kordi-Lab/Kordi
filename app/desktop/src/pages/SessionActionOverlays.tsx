@@ -1,6 +1,7 @@
 import { ChatProjectPicker } from '@/features/projects/ChatProjectPicker';
 import { useState } from 'react';
-import { Archive, ArchiveRestore, Bell, BellOff, CheckCircle2, LoaderCircle, Mail, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Bell, BellOff, CheckCircle2, CircleOff, LoaderCircle, Mail, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
+import { groupDissolveErrorMessage } from '@/features/chat/groupCreateCopy';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +23,8 @@ export type SessionContextMenuTarget = {
   muted?: boolean;
   unread?: boolean;
   /** An agent's personal session: read state, mute, and its agent's settings only. */ personalAgent?: { agentId: string; localAgentId: string | null };
+  /** A group channel other than its first, for a group admin: it can be dissolved. */
+  dissolvableChannel?: { groupSpaceId: string };
 };
 
 export type GroupContextMenuTarget = {
@@ -51,6 +54,7 @@ type SessionContextMenuProps = {
   onSetMuted: (sessionId: string, muted: boolean) => void;
   onSetUnread: (sessionId: string, unread: boolean) => void;
   onDelete: (target: SessionActionTarget) => void;
+  onDissolveChannel?: (target: SessionActionTarget & { groupSpaceId: string }) => void;
 };
 
 export function SessionContextMenu({
@@ -63,6 +67,7 @@ export function SessionContextMenu({
   onSetMuted,
   onSetUnread,
   onDelete,
+  onDissolveChannel,
 }: SessionContextMenuProps) {
   const run = (action: () => void) => {
     onClose();
@@ -161,8 +166,95 @@ export function SessionContextMenu({
           <Trash2 className="app-transient-action-icon" aria-hidden="true" />
           Delete chat
         </button>
+        {target.dissolvableChannel && onDissolveChannel ? (
+          <button
+            type="button"
+            data-session-context-action="dissolve-channel"
+            className="app-transient-row app-transient-row-danger app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+            onClick={() => {
+              onClose();
+              onDissolveChannel({
+                sessionId: target.sessionId,
+                sessionName: target.sessionName,
+                groupSpaceId: target.dissolvableChannel!.groupSpaceId,
+                anchorRect: { left: target.x, top: target.y, width: 1, height: 1 },
+              });
+            }}
+          >
+            <CircleOff className="app-transient-action-icon" aria-hidden="true" />
+            Dissolve channel
+          </button>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+type DissolveDialogProps = {
+  scope: 'group' | 'channel';
+  name: string;
+  anchorRect?: AppDialogAnchor | null;
+  /** Lifts the dialog above a surface it opens from, such as group Info. */
+  backdropClassName?: string;
+  onCancel: () => void;
+  onConfirm: () => Promise<void> | void;
+};
+
+/** Confirms dissolving a group or one of its channels: everyone loses access. */
+export function DissolveDialog({ scope, name, anchorRect = null, backdropClassName, onCancel, onConfirm }: DissolveDialogProps) {
+  const [isDissolving, setIsDissolving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const titleId = `dissolve-${scope}-dialog-title`;
+  const lineId = `dissolve-${scope}-dialog-line`;
+  const cancel = () => {
+    if (!isDissolving) onCancel();
+  };
+  const confirm = async () => {
+    if (isDissolving) return;
+    setIsDissolving(true);
+    setError(null);
+    try {
+      await onConfirm();
+      onCancel();
+    } catch (caught) {
+      setError(groupDissolveErrorMessage(caught, scope));
+      setIsDissolving(false);
+    }
+  };
+  return (
+    <AppDialog
+      titleId={titleId}
+      descriptionId={lineId}
+      onDismiss={cancel}
+      dismissDisabled={isDissolving}
+      busy={isDissolving}
+      presentation={anchorRect ? 'popover' : 'modal'}
+      anchorRect={anchorRect}
+      backdropClassName={backdropClassName}
+    >
+      <AppDialogTitle id={titleId} className="text-[13px] leading-5">Dissolve {name}?</AppDialogTitle>
+      <p id={lineId} className="app-transient-muted mt-2 text-[11px] leading-4">
+        Everyone loses access to this {scope}.
+      </p>
+      {error ? (
+        <div className="app-error-text mt-2 text-[11px] leading-4 text-rose-500" role="alert">
+          {error}
+        </div>
+      ) : null}
+      <AppDialogActions className="mt-3 gap-2">
+        <Button variant="quiet" size="sm" className="rounded-[12px] px-3" autoFocus disabled={isDissolving} onClick={cancel}>Cancel</Button>
+        <Button
+          size="sm"
+          className="app-transient-danger-button rounded-[12px] px-3"
+          disabled={isDissolving}
+          aria-busy={isDissolving}
+          onClick={() => { void confirm(); }}
+        >
+          {isDissolving ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
+          <span>{isDissolving ? 'Dissolving…' : 'Dissolve'}</span>
+        </Button>
+      </AppDialogActions>
+    </AppDialog>
   );
 }
 

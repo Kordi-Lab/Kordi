@@ -46,3 +46,34 @@ pub(super) async fn create(
         Err(error) => store_error("create group channel", error),
     }
 }
+
+/// Dissolves a whole group: an owner or admin only.
+pub(super) async fn dissolve_group(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(group_space_id): Path<String>,
+) -> Response {
+    match store::dissolve_group(state.db_pool(), &session.account_id, &group_space_id).await {
+        Ok(outcome) => Json(json!({ "dissolved": outcome })).into_response(),
+        Err(error) => store_error("dissolve group", error),
+    }
+}
+
+/// Dissolves one channel of a group, other than its first: an owner or admin only.
+pub(super) async fn dissolve_channel(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path((group_space_id, conversation_id)): Path<(String, Uuid)>,
+) -> Response {
+    match store::dissolve_group_channel(
+        state.db_pool(),
+        &session.account_id,
+        &group_space_id,
+        conversation_id,
+    )
+    .await
+    {
+        Ok(outcome) => Json(json!({ "dissolved": outcome })).into_response(),
+        Err(error) => store_error("dissolve group channel", error),
+    }
+}

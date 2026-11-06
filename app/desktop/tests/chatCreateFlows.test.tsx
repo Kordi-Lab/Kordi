@@ -22,7 +22,6 @@ import {
   existingSessionIdForPersonStart,
   existingBlankSessionIdForAgentStart,
   existingBlankSessionIdForParticipantSpace,
-  groupDefaultName,
   participantSpaceCanonicalSessionIds,
 } from '../src/features/chat/chatCreateFlows';
 import type { Agent, Contact, Conversation, ParticipantSpaceViewModel } from '../src/kordi-app/types';
@@ -397,14 +396,6 @@ test('existingBlankSessionIdForAgentStart reuses the newest empty selected-agent
   ];
 
   assert.equal(existingBlankSessionIdForAgentStart(selectedAgent, conversations), 'session:self-agent:newest-blank');
-});
-
-test('groupDefaultName uses people names only and truncates long groups', () => {
-  assert.equal(groupDefaultName([]), 'New group');
-  assert.equal(groupDefaultName(['', ' ']), 'New group');
-  assert.equal(groupDefaultName(['Alice']), 'Alice');
-  assert.equal(groupDefaultName(['Alice', 'Bob']), 'Alice, Bob');
-  assert.equal(groupDefaultName(['Alice', 'Bob', 'Chen', 'Dev']), 'Alice, Bob +2 more');
 });
 
 test('group create options require approved bridge contacts', () => {

@@ -14,6 +14,7 @@ import {
   participantSpaceSessionRowTitle,
   groupSpacePreferenceId,
   sessionContextMenuTargetForConversation,
+  dissolvableChannelTarget,
 } from '@/pages/workspaceSidebar.chatHelpers';
 import type { WorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel';
 import { ParticipantSpaceAvatarStack, SidebarPreviewText } from '@/pages/workspaceSidebar.chatPrimitives';
@@ -85,9 +86,10 @@ function ParticipantSpaceSessionRow({
           },
         );
         if (!target) return;
+        const dissolvableChannel = dissolvableChannelTarget(space, session);
         event.preventDefault();
         event.stopPropagation();
-        actions.onOpenSessionContextMenu(target);
+        actions.onOpenSessionContextMenu(dissolvableChannel ? { ...target, dissolvableChannel } : target);
       }}
       className={cn(
         'app-session-row app-participant-space-session-row w-full px-2.5 py-1 text-left text-white',
