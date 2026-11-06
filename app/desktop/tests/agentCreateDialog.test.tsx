@@ -69,7 +69,8 @@ test('AgentCreateDialog shows real cloud access options', () => {
   assert.match(markup, /brainstorming/);
   assert.match(markup, /Only me/);
   assert.match(markup, /People in my chats can mention it/);
-  assert.match(markup, /Only you can use this agent/);
+  assert.match(markup, /<option value="participant_conversations" selected="">/);
+  assert.match(markup, /People in your chats can @mention it/);
   assert.doesNotMatch(markup, /coming later/);
   assert.doesNotMatch(markup, /Workspace\/shared Cloud/);
 });
@@ -144,7 +145,7 @@ test('AgentDetailPane shows private access menu for cloud-created agents', () =>
   const markup = renderAgentDetail(cloudAgent);
 
   assert.match(markup, /Only me/);
-  assert.match(markup, /Only you can use this agent/);
+  assert.match(markup, /Only you can use it/);
   assert.doesNotMatch(markup, /middle panel|right panel|persisted in|runtime-managed/i);
 });
 

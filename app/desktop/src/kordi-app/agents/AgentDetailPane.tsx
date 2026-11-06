@@ -156,7 +156,7 @@ function AgentAccessMenu({ agent, onUpdateAccess, isSaving }: {
   isSaving?: boolean;
 }) {
   if (!agent.cloudAgentId) return null;
-  const accessScope = agent.cloudAgentAccessScope === 'participant_conversations' ? 'participant_conversations' : 'private';
+  const accessScope = agent.cloudAgentAccessScope === 'private' ? 'private' : 'participant_conversations';
   return (
     <div className="app-agent-section border-t pt-5 text-[12px] leading-5">
       <div className="app-agent-row-title font-medium">Access</div>

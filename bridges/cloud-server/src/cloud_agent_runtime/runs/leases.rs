@@ -297,11 +297,11 @@ pub(super) async fn runner_response_from_row(
         row.1 = "cancelled".into();
         row.2.clear();
     }
-    // A run for someone the owner has since stopped from using their agents
-    // ends here instead of running.
+    // A run for someone the owner has since stopped from using their agents,
+    // or whose agent is no longer open to them, ends here instead of running.
     if row.3 != row.4
         && matches!(row.1.as_str(), "leased" | "running")
-        && !crate::contact_permissions::agent_allowed(pool, &row.3, &row.4).await?
+        && !crate::agent_access::run_usable(pool, &row.0).await?
     {
         sqlx_core::query::query(
             "UPDATE cloud_agent_fallback_runs SET status = 'cancelled', \

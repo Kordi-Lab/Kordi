@@ -6,6 +6,7 @@
 //! deployment surface. Local-edition users never run this code.
 
 pub mod account_deletion;
+pub mod agent_access;
 pub mod ai_consent;
 pub mod attachments;
 pub mod auth;

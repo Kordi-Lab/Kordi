@@ -56,6 +56,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             put(update_agent).delete(archive_agent),
         )
         .route(
+            "/v1/cloud/agents/:agent_id/access",
+            get(crate::agent_access::read_access).put(crate::agent_access::update_access),
+        )
+        .route(
             "/v1/cloud/agents/:agent_id/proactive",
             get(proactive::get_setting).put(proactive::put_setting),
         )
@@ -273,13 +277,33 @@ async fn update_agent(
     )
     .await
     {
-        Ok(Some(agent)) => Json(CloudAgentEnvelope { agent }).into_response(),
+        Ok(Some(agent)) => {
+            after_access_saved(state.db_pool(), &session.account_id, &agent).await;
+            Json(CloudAgentEnvelope { agent }).into_response()
+        }
         Ok(None) => error_response(
             "cloud_agent_not_found",
             "Cloud Agent definition was not found.",
             StatusCode::NOT_FOUND,
         ),
         Err(err) => store_error_response("update", err),
+    }
+}
+
+/// A Factory agent that is private after a save ends other people's
+/// requests to it (docs/contact-permissions.md#agent-access).
+pub(crate) async fn after_access_saved(
+    pool: &sqlx_postgres::PgPool,
+    owner: &str,
+    agent: &crate::cloud_agents::models::CloudAgentDefinition,
+) {
+    if agent.access_scope != crate::agent_access::ACCESS_PRIVATE {
+        return;
+    }
+    if let Err(error) =
+        crate::agent_access::stop_others_for_definition(pool, owner, &agent.agent_id).await
+    {
+        eprintln!("[agent-access] stop requests to {}: {error}", agent.agent_id);
     }
 }
 

@@ -468,4 +468,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "apple token revocations",
         "0185_apple_token_revocations.sql"
     ),
+    migration!(186, "default agent access", "0186_default_agent_access.sql"),
 ];
