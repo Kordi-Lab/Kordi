@@ -48,7 +48,7 @@ function rowElement(artifact: SessionArtifact = chatDocument, fetchTitle: Docume
 }
 
 function rowLabel(root: ParentNode) {
-  return root.querySelector('[data-artifact-file-row="true"] span.font-medium');
+  return root.querySelector('[data-artifact-file-row="true"] [data-artifact-row-title]');
 }
 
 async function settle() {
