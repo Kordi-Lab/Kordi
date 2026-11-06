@@ -38,7 +38,7 @@
 .digest-header nav button:hover { background: transparent; color: var(--digest-text); }
 .digest-header nav button[aria-pressed=true] { color: var(--digest-text); border-bottom-color: currentColor; font-weight: 500; }
 .digest-notices { flex: none; }
-.digest-body { container-type: size; min-height: 0; flex: 1; overflow: hidden; padding-top: 24px; }
+.digest-body { container-type: size; min-height: 0; flex: 1; overflow: hidden; padding-top: 16px; }
 .digest-content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 12px clamp(240px, var(--digest-agenda-width, 320px), 50%); gap: 12px; grid-template-rows: minmax(0, 1fr); height: 100%; min-height: 0; }
 .digest-sidebar-resizer { position: relative; cursor: col-resize; touch-action: none; user-select: none; border-radius: 4px; }
 .digest-sidebar-resizer::after { content: ''; position: absolute; inset: 0 5px; background: var(--digest-line); }
@@ -47,12 +47,11 @@
 .digest-main { min-width: 0; min-height: 0; height: 100%; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .digest-main > section[hidden] { display: none; }
 .digest-main > section[aria-label=Calendar] { height: 100%; min-height: 0; }
-.digest-main > section[aria-label=Brief], .digest-main > section[aria-label='Next steps'] { max-width: 760px; padding: 4px 8px 24px 0; }
+.digest-main > section[aria-label=Brief], .digest-main > section[aria-label='Next steps'] { max-width: 760px; padding: 0 0 24px; }
 .digest-row > p { max-width: 70ch; line-height: 1.65; }
 .digest-row { padding: 16px 0; border-bottom: 1px solid var(--digest-line); }
 .digest-main > section > .digest-row:first-child { padding-top: 0; }
 .digest-main:focus-visible, .digest-agenda:focus-visible { outline: 2px solid var(--digest-accent); outline-offset: -2px; }
-.digest-main > section > h2:not(:first-child) { margin-top: 28px; }
 .digest-main h2 small { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--digest-muted); }
 .digest-meta, .digest-muted, .digest-evidence, .digest-people { font-size: 12px; color: var(--digest-muted); }
 .digest-people { display: flex; gap: 4px 12px; flex-wrap: wrap; margin-top: 8px; }
@@ -69,7 +68,10 @@
 .digest-event-context { font-size: 12px; color: var(--digest-muted); white-space: pre-line; overflow-wrap: anywhere; }
 .digest-evidence { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .digest-warning { padding: 10px 12px; border-radius: 7px; background: #b8892110; font-size: 12px; }
-.digest-empty { padding: 16px 0; color: var(--digest-muted); }
+/* Empty and loading lines sit right under the tabs, in the muted 12px of other empty states. */
+.digest-page .digest-empty { margin: 0; padding: 0; font-size: 12px; line-height: 18px; color: var(--digest-muted); }
+.digest-page .digest-empty > p { margin: 0; }
+.digest-page .digest-empty > button { margin-top: 8px; }
 .digest-calendar-transition, .digest-calendar-pane { height: 100%; min-height: 0; }
 @media (prefers-reduced-motion: reduce) {
   .digest-calendar-pane { transform: none !important; }
@@ -102,11 +104,11 @@
 .digest-calendar-event > span { flex: none; font-size: 11px; color: var(--digest-muted); white-space: nowrap; }
 .digest-page .digest-calendar-event.proposed { border: 1px dashed color-mix(in srgb, var(--digest-accent) 50%, transparent); background: transparent; padding: 2px 4px; }
 .digest-page .digest-more { border: 0; min-height: 18px; line-height: 14px; padding: 1px 4px; font-size: 10px; color: var(--digest-muted); text-align: left; }
-.digest-agenda { min-width: 0; min-height: 0; height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 4px 8px 24px 0; }
+.digest-agenda { min-width: 0; min-height: 0; height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 0 8px 24px 0; }
 .digest-agenda > section + section { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--digest-line); }
 .digest-agenda h2 { margin-bottom: 8px; }
 .digest-agenda p { line-height: 1.6; }
-.digest-page .digest-agenda-event { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 10px; padding: 8px 0; width: 100%; border: 0; text-align: left; }
+.digest-page .digest-agenda-event { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 10px; padding: 8px 0; width: 100%; border: 0; text-align: left; }
 .digest-agenda-event > span { color: var(--digest-muted); font-size: 11px; }
 .digest-agenda-event > strong { font-size: 12px; font-weight: 500; }
 .digest-proposal { padding: 18px 0 0; }
@@ -186,7 +188,7 @@
 @container (max-width: 960px) {
   .digest-sidebar-resizer { display: none; }
   .digest-content-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(160px, .65fr); gap: 24px; }
-  .digest-agenda { border-left: 0; border-top: 1px solid var(--digest-line); padding: 24px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+  .digest-agenda { border-left: 0; border-top: 1px solid var(--digest-line); padding: 16px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
   .digest-agenda > section + section { margin: 0; padding: 0; border: 0; }
   .digest-calendar-connections { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 20px; align-items: center; }
   .digest-calendar-connections h2 { margin: 0; }
