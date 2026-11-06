@@ -9,6 +9,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 
+mod apple_form_post;
 mod hardening;
 mod prompt;
 mod refresh_grace;

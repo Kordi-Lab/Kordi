@@ -54,6 +54,18 @@ test('rejects Beta reuse, missing values, unknown settings and unsafe service se
   assert.throws(() => validateDistributionConfiguration(wrong, researchTarget), /namespace/);
 });
 
+test('Sign in with Apple bindings are optional and complete when present', () => {
+  const withApple = research();
+  Object.assign(withApple.authentication.oauthBindings, { appleClientId: 'TEST_APPLE_ID', appleTeamId: 'TEST_APPLE_TEAM', appleKeyId: 'TEST_APPLE_KEY_ID', applePrivateKey: 'TEST_APPLE_KEY' });
+  assert.equal(validateDistributionConfiguration(withApple, researchTarget).authentication.oauthBindings.appleClientId, 'TEST_APPLE_ID');
+  for (const mutate of [(b) => delete b.appleTeamId, (b) => delete b.applePrivateKey, (b) => { b.appleKeyId = b.appleClientId; }, (b) => { b.appleOther = 'TEST_OTHER'; }, (b) => { b.appleNativeAudiences = 'TEST_AUDIENCES'; }, (b) => { b.toString = 'TEST_PROTO'; }]) {
+    const wrong = structuredClone(withApple); mutate(wrong.authentication.oauthBindings);
+    assert.throws(() => validateDistributionConfiguration(wrong, researchTarget));
+  }
+  const encoded = JSON.stringify(publicClientConfiguration(validateDistributionConfiguration(withApple, researchTarget)));
+  assert.ok(!encoded.includes('TEST_APPLE'));
+});
+
 test('client allowlist excludes service policies, signing references and resource bindings', () => {
   const value = validateDistributionConfiguration(app(), expected);
   const client = publicClientConfiguration(value);

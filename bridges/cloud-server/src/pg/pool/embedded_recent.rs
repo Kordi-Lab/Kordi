@@ -459,4 +459,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
     ),
     migration!(179, "account deletion", "0179_account_deletion.sql"),
     migration!(180, "AI consent", "0180_ai_consent.sql"),
+    migration!(183, "sign in with apple", "0183_sign_in_with_apple.sql"),
 ];

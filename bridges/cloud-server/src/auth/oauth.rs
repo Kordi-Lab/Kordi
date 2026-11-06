@@ -10,15 +10,17 @@ const AVATAR_SEED_PREFIX: &str = "kordi-pixel-avatar://";
 pub(super) enum OAuthProvider {
     Google,
     Github,
+    Apple,
 }
 
 impl OAuthProvider {
-    pub(super) const ALL: [Self; 2] = [Self::Google, Self::Github];
+    pub(super) const ALL: [Self; 3] = [Self::Google, Self::Github, Self::Apple];
 
     pub(super) fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "google" => Some(Self::Google),
             "github" => Some(Self::Github),
+            "apple" => Some(Self::Apple),
             _ => None,
         }
     }
@@ -27,6 +29,7 @@ impl OAuthProvider {
         match self {
             Self::Google => "google",
             Self::Github => "github",
+            Self::Apple => "apple",
         }
     }
 
@@ -34,6 +37,7 @@ impl OAuthProvider {
         match self {
             Self::Google => "Google",
             Self::Github => "GitHub",
+            Self::Apple => "Apple",
         }
     }
 
@@ -41,6 +45,7 @@ impl OAuthProvider {
         match self {
             Self::Google => "GOOGLE",
             Self::Github => "GITHUB",
+            Self::Apple => "APPLE",
         }
     }
 
@@ -48,6 +53,7 @@ impl OAuthProvider {
         match self {
             Self::Google => "https://accounts.google.com/o/oauth2/v2/auth",
             Self::Github => "https://github.com/login/oauth/authorize",
+            Self::Apple => "https://appleid.apple.com/auth/authorize",
         }
     }
 
@@ -55,6 +61,7 @@ impl OAuthProvider {
         match self {
             Self::Google => "https://oauth2.googleapis.com/token",
             Self::Github => "https://github.com/login/oauth/access_token",
+            Self::Apple => apple::api::APPLE_TOKEN_URL,
         }
     }
 
@@ -62,8 +69,18 @@ impl OAuthProvider {
         match self {
             Self::Google => "openid email profile",
             Self::Github => "read:user user:email",
+            Self::Apple => "name email",
         }
     }
+}
+
+/// The static client ID and secret of Google or GitHub, when both are set.
+fn env_credentials(provider: OAuthProvider) -> Option<(String, String)> {
+    let prefix = provider.env_prefix();
+    let read =
+        |name: &str| std::env::var(format!("KORDI_OAUTH_{prefix}_{name}")).unwrap_or_default();
+    let (client_id, client_secret) = (read("CLIENT_ID"), read("CLIENT_SECRET"));
+    oauth_credentials_are_complete(&client_id, &client_secret).then_some((client_id, client_secret))
 }
 
 fn oauth_credentials_are_complete(client_id: &str, client_secret: &str) -> bool {
@@ -71,11 +88,10 @@ fn oauth_credentials_are_complete(client_id: &str, client_secret: &str) -> bool 
 }
 
 pub(super) fn oauth_provider_is_configured(provider: OAuthProvider) -> bool {
-    let prefix = provider.env_prefix();
-    let client_id = std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_ID")).unwrap_or_default();
-    let client_secret =
-        std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_SECRET")).unwrap_or_default();
-    oauth_credentials_are_complete(&client_id, &client_secret)
+    match provider {
+        OAuthProvider::Apple => apple::apple_is_configured(),
+        _ => env_credentials(provider).is_some(),
+    }
 }
 
 fn oauth_not_configured_message(provider: OAuthProvider) -> String {
@@ -92,14 +108,18 @@ pub(super) struct OAuthConfig {
     pub(super) redirect_uri: String,
 }
 
+/// The provider's client. Apple has no static secret: its client secret is
+/// signed per request (see [`apple`]), so `client_secret` is empty and the
+/// client ID is the Services ID.
 pub(super) fn oauth_config(provider: OAuthProvider) -> Result<OAuthConfig, String> {
-    let prefix = provider.env_prefix();
-    let client_id = std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_ID")).unwrap_or_default();
-    let client_secret =
-        std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_SECRET")).unwrap_or_default();
-    if !oauth_credentials_are_complete(&client_id, &client_secret) {
-        return Err(oauth_not_configured_message(provider));
-    }
+    let credentials = match provider {
+        OAuthProvider::Apple => apple::AppleConfig::from_env()
+            .ok()
+            .map(|config| (config.client_id, String::new())),
+        _ => env_credentials(provider),
+    };
+    let (client_id, client_secret) =
+        credentials.ok_or_else(|| oauth_not_configured_message(provider))?;
     let public_base = public_base_url();
     Ok(OAuthConfig {
         provider,
@@ -372,6 +392,8 @@ pub(super) async fn fetch_oauth_profile(
         OAuthProvider::Github => Ok(Some(
             fetch_github_profile(client, &tokens.access_token).await?,
         )),
+        // Apple signs in through `apple::web_sign_in`, never here.
+        OAuthProvider::Apple => Ok(None),
     }
 }
 
@@ -470,6 +492,7 @@ fn github_profile_from_values(user: &Value, emails: &Value) -> OAuthProfile {
     }
 }
 
+pub(crate) mod apple;
 mod google_id_token;
 #[cfg(test)]
 mod tests;
