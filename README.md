@@ -105,6 +105,8 @@ Kordi is built on open source. Thank you to
 [Noto Emoji](https://github.com/googlefonts/noto-emoji)
 and [Geist](https://vercel.com/font).
 
+Thank you also to the [Human Context Protocol (HCP)](https://digitaleconomy.stanford.edu/project/loyal-agents/hcp-human-context-protocol/) from the Stanford Digital Economy Lab's Loyal Agents project, which shapes how Kordi organizes the context people share with their agents.
+
 ## License
 
 [MIT](LICENSE). Third-party components keep their own licenses; see [NOTICE](NOTICE).
