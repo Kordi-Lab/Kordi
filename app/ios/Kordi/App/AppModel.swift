@@ -7123,12 +7123,12 @@ final class AppModel: ObservableObject {
             throughSequence
         )
         conversations[index].lastReadSequence = lastReadSequence
-        let remaining = messagesByConversation[conversationID, default: []].filter { message in
+        let remaining = MessageThreadProjection(messages: messagesByConversation[conversationID, default: []]).mainMessages.filter { message in
             message.author != .me
                 && !message.isSystemNotice
                 && message.conversationSequence.map { $0 > lastReadSequence } == true
         }
-        conversations[index].unreadCount = remaining.count
+        conversations[index].unreadCount = remaining.count + (threadAttentionBySession[conversations[index].sessionId]?.threadUnreadCount ?? 0) // Discussion replies use thread cursors.
         conversations[index].unreadMentionCount = MentionAttention.pendingMessages(
             in: remaining,
             accountId: accountId,
