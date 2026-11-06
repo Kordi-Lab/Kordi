@@ -34,6 +34,9 @@ pub enum StoreError {
     InvalidInput(&'static str),
     NotFound,
     Forbidden,
+    /// One of the two accounts blocked the other (direct messages, group
+    /// adds, and new conversations with a blocked account).
+    Blocked,
     IdempotencyKeyReused,
     VersionConflict(Box<ConversationSnapshot>),
     PreferencesVersionConflict(Box<ConversationPreferencesSnapshot>),
@@ -52,6 +55,7 @@ impl std::fmt::Display for StoreError {
             }
             Self::NotFound => formatter.write_str("conversation or message not found"),
             Self::Forbidden => formatter.write_str("operation is not authorized"),
+            Self::Blocked => formatter.write_str("one of the accounts blocked the other"),
             Self::IdempotencyKeyReused => {
                 formatter.write_str("client operation id was reused with different input")
             }
@@ -228,6 +232,7 @@ type SyncEventRow = (
 );
 
 mod attachment_actions;
+mod blocked_writes;
 pub use attachment_actions::{delete_attachment, message_for_viewer, set_attachment_reaction};
 mod channels;
 mod conversation;
@@ -254,6 +259,7 @@ mod thread_reads;
 mod titles;
 pub use thread_reads::{advance_thread_read, thread_reads};
 
+use blocked_writes::require_active_writer;
 pub use conversation::{create_conversation, create_conversation_with_trusted_peer};
 pub(crate) use conversation::{
     create_conversation_in_transaction, create_personal_session_in_transaction,

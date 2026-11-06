@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use super::ServerState;
 
-/// Starts every periodic worker: realtime wakes, support tickets, scheduled
+/// Starts every periodic worker: realtime wakes, support tickets, abuse
+/// report notices and retention, scheduled
 /// tasks, digests, the System agent, proactive and personal agents,
 /// Grounding nearby alerts, plan-card projection, retention, terminal
 /// backfill, and the notification workers when notifications are configured.
@@ -18,6 +19,8 @@ pub(super) fn spawn_background_workers(
         state.chat_sync_wakes().clone(),
     );
     crate::support::spawn_ticket_worker(state.clone());
+    crate::safety::spawn_report_notice_worker(state.clone());
+    crate::safety::spawn_report_retention_worker(state.db_pool().clone());
     crate::scheduled_tasks::worker::spawn_scheduled_task_worker(state.clone());
     crate::digest::spawn(state.clone());
     crate::system_agent::spawn(state.clone());

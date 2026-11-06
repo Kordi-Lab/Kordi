@@ -53,6 +53,10 @@ pub(super) async fn add_contact(
         );
     }
 
+    if let Some(refusal) = contact_send::block_refusal(pool, &session.account_id, &peer).await {
+        return refusal;
+    }
+
     let now = Utc::now().to_rfc3339();
     if query(
         "INSERT INTO cloud_contacts (account_id, peer_account_id, created_at) VALUES ($1, $2, $3) \

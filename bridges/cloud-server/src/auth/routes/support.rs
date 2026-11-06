@@ -6,7 +6,7 @@ use uuid::Uuid;
 pub(super) const SIGNUP_DEFAULT_DEVICE_NAME: &str =
     crate::auth::devices::EMAIL_PASSWORD_PLACEHOLDER_DEVICE_NAME;
 
-pub(super) fn err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Response {
+pub(crate) fn err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Response {
     let body = ErrorBody {
         error_code: code,
         message: message.into(),
@@ -286,7 +286,7 @@ pub(super) fn normalize_public_handle(value: &str) -> Result<Option<String>, Inv
     }
 }
 
-pub(super) async fn write_audit(
+pub(crate) async fn write_audit(
     pool: &PgPool,
     account_id: Option<&str>,
     device_id: Option<&str>,

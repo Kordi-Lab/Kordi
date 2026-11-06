@@ -231,6 +231,32 @@ async fn redeem_in_transaction(
         );
     }
 
+    // Someone the inviter blocked, or who blocked the inviter, cannot join
+    // through the inviter's link. Links other admins created still work.
+    match crate::safety::blocks::blocked_either_way(
+        &mut **tx,
+        &record.inviter_account_id,
+        account_id,
+    )
+    .await
+    {
+        Ok(false) => {}
+        Ok(true) => {
+            return failed(
+                "group_invitation_unavailable",
+                "This invitation isn't available.",
+                StatusCode::FORBIDDEN,
+            );
+        }
+        Err(_) => {
+            return failed(
+                "server_error",
+                "Could not check the invitation.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
     let accepted_at = Utc::now();
     if let Err(error) = crate::chat_sync::store::accept_invited_conversation_member(
         tx,

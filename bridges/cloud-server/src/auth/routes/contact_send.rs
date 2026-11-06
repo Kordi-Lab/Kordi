@@ -81,6 +81,10 @@ pub(crate) async fn send_request(
         Err(_) => return database_error(),
     };
 
+    if let Some(refusal) = block_refusal(pool, &session.account_id, &peer).await {
+        return ContactOutcome::Failed(refusal);
+    }
+
     let already_contact: Option<(i32,)> = match query_as(
         "SELECT 1 FROM cloud_contacts \
          WHERE account_id = $1 AND peer_account_id = $2",
@@ -230,4 +234,28 @@ pub(crate) async fn send_request(
             hello_message: None,
         }),
     )
+}
+
+/// Refuses a contact request or addition while either account blocks the
+/// other. A blocked caller sees a generic refusal; a caller who blocked the
+/// peer is told to unblock first.
+pub(super) async fn block_refusal(pool: &PgPool, caller: &str, peer: &str) -> Option<Response> {
+    match crate::safety::blocks::blocks_between(pool, caller, peer).await {
+        Ok((_, true)) => Some(err(
+            "contact_request_unavailable",
+            "You can't send a contact request to this account.",
+            StatusCode::FORBIDDEN,
+        )),
+        Ok((true, false)) => Some(err(
+            "blocked_account",
+            "You blocked this account. Unblock it before sending a contact request.",
+            StatusCode::CONFLICT,
+        )),
+        Ok((false, false)) => None,
+        Err(_) => Some(err(
+            "server_error",
+            "Database error.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )),
+    }
 }

@@ -120,7 +120,7 @@ pub(crate) async fn send_message_in_transaction(
         }
     }
 
-    require_active_member(transaction, conversation_id, account_id).await?;
+    require_active_writer(transaction, conversation_id, account_id).await?;
     if let Some(projection) = &group_projection {
         // Serialize group projections before taking any sibling conversation lock.
         query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
