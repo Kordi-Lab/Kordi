@@ -156,6 +156,8 @@ pub(crate) async fn plan(
     {
         return Ok(None);
     }
+    // No run for a requester or agent owner who declined AI.
+    crate::ai_consent::require(pool, &[&requester, &agent.owner_account_id]).await?;
     if let RateLimitDecision::Limited { retry_after } =
         rate_limiter.observe_agent_run(&requester).await
     {

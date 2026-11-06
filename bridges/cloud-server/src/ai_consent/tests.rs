@@ -331,3 +331,69 @@ async fn due_scheduled_tasks_of_a_declined_owner_wait() {
     let claimed = claim_due().await.unwrap();
     assert!(claimed.iter().any(|run| run.task_id == task_id));
 }
+
+#[tokio::test]
+#[ignore = "Requires a task-owned disposable PostgreSQL database"]
+async fn declining_ends_the_accounts_runs() {
+    let harness = harness().await;
+    let account = harness.account("allowed").await;
+    let other = harness.account("allowed").await;
+    let now = Utc::now().to_rfc3339();
+    let lease = (Utc::now() + Duration::minutes(2)).to_rfc3339();
+    let run = |label: &str| format!("car_consent_{label}_{}", uuid::Uuid::new_v4().simple());
+    let (queued, leased, requested, others) = (
+        run("queued"),
+        run("leased"),
+        run("requested"),
+        run("others"),
+    );
+    for (run_id, owner, requester, status) in [
+        (&queued, &account.id, &account.id, "queued"),
+        (&leased, &account.id, &account.id, "leased"),
+        (&requested, &other.id, &account.id, "queued"),
+        (&others, &other.id, &other.id, "queued"),
+    ] {
+        query(
+            "INSERT INTO cloud_agent_fallback_runs (run_id, idempotency_key, request_message_id, \
+             session_id, owner_account_id, requester_account_id, status, prompt, created_at, \
+             updated_at, lease_expires_at) \
+             VALUES ($1, $1, $1, $1, $2, $3, $4, 'Hi', $5, $5, $6)",
+        )
+        .bind(run_id)
+        .bind(owner)
+        .bind(requester)
+        .bind(status)
+        .bind(&now)
+        .bind((status == "leased").then(|| lease.clone()))
+        .execute(&harness.pool)
+        .await
+        .unwrap();
+    }
+    let (status, body) = harness
+        .send(
+            "PUT",
+            "/v1/cloud/account/ai-consent",
+            &account.token,
+            Some(json!({"status": "declined"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let state = |run_id: String| {
+        let pool = harness.pool.clone();
+        async move {
+            let row: (String, bool) = sqlx_core::query_as::query_as(
+                "SELECT status, cancel_requested_at IS NOT NULL \
+                 FROM cloud_agent_fallback_runs WHERE run_id = $1",
+            )
+            .bind(run_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            row
+        }
+    };
+    assert_eq!(state(queued).await, ("cancelled".into(), true));
+    assert_eq!(state(requested).await, ("cancelled".into(), true));
+    assert_eq!(state(leased).await, ("leased".into(), true));
+    assert_eq!(state(others).await, ("queued".into(), false));
+}

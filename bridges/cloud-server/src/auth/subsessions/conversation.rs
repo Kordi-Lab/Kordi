@@ -160,6 +160,20 @@ async fn admitted_invocation(
         if !allowed.0 {
             return Err(error(StatusCode::FORBIDDEN, "subsession_agent_unavailable"));
         }
+        // No run for a requester or agent owner who declined AI.
+        let people = [
+            session.account_id.as_str(),
+            visible.owner_account_id.as_str(),
+        ];
+        if crate::ai_consent::any_declined(pool, &people)
+            .await
+            .map_err(db_error)?
+        {
+            return Err(error(
+                StatusCode::FORBIDDEN,
+                crate::ai_consent::AI_CONSENT_REQUIRED,
+            ));
+        }
     }
     Ok((visible, invokes))
 }

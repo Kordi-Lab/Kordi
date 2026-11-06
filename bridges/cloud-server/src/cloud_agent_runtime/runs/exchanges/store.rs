@@ -138,6 +138,10 @@ pub(super) async fn send(
     }
     let targets = directory(pool, parent).await?;
     let target = resolve_target(&targets, target_ref)?;
+    // Another agent is never run for an owner who declined AI.
+    if crate::ai_consent::is_declined(pool, &target.owner_account_id).await? {
+        return Err(RunError::AiConsentRequired);
+    }
     let id = Uuid::new_v4();
     let run = format!("car_exchange_{}", id.simple());
     let request = format!("{PREFIX}{id}:request");

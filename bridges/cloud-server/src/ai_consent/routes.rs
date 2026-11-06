@@ -10,6 +10,7 @@ use axum::{Extension, Json, Router};
 use serde::Deserialize;
 use serde_json::json;
 use sqlx_core::query::query;
+use sqlx_core::query_as::query_as;
 
 use super::{load, unavailable, AiConsentStatus};
 use crate::auth::routes::CloudSession;
@@ -75,6 +76,14 @@ async fn set_consent(
     if !matches!(updated, Ok(result) if result.rows_affected() == 1) {
         return unavailable();
     }
+    let cancelled = if status == AiConsentStatus::Declined {
+        match stop_runs(&mut tx, &session.account_id).await {
+            Ok(cancelled) => cancelled,
+            Err(_) => return unavailable(),
+        }
+    } else {
+        Vec::new()
+    };
     let event_id = format!("evt_{}", uuid::Uuid::new_v4().simple());
     let audited = query(
         "INSERT INTO cloud_audit_events \
@@ -98,5 +107,44 @@ async fn set_consent(
     if tx.commit().await.is_err() {
         return unavailable();
     }
+    for run_id in &cancelled {
+        crate::cloud_agent_runtime::runs::terminal_backfill::publish_after_cancel(&state, run_id)
+            .await;
+    }
     Json(consent).into_response()
+}
+
+/// Ends the account's agent runs, as owner or requester, when it declines
+/// AI: queued runs are cancelled at once, so they never wait at the head of
+/// a conversation's queue, and runs in progress are asked to stop, as the
+/// stop button does. Returns the cancelled queued runs.
+pub(super) async fn stop_runs(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    account_id: &str,
+) -> sqlx_core::Result<Vec<String>> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let cancelled: Vec<(String,)> = query_as(
+        "UPDATE cloud_agent_fallback_runs SET status = 'cancelled', \
+           cancel_requested_at = COALESCE(cancel_requested_at, now()), \
+           completed_at = $2, updated_at = $2 \
+         WHERE (owner_account_id = $1 OR requester_account_id = $1) \
+           AND (status = 'queued' OR (status IN ('leased', 'running') \
+             AND lease_expires_at IS NOT NULL AND lease_expires_at::timestamptz <= now())) \
+         RETURNING run_id",
+    )
+    .bind(account_id)
+    .bind(&now)
+    .fetch_all(&mut **tx)
+    .await?;
+    query(
+        "UPDATE cloud_agent_fallback_runs \
+         SET cancel_requested_at = COALESCE(cancel_requested_at, now()), updated_at = $2 \
+         WHERE (owner_account_id = $1 OR requester_account_id = $1) \
+           AND status IN ('leased', 'running')",
+    )
+    .bind(account_id)
+    .bind(&now)
+    .execute(&mut **tx)
+    .await?;
+    Ok(cancelled.into_iter().map(|(id,)| id).collect())
 }
