@@ -2,6 +2,7 @@ mod follow_up;
 pub(super) mod follow_up_routes;
 mod group_documents;
 mod managed_child;
+pub mod session_route;
 pub mod snapshots;
 
 use kordi_cli::desktop_runtime::{DesktopChatContextMessage, DesktopVisibleTaskRecord};
@@ -21,6 +22,7 @@ pub(super) fn resource_message_for_test(
     group_documents::resource_message(None, lease.as_ref()).expect("a document lease")
 }
 pub(super) use managed_child::ManagedChildAgentRunner;
+pub(super) use session_route::{route_for_turn, turn_route_from_message_route};
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments, reason = "stable top-level Tauri IPC keys")]

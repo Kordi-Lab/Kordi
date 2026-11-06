@@ -1,6 +1,7 @@
 import type { CloudAgentSubsession, AgentSubsessionMessage } from './agentSubsessionTypes';
 import type { Conversation, Message, MessageMention, DesktopChatToolSnapshot } from '@/kordi-app/types';
 import type { ComposerMentionOption } from '@/kordi-app/components/composer';
+import type { ComposerModelOption } from '@/kordi-app/components/composerModelSelection';
 import { publicScopedAgentMentionHandle } from '@/lib/identityLabels';
 import { mentionHandleForLabel } from '@/features/chat/messageActions/mentionHandles';
 import { sentenceCaseAgentThreadTitle } from '@/features/chat/agentThreadTitle';
@@ -29,6 +30,42 @@ export function subsessionMentions(text: string, options: ComposerMentionOption[
       agentId: option.agentId, humanId: option.humanId, displayText: match[0], displayLabel: option.label,
       startUtf16: match.index, lengthUtf16: match[0].length }];
   });
+}
+
+/**
+ * The owner's message in their own agent's background session asks that agent
+ * to continue, as in any agent session. A message that mentions someone keeps
+ * the shared rule: only an explicit agent mention runs the agent.
+ */
+export function ownerMessageToAgent(
+  text: string,
+  mentions: MessageMention[],
+  record: Pick<CloudAgentSubsession, 'ownerAccountId' | 'ownerDisplayName' | 'agentDisplayName' | 'agentId'> | null,
+  accountId: string,
+): { text: string; mentions: MessageMention[] } {
+  if (!record || record.ownerAccountId !== accountId || mentions.length > 0 || !text.trim()) return { text, mentions };
+  const handle = publicScopedAgentMentionHandle(record.ownerDisplayName, record.agentDisplayName);
+  if (!/^[\p{L}\p{N}]+$/u.test(handle)) return { text, mentions };
+  const displayText = `@${handle}`;
+  return {
+    text: `${displayText} ${text}`,
+    mentions: [{ label: handle, targetKind: 'agent', targetIdentityId: record.agentId, agentId: record.agentId,
+      humanId: record.ownerAccountId, displayText, displayLabel: record.agentDisplayName,
+      startUtf16: 0, lengthUtf16: displayText.length }],
+  };
+}
+
+/** Models a background session can switch to: those of the account it runs on. */
+export function backgroundSessionModelOptions(
+  options: readonly ComposerModelOption[],
+  route: { model?: string | null } | null,
+): ComposerModelOption[] {
+  const model = route?.model?.trim();
+  const provider = model?.split('/')[0]?.trim();
+  if (!model || !provider) return [];
+  const matching = options.filter(option => (option.provider?.trim() || option.value.split('/')[0]?.trim()) === provider);
+  return matching.some(option => option.value === model) ? matching
+    : [{ value: model, label: model.slice(provider.length + 1) || model, provider }, ...matching];
 }
 
 export function subsessionTranscript(record: CloudAgentSubsession, accountId: string): Message[] {
