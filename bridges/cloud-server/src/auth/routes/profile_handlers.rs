@@ -370,7 +370,17 @@ pub(super) async fn me(
 ) -> Response {
     let pool = state.db_pool();
     match owner_account_response_row(pool, &session.account_id).await {
-        Ok(Some(account)) => Json(account).into_response(),
+        Ok(Some(mut account)) => match crate::ai_consent::load(pool, &session.account_id).await {
+            Ok(consent) => {
+                account.ai_consent = Some(consent);
+                Json(account).into_response()
+            }
+            Err(_) => err(
+                "server_error",
+                "Could not fetch account.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+        },
         Ok(None) => err(
             "account_missing",
             "Account no longer exists.",

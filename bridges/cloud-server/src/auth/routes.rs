@@ -383,6 +383,7 @@ pub fn routes_with_shared_rate_limiter(
     // Account pages on the web call these with the session cookie.
     let account = crate::organizations::admission::account_routes()
         .merge(account_security_handlers::routes())
+        .merge(crate::ai_consent::routes())
         .merge(crate::organizations::token_exchange::routes())
         .layer(Extension(app_clients))
         .layer(Extension(rate_limiter.clone()))

@@ -14,6 +14,7 @@ use axum::http::Request as HttpRequest;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+mod delete_account;
 mod email_change;
 mod password;
 mod providers;

@@ -446,4 +446,6 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0173_identity_matching_email.sql"
     ),
     migration!(174, "usage pauses", "0174_usage_pauses.sql"),
+    migration!(175, "account deletion", "0175_account_deletion.sql"),
+    migration!(176, "AI consent", "0176_ai_consent.sql"),
 ];

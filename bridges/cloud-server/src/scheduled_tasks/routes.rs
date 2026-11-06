@@ -173,6 +173,10 @@ async fn create_task(
             StatusCode::BAD_REQUEST,
         );
     }
+    if let Err(response) = crate::ai_consent::require(state.db_pool(), &[&session.account_id]).await
+    {
+        return response;
+    }
     use crate::organizations::selection::{for_new_content, SelectionError};
     let requested = input.organization_id.as_deref();
     match for_new_content(state.db_pool(), &session.account_id, requested).await {
@@ -310,6 +314,10 @@ async fn run_task_now(
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Path(task_id): Path<String>,
 ) -> Response {
+    if let Err(response) = crate::ai_consent::require(state.db_pool(), &[&session.account_id]).await
+    {
+        return response;
+    }
     if let Some(response) = charge_agent_run(&rate_limiter, &session.account_id).await {
         return response;
     }

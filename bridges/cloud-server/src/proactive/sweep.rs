@@ -296,6 +296,11 @@ pub(super) async fn evaluate(
     let Some(agent) = load_agent(pool, &candidate.agent_id).await? else {
         return Ok(Outcome::Skipped);
     };
+    // An owner who declined AI: the messages are passed over, never read.
+    if crate::ai_consent::is_declined(pool, &agent.owner_account_id).await? {
+        advance(pool, candidate).await?;
+        return Ok(Outcome::Skipped);
+    }
     let snapshot = build(pool, &agent, candidate).await?;
     if snapshot.collaborator_texts.is_empty()
         || snapshot.mentions_agent

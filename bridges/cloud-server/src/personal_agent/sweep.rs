@@ -257,7 +257,8 @@ pub(super) async fn evaluate(
         .filter(|event| !event.stale)
         .rev()
         .collect();
-    if fresh.is_empty() {
+    // An owner who declined AI: the events are passed over, never read.
+    if fresh.is_empty() || crate::ai_consent::is_declined(pool, &agent.owner_account_id).await? {
         advance(pool, candidate, &to).await?;
         return Ok(Outcome::Skipped);
     }

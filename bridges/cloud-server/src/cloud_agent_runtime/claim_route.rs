@@ -70,6 +70,14 @@ pub(super) async fn claim_cloud_agent_run(
             StatusCode::FORBIDDEN,
         );
     }
+    // Neither the requester nor the agent's owner may have declined AI.
+    let people = [
+        input.requester_account_id.trim(),
+        input.owner_account_id.trim(),
+    ];
+    if let Err(response) = crate::ai_consent::require(state.db_pool(), &people).await {
+        return response;
+    }
     if let Some(Extension(rate_limiter)) = rate_limiter {
         if let RateLimitDecision::Limited { retry_after } =
             rate_limiter.observe_agent_run(&session.account_id).await

@@ -40,6 +40,9 @@ pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
                 "SELECT account_id FROM cloud_account_digests
                  WHERE urgent_since <= now() - make_interval(secs => $1)
                    AND active_run_id IS NULL AND retry_after <= now()
+                   AND NOT EXISTS (SELECT 1 FROM cloud_accounts consent
+                                   WHERE consent.account_id = cloud_account_digests.account_id
+                                     AND consent.ai_consent_status = 'declined')
                  ORDER BY urgent_since LIMIT 20",
             )
             .bind(super::urgent::SETTLE_SECONDS as f64)
