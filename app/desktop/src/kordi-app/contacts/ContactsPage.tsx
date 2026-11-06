@@ -61,6 +61,7 @@ export function ContactsPage(props: ContactsPageProps) {
     contactMute,
     onOpenAgentSettings,
     sharedConversationFor,
+    groupSpaces: props.groupSpaces,
     requestActions,
   } : null;
 

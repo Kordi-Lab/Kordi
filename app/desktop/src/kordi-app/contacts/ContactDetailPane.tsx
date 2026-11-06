@@ -31,7 +31,7 @@ import { useContactSharedPages } from './useContactSharedPages';
 
 type ContactDetailPaneProps = Pick<ContactsPageProps,
   | 'activeContact' | 'activeContactRequest' | 'onCloseOverlay' | 'onMessageContact' | 'onRemoveContact'
-  | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor'
+  | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor' | 'groupSpaces'
 > & {
   mode: 'contact' | 'request';
   requestActions: ContactRequestActions;
@@ -50,7 +50,7 @@ function kordiIdRow(handle: string): InfoCardRow {
 }
 
 type ContactDetailBodyProps = Pick<ContactsPageProps,
-  'onMessageContact' | 'onRemoveContact' | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor'
+  'onMessageContact' | 'onRemoveContact' | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor' | 'groupSpaces'
 > & {
   contact: Contact;
   onCloseOverlay: () => void;
@@ -76,6 +76,7 @@ function withProfilePresence(contact: Contact, state: ContactProfileState): Cont
 /** The contact profile: header, tiles, info card, shared and common ground cards, and Delete. */
 function ContactDetailBody({
   contact: row, onCloseOverlay, onMessageContact, onRemoveContact, contactProfileHost, contactMute, onOpenAgentSettings, sharedConversationFor,
+  groupSpaces,
 }: ContactDetailBodyProps) {
   const now = usePresenceNow();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -202,6 +203,7 @@ function ContactDetailBody({
           onOpenPage={shared.open}
           onOpenChat={openChat}
           onOpenGroup={contactProfileHost?.openGroup}
+          groupSpaces={groupSpaces}
         />
       ) : null}
       {profile?.commonGround ? <CommonGroundCard card={profile.commonGround} /> : null}
@@ -317,6 +319,7 @@ export function ContactDetailContent({
   contactMute,
   onOpenAgentSettings,
   sharedConversationFor,
+  groupSpaces,
   requestActions,
 }: ContactDetailPaneProps) {
   if (mode === 'request' && !activeContactRequest) return null;
@@ -343,6 +346,7 @@ export function ContactDetailContent({
           contactMute={contactMute}
           onOpenAgentSettings={onOpenAgentSettings}
           sharedConversationFor={sharedConversationFor}
+          groupSpaces={groupSpaces}
         />
       ) : activeContactRequest ? (
         <ContactRequestDetailBody request={activeContactRequest} requestActions={requestActions} />

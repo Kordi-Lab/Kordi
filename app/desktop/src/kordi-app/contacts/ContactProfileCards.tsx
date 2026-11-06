@@ -5,6 +5,8 @@ import type { CloudContactProfile, CloudContactProfileGroup } from '@/features/c
 import { cn } from '@/lib/utils';
 import type { ContactProfileSharedPage } from '@/pages/contactProfileSharedItems';
 import { GroupAvatar } from '../components/GroupAvatar';
+import type { ParticipantSpaceViewModel } from '../types';
+import { commonGroupAvatar, commonGroupAvatarStack } from './commonGroupAvatars';
 import { usePopover } from './contactProfileHooks';
 import type { ContactSharedCounts } from './useContactSharedPages';
 
@@ -48,12 +50,17 @@ function SharedRow({
   );
 }
 
-function GroupsRow({ groups, onOpenGroup }: { groups: CloudContactProfileGroup[]; onOpenGroup?: (group: CloudContactProfileGroup) => void }) {
+function GroupsRow({ groups, groupSpaces, onOpenGroup }: {
+  groups: CloudContactProfileGroup[];
+  groupSpaces?: readonly ParticipantSpaceViewModel[];
+  onOpenGroup?: (group: CloudContactProfileGroup) => void;
+}) {
   const { open, setOpen, slotProps } = usePopover('app-contacts-card-row relative');
-  const avatars = groups.length > 0 ? (
+  const stack = commonGroupAvatarStack(groups, groupSpaces);
+  const avatars = stack.length > 0 ? (
     <span className="app-contacts-group-avatars mr-0.5 flex items-center" aria-hidden="true">
-      {groups.slice(0, 2).map((group) => (
-        <GroupAvatar key={group.groupId} avatars={[]} imageUrl={group.avatarUrl} name={group.title} className="h-5 w-5" />
+      {stack.map((avatar) => (
+        <GroupAvatar key={avatar.key} avatars={avatar.avatars} imageUrl={avatar.imageUrl} name={avatar.name} className="h-5 w-5" />
       ))}
     </span>
   ) : null;
@@ -74,21 +81,24 @@ function GroupsRow({ groups, onOpenGroup }: { groups: CloudContactProfileGroup[]
       />
       {open && multiple ? (
         <div role="menu" aria-label="Groups in common" className="app-contacts-menu absolute right-2 top-[46px] z-10 max-h-[260px] min-w-[220px] overflow-y-auto rounded-[10px] p-1">
-          {groups.map((group) => (
-            <button
-              key={group.groupId}
-              type="button"
-              role="menuitem"
-              className="app-contacts-menu-item flex h-9 w-full items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px]"
-              onClick={() => {
-                setOpen(false);
-                onOpenGroup?.(group);
-              }}
-            >
-              <GroupAvatar avatars={[]} imageUrl={group.avatarUrl} name={group.title} className="h-6 w-6" />
-              <span className="min-w-0 flex-1 truncate">{group.title}</span>
-            </button>
-          ))}
+          {groups.map((group) => {
+            const avatar = commonGroupAvatar(group, groupSpaces);
+            return (
+              <button
+                key={group.groupId}
+                type="button"
+                role="menuitem"
+                className="app-contacts-menu-item flex h-9 w-full items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px]"
+                onClick={() => {
+                  setOpen(false);
+                  onOpenGroup?.(group);
+                }}
+              >
+                <GroupAvatar avatars={avatar.avatars} imageUrl={avatar.imageUrl} name={avatar.name} className="h-6 w-6" />
+                <span className="min-w-0 flex-1 truncate">{group.title}</span>
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </div>
@@ -105,12 +115,15 @@ export function SharedWithYouCard({
   onOpenPage,
   onOpenChat,
   onOpenGroup,
+  groupSpaces,
 }: {
   shared: CloudContactProfile['shared'];
   local?: ContactSharedCounts | null;
   onOpenPage?: (page: ContactProfileSharedPage) => void;
   onOpenChat?: () => void;
   onOpenGroup?: (group: CloudContactProfileGroup) => void;
+  /** The loaded group spaces, so each common group shows the picture and members the sidebar shows. */
+  groupSpaces?: readonly ParticipantSpaceViewModel[];
 }) {
   const counts = local ?? { photos: shared.mediaCount, files: shared.documentCount, links: shared.linkCount };
   const openFor = (page: ContactProfileSharedPage) => (local && onOpenPage ? () => onOpenPage(page) : onOpenChat);
@@ -126,7 +139,7 @@ export function SharedWithYouCard({
             <SharedRow icon={<ImageIcon className="h-[18px] w-[18px]" aria-hidden="true" />} label="Photos" count={counts.photos} onClick={openFor('photos')} />
             <SharedRow icon={<FileText className="h-[18px] w-[18px]" aria-hidden="true" />} label="Files" count={counts.files} onClick={openFor('files')} />
             <SharedRow icon={<Link className="h-[18px] w-[18px]" aria-hidden="true" />} label="Links" count={counts.links} onClick={openFor('links')} />
-            <GroupsRow groups={shared.groups} onOpenGroup={onOpenGroup} />
+            <GroupsRow groups={shared.groups} groupSpaces={groupSpaces} onOpenGroup={onOpenGroup} />
           </>
         )}
       </div>

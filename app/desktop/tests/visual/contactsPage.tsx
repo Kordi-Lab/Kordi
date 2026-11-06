@@ -6,7 +6,7 @@ import { CommonGroundContactsRow } from '../../src/features/commonGround/CommonG
 import { normalizeContactProfile, type CloudContactProfile } from '../../src/features/cloud/contactProfileClient';
 import type { ContactProfileHost } from '../../src/kordi-app/contacts/contactProfileHost';
 import { ContactsPage } from '../../src/kordi-app/pages';
-import type { Contact, ContactClass, ContactRequest, Conversation } from '../../src/kordi-app/types';
+import type { Contact, ContactClass, ContactRequest, Conversation, ParticipantSpaceViewModel } from '../../src/kordi-app/types';
 import { CONTACT_MATCH_VISUAL } from './contactMatchFixture';
 import { contactSharedVisualMessages } from './contactSharedFixtures';
 import '../../src/index.css';
@@ -16,6 +16,7 @@ import '../../src/index.css';
 // ?invite=1 (the Common ground row shows a waiting room invitation), ?profile=1 (the richer contact profile),
 // ?profile=1&page=photos|files|links (Maya's chat is on hand and that shared page opens in the pane),
 // ?profile=1&match=1 (Maya's common ground carries a Grounding match).
+// With ?profile=1 the loaded group spaces give Groups in common the sidebar's member mosaics and pictures.
 // The Common ground page itself has its own preview, commonGroundPage.html.
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
@@ -84,7 +85,12 @@ const PROFILES: Record<string, CloudContactProfile> = Object.fromEntries([
     about: 'Memory systems group. Building retrieval for long-running agents.',
     defaultAgent: { agentId: 'agent_maya', accountId: 'acct_maya_agent', displayName: 'Maya’s agent', avatarUrl: null },
     contactSince: '2026-08-12T09:30:00Z',
-    shared: { mediaCount: 24, linkCount: 9, documentCount: 3, groups: [{ groupId: 'gs_reading', title: 'Reading group', avatarUrl: null }, { groupId: 'gs_lab', title: 'Lab', avatarUrl: null }] },
+    shared: { mediaCount: 24, linkCount: 9, documentCount: 3, groups: [
+      { groupId: 'gs_reading', title: 'Reading group', avatarUrl: null },
+      { groupId: 'gs_lab', title: 'Lab', avatarUrl: null },
+      { groupId: 'gs_design', title: 'Design crit', avatarUrl: null },
+      { groupId: 'gs_archive', title: 'Spring cohort', avatarUrl: null },
+    ] },
     commonGround: { workingOn: ['agent memory', 'retrieval'], canHelp: ['grant writing'], lookingFor: ['eval datasets'], match: withMatch ? CONTACT_MATCH_VISUAL : null },
   },
   { accountId: 'acct_hana', kordiId: '193847562', kind: 'person', contactSince: '2026-10-20T08:00:00Z', shared: { mediaCount: 0, linkCount: 0, documentCount: 0, groups: [] } },
@@ -96,6 +102,35 @@ const PROFILES: Record<string, CloudContactProfile> = Object.fromEntries([
   },
   { accountId: 'kordi-support', kind: 'system', about: 'Help with your account and the app.' },
 ].map((row) => [row.accountId, normalizeContactProfile(row)!]));
+
+// Spring cohort is not loaded locally, so it keeps the generic group glyph.
+function groupSpace(id: string, title: string, members: string[], imageUrl: string | null = null): ParticipantSpaceViewModel {
+  return {
+    id: `group:${id}`, kind: 'group', title, participants: [], participantCount: members.length, sessionCount: 1, unread: 0,
+    updatedAtMs: Date.now(), preview: '', sessions: [],
+    avatarStack: members.map((name) => ({ kind: 'human', seed: name, imageUrl: memberAvatar(name) })),
+    groupAvatar: imageUrl ? { imageUrl, updatedAtMs: Date.now() } : null,
+  };
+}
+
+// Mosaic cells are a few pixels wide, so members get plain colour fills rather than initials.
+const MEMBER_FILLS = ['#e8925b', '#5fb39a', '#8b7ad8', '#d36b8c', '#5a9bd5', '#c9a447'];
+function memberAvatar(name: string) {
+  const fill = MEMBER_FILLS[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % MEMBER_FILLS.length];
+  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="${fill}"/></svg>`)}`;
+}
+
+function groupPicture() {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><rect width="80" height="80" fill="#5b7cfa"/>'
+    + '<circle cx="40" cy="40" r="20" fill="#ffffff" fill-opacity="0.85"/></svg>';
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+const GROUP_SPACES: ParticipantSpaceViewModel[] = [
+  groupSpace('gs_reading', 'Reading group', ['Maya Chen', 'Hana Sato', 'Ines Wolf']),
+  groupSpace('gs_lab', 'Lab', ['Maya Chen', 'Rafa Mendes', 'Ines Wolf', 'Noor Haddad']),
+  groupSpace('gs_design', 'Design crit', ['Maya Chen', 'Oskar Berg'], groupPicture()),
+];
 
 function previewProfileHost(contacts: Contact[], select: (contact: Contact) => void): ContactProfileHost {
   return {
@@ -267,6 +302,7 @@ function ContactsPreview() {
           setActiveContactId(contact.id);
           setOverlayMode('contact');
         }) : undefined}
+        groupSpaces={withProfile ? GROUP_SPACES : undefined}
         sharedConversationFor={sharedPage ? (contact) => (contact.sourceParticipantId === 'acct_maya' ? MAYA_CHAT : null) : undefined}
         contactMute={withProfile ? {
           isMuted: (contact) => (contact.systemContact ? null : mutedIds.has(contact.id)),

@@ -5,7 +5,7 @@ import type { CloudContactProfile } from '@/features/cloud/contactProfileClient'
 import { cn } from '@/lib/utils';
 import { IdentityAvatar } from '../components/IdentityAvatar';
 import { contactKordiHandle, contactPresenceStatus, contactSecondaryLine } from '../contactPresentation';
-import type { Contact, Conversation } from '../types';
+import type { Contact, Conversation, ParticipantSpaceViewModel } from '../types';
 import { SectionLabel, SharedWithYouCard, SharedWithYouLoading } from './ContactProfileCards';
 import type { ContactProfileHost } from './contactProfileHost';
 import { useContactProfile } from './useContactProfile';
@@ -24,6 +24,8 @@ type ChatPersonInfoProps = {
   onOpenPeer?: (anchorRect: DOMRect) => void;
   /** Leaves the Info tab for the transcript; shared rows land there until the whole chat is loaded. */
   onReturnToChat: () => void;
+  /** The loaded group spaces, for the common groups' avatars. */
+  groupSpaces?: readonly ParticipantSpaceViewModel[];
 };
 
 const NO_SHARED: CloudContactProfile['shared'] = { mediaCount: 0, linkCount: 0, documentCount: 0, groups: [] };
@@ -67,7 +69,7 @@ function ParticipantRow({ avatar, name, line, online = false, onOpen }: {
  * Info tab of a direct person chat: who is in the chat and what the two accounts share. The
  * profile itself lives in the popover the other person's row opens.
  */
-export function ChatPersonInfo({ peer, self, conversation, host, onOpenPeer, onReturnToChat }: ChatPersonInfoProps) {
+export function ChatPersonInfo({ peer, self, conversation, host, onOpenPeer, onReturnToChat, groupSpaces }: ChatPersonInfoProps) {
   const now = usePresenceNow();
   const state = useContactProfile(peer, host);
   const shared = useContactSharedPages(peer, () => conversation, { backLabel: 'Back' });
@@ -116,6 +118,7 @@ export function ChatPersonInfo({ peer, self, conversation, host, onOpenPeer, onR
           onOpenPage={shared.open}
           onOpenChat={onReturnToChat}
           onOpenGroup={host?.openGroup}
+          groupSpaces={groupSpaces}
         />
       ) : state.status === 'loading' ? <SharedWithYouLoading /> : null}
     </div>

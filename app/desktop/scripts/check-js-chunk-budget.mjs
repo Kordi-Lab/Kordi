@@ -36,7 +36,8 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Per-person permissions (the contact pane switches and their client) add 2 kB.
 // Applying them on the Mac (the restricted list, context filtering, the member popover switches) adds 2 kB.
 // Blocking and per-person permissions together in the same contact and member views add 2 kB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_778_000;
+// Real group avatars in the Groups in common row add 2 kB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_780_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.
