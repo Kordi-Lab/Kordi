@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLayout';
 import { cn } from '@/lib/utils';
 import { loginCallbackHint, pasteCodeFallback, type ProviderLoginClient, type ProviderLoginSnapshot } from '@/features/cloud/providerLogin';

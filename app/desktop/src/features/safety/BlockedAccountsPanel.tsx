@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';

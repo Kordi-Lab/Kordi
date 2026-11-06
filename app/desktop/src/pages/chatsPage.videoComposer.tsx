@@ -3,7 +3,7 @@ import { CircleStop, LoaderCircle, RotateCcw, Send, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { AppDialog, AppDialogTitle } from '@/components/ui/dialog';
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import {
   attachmentVideoDisplaySize,
   attachmentVideoUrl,

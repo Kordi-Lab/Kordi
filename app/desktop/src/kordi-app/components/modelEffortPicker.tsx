@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } f
 import { createPortal } from 'react-dom';
 import { Check, ChevronLeft, ChevronRight, RotateCcw, X } from 'lucide-react';
 import { composerModelChipLabels, modelDisplayName, modelEffortLabel } from '@/lib/modelDisplayName';
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { cn } from '@/lib/utils';
 import { composerThinkingLevelsIncludingCurrent } from './composerThinking';
 import {

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { ErrorLine, withoutTryAgain } from '../src/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '../src/components/ui/errors';
 
 const css = (name: string) => readFileSync(new URL(`../src/styles/${name}`, import.meta.url), 'utf8');
 

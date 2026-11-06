@@ -3,7 +3,7 @@ import { Check, Copy, Link2, LoaderCircle, Share } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { CopyToast } from '@/components/ui/copyFeedback';
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { useCopyFeedback } from '@/components/ui/useCopyFeedback';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import type { CloudGroupInvitation, CloudGroupInvitationCreateInput } from '@/features/cloud/authClient';

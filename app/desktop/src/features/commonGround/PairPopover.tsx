@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Check, Copy } from 'lucide-react';
 
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 
 import { pairLinkUrl } from './pairLink';
 import { PairQr } from './PairQr';

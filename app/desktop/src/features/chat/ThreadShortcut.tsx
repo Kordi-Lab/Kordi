@@ -1,5 +1,5 @@
 import {MessagesSquare,LoaderCircle} from 'lucide-react';
-import {ErrorLine,withoutTryAgain} from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 export function ThreadShortcut({count,busy,onClick,error}:{count:number;busy?:boolean;onClick:()=>void;error?:string|null}) {
   if(!count&&!error)return null;
   return <div className="flex items-center gap-2">

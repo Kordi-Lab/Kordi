@@ -2,7 +2,7 @@ import { HelpImportExample } from '@/features/onboarding/HelpEmptyExample';
 import { useCallback, useEffect, useId, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import {
   AppDialog,
   AppDialogActions,

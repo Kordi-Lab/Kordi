@@ -2,7 +2,7 @@ import { requireAiConsent } from '@/features/aiConsent/aiConsentStore';
 import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type FormEvent } from 'react';
 import { Bell, ChevronRight, RefreshCw, SlidersHorizontal } from 'lucide-react';
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { digestClient } from './client';
 import { useDigest } from './useDigest';
 import { digestUpdatedLabel } from './freshness';

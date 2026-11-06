@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { syncedAgoLabel } from './calendar';
 import type { CalendarSyncStatus } from './calendarSyncRunner';
 

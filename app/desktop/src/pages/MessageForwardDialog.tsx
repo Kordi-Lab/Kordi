@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Check, Forward, Search, Users, X } from 'lucide-react';
 
 import { AppDialog } from '@/components/ui/dialog';
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { filterForwardDestinations, forwardDestinationPath, type ForwardDestination } from '@/features/chat/messageForwarding';
 import type { ForwardMessageSource } from '@/features/chat/messageActionMetadata';
 import { canonicalAvatarImageUrl } from '@/features/cloud/canonicalAvatar';

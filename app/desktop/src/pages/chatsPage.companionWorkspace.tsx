@@ -5,7 +5,7 @@ import { useCompanionReadPresentation } from '@/pages/useCompanionReadPresentati
 import { useCompanionHistorySession } from '@/pages/useCompanionHistorySession';
 import { importLivePhotos } from '@/features/chat/importLivePhotos';
 import { useEffect, useRef, useState } from 'react';
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { GripVertical } from 'lucide-react';
 
 import { localOwnedAgentSenderLabel } from '@/app/viewModels/helpers';

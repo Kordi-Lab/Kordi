@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { ArrowLeft, Check, ChevronRight, Folder, FolderOpen, GitBranch, LoaderCircle, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { AppDialog } from '@/components/ui/dialog';
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { desktopProjectImportApi, githubRepositoryFromInput, type GithubRepository, type ProjectImportApi } from './projectImportApi';
 
 export function ProjectImportDialog({ onClose, onImported, api = desktopProjectImportApi, preview = false }: {

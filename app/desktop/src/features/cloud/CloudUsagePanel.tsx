@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { ErrorLine, withoutTryAgain } from '@/components/ui/ErrorLine';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { settingsType } from '@/kordi-app/components/settingsType';
 import { cn } from '@/lib/utils';
 

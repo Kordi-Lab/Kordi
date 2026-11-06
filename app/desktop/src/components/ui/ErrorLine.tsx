@@ -55,8 +55,3 @@ export function ErrorLine({
     </p>
   );
 }
-
-/** Drops a trailing "Try again." when the line already offers that action. */
-export function withoutTryAgain(message: string): string {
-  return message.replace(/\s*Try again\.?\s*$/i, '').trim() || message;
-}
