@@ -4,6 +4,7 @@ import UIKit
 enum AccountSettingsRoute: String, Hashable {
     case profile
     case activeSessions = "active-sessions"
+    case blocked
     case authentication
     case privacy
     case notifications
@@ -145,6 +146,9 @@ struct AccountSheet: View {
                 settingsLink(.privacy) {
                     CompactSettingsLabel(title: "Privacy", systemImage: "hand.raised")
                 }
+                settingsLink(.blocked) {
+                    CompactSettingsLabel(title: "Blocked", systemImage: "nosign")
+                }
                 SettingsDivider()
                 SettingsSectionTitle("About")
                 LegalLinkRow(title: "Privacy policy", systemImage: "lock.doc", url: KordiLegalLinks.privacy)
@@ -174,6 +178,8 @@ struct AccountSheet: View {
                 PrivacySettingsView()
             case .notifications:
                 NotificationSettingsView()
+            case .blocked:
+                BlockedAccountsView()
             case .connectors:
                 if let connectorsClient {
                     ConnectorsSettingsView(
@@ -182,14 +188,10 @@ struct AccountSheet: View {
                         request: connectorsRequest
                     )
                 }
-            case .memory:
-                MemorySettingsView(appModel: model)
-            case .usage:
-                UsageSettingsView(appModel: model)
-            case .appearance:
-                AppearanceSettingsView()
-            case .licenses:
-                OpenSourceLicensesView()
+            case .memory: MemorySettingsView(appModel: model)
+            case .usage: UsageSettingsView(appModel: model)
+            case .appearance: AppearanceSettingsView()
+            case .licenses: OpenSourceLicensesView()
             }
         }
         .task { await model.refreshMemoryCapabilities() }

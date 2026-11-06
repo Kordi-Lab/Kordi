@@ -45,6 +45,7 @@ enum KordiPreviewModePersistence {
         "--preview-connectors", "--preview-shared-document", "--preview-common-ground", "--preview-contact-profile",
         "--preview-consent", "--preview-privacy-settings", "--preview-delete-account", "--preview-delete-account-confirm",
         "--preview-settings-about",
+        "--preview-blocked", "--preview-report", "--preview-blocked-message",
     ]
 
     static func launchRequested(by arguments: [String]) -> Bool {
@@ -260,7 +261,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var threadAttentionBySession: [String: CloudThreadAttention] = [:]
     @Published var pendingThreadRoute: KordiMessageNotificationRoute?
     @Published private(set) var threadNextPage: [String: Int64] = [:]
-
     @Published private(set) var threadReadCursors: [String: [String: Int64]] = [:]
     @Published private(set) var pinnedGroupSpaceIds = Set<String>()
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
@@ -306,6 +306,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isRefreshingDevices = false
     @Published private(set) var deviceErrorMessage: String?
     @Published private(set) var deviceReviewRequired = false
+    @Published var blockedAccountList: BlockedAccountList?
     @Published private(set) var isRefreshing = false
     @Published private(set) var agentRunState: [String: AgentActivity] = [:]
     @Published private(set) var agentExecutionLocation: [String: AgentExecutionLocation] = [:]

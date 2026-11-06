@@ -103,6 +103,7 @@ pub async fn add_conversation_members(
         if contacts.0 != missing.len() as i64 {
             return Err(StoreError::Forbidden);
         }
+        crate::safety::blocks::refuse_blocked_peers(&mut transaction, account_id, &missing).await?;
         for member in &missing {
             query(
                 "INSERT INTO cloud_chat_conversation_members

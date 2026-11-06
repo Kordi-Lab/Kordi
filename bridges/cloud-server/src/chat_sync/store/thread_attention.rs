@@ -42,6 +42,7 @@ pub async fn thread_attention(
             LEFT JOIN cloud_chat_thread_read_cursors r ON r.conversation_id=m.conversation_id AND r.root_message_id=m.thread_root_message_id AND r.account_id=$1
             WHERE m.deleted_at IS NULL
               AND NOT EXISTS(SELECT 1 FROM cloud_chat_message_visibility v WHERE v.message_id=m.message_id AND v.account_id=$1)
+              AND NOT EXISTS(SELECT 1 FROM cloud_account_blocks b WHERE b.blocker_account_id=$1 AND b.blocked_account_id=m.sender_account_id)
               AND (m.sender_account_id<>$1 OR m.attention_content->>'senderKind'='agent' OR m.attention_content->>'kind'='agent-response')
               AND COALESCE(m.attention_content->>'hidden','false')<>'true'
               AND COALESCE(m.attention_content->>'synchronizationOnly','false')<>'true'

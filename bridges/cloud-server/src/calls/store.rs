@@ -303,7 +303,8 @@ pub async fn invite(
     let updated = query(
         "UPDATE cloud_call_participants SET participant_state = 'invited', \
                 invited_at = NOW(), joined_at = NULL, left_at = NULL \
-         WHERE call_id = $1 AND account_id <> $2 AND participant_state <> 'joined'",
+         WHERE call_id = $1 AND account_id <> $2 AND participant_state <> 'joined' \
+           AND NOT cloud_accounts_blocked_either_way($2, account_id)",
     )
     .bind(call_id)
     .bind(account_id)

@@ -52,6 +52,16 @@ pub async fn start(
     if (conversation_kind == "direct" && members.len() != 2) || members.len() < 2 {
         return Err(CallStoreError::Conflict);
     }
+    if conversation_kind == "direct"
+        && crate::safety::blocks::blocked_in_direct_conversation(
+            &mut *transaction,
+            conversation_id,
+            account_id,
+        )
+        .await?
+    {
+        return Err(CallStoreError::Forbidden);
+    }
     let existing: Option<CallRow> = query_as(
         "SELECT call_id, conversation_id, call_kind, call_state, created_by_account_id, \
                 room_name, created_at, answered_at, ended_at, revision \
@@ -116,7 +126,21 @@ pub async fn start(
     .bind(&room_name)
     .execute(&mut *transaction)
     .await?;
+    // A meeting leaves out everyone the caller blocked or who blocked the
+    // caller: they are not rung, not told, and cannot join it.
+    let blocked: Vec<(String,)> = query_as(
+        "SELECT account_id FROM cloud_chat_conversation_members \
+         WHERE conversation_id = $1 AND membership_state = 'active' \
+           AND cloud_accounts_blocked_either_way($2, account_id)",
+    )
+    .bind(conversation_id)
+    .bind(account_id)
+    .fetch_all(&mut *transaction)
+    .await?;
     for (member_id,) in members {
+        if blocked.iter().any(|(blocked_id,)| *blocked_id == member_id) {
+            continue;
+        }
         let participant_state = if member_id == account_id {
             "joined"
         } else {

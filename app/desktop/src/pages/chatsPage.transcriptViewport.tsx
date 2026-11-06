@@ -13,6 +13,7 @@ import { transcriptWindowMessageMatchesId } from '@/features/chat/transcriptWind
 import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
 import { estimateTranscriptMessageHeight, transcriptContentColumns } from '@/features/chat/transcriptHeightEstimate';
 import { MessageBubble } from '@/kordi-app/components';
+import { BlockedMessageGate } from '@/features/safety/BlockedMessageGate';
 import { transcriptMessageIsOwnHuman } from '@/kordi-app/components/transcriptMessageHumanRole';
 import type { Message } from '@/kordi-app/types';
 import { formatDesktopClockTime } from '@/lib/time';
@@ -340,7 +341,7 @@ export function useChatTranscriptViewport({
               showAvatar={idx === lastQueuedRowIndex && queuedMessages.length === 0}
               avatarImageUrl={msg.role === 'user' || msg.isOwnMessage === true ? ownAvatarImageUrl ?? msg.senderProfileImageUrl : msg.senderProfileImageUrl}
             />
-          ) : <MessageBubble
+          ) : <BlockedMessageGate message={msg} groupConversation={densityMode === 'group-compact'}><MessageBubble
             msg={msg}
             imageGallery={msg.attachments?.some(shouldPreviewAttachmentInline) ? imageGallery : undefined}
             onOpenSource={onOpenSource}
@@ -379,7 +380,7 @@ export function useChatTranscriptViewport({
             isGroupedWithPrevious={!pinBoundaries.after.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, groupingSeparators)}
             isGroupedWithNext={!pinBoundaries.before.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1, groupingSeparators)}
             continuesAgentRun={!pinBoundaries.after.has(idx) && continuesAgentTranscriptRun(transcriptMessages, idx, groupingSeparators)}
-          />}
+          /></BlockedMessageGate>}
           </div>
           {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
             <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">

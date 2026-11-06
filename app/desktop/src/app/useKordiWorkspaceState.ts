@@ -326,7 +326,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     setActiveDetailTab,
     isDetailPanelCollapsed,
     lastSeenArtifactByContextRef,
-    cloudSessionActivity,
+    cloudSessionActivity, cloudAccountId: cloudSession.account?.accountId ?? null,
   });
 
   const cloudAwareDisplayedContacts = cloudSession.account

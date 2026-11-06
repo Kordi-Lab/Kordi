@@ -62,6 +62,8 @@ export type CloudAuthErrorCode =
   | 'invalid_website'
   | 'invalid_birthday'
   | 'ai_consent_required'
+  // Blocks and reports.
+  | 'self_block' | 'cannot_block_service' | 'self_report' | 'invalid_report' | 'invalid_report_evidence' | 'report_conflict' | 'report_too_large'
   // Browser sign-in (authorization code with PKCE).
   | 'access_denied'
   | 'sign_in_state_mismatch'
@@ -130,6 +132,7 @@ const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'not_a_group_member', 'not_a_participant', 'device_review_required',
   'invalid_kordi_id', 'kordi_id_taken', 'kordi_id_change_locked', 'invalid_about', 'invalid_location',
   'invalid_time_zone', 'invalid_website', 'invalid_birthday', 'ai_consent_required',
+  'self_block', 'cannot_block_service', 'self_report', 'invalid_report', 'invalid_report_evidence', 'report_conflict', 'report_too_large',
 ]);
 
 function isErrorCode(value: unknown): value is CloudAuthErrorCode {

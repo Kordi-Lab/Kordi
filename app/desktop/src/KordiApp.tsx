@@ -9,6 +9,7 @@ import { useKordiAppModel } from '@/app/useKordiAppModel';
 import { useBrowserWorkspaceScope } from '@web/app/browserWorkspaceScope';
 import { CloudCallHost } from '@/features/cloud/CloudCallHost';
 import { CloudCallProvider } from '@/features/cloud/CloudCallProvider';
+import { CloudSafetyActionsProvider } from '@/features/safety/SafetyActionsProvider';
 import {
   CALL_WINDOW_THUMBNAIL_EVENT,
   CALL_WINDOW_RESULT_EVENT,
@@ -197,22 +198,24 @@ function KordiAppShell({
   }
   return (
     <div className="app-cloud-workspace-surface" data-ready={windowReady} inert={!windowReady} aria-hidden={!windowReady}>
-      <CloudCallProvider controller={cloudCalls}>
-        <DetachedCallWindowLauncher
-          controller={cloudCalls}
-          conversations={callConversations}
-          enabled={detachedCallWindowEnabled}
-        />
-        <AppShellFrame
-          {...frameProps}
-          callOverlay={(
-            <CloudCallHost
-              controller={cloudCalls}
-              suppressCurrentSurface={detachedCallWindowEnabled}
-            />
-          )}
-        />
-      </CloudCallProvider>
+      <CloudSafetyActionsProvider account={cloudSession?.account ?? null}>
+        <CloudCallProvider controller={cloudCalls}>
+          <DetachedCallWindowLauncher
+            controller={cloudCalls}
+            conversations={callConversations}
+            enabled={detachedCallWindowEnabled}
+          />
+          <AppShellFrame
+            {...frameProps}
+            callOverlay={(
+              <CloudCallHost
+                controller={cloudCalls}
+                suppressCurrentSurface={detachedCallWindowEnabled}
+              />
+            )}
+          />
+        </CloudCallProvider>
+      </CloudSafetyActionsProvider>
       {windowReady ? <WhatsNewLaunchWindow /> : null}
       {windowReady ? <DocumentShareLinkHost account={cloudSession?.account ?? null} /> : null}
       {windowReady ? <AiConsentHost account={cloudSession?.account ?? null} /> : null}

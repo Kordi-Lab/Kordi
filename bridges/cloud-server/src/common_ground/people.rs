@@ -67,7 +67,7 @@ pub(super) fn shares_sql(profile: &str) -> String {
 /// linked there. Leaving a room withdraws it.
 pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
     format!(
-        "(EXISTS (
+        "(NOT cloud_accounts_blocked_either_way({viewer}, {other}) AND (EXISTS (
              SELECT 1 FROM cloud_common_ground_pairings pairing
              WHERE pairing.account_a = LEAST({viewer}, {other})
                AND pairing.account_b = GREATEST({viewer}, {other})
@@ -79,7 +79,7 @@ pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
                   AND theirs.left_at IS NULL
              WHERE mine.account_id = {viewer} AND mine.left_at IS NULL
                AND {mine_shares} AND {theirs_shares}
-         ))",
+         )))",
         pairing_a = shares_sql("pairing.profile_a"),
         pairing_b = shares_sql("pairing.profile_b"),
         mine_shares = shares_sql("mine.profile_id"),
@@ -150,6 +150,7 @@ fn links_sql(limit: &str, shared_only: bool) -> String {
              WHERE mine.account_id = $1 AND mine.left_at IS NULL
          ) links
          WHERE ($3::text IS NULL OR vp = $3) {shared}
+           AND NOT cloud_accounts_blocked_either_way($1, $2)
          GROUP BY vp, op ORDER BY max(at) DESC, vp, op {limit}"
     )
 }
