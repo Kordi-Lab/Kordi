@@ -17,7 +17,10 @@ use uuid::Uuid;
 
 use super::people_by_id;
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
-use crate::auth::routes::{create_invitation_in_transaction, CloudSession, ROOM_GROUP_MIN_MEMBERS};
+use crate::auth::routes::{
+    group_invitation_link_in_transaction, CloudSession, LinkOutcome, LinkRequest,
+    ROOM_GROUP_MIN_MEMBERS,
+};
 use crate::chat_sync::models::{ConversationKind, CreateConversationRequest};
 use crate::common_ground::{db_error, err, intro, limited, rooms, GROUP_LIMIT};
 use crate::server::ServerState;
@@ -271,17 +274,20 @@ async fn create(
     .await
     .map_err(failed)?;
     if !invited.is_empty() {
-        let invitation = create_invitation_in_transaction(
+        let LinkOutcome::Link(invitation) = group_invitation_link_in_transaction(
             &mut tx,
             viewer,
             &group_space_id,
             &group_space_id,
             name,
             ROOM_GROUP_MIN_MEMBERS,
+            LinkRequest::CurrentOrNew,
         )
         .await
         .map_err(failed)?
-        .ok_or_else(|| failed("the new group could not invite"))?;
+        else {
+            return Err(failed("the new group could not invite"));
+        };
         for invitee in &invited {
             query(
                 "INSERT INTO cloud_common_ground_room_invitations

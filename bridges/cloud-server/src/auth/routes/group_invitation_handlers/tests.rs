@@ -149,3 +149,24 @@ fn invitation_capacity_uses_the_canonical_member_snapshot() {
     };
     assert!(!group_invitation_has_capacity(&snapshot));
 }
+
+#[test]
+fn derived_group_invite_tokens_are_stable_per_invitation_and_secret() {
+    let secret = b"group-invite-unit-test-secret-0123456789";
+    let first = link::derived_group_invite_token(secret, "groupinv_a");
+    assert_eq!(
+        first,
+        link::derived_group_invite_token(secret, "groupinv_a")
+    );
+    assert_ne!(
+        first,
+        link::derived_group_invite_token(secret, "groupinv_b")
+    );
+    assert_ne!(
+        first,
+        link::derived_group_invite_token(b"another-secret-for-group-invite-tests", "groupinv_a")
+    );
+    assert!(first.starts_with(GROUP_INVITE_TOKEN_PREFIX));
+    assert_eq!(first.len(), GROUP_INVITE_TOKEN_PREFIX.len() + 43);
+    assert!(!first.contains("groupinv_a"));
+}

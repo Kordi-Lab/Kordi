@@ -11,6 +11,7 @@ fn get(uri: &str) -> Request<Body> {
 #[tokio::test]
 async fn group_invitation_updates_canonical_membership_and_never_creates_contacts() {
     let Some(pool) = try_pool().await else { return };
+    super::group_invitation_links::use_link_secret();
     let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
     let (admin_token, admin_id) = signup_account(&router, "group-invite-admin").await;
@@ -220,6 +221,7 @@ async fn group_invitation_updates_canonical_membership_and_never_creates_contact
 #[tokio::test]
 async fn a_creator_only_group_shares_a_link_that_brings_in_the_second_member() {
     let Some(pool) = try_pool().await else { return };
+    super::group_invitation_links::use_link_secret();
     let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
     let (admin_token, admin_id) = signup_account(&router, "solo-invite-admin").await;
@@ -260,23 +262,14 @@ async fn a_creator_only_group_shares_a_link_that_brings_in_the_second_member() {
     let first_url = create_body["inviteUrl"].as_str().unwrap().to_string();
     let first_token = first_url.rsplit('/').next().unwrap().to_string();
 
-    // One link per sender per group still holds for a group of one: a new
-    // link replaces the earlier one.
+    // Asking again returns the same link instead of replacing it.
     let again = router.clone().oneshot(invitation_request()).await.unwrap();
     let again_status = again.status();
     let again_body = read_json(again).await;
     assert_eq!(again_status, StatusCode::OK, "got body {again_body}");
-    assert_ne!(again_body["invitationId"], create_body["invitationId"]);
-    let invite_url = again_body["inviteUrl"].as_str().unwrap().to_string();
-    let token = invite_url.rsplit('/').next().unwrap().to_string();
-    let replaced = router
-        .clone()
-        .oneshot(get(&format!(
-            "/v1/cloud/invitations/groups/resolve/{first_token}"
-        )))
-        .await
-        .unwrap();
-    assert_eq!(replaced.status(), StatusCode::NOT_FOUND);
+    assert_eq!(again_body["invitationId"], create_body["invitationId"]);
+    assert_eq!(again_body["inviteUrl"].as_str(), Some(first_url.as_str()));
+    let token = first_token;
 
     let preview = router
         .clone()

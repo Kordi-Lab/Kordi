@@ -304,6 +304,16 @@ async fn redeem_in_transaction(
             StatusCode::INTERNAL_SERVER_ERROR,
         );
     }
+    if renew_group_invitation(tx, &record.invitation_id)
+        .await
+        .is_err()
+    {
+        return failed(
+            "server_error",
+            "Could not join the group. No changes were saved; try again.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
     Redemption::Done(GroupInvitationAcceptanceResponse {
         status: "joined",
         group_id: record.snapshot.group_id,
