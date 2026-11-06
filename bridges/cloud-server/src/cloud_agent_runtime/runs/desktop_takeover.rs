@@ -14,7 +14,7 @@ use chrono::Utc;
 use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 
-use super::claims::runtime_route_for_claim;
+use super::claims::runtime_route_for_desktop_claim;
 use super::{ClaimRunRequest, CloudAgentRunResponse, RunResult};
 
 /// Seconds a desktop claim holds the run before it must renew.
@@ -69,7 +69,7 @@ pub(super) async fn take(
     input: &ClaimRunRequest,
     executor: &str,
 ) -> RunResult<()> {
-    let route = runtime_route_for_claim(pool, input).await?;
+    let route = runtime_route_for_desktop_claim(pool, input).await?;
     let route =
         serde_json::to_value(route).map_err(|error| sqlx_core::Error::Encode(Box::new(error)))?;
     let now = Utc::now();
