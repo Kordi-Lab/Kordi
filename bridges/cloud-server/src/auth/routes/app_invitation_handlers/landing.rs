@@ -2,6 +2,7 @@
 
 use super::*;
 
+#[cfg(test)]
 pub(super) fn invitation_landing_document(
     title: &str,
     message: &str,
@@ -10,6 +11,7 @@ pub(super) fn invitation_landing_document(
     invitation_landing_document_with_open_action(title, message, None, release_download_url)
 }
 
+#[cfg(test)]
 pub(super) fn invitation_landing_document_with_open_action(
     title: &str,
     message: &str,
@@ -47,36 +49,38 @@ pub(super) fn invitation_landing_document_with_actions(
             )
         })
         .unwrap_or_default();
+    // The first action present is primary; the rest are secondary.
+    let mut primary_taken = !open_action.is_empty();
+    let mut next_class = || {
+        if std::mem::replace(&mut primary_taken, true) {
+            "button button-secondary"
+        } else {
+            "button button-primary"
+        }
+    };
     let browser_action = browser_url
         .map(|url| {
             format!(
-                r#"<a class="button button-secondary" href="{}">Open in browser</a>"#,
+                r#"<a class="{}" href="{}">Continue on the web</a>"#,
+                next_class(),
                 escape_html(url),
             )
         })
         .unwrap_or_default();
-    let download_class = if open_action.is_empty() {
-        "button button-primary"
-    } else {
-        "button button-secondary"
-    };
     let download_action = download_url
         .as_deref()
         .map(|url| {
             format!(
-                r#"<a class="{download_class}" href="{}">
+                r#"<a class="{}" href="{}">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m0 0 4-4m-4 4L6 8M3 15v2h14v-2"></path></svg>
           Download Kordi for Mac
         </a>"#,
+                next_class(),
                 escape_html(url)
             )
         })
         .unwrap_or_default();
-    let learn_more_class = if download_url.is_some() || !open_action.is_empty() {
-        "button button-secondary"
-    } else {
-        "button button-primary"
-    };
+    let learn_more_class = next_class();
 
     let homepage = escape_html(&homepage_url());
     format!(
@@ -131,30 +135,17 @@ pub(super) fn invitation_landing_html(
     message: &str,
     release_download_url: Option<&str>,
 ) -> Response {
-    invitation_landing_html_with_open_action(status, title, message, None, release_download_url)
+    invitation_landing_html_with_browser_action(
+        status,
+        title,
+        message,
+        None,
+        None,
+        release_download_url,
+    )
 }
 
-pub(in crate::auth::routes) fn invitation_landing_html_with_open_action(
-    status: StatusCode,
-    title: &str,
-    message: &str,
-    open_action: Option<(&str, &str)>,
-    release_download_url: Option<&str>,
-) -> Response {
-    let body = match open_action {
-        Some(action) => invitation_landing_document_with_open_action(
-            title,
-            message,
-            Some(action),
-            release_download_url,
-        ),
-        None => invitation_landing_document(title, message, release_download_url),
-    };
-
-    invitation_landing_response(status, body)
-}
-
-pub(in crate::auth::routes) fn invitation_landing_html_with_browser_action(
+pub(super) fn invitation_landing_html_with_browser_action(
     status: StatusCode,
     title: &str,
     message: &str,

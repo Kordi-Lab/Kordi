@@ -13,6 +13,7 @@
     "legal/native/archive-evidence.json": "90f8c673a36c1557adda2b118c3b2b5c29200c252c35d01a7b3ce4610ce99598",
     "legal/public-contact-hashes.json": "241ddd7846876dcb475628fb6b57a7797a438cee0e2a669a9bfa2871c54a8ae1",
     "app/desktop/package.json": "d81963e7ae6d748ed6a325706cd9434b71832721d309e80794f96f197ece648e",
+    "app/web/package.json": "59a476b40e1b1992ca0e10bc3397968abbd68114add9d314c5df86d87f7befcf",
     "legal/runtime-relink-verification.json": "f69b0ab7976cdf30cc076e243ed6180b2c7cc4fc7e3289c06e37957ae7eeafdb",
     "legal/runtime-bundle-review.json": "c026d9b9ad1fe8ada7f29d2a86e7b9178ef8616bb6bffef5125fe970320dbb5c",
     "deploy/minio/Dockerfile.server": "fe4e8d79b1bcd1663bddc367d48870f924c4a26f9784068ed99deb28153a5b00",
@@ -27,8 +28,7 @@
     "legal/native/webrtc-dependencies.json": "fc9e748f39b4a98ddfc50c75a25b90e6e2998bdfa62605ae0b2fa0194f6a057b",
     "legal/runtime-patches/javascriptcore-proof.patch": "d76d9f1e594ef9963f97465970e758f1dffda89e8b24401759b9186ecbafa598",
     "legal/runtime-patches/macos-sdk-compatibility.patch": "209bacc11f0cdc2d68f1e4d87f2fd537a11f5c512e1776e3c04af1364c8ac2d0",
-    "legal/runtime-patches/tinycc-proof.patch": "0f27549d4de8409a5c41c78759f910d8619f85e1fe8c251685f5019e7c63312f",
-    "app/web/package.json": "430a6e48ffc305060f209ef88e3cd69edcb336944540c09afda78be13b43de9a"
+    "legal/runtime-patches/tinycc-proof.patch": "0f27549d4de8409a5c41c78759f910d8619f85e1fe8c251685f5019e7c63312f"
   },
   "packages": [
     {

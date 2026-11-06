@@ -4,16 +4,13 @@ use sha2::{Digest, Sha256};
 
 mod browser_action;
 mod landing;
-pub(super) use browser_action::configured_browser_group_invitation_url;
-use landing::invitation_landing_html;
+pub(super) use browser_action::{configured_browser_app_url, BROWSER_APP_PATH};
 #[cfg(test)]
 use landing::{
     invitation_landing_document, invitation_landing_document_with_actions,
     invitation_landing_document_with_open_action,
 };
-pub(super) use landing::{
-    invitation_landing_html_with_browser_action, invitation_landing_html_with_open_action,
-};
+use landing::{invitation_landing_html, invitation_landing_html_with_browser_action};
 
 const APP_INVITE_TOKEN_PREFIX: &str = "kordi_ai_";
 const APP_INVITE_LIFETIME_DAYS: i64 = 7;
@@ -251,13 +248,15 @@ pub(super) async fn app_invitation_landing(
                 .map(str::trim)
                 .filter(|name| !name.is_empty())
                 .unwrap_or("A Kordi user");
-            invitation_landing_html(
+            invitation_landing_html_with_browser_action(
                 StatusCode::OK,
                 &format!("{inviter} invited you to Kordi."),
                 &format!(
                     "Join @{} in a shared workspace where people and agents work together.",
                     record.kordi_id
                 ),
+                None,
+                configured_browser_app_url().await,
                 release_download_url.as_deref(),
             )
         }

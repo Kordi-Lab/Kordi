@@ -11,7 +11,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "test:unit": "tsx --import ../desktop/tests/setupDistribution.mjs --test tests/unit/*.test.ts",
+    "test:unit": "tsx --tsconfig tests/tsconfig.json --import ../desktop/tests/setupDistribution.mjs --test tests/unit/*.test.ts",
     "test:e2e": "playwright test -c playwright.config.ts",
     "test": "pnpm test:unit && pnpm test:e2e"
   },

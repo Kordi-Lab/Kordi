@@ -11,24 +11,24 @@ use axum::body::Body;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-struct Harness {
+pub(super) struct Harness {
     app: Router,
     pool: PgPool,
 }
 
-struct Account {
+pub(super) struct Account {
     id: String,
-    token: String,
+    pub(super) token: String,
 }
 
-struct Group {
+pub(super) struct Group {
     group_id: String,
     conversation_id: String,
-    token: String,
+    pub(super) token: String,
     invitation_id: String,
 }
 
-async fn harness() -> Harness {
+pub(super) async fn harness() -> Harness {
     let url = std::env::var("DATABASE_URL").expect("a disposable database is required");
     let pool = crate::pg::init_pool(&url).await.unwrap();
     let state = Arc::new(ServerState::new(
@@ -45,7 +45,7 @@ async fn harness() -> Harness {
 }
 
 impl Harness {
-    async fn account(&self, name: &str) -> Account {
+    pub(super) async fn account(&self, name: &str) -> Account {
         let suffix = uuid::Uuid::new_v4().simple().to_string();
         let id = format!("acct_pending_{suffix}");
         let device_id = format!("dev_pending_{suffix}");
@@ -85,7 +85,7 @@ impl Harness {
     }
 
     /// A group of `admin` and `member` with a live invitation link.
-    async fn group(&self, admin: &Account, member: &Account) -> Group {
+    pub(super) async fn group(&self, admin: &Account, member: &Account) -> Group {
         let now = Utc::now().to_rfc3339();
         for (owner, peer) in [(&admin.id, &member.id), (&member.id, &admin.id)] {
             query(
@@ -153,7 +153,10 @@ impl Harness {
         }
     }
 
-    async fn request(&self, request: axum::http::Request<Body>) -> (StatusCode, HeaderMap, String) {
+    pub(super) async fn request(
+        &self,
+        request: axum::http::Request<Body>,
+    ) -> (StatusCode, HeaderMap, String) {
         let response = self.app.clone().oneshot(request).await.unwrap();
         let status = response.status();
         let headers = response.headers().clone();
@@ -190,7 +193,7 @@ impl Harness {
         self.send("POST", &uri, Some(&account.token), None).await
     }
 
-    async fn pending(&self, account: &Account) -> Vec<Value> {
+    pub(super) async fn pending(&self, account: &Account) -> Vec<Value> {
         let (status, body) = self
             .send(
                 "GET",
@@ -374,7 +377,11 @@ async fn expired_revoked_and_full_invitations_are_unavailable() {
     assert_eq!(body["errorCode"], "group_full");
 }
 
-fn cookie_request(method: &str, uri: &str, web_token: &str) -> axum::http::request::Builder {
+pub(super) fn cookie_request(
+    method: &str,
+    uri: &str,
+    web_token: &str,
+) -> axum::http::request::Builder {
     axum::http::Request::builder()
         .method(method)
         .uri(uri)

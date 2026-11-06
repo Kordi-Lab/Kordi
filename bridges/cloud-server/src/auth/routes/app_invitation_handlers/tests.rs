@@ -102,32 +102,36 @@ fn invitation_document_can_offer_a_safe_open_app_action() {
 }
 
 #[test]
-fn group_invitation_can_offer_browser_without_replacing_native_actions_or_joining() {
+fn app_invitation_can_continue_on_the_web_beside_the_download() {
     let document = invitation_landing_document_with_actions(
-        "Join <Team>",
-        "Preview and choose Join group. Opening this page does not add you.",
-        Some(("Open Kordi", "kordi://group-invite/kordi_gi_fixture")),
-        Some("/app?groupInvite=kordi_gi_fixture&test=\"escaped\""),
+        "Alex <Morgan> invited you to Kordi.",
+        "Join @alex in a shared workspace.",
+        None,
+        Some(BROWSER_APP_PATH),
         Some(VERSIONED_DMG_URL),
     );
-    assert!(document.contains("Open Kordi"));
-    assert!(document.contains("Open in browser"));
-    assert!(document.contains("Download Kordi for Mac"));
     assert!(document
-        .contains("href=\"/app?groupInvite=kordi_gi_fixture&amp;test=&quot;escaped&quot;\""));
-    assert!(document.contains("Join &lt;Team&gt;"));
-    assert!(!document.contains("<script"));
-    assert!(!document.contains("http-equiv=\"refresh\""));
+        .contains(r#"<a class="button button-primary" href="/app/">Continue on the web</a>"#));
+    assert!(document.contains(&format!(
+        r#"<a class="button button-secondary" href="{VERSIONED_DMG_URL}">"#
+    )));
     assert!(
-        !invitation_landing_document_with_open_action("Join Team", "Preview", None, None)
-            .contains("Open in browser")
+        document.contains(r#"class="button button-secondary" href="https://kordi.ai/">Learn more"#)
+    );
+    assert!(document.contains("Alex &lt;Morgan&gt; invited you to Kordi."));
+    assert!(!document.contains("<script"));
+    assert!(!document.contains("<form"));
+    assert!(!document.contains("kordi://"));
+    assert!(
+        !invitation_landing_document_with_open_action("Join Kordi", "Preview", None, None)
+            .contains("Continue on the web")
     );
     let response = invitation_landing_html_with_browser_action(
         StatusCode::OK,
-        "Join Team",
+        "Join Kordi",
         "Preview",
         None,
-        Some("/app?groupInvite=kordi_gi_fixture"),
+        Some(BROWSER_APP_PATH),
         None,
     );
     assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
