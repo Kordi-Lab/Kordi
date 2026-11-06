@@ -202,8 +202,19 @@ echoed. The startup log lists each pool's id and limits only.
 
 - A System agent pass uses the pool of its conversation's organization.
 - A Grounding run in a conversation (a group intro) uses that conversation's
-  organization; any other Grounding run uses the requester's personal
-  organization, since there is no organization selection yet.
+  organization.
+- Any other Grounding run uses the organization of the request that started
+  it, which the session token carries (see
+  [organization requests](organization-requests.md)): card builds, room
+  matching, match detail, and Nearby searches. A person with their Personal
+  organization selected is charged to its pool, never to another
+  organization's; the apps change the selection only after the token was
+  switched to the new organization.
+- Nearby work the sweep queues later keeps the organization it was created
+  in: a request's checks use the organization the request was created in,
+  and match alerts the one Nearby was turned on in, whatever is selected
+  afterwards. When the person no longer belongs to that organization, its
+  personal organization is used instead.
 - An organization no pool lists, and a record without an organization, use
   the default pool.
 
