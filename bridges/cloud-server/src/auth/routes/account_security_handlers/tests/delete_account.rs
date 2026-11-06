@@ -352,9 +352,16 @@ async fn deleting_an_account_keeps_shared_groups_and_removes_the_person() {
     .await
     .unwrap();
     assert_eq!(kim_state, "removed");
-    assert!(events
+    let direct_events: Vec<&String> = events
         .iter()
-        .any(|(kind, id, _)| kind == "membership.removed" && *id == Some(direct)));
+        .filter(|(_, id, _)| *id == Some(direct))
+        .map(|(kind, _, _)| kind)
+        .collect();
+    assert_eq!(
+        direct_events,
+        ["membership.removed"],
+        "synced copies of the chat are gone"
+    );
 
     // The audit record has counts only.
     let audits: Vec<(Option<String>, String)> = query_as(

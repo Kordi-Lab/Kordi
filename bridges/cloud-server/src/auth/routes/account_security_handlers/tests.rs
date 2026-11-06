@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 
 mod delete_account;
+mod delete_account_records;
 mod email_change;
 mod password;
 mod providers;

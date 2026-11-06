@@ -29,44 +29,38 @@ pub(super) async fn delete_account(
         Ok(proof) => proof,
         Err(response) => return *response,
     };
-    // An emailed code is spent before anything is removed, so a wrong code
-    // changes nothing. A deletion that fails later needs a new code.
-    if matches!(proof, Proof::EmailCode { .. }) {
-        let Ok(mut tx) = caller.pool().begin().await else {
-            return *server_error();
-        };
-        if let Err(error) = consume_proof(
-            &mut tx,
-            &state,
-            &proof,
-            &session.account_id,
-            account.email().as_deref(),
-        )
-        .await
-        {
-            return commit_failed_code(tx, error).await;
-        }
-        if tx.commit().await.is_err() {
-            return *server_error();
-        }
+    // Proven first, in a short transaction: the account is unchanged since
+    // the proof was checked, and an emailed code is spent, so a wrong code or
+    // a concurrent change touches nothing, connectors included. A deletion
+    // that fails later needs a new code.
+    let Ok(mut tx) = caller.pool().begin().await else {
+        return *server_error();
+    };
+    if let Err(response) = require_unchanged(&mut tx, &session.account_id, &account).await {
+        return *response;
     }
+    if let Err(error) = consume_proof(
+        &mut tx,
+        &state,
+        &proof,
+        &session.account_id,
+        account.email().as_deref(),
+    )
+    .await
+    {
+        return commit_failed_code(tx, error).await;
+    }
+    if tx.commit().await.is_err() {
+        return *server_error();
+    }
+    // Outside any transaction: provider calls never hold the account lock.
     crate::account_deletion::prepare(&state, &session.account_id).await;
 
     let Ok(mut tx) = caller.pool().begin().await else {
         return *server_error();
     };
-    let locked = match lock_account(&mut tx, &session.account_id).await {
-        Ok(locked) => locked,
-        Err(response) => return *response,
-    };
-    // The proof was checked against this password and email; a concurrent
-    // change must be proven again.
-    if locked.password_hash != account.password_hash || locked.email() != account.email() {
-        return err(
-            "account_changed",
-            "Your account changed. Reload the page and try again.",
-            StatusCode::CONFLICT,
-        );
+    if let Err(response) = require_unchanged(&mut tx, &session.account_id, &account).await {
+        return *response;
     }
     let deletion =
         match crate::account_deletion::delete_in_transaction(&mut tx, &session.account_id).await {
@@ -95,6 +89,24 @@ pub(super) async fn delete_account(
     }
     crate::account_deletion::after_commit(state.clone(), session.account_id.clone(), deletion);
     StatusCode::NO_CONTENT.into_response()
+}
+
+/// Locks the account and refuses when its password or email changed since
+/// the proof was checked; such a change must be proven again.
+async fn require_unchanged(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    account_id: &str,
+    proven: &SecurityAccount,
+) -> Result<(), Box<Response>> {
+    let locked = lock_account(tx, account_id).await?;
+    if locked.password_hash != proven.password_hash || locked.email() != proven.email() {
+        return Err(boxed_err(
+            "account_changed",
+            "Your account changed. Reload the page and try again.",
+            StatusCode::CONFLICT,
+        ));
+    }
+    Ok(())
 }
 
 async fn write_audit_in_transaction(

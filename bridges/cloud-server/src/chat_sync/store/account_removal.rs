@@ -155,7 +155,13 @@ async fn empty_direct_conversation(
     conversation_id: Uuid,
     account_id: &str,
 ) -> Result<(), StoreError> {
-    for table in ["cloud_chat_messages", "cloud_plan_cards", "cloud_calls"] {
+    // Synced copies of its messages go too; only the removal below is sent.
+    for table in [
+        "cloud_chat_user_sync_events",
+        "cloud_chat_messages",
+        "cloud_plan_cards",
+        "cloud_calls",
+    ] {
         query(&format!("DELETE FROM {table} WHERE conversation_id = $1"))
             .bind(conversation_id)
             .execute(&mut **transaction)
@@ -312,19 +318,26 @@ async fn keep_conversation(
     .bind(DELETED_ACCOUNT_ID)
     .fetch_all(&mut **transaction)
     .await?;
+    let mut ids = Vec::new();
+    let mut contents = Vec::new();
     for (message_id, mut content) in stored {
-        if !scrub.scrub(&mut content) {
-            continue;
+        if scrub.scrub(&mut content) {
+            ids.push(message_id);
+            contents.push(content);
         }
+    }
+    if !ids.is_empty() {
         query(
-            "UPDATE cloud_chat_messages SET content = $2, version = version + 1 \
-             WHERE message_id = $1",
+            "UPDATE cloud_chat_messages message \
+             SET content = scrubbed.content, version = message.version + 1 \
+             FROM UNNEST($1::UUID[], $2::JSONB[]) AS scrubbed(message_id, content) \
+             WHERE message.message_id = scrubbed.message_id",
         )
-        .bind(message_id)
-        .bind(&content)
+        .bind(&ids)
+        .bind(&contents)
         .execute(&mut **transaction)
         .await?;
-        changed.insert(message_id);
+        changed.extend(ids);
     }
     query(
         "UPDATE cloud_chat_conversations SET version = version + 1, updated_at = now(), \

@@ -171,6 +171,18 @@ async fn release_shared_rows(
     .bind(account_id)
     .execute(&mut **tx)
     .await?;
+    // Comments on other people's documents stay, with their replies, from
+    // the stand-in. Comments on the account's own documents go with them.
+    query(
+        "UPDATE cloud_document_comments SET author_account_id = $2, author_name = $3 \
+         WHERE author_account_id = $1 AND NOT (attachment_id = ANY($4))",
+    )
+    .bind(account_id)
+    .bind(crate::deleted_account::DELETED_ACCOUNT_ID)
+    .bind(crate::deleted_account::DELETED_DISPLAY_NAME)
+    .bind(&removed)
+    .execute(&mut **tx)
+    .await?;
     // Content of other people that sits in the account's personal
     // organization moves to its owner's personal organization.
     for table in [
@@ -189,6 +201,32 @@ async fn release_shared_rows(
         .execute(&mut **tx)
         .await?;
     }
+    // Other people's digests built from the account's messages are cleared
+    // and rebuilt without them.
+    query(
+        "UPDATE cloud_account_digests SET snapshot_json = NULL, snapshot_input_json = NULL, \
+           input_json = '{}', input_hash = '', last_full_at = NULL, \
+           dirty_since = COALESCE(dirty_since, now()), last_change_at = now(), \
+           revision = revision + 1, updated_at = now() \
+         WHERE account_id <> $1 \
+           AND (strpos(COALESCE(snapshot_json::text, ''), $1) > 0 \
+                OR strpos(COALESCE(snapshot_input_json::text, ''), $1) > 0 \
+                OR strpos(input_json::text, $1) > 0)",
+    )
+    .bind(account_id)
+    .execute(&mut **tx)
+    .await?;
+    // A waitlist request under any of the account's emails.
+    query(
+        "DELETE FROM cloud_access_waitlist WHERE lower(email) IN ( \
+           SELECT lower(primary_email) FROM cloud_accounts \
+           WHERE account_id = $1 AND primary_email IS NOT NULL \
+           UNION SELECT lower(email) FROM cloud_account_identities \
+           WHERE account_id = $1 AND email IS NOT NULL)",
+    )
+    .bind(account_id)
+    .execute(&mut **tx)
+    .await?;
     for sql in [
         "DELETE FROM cloud_agent_omp_state WHERE owner_account_id = $1",
         "DELETE FROM cloud_connector_audit WHERE account_id = $1",
