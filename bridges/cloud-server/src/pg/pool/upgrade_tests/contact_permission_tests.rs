@@ -48,7 +48,7 @@ async fn upgrade_from_174_adds_contact_permissions() {
     // deletes its rows.
     let migration = EMBEDDED_MIGRATIONS
         .iter()
-        .find(|m| m.version == 180)
+        .find(|m| m.version == 184)
         .unwrap();
     let mut tx = pool.begin().await.unwrap();
     sqlx_core::raw_sql::raw_sql(migration.sql)

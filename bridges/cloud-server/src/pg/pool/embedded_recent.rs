@@ -446,5 +446,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0173_identity_matching_email.sql"
     ),
     migration!(174, "usage pauses", "0174_usage_pauses.sql"),
-    migration!(180, "contact permissions", "0180_contact_permissions.sql"),
+    migration!(184, "contact permissions", "0184_contact_permissions.sql"),
 ];

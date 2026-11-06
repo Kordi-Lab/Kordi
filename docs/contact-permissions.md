@@ -37,7 +37,7 @@ Every Common ground read path: `people/:id`, match detail and Recent, room lobbi
 - Both answer for an accepted contact, someone you share an active conversation with, or anyone you already set permissions for; otherwise `404 contact_not_found`.
 - The contact profile (`GET /v1/cloud/contacts/:account_id/profile`) carries `permissions` for a person who is not yourself.
 - The capability is `contactPermissionsVersion: 1`.
-- Data: `cloud_contact_permissions` (migration 0180).
+- Data: `cloud_contact_permissions` (migration 0184).
 
 ## Clients
 
