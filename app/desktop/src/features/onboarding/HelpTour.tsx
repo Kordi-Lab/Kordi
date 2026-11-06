@@ -7,6 +7,7 @@ import { helpTourGeometry, type TourRect } from './helpTourGeometry';
 import { cloudApiBaseUrl, defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
 import { commonGroundVersionFromCapabilities } from '@/features/cloud/commonGroundCapability';
+import { memoryVersionFromCapabilities } from '@/features/cloud/memoryCapability';
 import { setHelpTourLocation } from './helpTourSession';
 import { trackHelpTourTarget } from './helpTourTarget';
 import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
@@ -31,9 +32,12 @@ export default function HelpTour({ progressKey, tourId = 'workspace', initialSec
   const client = useMemo(() => defaultCloudAuthClient(), []);
   const { capabilities, status } = useCloudAuthCapabilitiesState(client, cloudApiBaseUrl());
   const browserApp = isBrowserAppRuntime();
+  // The browser app shows Memory only when the server reports it.
+  const memoryReady = !browserApp || status === 'loading' || memoryVersionFromCapabilities(capabilities) !== null;
   const steps = helpTourSteps.filter((item) => !unavailable.includes(item.target)
     && helpTourStepAvailable(item, browserApp)
     && (settingsAvailable || !item.settings || item.settings === 'auth')
+    && (item.settings !== 'memory' || memoryReady)
     && ((!item.groundingScreen && item.target !== 'grounding') || status === 'loading' || commonGroundVersionFromCapabilities(capabilities) !== null));
   const [trackedTarget, setTrackedTarget] = useState<string | null>(null);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });

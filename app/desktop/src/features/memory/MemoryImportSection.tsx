@@ -13,6 +13,7 @@ import {
   type MemoryImporter,
 } from './memoryImport';
 import type { MemoryLesson } from './memoryModel';
+import { MEMORY_IMPORT_SECTION_ID, takeMemoryImportFocus } from './memoryImportLink';
 import { MemoryImportTree } from './MemoryImportTree';
 import { countLabel, memoryImportTree, withSelection, type ImportRowStatus as RowStatus } from './memoryImportTreeModel';
 
@@ -44,6 +45,12 @@ export function MemoryImportSection({
   const [notice, setNotice] = useState('');
   const runningRef = useRef(false);
 
+  const listed = files !== null;
+  useEffect(() => {
+    // The Memory tab's Import opens settings here.
+    if (listed && takeMemoryImportFocus()) document.getElementById(MEMORY_IMPORT_SECTION_ID)?.scrollIntoView?.({ block: 'start' });
+  }, [listed]);
+
   useEffect(() => {
     let active = true;
     importer.discover().then(
@@ -63,7 +70,9 @@ export function MemoryImportSection({
     if (!importer.choose) return;
     let chosen: AgentInstructionFile[];
     try {
-      chosen = await importer.choose();
+      const choice = await importer.choose();
+      chosen = Array.isArray(choice) ? choice : choice.files;
+      setNotice(Array.isArray(choice) ? '' : choice.notice ?? '');
     } catch (error) {
       setNotice(errorLine(error));
       return;
@@ -76,7 +85,8 @@ export function MemoryImportSection({
   const run = async () => {
     const chosen = files.filter((file) => selected.has(file.path));
     if (runningRef.current || !chosen.length || !client.importLesson) return;
-    if (!requireAiConsent()) return;
+    // Reading in the browser sends the file to no model, so it needs no AI consent.
+    if (!importer.readsLocally && !requireAiConsent()) return;
     runningRef.current = true;
     setRunning(true);
     setNotice('');
@@ -97,12 +107,17 @@ export function MemoryImportSection({
     }
   };
 
-  const noticeLine = providerReady ? notice : CLOUD_AGENT_NO_PROVIDER_NOTICE;
+  const ready = providerReady || Boolean(importer.readsLocally);
+  const noticeLine = ready ? notice : CLOUD_AGENT_NO_PROVIDER_NOTICE;
+  const status = files.length > 0 ? `${countLabel(selected.size, 'file')} selected` : importer.readsLocally ? 'No files chosen' : null;
 
   return (
-    <SettingsSection title="Import">
+    <SettingsSection title="Import" id={MEMORY_IMPORT_SECTION_ID}>
       {files.length === 0 ? (
-        <><HelpEmptyExample kind="files" /><SettingsRow title="No agent files found." description="Finds instructions and memories from your coding agents." /></>
+        <>
+          <HelpEmptyExample kind="files" />
+          {importer.readsLocally ? null : <SettingsRow title="No agent files found." description="Finds instructions and memories from your coding agents." />}
+        </>
       ) : (
         <MemoryImportTree
           apps={memoryImportTree(files)}
@@ -116,8 +131,8 @@ export function MemoryImportSection({
         <SettingsRow
           title={(
             <span className={mutedClass}>
-              {files.length > 0 ? `${countLabel(selected.size, 'file')} selected` : null}
-              <span aria-live="polite">{noticeLine ? `${files.length > 0 ? ' · ' : ''}${noticeLine}` : ''}</span>
+              {status}
+              <span aria-live="polite">{noticeLine ? `${status ? ' · ' : ''}${noticeLine}` : ''}</span>
             </span>
           )}
           control={(
@@ -137,7 +152,7 @@ export function MemoryImportSection({
               <Button
                 type="button"
                 className="h-8 rounded-lg px-3.5 text-[12px]"
-                disabled={running || !providerReady || selected.size === 0}
+                disabled={running || !ready || selected.size === 0}
                 data-help-target="memory-import-run"
                 onClick={() => { void run(); }}
               >

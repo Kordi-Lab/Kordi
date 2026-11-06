@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client';
 import type { MemoryImportSave, MemoryImporter } from '../src/features/memory/memoryImport';
 import { createPreviewMemoryImporter } from '../src/features/memory/memoryImportClient';
 import { MemoryImportSection } from '../src/features/memory/MemoryImportSection';
+import { createUploadMemoryImporter } from '../src/features/memory/memoryUploadImporter';
 import type { MemoryLesson } from '../src/features/memory/memoryModel';
 
 function installDom() {
@@ -429,6 +430,36 @@ test('repeated activation while starting an import runs only one batch', async (
     await act(async () => { finishStart?.(); });
     await settle();
     assert.match(view.container.textContent ?? '', /Nothing new\./);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test('the browser upload importer lists chosen files, needs no provider, and imports them', async () => {
+  const saves: MemoryImportSave[] = [];
+  const importer = createUploadMemoryImporter(() => Promise.resolve([
+    { name: 'AGENTS.md', size: 40, lastModified: NOW(), text: async () => '# Rules\n\n- Use pnpm for every script.\n' },
+    { name: 'photo.png', size: 10, lastModified: NOW(), text: async () => 'x' },
+  ]));
+  const view = await renderSection({
+    importer,
+    providerReady: false,
+    client: { importLesson: async (save) => { saves.push(save); return {} as MemoryLesson; } },
+  });
+  try {
+    const { container } = view;
+    assert.equal(container.textContent?.includes('No agent files found'), false);
+    assert.equal(container.textContent?.includes('No provider configured'), false);
+    assert.match(container.textContent ?? '', /No files chosen/);
+    assert.equal(importButton(container)?.disabled, true);
+    await act(async () => { button(container, 'Choose files…')?.click(); });
+    await settle();
+    assert.match(container.textContent ?? '', /1 file selected · Choose \.md, \.txt, or \.json files\./);
+    assert.deepEqual(rows(container, 'app').map((element) => element.firstElementChild?.textContent), ['Chosen files1 file']);
+    await act(async () => { importButton(container)?.click(); });
+    await settle();
+    assert.deepEqual(saves.map((save) => [save.scope, save.scopeId, save.source, save.text]), [['global', 'account', 'import', 'Use pnpm for every script.']]);
+    assert.match(container.textContent ?? '', /Imported 1 memory\./);
   } finally {
     await view.cleanup();
   }

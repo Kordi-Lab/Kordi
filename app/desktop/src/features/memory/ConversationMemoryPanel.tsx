@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { isMemoryForConversation, type ConversationMemoryScopes } from './conversationMemory';
+import { openMemoryImportSettings } from './memoryImportLink';
 import { MemoryList } from './MemoryList';
 import type { MemoryClient } from './memoryClient';
 import {
@@ -14,16 +15,19 @@ import {
 /**
  * A conversation's Memory tab: memories saved for the chat, its project, or its
  * group (shared by every member). `scopes` is `null` while they still resolve.
- * Memories are added to `addTarget` while memory is on.
+ * Memories are added to `addTarget` while memory is on, and Import opens
+ * Settings › Memory › Import (`onImport` replaces it, such as in a preview).
  */
 export function ConversationMemoryPanel({
   client,
   scopes,
   addTarget = null,
+  onImport = openMemoryImportSettings,
 }: {
   client: MemoryClient;
   scopes: ConversationMemoryScopes | null;
   addTarget?: MemoryAddTarget | null;
+  onImport?: (() => void) | null;
 }) {
   const [lessons, setLessons] = useState<MemoryLesson[] | null>(null);
   const [sync, setSync] = useState<MemorySyncState | null>(null);
@@ -75,6 +79,7 @@ export function ConversationMemoryPanel({
           onChanged={refreshSync}
           viewerAccountId={viewerAccountId}
           addTarget={memoryEnabled ? addTarget : null}
+          onImport={memoryEnabled ? onImport ?? undefined : undefined}
         />
       )}
     </section>

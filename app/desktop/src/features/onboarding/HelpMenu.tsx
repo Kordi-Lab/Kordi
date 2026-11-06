@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, CircleHelp, Download, Play, ShieldCheck, X } fro
 import { AppDialog, AppDialogTitle, type AppDialogAnchor } from '@/components/ui/dialog';
 import { cloudApiBaseUrl, defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
+import { memoryVersionFromCapabilities } from '@/features/cloud/memoryCapability';
 import { isNativeDesktopShell, openDesktopExternalUrl } from '@/lib/desktop';
 import { HelpPermissions } from './HelpPermissions';
 import { HelpReleaseNotes } from './HelpReleaseNotes';
@@ -72,7 +73,7 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
       <button disabled={(capabilities.capabilities?.commonGroundVersion ?? 0) < 1} onClick={() => onStartTour('grounding')}><span>Meet people with Grounding</span><ArrowRight size={14} /></button>
       <button disabled={(capabilities.capabilities?.commonGroundVersion ?? 0) < 1} onClick={() => onStartTour('cards')}><span>Create and share cards</span><ArrowRight size={14} /></button>
       {(capabilities.capabilities?.commonGroundVersion ?? 0) < 1 ? <p className="help-menu-note">{capabilities.status === 'loading' ? 'Checking Grounding availability…' : capabilities.status === 'failed' ? 'Could not check Grounding availability. Close help and try again.' : 'Grounding and cards are not enabled in this workspace yet.'}</p> : null}
-      {helpTourAvailable('imports', isBrowserAppRuntime()) ? <button disabled={!settingsAvailable} onClick={() => onStartTour('imports')}><span>Import memory</span><ArrowRight size={14} /></button> : null}
+      {helpTourAvailable('imports', isBrowserAppRuntime()) && (!isBrowserAppRuntime() || memoryVersionFromCapabilities(capabilities.capabilities) !== null) ? <button disabled={!settingsAvailable} onClick={() => onStartTour('imports')}><span>Import memory</span><ArrowRight size={14} /></button> : null}
       <div className="app-dense-menu-divider" />
       <button onClick={() => setView('permissions')}><ShieldCheck size={16} /><span>Permissions & access</span><ArrowRight size={14} /></button>
       <div className="app-dense-menu-divider" />

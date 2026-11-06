@@ -8,6 +8,7 @@ import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import { cloudGroupConversationIds, type CloudConversationLoader } from '../src/features/memory/cloudGroupConversation';
 import { conversationMemoryScopes, isMemoryForConversation } from '../src/features/memory/conversationMemory';
 import { publishMemoryVersion } from '../src/features/memory/memoryAvailability';
+import { takeMemoryImportFocus, useMemoryImportSettingsLink } from '../src/features/memory/memoryImportLink';
 import {
   PREVIEW_CONVERSATION_MEMORY_SCOPE_ID,
   PREVIEW_GROUP_MEMORY_SCOPE_ID,
@@ -239,14 +240,31 @@ test('a group memory edit by someone outside the group shows the membership erro
   });
 });
 
-test('a chat without memories shows a centered line and the Add memory button, without the sync caption', async () => {
+test('a chat without memories shows a centered line with Import and Add memory, without the sync caption', async () => {
   await withRendered(memoryTab(createPreviewMemoryClient({ latencyMs: 0 }), 'empty-chat'), async (host) => {
     assert.deepEqual(rowIds(host), []);
     const empty = host.querySelector('[data-memory-empty]');
     assert.ok(empty);
     assert.equal(empty.querySelector('p')?.textContent, 'No memories yet');
-    assert.equal(empty.querySelector('[data-memory-add] button')?.textContent, 'Add memory');
+    assert.deepEqual(Array.from(empty.querySelectorAll('[data-memory-add] button'), (button) => button.textContent), ['Import', 'Add memory']);
     assert.doesNotMatch(host.textContent ?? '', /Synced with/);
+  });
+});
+
+test('Import in the Memory tab opens Settings › Memory at the Import section', async () => {
+  const opened: string[] = [];
+  function Shell() {
+    useMemoryImportSettingsLink((tab) => { opened.push(tab); });
+    return memoryTab(createPreviewMemoryClient({ latencyMs: 0 }), PREVIEW_CONVERSATION_MEMORY_SCOPE_ID);
+  }
+  await withRendered(<Shell />, async (host, window) => {
+    const header = host.querySelector('[data-memory-add]');
+    assert.ok(header);
+    assert.deepEqual(Array.from(header.querySelectorAll('button'), (button) => button.textContent), ['Import', 'Add memory']);
+    await click(buttonByText(header, 'Import'), window);
+    assert.deepEqual(opened, ['memory']);
+    assert.equal(takeMemoryImportFocus(), true, 'the Import section scrolls into view once');
+    assert.equal(takeMemoryImportFocus(), false);
   });
 });
 

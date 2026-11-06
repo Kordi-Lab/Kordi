@@ -53,7 +53,7 @@ export async function importMemoryBatch(
     for (const file of files) {
       const result: MemoryImportFileResult = emptyCounts();
       try {
-        const memories = parseMemoryImportReply(await batch.extract(file, existing), [file]);
+        const memories = parseMemoryImportReply(await batch.extract(file, existing), [file], importer.memoriesPerFile);
         const saves = memoryImportSaves(memories, [file], existing);
         result.duplicates = memories.length - saves.length;
         for (const { save } of saves) {

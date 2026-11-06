@@ -33,6 +33,7 @@ import { useSafetyActions } from '@/features/safety/safetyActions';
 import { memoryClientForEnvironment, type MemoryClient } from '@/features/memory/memoryClient';
 import type { MemoryImporter } from '@/features/memory/memoryImport';
 import { nativeMemoryImporter, useMemoryImportRoute } from '@/features/memory/memoryImportClient';
+import { createUploadMemoryImporter } from '@/features/memory/memoryUploadImporter';
 import { useHostedAccountsSnapshot } from '@/features/cloud/hostedAccounts';
 import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
@@ -124,6 +125,8 @@ export function CloudAccountSettingsDialog({
   memoryImportRoute = null,
 }: CloudAccountSettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<CloudAccountSettingsTabId>('profile');
+  // Without the Mac app, Import reads files the person chooses in the browser.
+  const [uploadImporter] = useState(createUploadMemoryImporter);
   const profileEditor = useCloudProfileEditor({ account, onUpdateProfile });
   const resetProfileEditor = profileEditor.reset;
   const openedAccountIdRef = useRef<string | null>(null);
@@ -295,7 +298,7 @@ export function CloudAccountSettingsDialog({
         accountId={account.accountId}
         client={memoryClient}
         isNativeShell={isNativeShell}
-        importer={memoryImporter === undefined ? (isNativeShell ? nativeMemoryImporter : null) : memoryImporter}
+        importer={memoryImporter === undefined ? (isNativeShell ? nativeMemoryImporter : uploadImporter) : memoryImporter}
         providerReady={authStateSatisfiesStartupGate(desktopAuthState, hosted.accounts)}
       />
     </div>
