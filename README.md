@@ -108,7 +108,6 @@ Kordi is built on open source. Thank you to
 [DiceBear](https://www.dicebear.com),
 [Noto Emoji](https://github.com/googlefonts/noto-emoji)
 and [Geist](https://vercel.com/font).
-The full list is in the app under Settings › Open-source licenses.
 
 ## License
 
