@@ -245,7 +245,12 @@ test('live actions change in place and reasoning stays separate from tool detail
   const label = page.locator('.app-turn-worked-header .app-turn-status-text');
   const timer = page.locator('.app-turn-worked-header .app-turn-progress-time');
   await expect(label).toHaveText('Reading files');
-  const initialTimer = await timer.boundingBox();
+  // The elapsed time follows the label instead of waiting at a fixed column.
+  const timerFollowsLabel = async () => {
+    const [labelBox, timerBox] = await Promise.all([page.locator('.app-turn-worked-header .app-turn-status-label').boundingBox(), timer.boundingBox()]);
+    expect(timerBox!.x - (labelBox!.x + labelBox!.width)).toBeLessThanOrEqual(10);
+  };
+  await timerFollowsLabel();
   await page.locator('.app-turn-worked-header').click();
   await expect(page.locator('.app-transcript-thinking-markdown')).toHaveCount(0);
   await page.getByRole('button', { name: 'Reasoning', exact: true }).click();
@@ -254,7 +259,7 @@ test('live actions change in place and reasoning stays separate from tool detail
   await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(7));
   await expect(label).toHaveText('Editing files');
   await expect(page.getByRole('button', { name: 'Reasoning', exact: true })).toHaveAttribute('aria-expanded', 'true');
-  expect(Math.abs((await timer.boundingBox())!.x - initialTimer!.x)).toBeLessThan(1);
+  await timerFollowsLabel();
   await expect(label).toHaveCSS('transition-property', 'opacity');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(label).toHaveCSS('transition-duration', '0s');
