@@ -84,7 +84,6 @@ test('desktop surfaces do not narrate obvious product structure or adjacent cont
 test('copy cleanup preserves operational guidance and recovery states', () => {
   const readSource = (path: string) => readFileSync(join(sourceRoot, path), 'utf8');
 
-  assert.match(readSource('pages/ChatCreateDialog.tsx'), /Select at least 2 contacts\./);
   assert.match(readSource('pages/SessionActionOverlays.tsx'), /Use a folder path without spaces\./);
   assert.match(readSource('components/ProviderConnectTray.tsx'), /Connect a model to start/);
 });

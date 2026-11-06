@@ -20,8 +20,8 @@ pub(super) fn snapshot_from_rows(
     )
 }
 
-/// A group started from a Common ground room may invite before anyone else
-/// joined it, so its snapshot allows a single member.
+/// The snapshot lists the group's people. Server-managed members such as the
+/// System agent are not people, so they are neither listed nor counted.
 fn snapshot_from_rows_with_min(
     conversation: GroupConversationRow,
     rows: Vec<GroupParticipantRow>,
@@ -32,6 +32,7 @@ fn snapshot_from_rows_with_min(
 ) -> Option<GroupInvitationSnapshot> {
     let participants = rows
         .into_iter()
+        .filter(|(account_id, ..)| !crate::system_account::is_service_account(account_id))
         .map(
             |(account_id, display_name, avatar_url, role)| GroupInvitationParticipant {
                 account_id,

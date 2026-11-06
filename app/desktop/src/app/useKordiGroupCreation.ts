@@ -69,8 +69,6 @@ export function useKordiGroupCreation({
     inviteLink?: boolean;
   }): Promise<string | undefined> => {
     if (!isNativeShell) return undefined;
-    const minimumPeople = request.inviteLink ? 1 : 2;
-    const tooFewPeople = request.inviteLink ? 'Select a person to start a group.' : 'Select at least 2 people to start a group.';
     setDesktopError(null);
     const creatorIdentityId =
       canonicalState?.profile.humanIdentityId?.trim();
@@ -95,7 +93,6 @@ export function useKordiGroupCreation({
     const contacts = uniqueStrings(request.contactIds)
       .map((contactId) => contactById.get(contactId))
       .filter((contact): contact is Contact => Boolean(contact));
-    if (contacts.length < minimumPeople) throw new Error(tooFewPeople);
     const blockedCollaborationContacts = contacts.filter(
       (contact) => (
         contact.sourceParticipantId
@@ -123,7 +120,6 @@ export function useKordiGroupCreation({
     }
 
     const participantIdentityIds = uniqueStrings(identityIds);
-    if (participantIdentityIds.length < minimumPeople) throw new Error(tooFewPeople);
     const selectedNames = contacts.map((contact) => contact.name);
     const groupDisplayName =
       request.name?.trim() || groupDefaultName(selectedNames);
@@ -160,7 +156,10 @@ export function useKordiGroupCreation({
       buildChatCreateGroupCollaborationInviteTargets(contacts);
     const cloudInviteTargetAccountIds =
       cloudGroupTargetAccountIds(inviteTargets);
-    if (cloudInviteTargetAccountIds.length > 0 && account) {
+    // A group may start with only its creator. Its invite still goes to the
+    // server, addressed to the creator, so the group exists there and can
+    // share an invitation link.
+    if (account && (cloudInviteTargetAccountIds.length > 0 || contacts.length === 0)) {
       try {
         await sendCloudGroupControl({
           targetAccountIds: cloudInviteTargetAccountIds,

@@ -125,7 +125,8 @@ export function useCloudGroupControlSender({
         .filter(Boolean),
     ])].filter((accountId) => accountId !== account.accountId);
     // An owner-only group still posts into its server conversation, addressed to the owner.
-    if (targetAccountIds.length === 0 && (input.channelCreated || input.kind === 'group-avatar-update' || input.kind === 'group-message')) targetAccountIds.push(account.accountId);
+    // Its invite is what creates that conversation when a group starts with only its creator.
+    if (targetAccountIds.length === 0 && (input.channelCreated || input.kind === 'group-invite' || input.kind === 'group-avatar-update' || input.kind === 'group-message')) targetAccountIds.push(account.accountId);
     if (targetAccountIds.length === 0) {
       finishChatPerformanceSpan(firstAckPerformanceSpan, {
         resultClass: 'failed',

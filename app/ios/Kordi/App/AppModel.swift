@@ -4691,11 +4691,6 @@ final class AppModel: ObservableObject {
         let contacts = contactsByAccountID.values.sorted {
             $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending
         }
-        guard contacts.count >= 2 else {
-            errorMessage = "Select at least two contacts to start a group."
-            return nil
-        }
-
         let image: String?
         do {
             if let avatarDataURL {
@@ -4706,7 +4701,9 @@ final class AppModel: ObservableObject {
         let avatar = image.map { CloudGroupAvatar(imageUrl: $0, updatedAtMs: Date().timeIntervalSince1970 * 1_000) }
         let sessionID = "session:group:\(UUID().uuidString.lowercased())"
         let enteredTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-        let groupTitle = enteredTitle ?? contacts.map(\.preferredName).joined(separator: ", ")
+        // A group may start with only its creator; it then needs a name of its own.
+        let peopleTitle = contacts.map(\.preferredName).joined(separator: ", ")
+        let groupTitle = enteredTitle ?? (peopleTitle.isEmpty ? "New group" : peopleTitle)
         let participants = [
             CloudGroupParticipant(
                 accountId: account.accountId,
@@ -4731,7 +4728,7 @@ final class AppModel: ObservableObject {
         let provisional = ConversationSummary(
             id: "group:\(sessionID)",
             kind: .group,
-            peerAccountId: contacts[0].accountId,
+            peerAccountId: contacts.first?.accountId ?? account.accountId,
             agentId: nil,
             ownerDisplayName: groupTitle,
             displayName: groupTitle,
@@ -6346,7 +6343,7 @@ final class AppModel: ObservableObject {
         guard let recipient = targetAccountIds
             .filter({ !$0.isEmpty && $0 != account.accountId })
             .sorted()
-            .first ?? (kind == "group-avatar-update" ? account.accountId : nil) else { return }
+            .first ?? (kind == "group-avatar-update" || kind == "group-invite" ? account.accountId : nil) else { return }
         let sent = try await api.sendMessage(
             token: token,
             peerAccountId: recipient,

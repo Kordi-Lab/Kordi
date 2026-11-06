@@ -104,24 +104,30 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(dialog).toBeVisible();
     await settle(page);
     await expect(dialog.getByText('Kordi contact')).toHaveCount(0);
+    await expect(dialog.getByText(/Select at least|Pick \d/)).toHaveCount(0);
     const people = dialog.getByRole('group', { name: 'People' });
     const maya = people.getByRole('button', { name: 'Maya Chen' });
     const box = await rowBox(maya);
     expect(box.height).toBeLessThanOrEqual(32);
     await expect(maya).toHaveCSS('font-size', '12px');
 
+    // One person can start a group: nobody else needs to be picked.
     const invite = people.getByRole('button', { name: /Invite with a link/ });
-    await expect(invite).toBeDisabled();
+    await expect(invite).toBeEnabled();
+    await expect(dialog.getByRole('textbox', { name: 'Group name' })).toHaveAttribute('placeholder', 'New group');
+    await expect(dialog.getByRole('button', { name: 'Create group', exact: true })).toBeEnabled();
+    await page.screenshot({ path: test.info().outputPath(`start-group-${theme}.png`) });
+
     await maya.focus();
     await page.keyboard.press('Space');
     await expect(maya).toHaveAttribute('aria-pressed', 'true');
-    await expect(invite).toBeEnabled();
-    await expect(dialog.getByRole('button', { name: 'Pick 2 people' })).toBeDisabled();
-    await page.screenshot({ path: test.info().outputPath(`start-group-${theme}.png`) });
+    await expect(dialog.getByRole('textbox', { name: 'Group name' })).toHaveAttribute('placeholder', 'Maya Chen');
+    await page.keyboard.press('Space');
+    await expect(maya).toHaveAttribute('aria-pressed', 'false');
 
     await invite.click();
-    await expect(page.getByTestId('started')).toHaveText('group:1:link');
-    const shared = page.getByRole('dialog', { name: 'Maya Chen', exact: true });
+    await expect(page.getByTestId('started')).toHaveText('group:0:link');
+    const shared = page.getByRole('dialog', { name: 'New group', exact: true });
     await expect(shared.getByRole('textbox', { name: 'Group invitation link' })).toHaveValue(/\/g\/kordi_gi_/);
     await expect(shared.getByText('Expires in 7 days')).toBeVisible();
     await expect(shared.getByRole('button', { name: 'Copy invitation link' })).toBeVisible();
@@ -130,3 +136,11 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 }
+
+test('Start group creates a group with only its creator', async ({ page }) => {
+  await page.goto(`${preview}?theme=light&mode=group&show=create`);
+  const dialog = page.getByRole('dialog', { name: 'Start group', exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Create group', exact: true }).click();
+  await expect(page.getByTestId('started')).toHaveText('group:0');
+});

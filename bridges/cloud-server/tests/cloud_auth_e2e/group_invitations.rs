@@ -216,3 +216,114 @@ async fn group_invitation_updates_canonical_membership_and_never_creates_contact
         .unwrap();
     assert_eq!(revoked_preview.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn a_creator_only_group_shares_a_link_that_brings_in_the_second_member() {
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
+    let router = fast_router(state);
+    let (admin_token, admin_id) = signup_account(&router, "solo-invite-admin").await;
+    let (recipient_token, recipient_id) = signup_account(&router, "solo-invite-recipient").await;
+    let group_id = format!("session:group:{}", uuid::Uuid::new_v4().simple());
+
+    let conversation = kordi_cloud_server::chat_sync::store::create_conversation(
+        &pool,
+        &admin_id,
+        kordi_cloud_server::chat_sync::models::CreateConversationRequest {
+            client_operation_id: uuid::Uuid::now_v7(),
+            kind: kordi_cloud_server::chat_sync::models::ConversationKind::Group,
+            shared_title: None,
+            client_session_id: group_id.clone(),
+            member_account_ids: Vec::new(),
+            organization_id: None,
+        },
+    )
+    .await
+    .expect("a group may start with only its creator")
+    .value;
+
+    let invitation_request = || {
+        post_json_with_token(
+            "/v1/cloud/invitations/groups",
+            &admin_token,
+            json!({
+                "groupId": group_id,
+                "groupSpaceId": group_id,
+                "groupTitle": "New group"
+            }),
+        )
+    };
+    let create = router.clone().oneshot(invitation_request()).await.unwrap();
+    let create_status = create.status();
+    let create_body = read_json(create).await;
+    assert_eq!(create_status, StatusCode::OK, "got body {create_body}");
+    let first_url = create_body["inviteUrl"].as_str().unwrap().to_string();
+    let first_token = first_url.rsplit('/').next().unwrap().to_string();
+
+    // One link per sender per group still holds for a group of one: a new
+    // link replaces the earlier one.
+    let again = router.clone().oneshot(invitation_request()).await.unwrap();
+    let again_status = again.status();
+    let again_body = read_json(again).await;
+    assert_eq!(again_status, StatusCode::OK, "got body {again_body}");
+    assert_ne!(again_body["invitationId"], create_body["invitationId"]);
+    let invite_url = again_body["inviteUrl"].as_str().unwrap().to_string();
+    let token = invite_url.rsplit('/').next().unwrap().to_string();
+    let replaced = router
+        .clone()
+        .oneshot(get(&format!(
+            "/v1/cloud/invitations/groups/resolve/{first_token}"
+        )))
+        .await
+        .unwrap();
+    assert_eq!(replaced.status(), StatusCode::NOT_FOUND);
+
+    let preview = router
+        .clone()
+        .oneshot(get(&format!(
+            "/v1/cloud/invitations/groups/resolve/{token}"
+        )))
+        .await
+        .unwrap();
+    let preview_status = preview.status();
+    let preview_body = read_json(preview).await;
+    assert_eq!(preview_status, StatusCode::OK, "got body {preview_body}");
+    assert_eq!(preview_body["group"]["name"], "New group");
+    assert_eq!(preview_body["group"]["memberCount"], 1);
+
+    let accept = router
+        .clone()
+        .oneshot(post_with_token(
+            &format!("/v1/cloud/invitations/groups/accept/{token}"),
+            &recipient_token,
+        ))
+        .await
+        .unwrap();
+    let accept_status = accept.status();
+    let accept_body = read_json(accept).await;
+    assert_eq!(accept_status, StatusCode::OK, "got body {accept_body}");
+    assert_eq!(accept_body["status"], "joined");
+
+    let members: Vec<(String,)> = sqlx_core::query_as::query_as(
+        "SELECT account_id FROM cloud_chat_conversation_members
+         WHERE conversation_id = $1 AND membership_state = 'active' ORDER BY account_id",
+    )
+    .bind(conversation.id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let mut expected = vec![admin_id.clone(), recipient_id.clone()];
+    expected.sort();
+    assert_eq!(
+        members.into_iter().map(|row| row.0).collect::<Vec<_>>(),
+        expected
+    );
+    let kind: (String,) = sqlx_core::query_as::query_as(
+        "SELECT kind FROM cloud_chat_conversations WHERE conversation_id = $1",
+    )
+    .bind(conversation.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(kind.0, "group");
+}
