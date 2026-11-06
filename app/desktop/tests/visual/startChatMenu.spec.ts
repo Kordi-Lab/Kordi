@@ -27,7 +27,9 @@ for (const theme of ['light', 'dark'] as const) {
     await settle(page);
 
     const [createBox, helpBox] = [await rowBox(create), await rowBox(help)];
-    expect(createBox.width).toBeCloseTo(helpBox.width, 1);
+    // Start a chat keeps the Help surface but is narrower: its four actions are short.
+    expect(createBox.width).toBeCloseTo(196, 1);
+    expect(helpBox.width).toBeGreaterThan(createBox.width);
     const styles = await page.evaluate(() => {
       const read = (element: Element | null) => {
         const style = getComputedStyle(element!);
@@ -43,7 +45,7 @@ for (const theme of ['light', 'dark'] as const) {
     for (const row of await createRows.all()) {
       const box = await rowBox(row);
       expect(box.height).toBeCloseTo(helpRow.height, 1);
-      expect(box.width).toBeCloseTo(helpRow.width, 1);
+      expect(box.width).toBeCloseTo(createBox.width - 12, 1);
       await expect(row).toHaveCSS('font-size', '12px');
       await expect(row.locator('svg').first()).toHaveCSS('width', '14px');
     }

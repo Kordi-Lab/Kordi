@@ -20,7 +20,8 @@ type PopoverGeometry = {
 };
 
 /** Width of the dense action menu, matching the Help menu. */
-export const DENSE_MENU_WIDTH = 260;
+// Start a chat has four short actions, so its menu is narrower than Help's.
+export const DENSE_MENU_WIDTH = 196;
 /** Width of the contact, agent, group and add-contact pickers. */
 export const DETAIL_WIDTH = 284;
 
