@@ -38,7 +38,8 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Blocking and per-person permissions together in the same contact and member views add 2 kB.
 // Real group avatars in the Groups in common row add 2 kB.
 // Removing deleted and blocked contacts at once and Unblock on profiles add 2 kB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_782_000;
+// The tidied empty Memory tab and the site sign-in hand-off add 2 kB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_784_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.
