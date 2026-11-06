@@ -21,6 +21,7 @@ use super::settings::MIN_SCORES;
 use crate::auth::rate_limit::CloudRateLimiter;
 use crate::common_ground::actions::{attach, relationships};
 use crate::common_ground::{db_error, unavailable};
+use crate::organizations::requests::RequestOrganization;
 use crate::{auth::routes::CloudSession, server::ServerState};
 
 /// People listed at most.
@@ -51,6 +52,7 @@ pub(super) async fn search(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
+    organization: Option<Extension<RequestOrganization>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
     let Some(pip) = state.system_agent() else {
@@ -75,11 +77,23 @@ pub(super) async fn search(
         Ok(people) => people,
         Err(error) => return db_error(error),
     };
-    let evaluated =
-        match results::evaluate(pool, pip.config(), &rate_limiter, &viewer, &people).await {
-            Ok(evaluated) => evaluated,
-            Err(error) => return db_error(error),
-        };
+    // Matching runs in the organization this search acts in.
+    let organization_id = organization
+        .as_ref()
+        .map(|Extension(organization)| organization.organization_id.as_str());
+    let evaluated = match results::evaluate(
+        pool,
+        pip.config(),
+        &rate_limiter,
+        &viewer,
+        &people,
+        organization_id,
+    )
+    .await
+    {
+        Ok(evaluated) => evaluated,
+        Err(error) => return db_error(error),
+    };
     // Unmatched people are counted; they are listed only without a minimum.
     let matching = people
         .iter()

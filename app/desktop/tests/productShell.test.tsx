@@ -384,7 +384,7 @@ test('app root renders account login before the chat shell', () => {
   }));
 
   assert.match(markup, /Welcome to Kordi/);
-  assert.doesNotMatch(markup, /No provider connected yet/);
+  assert.doesNotMatch(markup, /Connect a model to start/);
   assert.doesNotMatch(markup, /Ask your agent/);
 });
 

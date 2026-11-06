@@ -160,7 +160,8 @@ pub(super) async fn queue(
         run_id: &run_id,
         requester: &need.account_id,
         conversation_id: None,
-        organization_id: None,
+        // The organization the request was created in, not the one selected now.
+        organization_id: need.organization_id.as_deref(),
         prompt: check_prompt(&need.text, &refs),
         system_prompt: CHECK_SYSTEM,
     };

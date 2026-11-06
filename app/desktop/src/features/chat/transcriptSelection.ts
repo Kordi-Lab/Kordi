@@ -18,6 +18,21 @@ export type TranscriptSelectionProps = {
   onCancelMessageSelection?: () => void;
 };
 
+const TRANSCRIPT_NAVIGATION_KEYS = new Set([
+  'ArrowDown',
+  'ArrowUp',
+  'End',
+  'Home',
+  'PageDown',
+  'PageUp',
+  ' ',
+]);
+
+/** Only keys that scroll the transcript count as keyboard navigation; shortcuts and modifiers do not. */
+export function isTranscriptNavigationKey(key: string): boolean {
+  return TRANSCRIPT_NAVIGATION_KEYS.has(key);
+}
+
 type UseTranscriptSelectionViewportPropsArgs = TranscriptSelectionProps & {
   cancelTailAlignment: () => void;
   viewportRef: RefObject<HTMLDivElement | null>;
@@ -31,7 +46,7 @@ export function useTranscriptSelectionViewportProps({
   onCancelMessageSelection,
 }: UseTranscriptSelectionViewportPropsArgs) {
   const onKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
+    if (event.target === event.currentTarget && isTranscriptNavigationKey(event.key)) {
       event.currentTarget.dataset.transcriptKeyboardFocus = 'true';
     }
     if (isEditableSelectionTarget(event.target)) return;
