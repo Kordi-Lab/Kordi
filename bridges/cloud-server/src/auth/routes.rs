@@ -80,6 +80,7 @@ mod expressive_media;
 mod group_invitation_handlers;
 mod identity_handlers;
 mod memory_handlers;
+mod memory_import_handlers;
 #[cfg(test)]
 mod memory_tests;
 mod middleware;
@@ -111,6 +112,7 @@ use expressive_media::*;
 use group_invitation_handlers::*;
 use identity_handlers::*;
 use memory_handlers::*;
+use memory_import_handlers::extract_memory_import;
 use oauth_avatar::*;
 use password_handlers::*;
 use presence_handlers::*;
@@ -374,6 +376,10 @@ pub fn routes_with_shared_rate_limiter(
         .route(
             "/v1/cloud/memory/settings",
             get(get_memory_settings).put(update_memory_settings),
+        )
+        .route(
+            "/v1/cloud/memory/import/extract",
+            post(extract_memory_import),
         )
         .route(
             "/v1/cloud/memory/:memory_id",

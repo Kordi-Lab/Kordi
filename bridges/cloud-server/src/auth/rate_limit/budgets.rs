@@ -89,6 +89,9 @@ pub const APP_INVITATION_CREATE_LIMIT: AccountActionLimit =
     budget("app-invitation-create", 30, HOUR);
 /// Group invitation acceptances and claims, including pending ones.
 pub const INVITATION_ACCEPT_LIMIT: AccountActionLimit = budget("invitation-accept", 60, HOUR);
+/// Memory import extractions: each sends one chosen file to the hosted model.
+pub const MEMORY_IMPORT_EXTRACT_LIMIT: AccountActionLimit =
+    budget("memory-import-extract", 60, HOUR);
 
 /// The budgets unauthenticated routes count per address or per identifier.
 pub const UNAUTHENTICATED_BUDGETS: &[AccountActionLimit] = &[
@@ -124,6 +127,7 @@ pub const NAMED_BUDGETS: &[AccountActionLimit] = &[
     GROUP_INVITATION_RESET_LIMIT,
     APP_INVITATION_CREATE_LIMIT,
     INVITATION_ACCEPT_LIMIT,
+    MEMORY_IMPORT_EXTRACT_LIMIT,
     MESSAGE_SEND_LIMIT,
     DOCUMENT_PUBLIC_READ_LIMIT,
     DOCUMENT_PUBLIC_WRITE_LIMIT,

@@ -232,6 +232,7 @@ per client address and, where the request names one, per email. A refusal is a
 | `group-invitation-reset` | Account | 10 per hour | Resetting a group invitation link |
 | `app-invitation-create` | Account | 30 per hour | Creating an app invitation link |
 | `invitation-accept` | Account | 60 per hour | Accepting or claiming group invitations |
+| `memory-import-extract` | Account | 60 per hour | Reading a file chosen in the browser app into memories with the hosted model |
 | `email-verification` | Account | 10 per hour | Verifying the account email, organization email codes |
 | `account-security-change`, `account-security-proof` | Account | 30 and 20 per hour | Account security page |
 

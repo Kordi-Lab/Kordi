@@ -51,8 +51,7 @@ export const helpTours: Record<HelpTourId, readonly HelpTourStep[]> = {
       browserBody: 'Open Memory in settings to import instruction or memory files from your coding agents. Turn on Memory to show the Import section.' },
     { target: 'memory-import-files', settings: 'memory', title: 'Choose the files to import', body: 'Review the detected files or click Choose files to add your own. Select only the files you want Kordi to read.',
       browserBody: 'Click Choose files to add Markdown, text, or JSON files from your computer. Select only the files you want Kordi to read.' },
-    { target: 'memory-import-run', settings: 'memory', title: 'Import the selected files', body: 'Click Import when you are ready. Kordi extracts memories from the selected files; you can review and remove them in Memory.',
-      browserBody: 'Click Import when you are ready. Each list item or paragraph becomes a memory; you can review and remove them in Memory.' },
+    { target: 'memory-import-run', settings: 'memory', title: 'Import the selected files', body: 'Click Import when you are ready. Kordi extracts memories from the selected files; you can review and remove them in Memory.' },
     { target: 'memory-review', settings: 'memory', title: 'Review what was imported', body: 'Find the imported memories here. Search, edit, or remove anything you do not want Kordi to remember.' },
   ],
 };

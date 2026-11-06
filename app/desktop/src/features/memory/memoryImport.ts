@@ -26,10 +26,8 @@ export type MemoryImporter = {
   extract(file: AgentInstructionFile, existingMemories: string[]): Promise<string>;
   /** Starts one import of several files; without it each file goes to `extract`. */
   start?(): Promise<{ extract: MemoryImporter['extract']; finish(ok: boolean): Promise<void> }>;
-  /** Reads files without a model turn, so Import needs no provider (the browser's upload importer). */
-  readsLocally?: boolean;
-  /** Memories one file may add; `MAX_MEMORIES_PER_FILE` without it. */
-  memoriesPerFile?: number;
+  /** Reads files with Kordi's hosted model, so Import needs no provider on this device (the browser's upload importer). */
+  hostedModel?: boolean;
 };
 
 /** `files` with the chosen files added after them, each path once. */
@@ -77,13 +75,9 @@ function jsonObjectOf(reply: string): unknown {
 /**
  * The memories in a model reply, for the files that were sent. The reply may wrap the JSON in a
  * fence or a sentence. Entries without text, or for a file that was not sent, are dropped; an entry
- * without a file belongs to the only file sent. Each file keeps at most `limit` (12).
+ * without a file belongs to the only file sent. Each file keeps at most 12.
  */
-export function parseMemoryImportReply(
-  reply: string,
-  files: ReadonlyArray<Pick<AgentInstructionFile, 'path'>>,
-  limit: number = MAX_MEMORIES_PER_FILE,
-): ImportedMemory[] {
+export function parseMemoryImportReply(reply: string, files: ReadonlyArray<Pick<AgentInstructionFile, 'path'>>): ImportedMemory[] {
   const parsed = jsonObjectOf(reply);
   const entries = parsed && typeof parsed === 'object' ? (parsed as { memories?: unknown }).memories : null;
   if (!Array.isArray(entries)) throw new Error('The model returned an unreadable import. Try again.');
@@ -99,7 +93,7 @@ export function parseMemoryImportReply(
     const file = typeof record.file === 'string' && paths.has(record.file) ? record.file : onlyFile;
     if (!file) continue;
     const count = perFile.get(file) ?? 0;
-    if (count >= limit) continue;
+    if (count >= MAX_MEMORIES_PER_FILE) continue;
     perFile.set(file, count + 1);
     const scope = record.scope === 'global' ? 'global' : 'project';
     const category = isMemoryCategory(record.category)

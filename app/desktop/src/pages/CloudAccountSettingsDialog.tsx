@@ -125,8 +125,11 @@ export function CloudAccountSettingsDialog({
   memoryImportRoute = null,
 }: CloudAccountSettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<CloudAccountSettingsTabId>('profile');
-  // Without the Mac app, Import reads files the person chooses in the browser.
-  const [uploadImporter] = useState(createUploadMemoryImporter);
+  // Without the Mac app, Import sends files the person chooses to the server's import model.
+  const [uploadImporter] = useState(() => {
+    const extract = memoryClient?.extractImport?.bind(memoryClient);
+    return extract ? createUploadMemoryImporter({ extract }) : null;
+  });
   const profileEditor = useCloudProfileEditor({ account, onUpdateProfile });
   const resetProfileEditor = profileEditor.reset;
   const openedAccountIdRef = useRef<string | null>(null);

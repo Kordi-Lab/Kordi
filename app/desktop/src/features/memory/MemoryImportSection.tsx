@@ -85,8 +85,7 @@ export function MemoryImportSection({
   const run = async () => {
     const chosen = files.filter((file) => selected.has(file.path));
     if (runningRef.current || !chosen.length || !client.importLesson) return;
-    // Reading in the browser sends the file to no model, so it needs no AI consent.
-    if (!importer.readsLocally && !requireAiConsent()) return;
+    if (!requireAiConsent()) return;
     runningRef.current = true;
     setRunning(true);
     setNotice('');
@@ -107,16 +106,16 @@ export function MemoryImportSection({
     }
   };
 
-  const ready = providerReady || Boolean(importer.readsLocally);
+  const ready = providerReady || Boolean(importer.hostedModel);
   const noticeLine = ready ? notice : CLOUD_AGENT_NO_PROVIDER_NOTICE;
-  const status = files.length > 0 ? `${countLabel(selected.size, 'file')} selected` : importer.readsLocally ? 'No files chosen' : null;
+  const status = files.length > 0 ? `${countLabel(selected.size, 'file')} selected` : importer.hostedModel ? 'No files chosen' : null;
 
   return (
     <SettingsSection title="Import" id={MEMORY_IMPORT_SECTION_ID}>
       {files.length === 0 ? (
         <>
           <HelpEmptyExample kind="files" />
-          {importer.readsLocally ? null : <SettingsRow title="No agent files found." description="Finds instructions and memories from your coding agents." />}
+          {importer.hostedModel ? null : <SettingsRow title="No agent files found." description="Finds instructions and memories from your coding agents." />}
         </>
       ) : (
         <MemoryImportTree

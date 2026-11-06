@@ -1,22 +1,19 @@
+import type { CloudMemoryImportExtract, CloudMemoryImportExtraction } from '@/features/cloud/cloudMemoryClient';
+
 import type { AgentInstructionFile, MemoryImportChoice, MemoryImporter } from './memoryImport';
-import { LESSON_MAX_CHARS } from './memoryModel';
 
 // Settings › Memory › Import without the Mac app: the person chooses files in
-// the browser, each file's text is read here, and every memory found goes
-// through the same review and `importLesson` saves as a Mac import. Nothing is
-// sent anywhere else, and no model reads the file: list items and paragraphs
-// become memories as written.
+// the browser, each file's text is read here and sent to the server's model
+// (`POST /v1/cloud/memory/import/extract`), which uses the Mac's import prompt
+// and cap. The reply goes through the same review and `importLesson` saves as
+// a Mac import; the server saves nothing on its own.
 
-/** The Mac reads agent files up to this size (`MAX_AGENT_FILE_BYTES`). */
+/** The Mac reads agent files up to this size, and the server accepts no more. */
 export const MAX_UPLOAD_FILE_BYTES = 200 * 1024;
 /** Files one import list holds. */
 export const MAX_UPLOAD_FILES = 20;
-/** Memories one file adds; each is one save. */
-export const MAX_UPLOAD_MEMORIES_PER_FILE = 50;
 export const UPLOAD_FILE_EXTENSIONS = ['.md', '.markdown', '.txt', '.json'] as const;
 export const UPLOAD_SOURCE = 'Chosen files';
-
-type UploadMemory = { text: string; category?: string; scope: 'project' | 'global' };
 
 const extensionOf = (name: string) => {
   const dot = name.lastIndexOf('.');
@@ -24,142 +21,6 @@ const extensionOf = (name: string) => {
 };
 
 const supported = (name: string) => (UPLOAD_FILE_EXTENSIONS as readonly string[]).includes(extensionOf(name));
-
-/** Splits text over the memory length at sentence ends, and at words when one sentence is too long. */
-function withinLimit(text: string): string[] {
-  if (text.length <= LESSON_MAX_CHARS) return [text];
-  const sentences = text.split(/(?<=[.!?])\s+/);
-  const parts: string[] = [];
-  let current = '';
-  const push = (piece: string) => {
-    const next = current ? `${current} ${piece}` : piece;
-    if (next.length <= LESSON_MAX_CHARS) {
-      current = next;
-      return;
-    }
-    if (current) parts.push(current);
-    current = piece;
-    while (current.length > LESSON_MAX_CHARS) {
-      const cut = current.lastIndexOf(' ', LESSON_MAX_CHARS);
-      const at = cut > 0 ? cut : LESSON_MAX_CHARS;
-      parts.push(current.slice(0, at).trim());
-      current = current.slice(at).trim();
-    }
-  };
-  for (const sentence of sentences) {
-    const trimmed = sentence.trim();
-    if (trimmed) push(trimmed);
-  }
-  if (current) parts.push(current);
-  return parts;
-}
-
-/** Plain text of one Markdown line: links keep their label; bold, italics, and quote marks go. */
-function plainLine(line: string): string {
-  return line
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/(\*\*|__)(.+?)\1/g, '$2')
-    .replace(/^>\s?/, '')
-    .trim();
-}
-
-const LIST_ITEM = /^(\s*)(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(.*)$/;
-
-/** The category a Claude Code memory file's frontmatter `type` gives, or null to skip the file. */
-function frontmatterCategory(type: string | null): { category: string; scope: UploadMemory['scope'] } | null | undefined {
-  if (type === 'reference') return null;
-  if (type === 'user') return { category: 'general_preferences', scope: 'global' };
-  if (type === 'feedback') return { category: 'hcp-custom:task_lessons', scope: 'project' };
-  if (type === 'project') return { category: 'work_context', scope: 'project' };
-  return undefined;
-}
-
-/** Memories in a Markdown or text file: each list item and each paragraph, without headings, code, or tables. */
-export function textFileMemories(text: string): UploadMemory[] {
-  let body = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
-  let kind: { category: string; scope: UploadMemory['scope'] } = { category: 'hcp-custom:task_lessons', scope: 'project' };
-  const frontmatter = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(body);
-  if (frontmatter) {
-    body = body.slice(frontmatter[0].length);
-    const type = /^type:\s*["']?([\w-]+)/m.exec(frontmatter[1])?.[1]?.toLowerCase() ?? null;
-    const chosen = frontmatterCategory(type);
-    if (chosen === null) return [];
-    if (chosen) kind = chosen;
-  }
-  body = body.replace(/<!--[\s\S]*?-->/g, '');
-  const blocks: string[] = [];
-  let current: string[] = [];
-  let fence: string | null = null;
-  const flush = () => {
-    const joined = current.join(' ').replace(/\s+/g, ' ').trim();
-    current = [];
-    // A lead-in such as "Rules:" introduces the list after it.
-    if (joined && !/:$/.test(joined)) blocks.push(joined);
-  };
-  for (const raw of body.split('\n')) {
-    const fenceMark = /^\s*(```|~~~)/.exec(raw)?.[1];
-    if (fence) {
-      if (fenceMark === fence) fence = null;
-      continue;
-    }
-    if (fenceMark) {
-      flush();
-      fence = fenceMark;
-      continue;
-    }
-    const line = raw.trimEnd();
-    if (!line.trim() || /^\s*#{1,6}\s/.test(line) || /^\s*\|/.test(line) || /^\s*([-*_])(\s*\1){2,}\s*$/.test(line) || /^\s*<\/?[a-z][^>]*>\s*$/i.test(line)) {
-      flush();
-      continue;
-    }
-    const item = LIST_ITEM.exec(line);
-    if (item) {
-      flush();
-      current.push(plainLine(item[2]));
-    } else {
-      current.push(plainLine(line));
-    }
-  }
-  flush();
-  return blocks.flatMap((block) => withinLimit(block)).map((memory) => ({ text: memory, ...kind }));
-}
-
-function jsonEntryMemory(entry: unknown): UploadMemory | null {
-  if (typeof entry === 'string') return { text: entry, scope: 'global' };
-  if (!entry || typeof entry !== 'object') return null;
-  const record = entry as Record<string, unknown>;
-  const text = [record.text, record.content, record.memory].find((value): value is string => typeof value === 'string');
-  if (!text) return null;
-  return {
-    text,
-    category: typeof record.category === 'string' ? record.category : undefined,
-    scope: record.scope === 'project' ? 'project' : 'global',
-  };
-}
-
-/** Memories in a JSON file: a list of texts or `{ text }` objects, alone or under `memories`. */
-export function jsonFileMemories(text: string): UploadMemory[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text.replace(/^﻿/, ''));
-  } catch {
-    throw new Error('This file is not valid JSON.');
-  }
-  const entries = Array.isArray(parsed)
-    ? parsed
-    : parsed && typeof parsed === 'object' && Array.isArray((parsed as { memories?: unknown }).memories)
-      ? (parsed as { memories: unknown[] }).memories
-      : null;
-  if (!entries) throw new Error('This file has no list of memories.');
-  return entries.map(jsonEntryMemory).filter((memory): memory is UploadMemory => memory !== null);
-}
-
-/** The import reply for one chosen file, in the shape `parseMemoryImportReply` reads. */
-export function uploadedFileReply(file: Pick<AgentInstructionFile, 'path' | 'fileName'>, text: string): string {
-  const memories = extensionOf(file.fileName) === '.json' ? jsonFileMemories(text) : textFileMemories(text);
-  return JSON.stringify({ memories: memories.slice(0, MAX_UPLOAD_MEMORIES_PER_FILE).map((memory) => ({ ...memory, file: file.path })) });
-}
 
 /** A file the person chose; `File` in the browser. */
 export type UploadedFile = { name: string; size: number; lastModified?: number; text(): Promise<string> };
@@ -248,15 +109,21 @@ export function pickFilesInBrowser(): Promise<UploadedFile[]> {
   });
 }
 
+export type UploadImporterDeps = {
+  /** The server's import model, through the memory client. */
+  extract: (input: CloudMemoryImportExtract) => Promise<CloudMemoryImportExtraction>;
+  pick?: () => Promise<ReadonlyArray<UploadedFile>>;
+};
+
 /**
- * The importer for a browser: no files are found, and Choose files reads the
- * chosen ones here. Reading needs no model, provider, or import run.
+ * The importer for a browser: no files are found, Choose files reads the
+ * chosen ones here, and the server's model reads each into memories. It runs
+ * on Kordi's hosted model, so it needs no provider on this device.
  */
-export function createUploadMemoryImporter(pick: () => Promise<ReadonlyArray<UploadedFile>> = pickFilesInBrowser): MemoryImporter {
+export function createUploadMemoryImporter({ extract, pick = pickFilesInBrowser }: UploadImporterDeps): MemoryImporter {
   const texts = new Map<string, string>();
   return {
-    readsLocally: true,
-    memoriesPerFile: MAX_UPLOAD_MEMORIES_PER_FILE,
+    hostedModel: true,
     discover: () => Promise.resolve([]),
     async choose(): Promise<MemoryImportChoice> {
       const chosen = await pick();
@@ -264,14 +131,12 @@ export function createUploadMemoryImporter(pick: () => Promise<ReadonlyArray<Upl
       read.texts.forEach((text, path) => texts.set(path, text));
       return { files: read.files, notice: read.notice };
     },
-    extract(file) {
+    async extract(file, existingMemories) {
       const text = texts.get(file.path);
-      if (text === undefined) return Promise.reject(new Error('Choose this file again.'));
-      try {
-        return Promise.resolve(uploadedFileReply(file, text));
-      } catch (error) {
-        return Promise.reject(error instanceof Error ? error : new Error('Could not read this file.'));
-      }
+      if (text === undefined) throw new Error('Choose this file again.');
+      const { memories } = await extract({ fileName: file.fileName, text, existingMemories: [...existingMemories] });
+      // The reply names this file, in the shape the shared batch parses.
+      return JSON.stringify({ memories: memories.map((memory) => ({ ...memory, file: file.path })) });
     },
   };
 }

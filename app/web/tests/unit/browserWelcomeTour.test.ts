@@ -67,7 +67,7 @@ test('the browser tour keeps every step, with file import worded for the upload 
   assert.doesNotMatch(helpTourStepBody(files, true), /detected/);
   assert.match(helpTourStepBody(files, false), /detected files/);
   const run = helpTours.imports.find((step) => step.target === 'memory-import-run')!;
-  assert.doesNotMatch(helpTourStepBody(run, true), /extracts/);
+  assert.equal(helpTourStepBody(run, true), run.body, 'the server model extracts memories as the Mac does');
 });
 
 test('the browser tour does not promise Mac-only calendar access', () => {

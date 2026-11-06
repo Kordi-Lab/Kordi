@@ -46,8 +46,8 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // requester's ended runs add 3 kB, so it moves to 5.794 MB.
 // Group names before creating, dissolving groups and channels, the Link copied toast and
 // the group created line add 9 kB, so it moves to 5.803 MB.
-// Memory import from chosen files (the browser file reader and its limits) and Import in the
-// Memory tab add 5 kB, so it moves to 5.808 MB.
+// Memory import from chosen files (the browser picker, its limits and the server
+// extraction call) and Import in the Memory tab add 5 kB, so it moves to 5.808 MB.
 const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_808_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.

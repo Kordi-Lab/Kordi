@@ -23,6 +23,28 @@ const shot = (testInfo: TestInfo, name: string) => {
   return folder ? path.join(folder, `${testInfo.project.name}-${name}`) : testInfo.outputPath(name);
 };
 
+type ExtractBody = { fileName: string; text: string; existingMemories: string[] };
+
+/** The server's import model, stubbed: it answers by file name and records what it was sent. */
+async function stubImportModel(page: Page, refuse = false) {
+  const sent: ExtractBody[] = [];
+  await page.route('**/v1/cloud/memory/import/extract', async route => {
+    const body = route.request().postDataJSON() as ExtractBody;
+    sent.push(body);
+    if (refuse) {
+      return route.fulfill({ status: 403, json: { errorCode: 'ai_consent_required', message: 'AI models are off. Allow them in Settings › Privacy to use agents.' } });
+    }
+    const memories = body.fileName === 'AGENTS.md'
+      ? [
+          { text: 'Synthetic import: use pnpm for every script.', category: 'hcp-custom:task_lessons', scope: 'project' },
+          { text: 'Synthetic import: keep commit messages in English.', category: 'hcp-custom:task_lessons', scope: 'project' },
+        ]
+      : [{ text: 'Synthetic import: prefer short answers.', category: 'general_preferences', scope: 'global' }];
+    return route.fulfill({ json: { memories } });
+  });
+  return sent;
+}
+
 function collectPageErrors(page: Page) {
   const errors: string[] = [];
   page.on('pageerror', error => { if (!isCancelledFixtureRequest(error.message)) errors.push(error.message); });
@@ -48,6 +70,7 @@ test('Import in an empty Memory tab opens Settings › Memory and imports chosen
   const errors = collectPageErrors(page);
   await installChatFixture(page, baseURL!);
   const fixture = await installMemoryFixture(page, baseURL!);
+  const sent = await stubImportModel(page);
   fixture.memories.splice(fixture.memories.findIndex(row => row.text === syntheticChatMemory), 1);
   await page.goto(`/app/chats/${encodeURIComponent(chatConversationId)}`);
   await page.getByRole('tab', { name: 'Memory', exact: true }).click();
@@ -76,6 +99,12 @@ test('Import in an empty Memory tab opens Settings › Memory and imports chosen
 
   await section.getByRole('button', { name: 'Import', exact: true }).click();
   await expect(section.getByText('Imported 3 memories.')).toBeVisible();
+  // Each file's text went to the import model once, and nothing else was uploaded.
+  expect(sent.map(body => [body.fileName, body.text])).toEqual([
+    ['AGENTS.md', agentsFile],
+    ['memories.json', JSON.stringify(['Synthetic import: prefer short answers.'])],
+  ]);
+  expect(sent[1].existingMemories).toContain('Synthetic import: use pnpm for every script.');
   const imported = fixture.memories.filter(row => row.source === 'import');
   expect(imported.map(row => [row.scope, row.scopeId, row.text])).toEqual([
     ['global', 'account', 'Synthetic import: use pnpm for every script.'],
@@ -114,5 +143,25 @@ test('the Import memory tour walks the browser upload flow when the server repor
   expect(titles).toEqual([
     'Bring your existing knowledge into Kordi', 'Choose the files to import', 'Import the selected files', 'Review what was imported',
   ]);
+  expect(errors).toEqual([]);
+});
+
+test('a server refusal for AI consent marks the file and opens the AI models prompt', async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  const errors = collectPageErrors(page);
+  await installChatFixture(page, baseURL!);
+  const fixture = await installMemoryFixture(page, baseURL!);
+  await stubImportModel(page, true);
+  await page.goto(`/app/chats/${encodeURIComponent(chatConversationId)}`);
+  await page.getByRole('tab', { name: 'Memory', exact: true }).click();
+  await page.getByRole('region', { name: 'Memory', exact: true }).getByRole('button', { name: 'Import', exact: true }).click();
+  const section = page.locator('#memory-import');
+  const chooser = page.waitForEvent('filechooser');
+  await section.getByRole('button', { name: 'Choose files…', exact: true }).click();
+  await (await chooser).setFiles([{ name: 'AGENTS.md', mimeType: 'text/markdown', buffer: Buffer.from(agentsFile) }]);
+  await section.getByRole('button', { name: 'Import', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'AI models are off' })).toBeVisible();
+  await expect(section.getByText('1 file could not be read.')).toBeVisible();
+  expect(fixture.memories.filter(row => row.source === 'import')).toEqual([]);
   expect(errors).toEqual([]);
 });

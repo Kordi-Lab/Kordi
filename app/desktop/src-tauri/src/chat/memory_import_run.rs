@@ -19,58 +19,21 @@ use super::memory_import::{
 use super::message_route::apply_desktop_chat_message_route;
 use super::DesktopChatMessageRoute;
 
-/// How many existing memories, and how much of each, go into the prompt.
-const EXISTING_LIMIT: usize = 60;
-const EXISTING_CHARS: usize = 200;
+use kordi_tools::memory_import_prompt;
 
-pub(crate) const MEMORY_IMPORT_SYSTEM_PROMPT: &str = "\
-You turn a person's own agent instruction files into memories.
-You receive the full text of one or more of these files, each with its path and project, and the memories the person already has.
-Return JSON only, with no prose and no code fence, in this shape:
-{\"memories\":[{\"text\":\"...\",\"category\":\"...\",\"scope\":\"project\",\"file\":\"<path as given>\"}]}
-Rules:
-- Repository conventions, workflow rules, and tool and command habits: category \"hcp-custom:task_lessons\", scope \"project\" (the file's project).
-- Personal preferences that apply everywhere, such as language, tone, units, or formatting the person always wants: category \"general_preferences\", scope \"global\".
-- Facts about the person's work, such as role, projects, or skills: category \"work_context\", scope \"project\".
-- Skip anything that is not durable, anything about other people, credentials, secrets, paths, hostnames, or infrastructure identifiers.
-- Skip anything already present in the existing memories, even when worded differently.
-- Claude Code memory files start with a frontmatter block (name, description, type user, feedback, project, or reference): a user entry is about the person (a global preference or a work fact), a feedback entry is a working rule (a task lesson in the project, or global when it is not about one project), project entries stay in the project, and reference entries, such as links or tickets, are skipped.
-- Write each memory as one plain sentence. At most 12 memories per file.
-- If nothing qualifies, return {\"memories\":[]}.";
-
-/// The existing memory texts, capped, one per line.
-fn existing_block(existing: &[String]) -> String {
-    let lines: Vec<String> = existing
-        .iter()
-        .map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "))
-        .filter(|text| !text.is_empty())
-        .take(EXISTING_LIMIT)
-        .map(|text| {
-            format!(
-                "- {}",
-                text.chars().take(EXISTING_CHARS).collect::<String>()
-            )
-        })
-        .collect();
-    if lines.is_empty() {
-        "(none)".to_string()
-    } else {
-        lines.join("\n")
-    }
-}
+pub(crate) use kordi_tools::memory_import_prompt::MEMORY_IMPORT_SYSTEM_PROMPT;
 
 pub(crate) fn import_prompt(
     file: &AgentInstructionFile,
     text: &str,
     existing: &[String],
 ) -> String {
-    format!(
-        "Existing memories:\n{}\n\nApp: {}\nFile: {}\nProject: {}\n<<<FILE\n{}\nFILE>>>",
-        existing_block(existing),
-        file.source,
-        file.path,
-        file.project_name,
-        text.trim(),
+    memory_import_prompt::import_prompt(
+        &file.source,
+        &file.path,
+        &file.project_name,
+        text,
+        existing,
     )
 }
 
@@ -240,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn memory_import_prompt_carries_the_file_and_capped_existing_memories() {
+    fn memory_import_prompt_names_the_file_app_and_project() {
         let file = AgentInstructionFile {
             path: "/work/launch-site/AGENTS.md".into(),
             root: Some("/work/launch-site".into()),
@@ -250,22 +213,10 @@ mod tests {
             size: 10,
             modified_at: 1,
         };
-        let existing: Vec<String> = (0..80)
-            .map(|index| format!("Memory {index} {}", "y".repeat(300)))
-            .collect();
-        let prompt = import_prompt(&file, "  Use pnpm.\n", &existing);
+        let prompt = import_prompt(&file, "  Use pnpm.\n", &[]);
         assert!(prompt.contains(
-            "File: /work/launch-site/AGENTS.md\nProject: launch-site\n<<<FILE\nUse pnpm.\nFILE>>>"
+            "App: Project file\nFile: /work/launch-site/AGENTS.md\nProject: launch-site\n<<<FILE\nUse pnpm.\nFILE>>>"
         ));
-        assert_eq!(prompt.matches("\n- Memory ").count(), 60);
-        assert!(
-            !prompt.contains(&"y".repeat(200)),
-            "each memory is capped at 200 characters"
-        );
-        assert!(import_prompt(&file, "x", &[]).contains("Existing memories:\n(none)"));
         assert!(MEMORY_IMPORT_SYSTEM_PROMPT.contains("hcp-custom:task_lessons"));
-        assert!(prompt.contains("App: Project file\nFile: "));
-        assert!(MEMORY_IMPORT_SYSTEM_PROMPT
-            .contains("reference entries, such as links or tickets, are skipped"));
     }
 }

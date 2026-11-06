@@ -54,6 +54,11 @@ export type CloudMemoryCreate = {
 
 export type CloudMemoryListResponse = { memories: CloudMemory[]; settings: CloudMemorySettings };
 
+/** One chosen file for the server's import model (`POST /v1/cloud/memory/import/extract`). */
+export type CloudMemoryImportExtract = { fileName: string; text: string; existingMemories: string[] };
+/** The memories the model read from the file; nothing is saved yet. */
+export type CloudMemoryImportExtraction = { memories: Array<{ text: string; category: string; scope: 'project' | 'global' }> };
+
 type CloudMemoryRequest = <TResponse>(
   path: string,
   init: RequestInit,
@@ -110,6 +115,15 @@ export class CloudMemoryClient {
       `/v1/cloud/memory/${encodeURIComponent(memoryId)}`,
       authorized(token, 'DELETE'),
       'Could not delete this memory.',
+    );
+  }
+
+  /** Reads one chosen file into memories with the server's model. */
+  extractImport(token: string, input: CloudMemoryImportExtract): Promise<CloudMemoryImportExtraction> {
+    return this.request<CloudMemoryImportExtraction>(
+      '/v1/cloud/memory/import/extract',
+      authorized(token, 'POST', input),
+      'Could not read this file. Try again.',
     );
   }
 

@@ -435,12 +435,15 @@ test('repeated activation while starting an import runs only one batch', async (
   }
 });
 
-test('the browser upload importer lists chosen files, needs no provider, and imports them', async () => {
+test('the browser upload importer lists chosen files, needs no provider, and imports what the server model read', async () => {
   const saves: MemoryImportSave[] = [];
-  const importer = createUploadMemoryImporter(() => Promise.resolve([
-    { name: 'AGENTS.md', size: 40, lastModified: NOW(), text: async () => '# Rules\n\n- Use pnpm for every script.\n' },
-    { name: 'photo.png', size: 10, lastModified: NOW(), text: async () => 'x' },
-  ]));
+  const importer = createUploadMemoryImporter({
+    pick: () => Promise.resolve([
+      { name: 'AGENTS.md', size: 40, lastModified: NOW(), text: async () => '# Rules\n\n- Use pnpm for every script.\n' },
+      { name: 'photo.png', size: 10, lastModified: NOW(), text: async () => 'x' },
+    ]),
+    extract: async () => ({ memories: [{ text: 'Use pnpm for every script.', category: 'hcp-custom:task_lessons', scope: 'project' }] }),
+  });
   const view = await renderSection({
     importer,
     providerReady: false,
