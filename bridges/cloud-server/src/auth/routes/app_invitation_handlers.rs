@@ -4,10 +4,10 @@ use sha2::{Digest, Sha256};
 
 const APP_INVITE_TOKEN_PREFIX: &str = "kordi_ai_";
 const APP_INVITE_LIFETIME_DAYS: i64 = 7;
-fn homepage_url() -> String {
+pub(super) fn homepage_url() -> String {
     format!("{}/", crate::distribution::public_origin())
 }
-const KORDI_FAVICON_URL: &str = "/assets/favicon.png";
+pub(super) const KORDI_FAVICON_URL: &str = "/assets/favicon.png";
 
 struct AppInvitationRecord {
     display_name: Option<String>,
@@ -96,7 +96,7 @@ pub(super) fn configured_release_download_url() -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn safe_release_download_url(candidate: Option<&str>) -> Option<String> {
+pub(super) fn safe_release_download_url(candidate: Option<&str>) -> Option<String> {
     let url = url::Url::parse(candidate?.trim()).ok()?;
     let homepage = url::Url::parse(&homepage_url()).expect("valid Kordi homepage URL");
     if url.scheme() != "https"
@@ -172,7 +172,7 @@ pub(super) fn invitation_landing_document_with_open_action(
         "button button-primary"
     };
 
-    let homepage = homepage_url();
+    let homepage = escape_html(&homepage_url());
     format!(
         r#"<!doctype html>
 <html lang="en">
@@ -181,69 +181,40 @@ pub(super) fn invitation_landing_document_with_open_action(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/png" sizes="512x512" href="{favicon_url}">
   <title>{escaped_title} · Kordi</title>
-  <style>
-    @font-face {{ font-family: "Marcellus"; src: url("/assets/fonts/marcellus-latin.woff2") format("woff2"); font-display: swap; }}
-    :root {{ color-scheme: light dark; --paper: #faf9f7; --ink: #1a1714; --ink-2: #5c554d; --ink-3: #746d65; --rule: rgba(26, 23, 20, .1); }}
-    * {{ box-sizing: border-box; }}
-    html, body {{ min-height: 100%; }}
-    body {{ min-height: 100vh; margin: 0; background: var(--paper); color: var(--ink); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
-    .page {{ min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }}
-    .wrap {{ width: min(calc(100% - 8rem), 1312px); margin-inline: auto; }}
-    header {{ min-height: 68px; display: flex; align-items: center; border-bottom: 1px solid var(--rule); }}
-    .brand {{ width: fit-content; display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font-family: "Marcellus", Optima, Candara, serif; font-size: 23px; line-height: 1; text-decoration: none; }}
-    .brand svg {{ width: 31px; height: 31px; flex: 0 0 auto; }}
-    main {{ display: flex; align-items: center; padding-block: clamp(4.5rem, 12vh, 8rem); }}
+  <style>{site_css}
+    main {{ display: flex; align-items: center; padding-block: clamp(48px, 10vh, 112px); }}
     .content {{ max-width: 760px; min-width: 0; }}
-    h1 {{ max-width: 12ch; margin: 0; overflow-wrap: anywhere; color: var(--ink); font-family: "Marcellus", Optima, Candara, serif; font-size: clamp(3.15rem, 6vw, 5.75rem); font-weight: 400; line-height: .98; letter-spacing: -.035em; text-wrap: balance; }}
-    p {{ max-width: 39ch; margin: 1.6rem 0 0; color: var(--ink-2); font-size: 1.0625rem; line-height: 1.72; }}
-    .actions {{ display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; margin-top: 2.35rem; }}
-    .button {{ min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding-inline: 18px; border: 1px solid var(--ink); border-radius: 6px; font-size: 14px; font-weight: 500; text-decoration: none; transition: transform 180ms cubic-bezier(.22, 1, .36, 1), box-shadow 180ms cubic-bezier(.22, 1, .36, 1); }}
-    .button svg {{ width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; }}
-    .button-primary {{ background: var(--ink); color: var(--paper); }}
-    .button-secondary {{ border-color: var(--rule); background: transparent; color: var(--ink); }}
-    .button:hover {{ transform: translateY(-2px); box-shadow: 0 7px 18px -8px rgba(26, 23, 20, .4); }}
-    .button:focus-visible, .brand:focus-visible {{ outline: 2px solid var(--ink); outline-offset: 3px; }}
-    footer {{ padding-block: 1.4rem 1.6rem; border-top: 1px solid var(--rule); color: var(--ink-3); font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: .69rem; letter-spacing: .08em; }}
-    @media (prefers-color-scheme: dark) {{
-      :root {{ --paper: #191814; --ink: #f2efe9; --ink-2: #b8b0a7; --ink-3: #8d857c; --rule: rgba(242, 239, 233, .1); }}
-      .button:hover {{ box-shadow: 0 7px 18px -8px rgba(0, 0, 0, .8); }}
-    }}
-    @media (max-width: 600px) {{
-      .wrap {{ width: calc(100% - 2.5rem); }}
-      main {{ padding-block: 3.5rem; }}
-      h1 {{ max-width: 11ch; font-size: clamp(2.7rem, 13vw, 4rem); }}
+    .content h1 {{ max-width: 16ch; font-size: clamp(2.5rem, 1.4rem + 3.6vw, 4.25rem); }}
+    .content p {{ max-width: 44ch; margin-top: 24px; color: var(--muted); font-size: clamp(1.125rem, 1rem + .45vw, 1.375rem); font-weight: 500; line-height: 1.45; }}
+    .actions {{ display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 32px; }}
+    @media (max-width: 680px) {{
+      .content h1 {{ font-size: clamp(2.125rem, 9vw, 2.75rem); }}
+      .content p {{ font-size: 1.0625rem; }}
       .actions {{ display: grid; }}
       .button {{ width: 100%; }}
     }}
-    @media (prefers-reduced-motion: reduce) {{ .button {{ transition: none; }} }}
   </style>
 </head>
 <body>
-  <div class="page">
-    <header>
-      <div class="wrap">
-        <a class="brand" href="{homepage}" aria-label="Kordi home">
-          <svg viewBox='64 58 384 384' aria-hidden='true'><mask id='kordi-bird-cut' maskUnits='userSpaceOnUse' x='-100' y='-100' width='712' height='712'><ellipse cx='262' cy='292' rx='150' ry='136' fill='#fff'/><path d='M400,342 C436,322 462,272 470,204 C448,236 420,244 386,218Z' fill='#fff' stroke='#fff' stroke-width='4' stroke-linejoin='round'/><circle cx='194' cy='266' r='17'/><path d='M269.6,333.2 C292,299.6 348,282 397.6,285.2 C381.6,325.2 336.8,357.2 288.8,355.6 C272.8,354 264.8,344.4 269.6,333.2Z'/></mask><g transform='translate(256,250) scale(0.94) translate(-270,-292)'><path d='M120,276 L82,294 L120,312Z' fill='currentColor' stroke='currentColor' stroke-width='12' stroke-linejoin='round'/><rect x='-100' y='-100' width='712' height='712' fill='currentColor' mask='url(#kordi-bird-cut)'/></g></svg>
-          <span>kordi</span>
-        </a>
+  {header}
+  <main class="wrap">
+    <section class="content">
+      <h1>{escaped_title}</h1>
+      <p>{escaped_message}</p>
+      <div class="actions">
+        {open_action}
+        {download_action}
+        <a class="{learn_more_class}" href="{homepage}">Learn more</a>
       </div>
-    </header>
-    <main class="wrap">
-      <section class="content">
-        <h1>{escaped_title}</h1>
-        <p>{escaped_message}</p>
-        <div class="actions">
-          {open_action}
-          {download_action}
-          <a class="{learn_more_class}" href="{homepage}">Learn more</a>
-        </div>
-      </section>
-    </main>
-    <footer class="wrap">&copy; Kordi 2026</footer>
-  </div>
+    </section>
+  </main>
+  {footer}
 </body>
 </html>"#,
         favicon_url = KORDI_FAVICON_URL,
+        site_css = crate::site_page::SITE_CSS,
+        header = crate::site_page::site_header(&homepage),
+        footer = crate::site_page::site_footer(&homepage),
     )
 }
 

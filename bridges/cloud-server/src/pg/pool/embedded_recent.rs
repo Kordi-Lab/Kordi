@@ -446,4 +446,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0173_identity_matching_email.sql"
     ),
     migration!(174, "usage pauses", "0174_usage_pauses.sql"),
+    migration!(
+        178,
+        "pending group invitations",
+        "0178_pending_group_invitations.sql"
+    ),
 ];
