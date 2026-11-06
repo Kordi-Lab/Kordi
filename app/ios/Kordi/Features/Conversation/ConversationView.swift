@@ -323,7 +323,6 @@ struct ConversationView: View {
     @State private var documentReader: DocumentReaderRequest?
     @State private var messageShareItem: SharedMessageItem?
     @State private var reportTarget: ReportTarget?
-    @State private var reportBlock: SafetyAccount?
     @State private var showSessionDetails = false
     @State private var authorProfileConversation: ConversationSummary?
     @State private var selectedBackgroundSession: BackgroundAgentSession?
@@ -1387,7 +1386,7 @@ struct ConversationView: View {
                 completedForwardDestination = destination
             }
         }
-        .safetyActions(block: $reportBlock, report: $reportTarget)
+        .conversationSafety(report: $reportTarget)
         .sheet(item: $detailsMessage) { message in
             MessageDetailsSheet(
                 message: message,
@@ -1656,6 +1655,7 @@ struct ConversationView: View {
                     onConfirmPin: { shared in pinMessage(message, shared: shared) }
                 )
                 .equatable()
+                .blockedAuthorCollapse(message, in: conversation)
                 .background(alignment: .bottomTrailing) {
                     if messageLayout == .chat, presentation.showsAvatar, let groupID = presentation.outgoingAvatarGroupID {
                         ConversationOutgoingAvatarAnchorView(
@@ -3562,7 +3562,7 @@ enum ConversationTimestampFormatter {
     }
 }
 
-private struct SystemNoticeRow: View {
+struct SystemNoticeRow: View {
     let text: String
 
     var body: some View {

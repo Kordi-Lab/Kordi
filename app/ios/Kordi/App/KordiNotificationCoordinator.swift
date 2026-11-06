@@ -307,6 +307,7 @@ final class KordiNotificationCoordinator: ObservableObject {
         guard payload.accountID == model?.account?.accountId else {
             return []
         }
+        if model?.isMessageNotificationFromBlockedAccount(payload) == true { return [] }
         if model?.isMessageNotificationRead(payload) == true {
             scheduleNotificationCleanup()
             synchronizeBadge()

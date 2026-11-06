@@ -126,6 +126,12 @@ extension AppModel {
         ])
     }
 
+    /// Blocks the sample group member Ethan Park for `--preview-blocked-message`.
+    func seedPreviewBlockedMessageAuthor() {
+        guard isPreviewMode, !isBlocked("acct_ethan") else { return }
+        rememberBlocked(CloudBlockedAccount(accountId: "acct_ethan", kordiId: "418203576", displayName: "Ethan Park"))
+    }
+
     /// The server's own message, which says why a safety action failed.
     func safetyMessage(_ error: Error, fallback: String) -> String {
         if let error = error as? CloudAPIError {
