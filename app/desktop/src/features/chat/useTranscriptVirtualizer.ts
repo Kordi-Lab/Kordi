@@ -42,8 +42,13 @@ export function useTranscriptVirtualizerOptions<Item>({
   // Heights remembered from earlier visits seed this entry's estimates. Heights measured
   // during this entry are already in the virtualizer's own cache and keep its anchoring rules.
   const [entry, setEntry] = useState(() => ({ sessionKey, startedAt: transcriptRowSizeClock() }));
-  if (entry.sessionKey !== sessionKey) setEntry({ sessionKey, startedAt: transcriptRowSizeClock() });
-  const entryStartedAt = entry.sessionKey === sessionKey ? entry.startedAt : Number.NEGATIVE_INFINITY;
+  let entryStartedAt = entry.startedAt;
+  if (entry.sessionKey !== sessionKey) {
+    // The virtualizer computes row positions in this pass and does not recompute them
+    // when only estimateSize changes, so this pass must already seed remembered heights.
+    entryStartedAt = transcriptRowSizeClock();
+    setEntry({ sessionKey, startedAt: entryStartedAt });
+  }
 
   const itemKeyAt = useCallback((index: number) => {
     const item = items[index];
