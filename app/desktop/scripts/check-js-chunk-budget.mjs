@@ -54,9 +54,10 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // The dense popover help styles remove 5.5 kB, so it moves to 5.809 MB.
 // Folding long groups of background session rows adds 2.9 kB.
 // Running reply Stop on the status line with Fork on hover removes 1 kB, so it moves to 5.811 MB.
+// Remembered turn and tool disclosure state and the folded tool activity rows add 2.8 kB.
 // Memory import from chosen files (the browser picker, its limits and the server
-// extraction call) and Import in the Memory tab add 5 kB, so it moves to 5.816 MB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_816_000;
+// extraction call) and Import in the Memory tab add 3.4 kB, so it moves to 5.817 MB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_817_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.
@@ -64,7 +65,10 @@ const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIS
 // The tidied empty Memory tab adds under 1 kB to the browser target.
 // The dense menu and the dense Start group picker add the same 7 kB.
 // Reconciling a requester's ended agent runs and the cloud hand-back add 3 kB there too, so it moves to 5.826 MB.
-const MAX_WEB_APP_DIST_BYTES = 5_826_000;
+// The second launch fixes batch adds 8.3 kB there, as on the desktop target, before the items below.
+// Remembered turn and tool disclosure state and the folded tool activity rows add 2.8 kB there.
+// Memory import from chosen files adds 3.4 kB there, so it moves to 5.83 MB.
+const MAX_WEB_APP_DIST_BYTES = 5_830_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;
