@@ -23,7 +23,7 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
   await expect(page.getByRole('button', { name: 'Video chat', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('group-management-members-desktop.png') });
   await page.locator('.app-group-profile-actions').getByRole('button', { name: 'Add people' }).click();
-  await page.getByRole('tab', { name: 'Share link' }).click();
+  await page.getByRole('tab', { name: 'Invite with a link' }).click();
   await page.getByRole('button', { name: 'Create invitation link' }).click();
   await expect(page.getByLabel('Group invitation link')).toHaveValue(`https://kordi.ai/g/${token}`);
   await page.screenshot({ path: testInfo.outputPath('group-invitation-admin-desktop.png') });
@@ -33,7 +33,7 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
 
   await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=active');
   await page.locator('.app-group-profile-actions').getByRole('button', { name: 'Add people' }).click();
-  await page.getByRole('tab', { name: 'Share link' }).click();
+  await page.getByRole('tab', { name: 'Invite with a link' }).click();
   await expect(page.getByRole('button', { name: 'Create new share link' })).toBeVisible();
   await expect(page.getByText('Revoke it before creating another link')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('group-invitation-active-narrow.png') });
@@ -42,7 +42,7 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
 
   await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=nonadmin');
   await page.locator('.app-group-profile-actions').getByRole('button', { name: 'Add people' }).click();
-  await page.getByRole('tab', { name: 'Share link' }).click();
+  await page.getByRole('tab', { name: 'Invite with a link' }).click();
   await expect(page.getByText('Only group admins can create invitation links')).toBeVisible();
   await expect(page.getByText('Ask Maya Chen to share a link or make you an admin.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create invitation link' })).toHaveCount(0);

@@ -422,6 +422,7 @@ export function WorkspaceSidebar({
         onStartPerson={onStartChatWithPerson}
         onStartAgent={onStartChatWithAgent}
         onCreateGroup={onCreateChatGroup}
+        onCreateGroupInvitation={cloudAccount ? onCreateGroupInvite : undefined}
         onAddContact={onAddContactByNodeId}
         onLookupContact={onLookupContact}
         addContactPlaceholder={addContactPlaceholder}

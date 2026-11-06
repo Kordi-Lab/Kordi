@@ -81,7 +81,7 @@ test('compact transient typography uses shared rem-based action and identity rol
 
 test('representative popup families opt into the shared transient contract', () => {
   const surfaceInventory: Array<[string, RegExp]> = [
-    ['pages/ChatCreateDialog.tsx', /app-transient-surface app-frosted-popover app-chat-create-popover/],
+    ['pages/chatCreatePopover.tsx', /app-transient-surface app-frosted-popover app-chat-create-popover/],
     ['components/ui/dialog.tsx', /app-transient-surface app-frosted-popover app-dialog-popover/],
     ['pages/SessionActionOverlays.tsx', /app-transient-surface app-modal-panel/],
     ['kordi-app/components/modelEffortPicker.tsx', /app-transient-surface app-transient-scroll app-compact-model-menu/],

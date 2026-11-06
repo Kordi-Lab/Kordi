@@ -50,7 +50,7 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
     catch { setError('Could not open this destination. Try again.'); }
     finally { setBusy(false); }
   };
-  return createPortal(<AppDialog titleId={titleId} onDismiss={onDismiss} presentation="popover" anchorRect={anchor} className={`help-menu ${view !== 'home' ? 'help-menu-detail' : ''}`} backdropClassName="help-menu-backdrop">
+  return createPortal(<AppDialog titleId={titleId} onDismiss={onDismiss} presentation="popover" anchorRect={anchor} className={`help-menu app-dense-menu ${view !== 'home' ? 'help-menu-detail' : ''}`} backdropClassName="help-menu-backdrop">
     <div onKeyDown={(event) => {
       if (event.key !== 'Tab') return;
       const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), summary, a[href], iframe')).filter((element) => element.getClientRects().length > 0);
@@ -60,22 +60,22 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
       const destination = index < 0 ? (event.shiftKey ? controls.length - 1 : 0) : (index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length;
       controls[destination]?.focus();
     }}>
-    <header className="help-menu-header">
+    <header className="help-menu-header app-dense-menu-header">
       {view !== 'home' ? <button className="help-icon-button" aria-label="Back to help menu" onClick={() => setView('home')}><ArrowLeft size={16} /></button> : <CircleHelp size={16} aria-hidden="true" />}
       <AppDialogTitle id={titleId}>{view === 'permissions' ? 'Permissions & access' : view === 'updates' ? 'What’s new' : view === 'licenses' ? 'Open-source licenses' : 'Help'}</AppDialogTitle>
       <button className="help-icon-button" onClick={onDismiss} aria-label="Close help"><X size={16} /></button>
     </header>
-    {view === 'home' ? <div className="help-menu-items">
+    {view === 'home' ? <div className="help-menu-items app-dense-menu-items">
       <button onClick={() => onStartTour('workspace')}><Play size={16} /><span>{progress.completed ? 'Replay tour' : progress.step > 0 ? 'Resume tour' : 'Show me around'}</span><ArrowRight size={14} /></button>
-      <div className="help-menu-divider" />
+      <div className="app-dense-menu-divider" />
       <p className="help-menu-section-label">Jump to a tour section</p>
       <button disabled={(capabilities.capabilities?.commonGroundVersion ?? 0) < 1} onClick={() => onStartTour('grounding')}><span>Meet people with Grounding</span><ArrowRight size={14} /></button>
       <button disabled={(capabilities.capabilities?.commonGroundVersion ?? 0) < 1} onClick={() => onStartTour('cards')}><span>Create and share cards</span><ArrowRight size={14} /></button>
       {(capabilities.capabilities?.commonGroundVersion ?? 0) < 1 ? <p className="help-menu-note">{capabilities.status === 'loading' ? 'Checking Grounding availability…' : capabilities.status === 'failed' ? 'Could not check Grounding availability. Close help and try again.' : 'Grounding and cards are not enabled in this workspace yet.'}</p> : null}
       {helpTourAvailable('imports', isBrowserAppRuntime()) ? <button disabled={!settingsAvailable} onClick={() => onStartTour('imports')}><span>Import memory</span><ArrowRight size={14} /></button> : null}
-      <div className="help-menu-divider" />
+      <div className="app-dense-menu-divider" />
       <button onClick={() => setView('permissions')}><ShieldCheck size={16} /><span>Permissions & access</span><ArrowRight size={14} /></button>
-      <div className="help-menu-divider" />
+      <div className="app-dense-menu-divider" />
       {onMacDownload ? <button onClick={() => { onMacDownload(); onDismiss(); }}><Download size={16} /><span>Download for Mac</span></button> : null}
       <button onClick={() => setView('updates')}><span>What’s new</span></button>
       <button onClick={() => setView('licenses')}><span>Open-source licenses</span><ArrowRight size={14} /></button>

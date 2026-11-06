@@ -66,8 +66,11 @@ export function useKordiGroupCreation({
     avatarDataUrl?: string | null;
     name?: string | null;
     contactIds: string[];
-  }) => {
-    if (!isNativeShell) return;
+    inviteLink?: boolean;
+  }): Promise<string | undefined> => {
+    if (!isNativeShell) return undefined;
+    const minimumPeople = request.inviteLink ? 1 : 2;
+    const tooFewPeople = request.inviteLink ? 'Select a person to start a group.' : 'Select at least 2 people to start a group.';
     setDesktopError(null);
     const creatorIdentityId =
       canonicalState?.profile.humanIdentityId?.trim();
@@ -92,9 +95,7 @@ export function useKordiGroupCreation({
     const contacts = uniqueStrings(request.contactIds)
       .map((contactId) => contactById.get(contactId))
       .filter((contact): contact is Contact => Boolean(contact));
-    if (contacts.length < 2) {
-      throw new Error('Select at least 2 people to start a group.');
-    }
+    if (contacts.length < minimumPeople) throw new Error(tooFewPeople);
     const blockedCollaborationContacts = contacts.filter(
       (contact) => (
         contact.sourceParticipantId
@@ -122,9 +123,7 @@ export function useKordiGroupCreation({
     }
 
     const participantIdentityIds = uniqueStrings(identityIds);
-    if (participantIdentityIds.length < 2) {
-      throw new Error('Select at least 2 people to start a group.');
-    }
+    if (participantIdentityIds.length < minimumPeople) throw new Error(tooFewPeople);
     const selectedNames = contacts.map((contact) => contact.name);
     const groupDisplayName =
       request.name?.trim() || groupDefaultName(selectedNames);
@@ -186,6 +185,7 @@ export function useKordiGroupCreation({
     }
 
     selectNewSession(sessionId);
+    return sessionId;
   }, [
     account,
     canonicalState,

@@ -790,7 +790,7 @@ export function GroupDetailsDialog({
                         setActionError(null);
                       }}
                     >
-                      Share link
+                      Invite with a link
                     </button>
                   </div>
 
