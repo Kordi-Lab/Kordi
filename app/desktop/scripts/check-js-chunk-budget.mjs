@@ -58,7 +58,9 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Memory import from chosen files (the browser picker, its limits and the server
 // extraction call) and Import in the Memory tab add 3.4 kB.
 // The community-profile build used by the browser tests is 0.6 kB larger, so it moves to 5.818 MB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_818_000;
+// The separate Agent Chats entry and page for the personal agent add 7.4 kB.
+// Slower idle polling, the base64 cache and self-agent reconcile backoff add 0.7 kB, so it moves to 5.826 MB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_826_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.
@@ -70,7 +72,9 @@ const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIS
 // Remembered turn and tool disclosure state and the folded tool activity rows add 2.8 kB there.
 // Memory import from chosen files adds 3.4 kB there.
 // The cloud-edition build used by the browser tests is 0.7 kB larger, so it moves to 5.831 MB.
-const MAX_WEB_APP_DIST_BYTES = 5_831_000;
+// The separate Agent Chats entry and page for the personal agent add 7.4 kB there.
+// Idle polling, the base64 cache and idempotent browser canonical writes add 1.5 kB there, so it moves to 5.84 MB.
+const MAX_WEB_APP_DIST_BYTES = 5_840_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;
