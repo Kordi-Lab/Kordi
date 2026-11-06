@@ -43,7 +43,8 @@ const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIS
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.
 // Removing deleted and blocked contacts at once and Unblock on profiles add 3 kB there.
-const MAX_WEB_APP_DIST_BYTES = 5_815_000;
+// The tidied empty Memory tab adds under 1 kB to the browser target.
+const MAX_WEB_APP_DIST_BYTES = 5_816_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;
