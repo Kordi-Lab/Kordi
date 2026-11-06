@@ -153,21 +153,24 @@ export function useCloudPresence(account: CloudAccount | null) {
   }, [client, store]);
 
   const { snapshot, ready } = view;
-  return {
+  const statusForAccount = useCallback((accountId?: string | null) => presenceStatusForAccount(snapshot, accountId), [snapshot]);
+  const presenceForAccount = useCallback((accountId?: string | null): CloudPresenceAccount | null | undefined => {
+    if (!ready) return undefined;
+    const id = accountId?.trim();
+    return id ? snapshot[id] ?? null : null;
+  }, [ready, snapshot]);
+  // Consumers memoize on this object, so it must change only with presence.
+  return useMemo(() => ({
     snapshot,
     /** False until the first contact snapshot arrives: presence is unknown, so show none. */
     ready,
-    statusForAccount: useCallback((accountId?: string | null) => presenceStatusForAccount(snapshot, accountId), [snapshot]),
+    statusForAccount,
     /**
      * An account's presence: `undefined` while it is still unknown, `null` when the snapshot
      * has no entry for it, or its record.
      */
-    presenceForAccount: useCallback((accountId?: string | null): CloudPresenceAccount | null | undefined => {
-      if (!ready) return undefined;
-      const id = accountId?.trim();
-      return id ? snapshot[id] ?? null : null;
-    }, [ready, snapshot]),
-  };
+    presenceForAccount,
+  }), [presenceForAccount, ready, snapshot, statusForAccount]);
 }
 
 export function useContactPresenceLabel(

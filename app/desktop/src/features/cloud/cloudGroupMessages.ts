@@ -1,4 +1,5 @@
 import { cloudGroupMemberJoins, cloudGroupMemberLeaves } from './cloudGroupMembershipCodec';
+import { decodeBase64UrlUtf8, encodeBase64UrlUtf8 } from './cloudBase64Url';
 import type {
   Contact,
   Conversation,
@@ -425,20 +426,6 @@ export function cloudGroupMemberJoinNoticeRequests(input: {
   });
 }
 
-function encodeBase64Url(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = '';
-  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function decodeBase64Url(value: string): string {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
-  const binary = atob(padded);
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
-
 export function encodeCloudGroupControl(input: CloudGroupControlEnvelope): string {
   const memberJoins = input.kind === 'group-invite' ? cloudGroupMemberJoins(input.memberJoins) : [];
   const memberLeaves = input.kind === 'group-update' ? cloudGroupMemberLeaves(input.memberLeaves) : [];
@@ -462,13 +449,13 @@ export function encodeCloudGroupControl(input: CloudGroupControlEnvelope): strin
     ...(memberJoins.length > 0 ? { memberJoins } : {}),
     ...(memberLeaves.length > 0 ? { memberLeaves } : {}),
   };
-  return `${CLOUD_GROUP_PREFIX}${encodeBase64Url(JSON.stringify(envelope))}`;
+  return `${CLOUD_GROUP_PREFIX}${encodeBase64UrlUtf8(JSON.stringify(envelope))}`;
 }
 
 export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope | null {
   if (!body.startsWith(CLOUD_GROUP_PREFIX)) return null;
   try {
-    const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_GROUP_PREFIX.length))) as Partial<CloudGroupControlEnvelope>;
+    const parsed = JSON.parse(decodeBase64UrlUtf8(body.slice(CLOUD_GROUP_PREFIX.length))) as Partial<CloudGroupControlEnvelope>;
     if (!['group-invite', 'group-message', 'group-update', 'group-title-update', 'session-title-update', 'group-avatar-update'].includes(parsed.kind ?? '')) return null;
     const kind = parsed.kind as CloudGroupControlKind;
     if (typeof parsed.groupId !== 'string' || !parsed.groupId.trim()) return null;

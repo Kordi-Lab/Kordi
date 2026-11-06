@@ -44,6 +44,18 @@ export function releaseCloudSessionTitleUpload(
   }
 }
 
+/** A rejected title upload is retried after this delay, never on the next render. */
+export const CLOUD_SESSION_TITLE_RETRY_MS = 30_000;
+
+export function releaseCloudSessionTitleUploadLater(
+  reservations: Map<string, string>,
+  sessionId: string,
+  signature: string,
+  delayMs = CLOUD_SESSION_TITLE_RETRY_MS,
+): void {
+  setTimeout(() => releaseCloudSessionTitleUpload(reservations, sessionId, signature), delayMs);
+}
+
 export function useCloudSelfAgentMetadataSync({
   account,
   canonicalState,
@@ -280,7 +292,7 @@ export function useCloudSelfAgentMetadataSync({
         if (result.status === 'fulfilled') continue;
         const failedUpload = uploads[index];
         if (!failedUpload) continue;
-        releaseCloudSessionTitleUpload(
+        releaseCloudSessionTitleUploadLater(
           titleUploads,
           failedUpload.sessionId,
           failedUpload.signature,
