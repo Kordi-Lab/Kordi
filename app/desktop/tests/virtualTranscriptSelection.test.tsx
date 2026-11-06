@@ -121,6 +121,50 @@ test('transcript only exposes its focus ring after keyboard input', async () => 
   assert.equal(viewport.dataset.transcriptKeyboardFocus, undefined);
 });
 
+test('shortcuts and typing after a click do not expose the transcript focus ring', async () => {
+  const view = await render(transcript({
+    items: [],
+    sessionKey: 'focus-shortcuts',
+  }));
+  const viewport = view.host.querySelector<HTMLElement>('[data-virtual-transcript-scroll]');
+  assert.ok(viewport);
+
+  await act(async () => {
+    viewport.dispatchEvent(new window.MouseEvent('pointerdown', {
+      button: 0,
+      bubbles: true,
+      cancelable: true,
+    }));
+  });
+  assert.equal(document.activeElement, viewport);
+
+  for (const init of [
+    { key: 'Meta', metaKey: true },
+    { key: 'n', metaKey: true },
+    { key: 'a', metaKey: true },
+    { key: 'Shift', shiftKey: true },
+    { key: 'h' },
+    { key: 'Enter' },
+  ]) {
+    await act(async () => {
+      viewport.dispatchEvent(new window.KeyboardEvent('keydown', {
+        ...init,
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+    assert.equal(viewport.dataset.transcriptKeyboardFocus, undefined, init.key);
+  }
+
+  await act(async () => {
+    viewport.dispatchEvent(new window.KeyboardEvent('keydown', {
+      key: 'PageDown',
+      bubbles: true,
+    }));
+  });
+  assert.equal(viewport.dataset.transcriptKeyboardFocus, 'true');
+});
+
 test('transcript replaces the blue viewport outline with a quiet keyboard focus inset', () => {
   const css = readFileSync(new URL('../src/styles/shell-transcript.css', import.meta.url), 'utf8');
 
