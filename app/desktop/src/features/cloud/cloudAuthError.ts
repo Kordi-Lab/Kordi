@@ -35,6 +35,10 @@ export type CloudAuthErrorCode =
   | 'group_invitation_missing'
   | 'self_group_invitation'
   | 'wrong_group_invitation_account'
+  | 'invitation_unavailable'
+  | 'already_member'
+  | 'group_full'
+  | 'too_many_pending'
   | 'server_error'
   | 'network_error'
   | 'plan_card_revision_conflict'
@@ -117,6 +121,7 @@ const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'invalid_account_id', 'invalid_pubkey', 'self_contact', 'invalid_group_invitation',
   'group_invitation_expired', 'group_invitation_full', 'group_invitation_permission_denied',
   'group_invitation_missing', 'self_group_invitation', 'wrong_group_invitation_account',
+  'invitation_unavailable', 'already_member', 'group_full', 'too_many_pending',
   'server_error', 'plan_card_revision_conflict', 'omp_unavailable',
   'memory_rejected', 'memory_disabled', 'memory_id_conflict', 'memory_not_found',
   'not_a_group_member', 'not_a_participant', 'device_review_required',

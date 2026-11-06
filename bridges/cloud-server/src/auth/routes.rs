@@ -174,7 +174,10 @@ pub fn routes_with_shared_rate_limiter(
             get(get_group_invitation),
         )
         .route("/i/:token", get(app_invitation_landing))
-        .route("/g/:token", get(group_invitation_landing))
+        .route(
+            "/g/:token",
+            get(group_invitation_landing).post(claim_group_invitation_from_page),
+        )
         .route("/v1/cloud/auth/oauth/:provider/start", get(oauth_start))
         .route(
             "/v1/cloud/auth/oauth/:provider/callback",
@@ -386,6 +389,7 @@ pub fn routes_with_shared_rate_limiter(
     let account = crate::organizations::admission::account_routes()
         .merge(account_security_handlers::routes())
         .merge(crate::organizations::token_exchange::routes())
+        .merge(pending_routes())
         .layer(Extension(app_clients))
         .layer(Extension(rate_limiter.clone()))
         .layer(Extension(hasher_config))

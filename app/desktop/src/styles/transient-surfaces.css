@@ -195,6 +195,13 @@
   outline-offset: 2px;
 }
 
+/* The group invitation prompt focuses its primary action when it opens;
+   the ring appears only after the user presses Tab. */
+.app-group-invitation-dialog:focus-visible,
+.app-group-invitation-dialog:not([data-keyboard-nav]) :focus-visible {
+  outline: none;
+}
+
 .app-transient-surface :where(button, input, textarea, select):disabled,
 .app-transient-disabled {
   background: var(--app-transient-disabled-bg);

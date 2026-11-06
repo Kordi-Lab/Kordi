@@ -7,12 +7,24 @@ use sqlx_postgres::PgPool;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use super::delivery::event_is_within_delivery_window;
+use super::session::{check_connection, SessionCheck};
 use super::ticket::consume_ticket;
 use super::{
-    connection_is_active, event_is_within_delivery_window, issue_ticket, legacy_ticket_deadline,
-    ChatSyncWakeHub, ConsumedRealtimeTicket, TicketError, LEGACY_TICKET_SOCKET_LIFETIME,
-    MAX_UNACKNOWLEDGED_EVENTS,
+    issue_ticket, legacy_ticket_deadline, ChatSyncWakeHub, ConsumedRealtimeTicket, TicketError,
+    LEGACY_TICKET_SOCKET_LIFETIME, MAX_UNACKNOWLEDGED_EVENTS,
 };
+
+async fn connection_is_active(
+    pool: &PgPool,
+    ticket: &ConsumedRealtimeTicket,
+    policy: &crate::auth::admission::AdmissionPolicy,
+) -> bool {
+    matches!(
+        check_connection(pool, ticket, policy).await,
+        SessionCheck::Active { .. }
+    )
+}
 
 #[test]
 fn delivery_window_pauses_instead_of_overrunning_unacknowledged_limit() {
@@ -84,12 +96,12 @@ fn wake_hub_routes_large_idle_sets_without_cross_account_work() {
     }
 }
 
-async fn test_pool() -> Option<PgPool> {
+pub(super) async fn test_pool() -> Option<PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
     Some(crate::pg::init_pool(&url).await.expect("init test pool"))
 }
 
-async fn account_with_device(pool: &PgPool) -> (String, String) {
+pub(super) async fn account_with_device(pool: &PgPool) -> (String, String) {
     let suffix = Uuid::new_v4().simple().to_string();
     let account_id = format!("acct_realtime_{suffix}");
     let device_id = format!("dev_realtime_{suffix}");

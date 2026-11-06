@@ -28,10 +28,7 @@ import {
   isSelectAllShortcut,
 } from '@/features/contentSelection';
 import { cloudAuthCapabilityDiscoveryEnabled } from '@/features/cloud/cloudAuthReleasePolicy';
-import {
-  dispatchCloudGroupInvitationAccepted,
-  usePendingGroupInvitation,
-} from '@/features/cloud/groupInvitationDeepLink';
+import { usePendingGroupInvitation } from '@/features/cloud/groupInvitationDeepLink';
 import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/sessionGate';
 import { isTauriRuntime, supportsFrostedGate, type CloudLoginMode } from '@/features/cloud/loginWindow';
 import { CloudGateShell } from '@/features/cloud/CloudGateShell';
@@ -43,7 +40,7 @@ import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/us
 import { WhatsNewLaunchWindow } from '@/features/updates/useWhatsNewWindow';
 import { CloudSignInGate } from '@/kordi-app/cloud/CloudSignInGate';
 import type { Conversation } from '@/kordi-app/types';
-import { GroupInvitationDialog } from '@/pages/GroupInvitationDialog';
+import { GroupInvitationPromptHost } from '@/pages/GroupInvitationPromptHost';
 import { DocumentShareLinkHost } from '@/features/documents/DocumentShareLinkDialog';
 
 export { CloudStartingScreen } from '@/features/cloud/CloudStartingScreen';
@@ -217,17 +214,11 @@ function KordiAppShell({
       </CloudSafetyActionsProvider>
       {windowReady ? <WhatsNewLaunchWindow /> : null}
       {windowReady ? <DocumentShareLinkHost account={cloudSession?.account ?? null} /> : null}
-      {windowReady && pendingGroupInvitation.token ? (
-        <GroupInvitationDialog
-          key={pendingGroupInvitation.token}
-          invitationToken={pendingGroupInvitation.token}
-          onDismiss={pendingGroupInvitation.dismiss}
-          onJoined={(result) => {
-            dispatchCloudGroupInvitationAccepted(result);
-            pendingGroupInvitation.dismiss();
-          }}
-        />
-      ) : null}
+      <GroupInvitationPromptHost
+        key={cloudSession?.account?.accountId ?? 'signed-in'}
+        deepLink={pendingGroupInvitation}
+        visible={windowReady}
+      />
     </div>
   );
 }

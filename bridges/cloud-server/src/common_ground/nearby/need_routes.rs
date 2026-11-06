@@ -18,6 +18,7 @@ use uuid::Uuid;
 use super::needs::{from_row, merge, Draft, Need, NeedBody, NeedRow, COLUMNS, MAX_NEEDS};
 use super::{mark_dirty, settings, updated};
 use crate::common_ground::{db_error, err};
+use crate::organizations::requests::RequestOrganization;
 use crate::{auth::routes::CloudSession, server::ServerState};
 
 fn invalid(message: &str) -> Response {
@@ -73,10 +74,12 @@ async fn finish(mut tx: Transaction<'_, Postgres>, account: &str) -> sqlx_core::
     tx.commit().await
 }
 
-/// `POST /v1/cloud/common-ground/nearby/needs`: 201 with the request.
+/// `POST /v1/cloud/common-ground/nearby/needs`: 201 with the request. The
+/// request keeps the organization it was created in for its checks.
 pub(super) async fn create(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    organization: Option<Extension<RequestOrganization>>,
     Json(body): Json<Value>,
 ) -> Response {
     let Some(body) = parse(body) else {
@@ -100,7 +103,10 @@ pub(super) async fn create(
         Ok(draft) => draft,
         Err(message) => return invalid(message),
     };
-    match insert(pool, account, &draft).await {
+    let organization_id = organization
+        .as_ref()
+        .map(|Extension(organization)| organization.organization_id.as_str());
+    match insert(pool, account, &draft, organization_id).await {
         Ok(Some(need)) => (StatusCode::CREATED, Json(need.view(now))).into_response(),
         Ok(None) => err(
             "common_ground_nearby_too_many_needs",
@@ -111,7 +117,12 @@ pub(super) async fn create(
     }
 }
 
-async fn insert(pool: &PgPool, account: &str, draft: &Draft) -> sqlx_core::Result<Option<Need>> {
+async fn insert(
+    pool: &PgPool,
+    account: &str,
+    draft: &Draft,
+    organization_id: Option<&str>,
+) -> sqlx_core::Result<Option<Need>> {
     let mut tx = pool.begin().await?;
     query("SELECT pg_advisory_xact_lock(hashtext('common-ground-nearby-needs:' || $1))")
         .bind(account)
@@ -127,8 +138,8 @@ async fn insert(pool: &PgPool, account: &str, draft: &Draft) -> sqlx_core::Resul
     }
     let sql = format!(
         "INSERT INTO cloud_common_ground_nearby_needs AS need
-             (need_id, account_id, text, range_m, starts_at, ends_at, paused)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {COLUMNS}"
+             (need_id, account_id, text, range_m, starts_at, ends_at, paused, organization_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING {COLUMNS}"
     );
     let row: NeedRow = query_as(&sql)
         .bind(format!("cgn_{}", Uuid::new_v4().simple()))
@@ -138,6 +149,7 @@ async fn insert(pool: &PgPool, account: &str, draft: &Draft) -> sqlx_core::Resul
         .bind(draft.starts_at)
         .bind(draft.ends_at)
         .bind(draft.paused)
+        .bind(organization_id)
         .fetch_one(&mut *tx)
         .await?;
     finish(tx, account).await?;

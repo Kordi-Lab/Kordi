@@ -33,6 +33,66 @@
     inset 0 1px 0 color-mix(in oklab, var(--utility-foreground) 7%, transparent);
 }
 
+/* Provider tray: a 30px neutral tab tucked behind the composer's top edge,
+   inset by roughly the composer radius. It stays unpositioned so the
+   composer paints over the shared 1px seam. */
+.app-composer-provider-tray {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  min-width: 0;
+  margin: 0 22px -1px;
+  padding: 0 5px 0 12px;
+  border: 1px solid var(--app-transient-border);
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  background: var(--app-transient-raised-bg);
+  color: var(--app-transient-muted-text);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.app-composer-provider-tray-icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--app-transient-subtle-text);
+}
+
+.app-composer-provider-tray-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-composer-provider-tray-action {
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 22px;
+  color: var(--app-transient-text);
+  transition: background-color var(--app-motion-fast, 120ms) ease;
+}
+
+.app-composer-provider-tray-action:hover {
+  background: var(--app-transient-hover-bg);
+}
+
+.app-composer-provider-tray-action:focus {
+  outline: none;
+}
+
+.app-composer-provider-tray-action:focus-visible {
+  outline: 2px solid var(--app-transient-focus-ring);
+  outline-offset: 1px;
+}
+
 .app-composer-image-editor::backdrop {
   background: rgb(0 0 0 / 0.7);
   backdrop-filter: blur(6px);

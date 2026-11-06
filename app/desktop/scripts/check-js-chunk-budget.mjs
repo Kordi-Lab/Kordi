@@ -25,9 +25,10 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // The compact frosted sign-in window and the cut-out bird add 3 kB.
 // The launch release (organization selection and request headers, account security, browser
 // sign-in recovery and the split desktop features chunk) adds 19 kB, so it moves to 5.72 MB.
+// Pending group invitations on the account and their join prompt add 2 kB.
 // Blocking and abuse reports (block and report dialogs, the blocked list, the safety client) add 14 kB.
 // Collapsing blocked accounts' group messages and silencing their message alerts add 2 kB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_736_000;
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_738_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;

@@ -82,13 +82,16 @@ impl Evaluated {
 
 /// Reads what is stored for `people` (nearest first) and queues matching
 /// for the nearest unmatched ones and checks for requests without a current
-/// verdict. Queued work is charged to the viewer's budgets.
+/// verdict. Queued work is charged to the viewer's budgets: matching to the
+/// pool of `organization_id` (the request's), each check to the pool of the
+/// organization its request was created in.
 pub(super) async fn evaluate(
     pool: &PgPool,
     service: &crate::system_agent::SystemAgentConfig,
     rate_limiter: &CloudRateLimiter,
     viewer: &Viewer,
     people: &[Present],
+    organization_id: Option<&str>,
 ) -> sqlx_core::Result<Evaluated> {
     let mine = viewer.me.shared_card();
     let cards: Vec<SharedCard> = people.iter().map(Present::shared_card).collect();
@@ -99,9 +102,16 @@ pub(super) async fn evaluate(
         .collect();
     let mut unmatched_status = "matching";
     if !unmatched.is_empty() {
-        let queued =
-            matching::queue_matches(pool, service, rate_limiter, &mine, &unmatched, None, None)
-                .await?;
+        let queued = matching::queue_matches(
+            pool,
+            service,
+            rate_limiter,
+            &mine,
+            &unmatched,
+            None,
+            organization_id,
+        )
+        .await?;
         if matches!(
             queued,
             Queued::Pending(Pending::Failed) | Queued::Limited(_)

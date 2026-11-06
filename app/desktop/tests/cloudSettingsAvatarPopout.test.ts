@@ -318,15 +318,13 @@ test('cloud profile updates publish owner snapshots and viewer-safe invalidation
   assert.match(profileHandlers, /for observer_account_id in observer_account_ids/);
 });
 
-test('auth notice opens the cloud account settings authentication panel', () => {
+test('provider tray opens the cloud account settings authentication panel', () => {
   const chatsPage = readSource('pages/chatsPage.mainWorkspace.tsx');
   const builders = readSource('app/mainContentShellBuilders.ts');
   const types = readSource('app/kordiShellSlots.types.ts');
 
-  assert.match(chatsPage, /actionLabel="Open authentication"/);
-  assert.match(chatsPage, /description=\{auth\.onOpenAccountAuthentication[\s\S]*Connect a provider,[\s\S]*Connect a cloud provider,/);
   assert.match(chatsPage, /auth\.onOpenAccountAuthentication \?\? auth\.onOpenAuthSettings/);
-  assert.match(chatsPage, /onAction=\{openAuthentication\}/);
+  assert.match(chatsPage, /<ProviderConnectTray needsProvider=\{needsProvider\} onConnect=\{openAuthentication\} \/>/);
   assert.match(builders, /onOpenAccountAuthentication: args\.openCloudAccountAuthentication/);
   assert.match(types, /openCloudAccountAuthentication\?: \(\) => void/);
 });

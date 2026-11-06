@@ -52,7 +52,8 @@ html.kordi-native-shell .kordi-app .app-native-titlebar-workspace::after {
   content: none;
 }
 html.kordi-native-shell .kordi-app .app-left-glass {
-  padding: 6px 4px 0;
+  /* Bottom inset matches the list surface, so the help button and avatar end level with its bottom edge. */
+  padding: 6px 4px var(--app-surface-inset);
 }
 html.kordi-native-shell .kordi-app .app-session-panel-clip {
   background: transparent;
