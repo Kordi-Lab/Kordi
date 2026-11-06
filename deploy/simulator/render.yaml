@@ -1,4 +1,4 @@
-# Dedicated simulator control plane. Bind simulator.kordi.cloud to this web
+# Dedicated simulator control plane. Bind simulator.example.test to this web
 # service in Render; the worker connects to that HTTPS origin.
 services:
   - type: web
@@ -10,7 +10,7 @@ services:
     dockerfilePath: ./deploy/simulator/Dockerfile.api
     dockerContext: .
     domains:
-      - simulator.kordi.cloud
+      - simulator.example.test
     healthCheckPath: /ready
     autoDeployTrigger: off
     envVars:
