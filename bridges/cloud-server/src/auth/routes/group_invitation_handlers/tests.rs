@@ -170,3 +170,29 @@ fn derived_group_invite_tokens_are_stable_per_invitation_and_secret() {
     assert_eq!(first.len(), GROUP_INVITE_TOKEN_PREFIX.len() + 43);
     assert!(!first.contains("groupinv_a"));
 }
+
+#[tokio::test]
+async fn link_resets_spend_the_reset_budget_on_top_of_the_link_budget() {
+    use crate::auth::rate_limit::{CloudRateLimitConfig, GROUP_INVITATION_RESET_LIMIT};
+    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::production());
+    for _ in 0..GROUP_INVITATION_RESET_LIMIT.limit {
+        assert_eq!(
+            creation::charge_group_link_budgets(&limiter, "acct_admin", true).await,
+            RateLimitDecision::Allowed
+        );
+    }
+    assert!(matches!(
+        creation::charge_group_link_budgets(&limiter, "acct_admin", true).await,
+        RateLimitDecision::Limited { .. }
+    ));
+    // Showing the current link still works once resets are used up.
+    assert_eq!(
+        creation::charge_group_link_budgets(&limiter, "acct_admin", false).await,
+        RateLimitDecision::Allowed
+    );
+    // Another admin keeps their own reset budget.
+    assert_eq!(
+        creation::charge_group_link_budgets(&limiter, "acct_other", true).await,
+        RateLimitDecision::Allowed
+    );
+}

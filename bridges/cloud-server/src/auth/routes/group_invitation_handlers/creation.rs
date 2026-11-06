@@ -1,4 +1,5 @@
 use super::*;
+use crate::auth::rate_limit::GROUP_INVITATION_RESET_LIMIT;
 
 /// Answers with the group's live link, made the first time an admin asks.
 /// `reset` revokes the group's live links and makes a new one. Repeat requests
@@ -10,9 +11,8 @@ pub(crate) async fn create_group_invitation(
     Extension(session): Extension<CloudSession>,
     Json(req): Json<CreateGroupInvitationRequest>,
 ) -> Response {
-    if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_account_limit(GROUP_INVITATION_CREATE_LIMIT, &session.account_id)
-        .await
+    if let RateLimitDecision::Limited { retry_after } =
+        charge_group_link_budgets(&rate_limiter, &session.account_id, req.reset).await
     {
         return limited_response(retry_after);
     }
@@ -86,6 +86,24 @@ pub(crate) async fn create_group_invitation(
         expires_at,
     })
     .into_response()
+}
+
+/// Every link request spends the account's link budget; a reset, which revokes
+/// the group's live link, also spends the smaller reset budget.
+pub(super) async fn charge_group_link_budgets(
+    rate_limiter: &CloudRateLimiter,
+    account_id: &str,
+    reset: bool,
+) -> RateLimitDecision {
+    let link = rate_limiter
+        .observe_account_limit(GROUP_INVITATION_CREATE_LIMIT, account_id)
+        .await;
+    if !reset || matches!(link, RateLimitDecision::Limited { .. }) {
+        return link;
+    }
+    rate_limiter
+        .observe_account_limit(GROUP_INVITATION_RESET_LIMIT, account_id)
+        .await
 }
 
 fn is_shareable_group_id(group_id: &str) -> bool {
