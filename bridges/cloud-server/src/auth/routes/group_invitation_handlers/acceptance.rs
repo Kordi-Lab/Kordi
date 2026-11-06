@@ -66,7 +66,7 @@ pub(crate) async fn accept_group_invitation(
     .await
     {
         Redemption::Done(response) => response,
-        Redemption::Failed(response) => return response,
+        Redemption::Failed(_, response) => return response,
     };
     if response.status == "already_joined" {
         return Json(response).into_response();
@@ -103,14 +103,15 @@ pub(crate) async fn audit_join(
 }
 
 /// What redeeming an invitation did: joined or already joined, or the error
-/// response to send. Nothing is committed; the caller owns the transaction.
+/// code and response to send. Nothing is committed; the caller owns the
+/// transaction.
 pub(crate) enum Redemption {
     Done(GroupInvitationAcceptanceResponse),
-    Failed(Response),
+    Failed(&'static str, Response),
 }
 
 fn failed(code: &'static str, message: &str, status: StatusCode) -> Redemption {
-    Redemption::Failed(err(code, message, status))
+    Redemption::Failed(code, err(code, message, status))
 }
 
 /// Redeems the invitation with this id for `account_id` without its token,
@@ -240,24 +241,24 @@ async fn redeem_in_transaction(
     )
     .await
     {
-        return Redemption::Failed(match error {
+        return match error {
             crate::chat_sync::store::StoreError::Forbidden
-            | crate::chat_sync::store::StoreError::NotFound => err(
+            | crate::chat_sync::store::StoreError::NotFound => failed(
                 "invalid_group_invitation",
                 "This invitation no longer matches an active group.",
                 StatusCode::CONFLICT,
             ),
-            crate::chat_sync::store::StoreError::InvalidInput(_) => err(
+            crate::chat_sync::store::StoreError::InvalidInput(_) => failed(
                 "group_invitation_full",
                 "This group cannot accept another member.",
                 StatusCode::CONFLICT,
             ),
-            _ => err(
+            _ => failed(
                 "server_error",
                 "Could not join the group. No changes were saved; try again.",
                 StatusCode::INTERNAL_SERVER_ERROR,
             ),
-        });
+        };
     }
 
     if query(

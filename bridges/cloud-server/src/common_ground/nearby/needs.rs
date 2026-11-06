@@ -30,6 +30,10 @@ pub(super) struct Need {
     pub revision: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// The organization the request was created in, while its owner still
+    /// belongs to it; `None` is the personal organization. Its checks use
+    /// that organization's resource pool, whatever is selected later.
+    pub organization_id: Option<String>,
 }
 
 pub(super) type NeedRow = (
@@ -43,11 +47,14 @@ pub(super) type NeedRow = (
     i64,
     DateTime<Utc>,
     DateTime<Utc>,
+    Option<String>,
 );
 
 pub(super) const COLUMNS: &str =
     "need.need_id, need.account_id, need.text, need.range_m, need.starts_at,
-    need.ends_at, need.paused, need.revision, need.created_at, need.updated_at";
+    need.ends_at, need.paused, need.revision, need.created_at, need.updated_at,
+    CASE WHEN cloud_is_organization_member(need.organization_id, need.account_id)
+        THEN need.organization_id END";
 
 pub(super) fn from_row(row: NeedRow) -> Need {
     Need {
@@ -61,6 +68,7 @@ pub(super) fn from_row(row: NeedRow) -> Need {
         revision: row.7,
         created_at: row.8,
         updated_at: row.9,
+        organization_id: row.10,
     }
 }
 

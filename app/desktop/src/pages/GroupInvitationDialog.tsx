@@ -1,109 +1,140 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, LoaderCircle, Users, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LoaderCircle, Users, X } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import {
   CloudAuthError,
   defaultCloudAuthClient,
+  type CloudAuthClient,
   type CloudGroupInvitationAcceptance,
   type CloudGroupInvitationPreview,
+  type CloudPendingGroupInvitation,
 } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
-import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 
-type GroupInvitationDialogProps = {
-  invitationToken: string;
+type InvitationSource =
+  | { invitationToken: string; pendingInvitation?: undefined; onAcceptPending?: undefined }
+  | {
+    invitationToken?: undefined;
+    /** Already claimed on the server, so the dialog needs no resolve call. */
+    pendingInvitation: CloudPendingGroupInvitation;
+    onAcceptPending: (invitation: CloudPendingGroupInvitation) => Promise<CloudGroupInvitationAcceptance>;
+  };
+
+export type GroupInvitationDialogProps = InvitationSource & {
   onDismiss: () => void;
   onJoined: (result: CloudGroupInvitationAcceptance) => void;
+  client?: Pick<CloudAuthClient, 'resolveGroupInvitation' | 'acceptGroupInvitation'>;
+  loadToken?: () => Promise<string | null>;
 };
 
-type InvitationState =
-  | { status: 'loading'; preview: null; message: '' }
-  | { status: 'ready'; preview: CloudGroupInvitationPreview; message: '' }
-  | { status: 'joining'; preview: CloudGroupInvitationPreview; message: '' }
-  | { status: 'joined'; preview: CloudGroupInvitationPreview; message: string }
-  | { status: 'error'; preview: CloudGroupInvitationPreview | null; message: string };
+type InvitationSummary = { groupName: string; inviterName: string; memberCount: number };
 
-function invitationErrorMessage(error: unknown) {
+type InvitationState =
+  | { status: 'loading'; summary: null; message: '' }
+  | { status: 'ready' | 'joining'; summary: InvitationSummary; message: '' }
+  | { status: 'joined'; summary: InvitationSummary; message: string }
+  | { status: 'error'; summary: InvitationSummary | null; message: string; retryable: boolean };
+
+/** Only a failure to reach Kordi can be fixed by trying again. */
+function isRetryableInvitationError(error: unknown) {
+  if (!(error instanceof CloudAuthError)) return false;
+  return error.code === 'network_error' || error.code === 'rate_limited' || error.status === 0 || error.status >= 500;
+}
+
+function errorState(summary: InvitationSummary | null, error: unknown): InvitationState {
+  return {
+    status: 'error',
+    summary,
+    message: groupInvitationErrorMessage(error),
+    retryable: isRetryableInvitationError(error),
+  };
+}
+
+function groupInvitationErrorMessage(error: unknown) {
   if (error instanceof CloudAuthError) {
-    if (error.code === 'group_invitation_expired') {
-      return 'This invitation expired. Ask a group admin for a new link.';
-    }
-    if (error.code === 'group_invitation_full') {
-      return 'This group is full. Ask a group admin to remove someone before trying again.';
-    }
-    if (error.code === 'invalid_group_invitation') {
-      return 'This invitation is invalid or was revoked. Ask a group admin for a new link.';
-    }
-    if (error.code === 'self_group_invitation') {
-      return 'You created this invitation. Open the group from your sidebar instead.';
-    }
-    if (error.code === 'wrong_group_invitation_account') {
-      return 'This account cannot join with this invitation. Sign in with the account you want to add.';
-    }
-    if (error.code === 'network_error') {
-      return 'You appear to be offline. Reconnect and try again.';
+    switch (error.code) {
+      case 'invitation_unavailable':
+      case 'group_invitation_expired':
+        return 'This link expired. Ask the sender for a new one.';
+      case 'group_full':
+      case 'group_invitation_full':
+        return 'This group is full.';
+      case 'invalid_group_invitation':
+        return 'This invitation is invalid or was revoked. Ask the sender for a new link.';
+      case 'self_group_invitation':
+        return 'You created this invitation. Open the group from your sidebar instead.';
+      case 'wrong_group_invitation_account':
+        return 'This account cannot join with this invitation. Sign in with the account you want to add.';
+      case 'network_error':
+        return 'You appear to be offline. Reconnect and try again.';
+      default:
+        break;
     }
   }
   return error instanceof Error ? error.message : 'Kordi could not load this invitation.';
 }
 
-function invitationExpiryLabel(value: string) {
-  const expiresAt = new Date(value);
-  if (!Number.isFinite(expiresAt.getTime())) return 'Invitation expires soon';
-  return `Invitation expires ${new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(expiresAt)}`;
+function summaryFromPreview(preview: CloudGroupInvitationPreview): InvitationSummary {
+  return {
+    groupName: preview.group.name,
+    inviterName: preview.inviter.displayName?.trim() || 'A Kordi user',
+    memberCount: preview.group.memberCount,
+  };
+}
+
+function summaryFromPending(pending: CloudPendingGroupInvitation): InvitationSummary {
+  return {
+    groupName: pending.groupName,
+    inviterName: pending.inviterName?.trim() || 'A Kordi user',
+    memberCount: pending.memberCount,
+  };
+}
+
+async function loadSessionToken() {
+  return (await loadSession())?.token ?? null;
 }
 
 export function GroupInvitationDialog({
   invitationToken,
+  pendingInvitation,
+  onAcceptPending,
   onDismiss,
   onJoined,
+  client: injectedClient,
+  loadToken = loadSessionToken,
 }: GroupInvitationDialogProps) {
-  const client = useMemo(() => defaultCloudAuthClient(), []);
+  const client = useMemo(() => injectedClient ?? defaultCloudAuthClient(), [injectedClient]);
   const dialogRef = useRef<HTMLElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const primaryActionRef = useRef<HTMLButtonElement>(null);
-  const [state, setState] = useState<InvitationState>({
-    status: 'loading',
-    preview: null,
-    message: '',
-  });
+  const [state, setState] = useState<InvitationState>(() => (pendingInvitation
+    ? { status: 'ready', summary: summaryFromPending(pendingInvitation), message: '' }
+    : { status: 'loading', summary: null, message: '' }));
 
-  const retryPreview = async () => {
-    setState({ status: 'loading', preview: null, message: '' });
-    try {
-      const preview = await client.resolveGroupInvitation(invitationToken);
-      setState({ status: 'ready', preview, message: '' });
-    } catch (error) {
-      setState({ status: 'error', preview: null, message: invitationErrorMessage(error) });
-    }
-  };
+  const loadPreview = useCallback((isActive: () => boolean) => {
+    if (!invitationToken) return;
+    void client.resolveGroupInvitation(invitationToken)
+      .then((preview) => {
+        if (isActive()) setState({ status: 'ready', summary: summaryFromPreview(preview), message: '' });
+      })
+      .catch((error: unknown) => {
+        if (isActive()) setState(errorState(null, error));
+      });
+  }, [client, invitationToken]);
 
   useEffect(() => {
     let active = true;
-    void client.resolveGroupInvitation(invitationToken)
-      .then((preview) => {
-        if (active) setState({ status: 'ready', preview, message: '' });
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setState({ status: 'error', preview: null, message: invitationErrorMessage(error) });
-        }
-      });
+    loadPreview(() => active);
     return () => { active = false; };
-  }, [client, invitationToken]);
+  }, [loadPreview]);
 
   useEffect(() => {
     previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Focus rings show only once the user moves focus with the keyboard.
+      if (event.key === 'Tab') dialogRef.current?.setAttribute('data-keyboard-nav', 'true');
       if (event.key === 'Escape') {
         event.preventDefault();
         onDismiss();
@@ -133,7 +164,9 @@ export function GroupInvitationDialog({
         first?.focus();
       }
     };
-    queueMicrotask(() => closeButtonRef.current?.focus());
+    // Both modes open with focus on the primary action (the dialog itself
+    // while the deep-link preview loads), without a visible ring.
+    queueMicrotask(() => (primaryActionRef.current ?? dialogRef.current)?.focus());
     document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true);
@@ -148,34 +181,51 @@ export function GroupInvitationDialog({
     }
   }, [state.status]);
 
+  const retryPreview = () => {
+    setState({ status: 'loading', summary: null, message: '' });
+    loadPreview(() => true);
+  };
+
   const joinGroup = async () => {
-    if (!state.preview || state.status === 'joining') return;
-    const preview = state.preview;
-    setState({ status: 'joining', preview, message: '' });
+    if (!state.summary || state.status === 'joining') return;
+    const summary = state.summary;
+    setState({ status: 'joining', summary, message: '' });
     try {
-      const session = await loadSession();
-      if (!session?.token) throw new Error('Sign in to preview and join this group.');
-      const result = await client.acceptGroupInvitation(session.token, invitationToken);
+      let result: CloudGroupInvitationAcceptance;
+      if (pendingInvitation) {
+        result = await onAcceptPending(pendingInvitation);
+      } else {
+        const token = await loadToken();
+        if (!token) throw new Error('Sign in to join this group.');
+        result = await client.acceptGroupInvitation(token, invitationToken);
+      }
       setState({
         status: 'joined',
-        preview,
+        summary,
         message: result.status === 'already_joined'
           ? `You are already in ${result.groupTitle}.`
           : `You joined ${result.groupTitle}.`,
       });
       onJoined(result);
     } catch (error) {
-      setState({ status: 'error', preview, message: invitationErrorMessage(error) });
+      setState(errorState(summary, error));
     }
   };
 
-  const preview = state.preview;
-  const inviterName = preview?.inviter.displayName?.trim() || 'A Kordi user';
-  const memberCount = preview?.group.memberCount ?? 0;
+  const summary = state.summary;
+  const memberLabel = summary
+    ? `${summary.memberCount} ${summary.memberCount === 1 ? 'member' : 'members'}`
+    : '';
+  const failed = state.status === 'error';
+  const finalError = failed && !state.retryable;
+  const canRetryPreview = failed && state.retryable && !summary;
+  const primaryLabel = state.status === 'joined'
+    ? 'Open group'
+    : finalError ? 'Close' : failed ? 'Try again' : 'Join';
 
   return (
     <div
-      className="app-group-invitation-overlay fixed inset-0 z-[100] grid place-items-center bg-black/35 px-4 backdrop-blur-[2px]"
+      className="app-group-invitation-overlay app-transient-overlay fixed inset-0 z-[100] grid place-items-center px-4"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onDismiss();
@@ -189,125 +239,82 @@ export function GroupInvitationDialog({
         aria-labelledby="group-invitation-title"
         aria-describedby="group-invitation-description"
         aria-busy={state.status === 'loading' || state.status === 'joining'}
-        className="app-transient-surface app-frosted-popover w-full max-w-[390px] rounded-[20px] p-4 shadow-[var(--app-shadow-float)]"
+        onPointerDown={() => dialogRef.current?.removeAttribute('data-keyboard-nav')}
+        className="app-group-invitation-dialog app-transient-surface app-frosted-popover w-full max-w-[340px] rounded-[18px] border p-4 shadow-[var(--app-shadow-float)]"
       >
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="app-group-invitation-group-avatar grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[var(--app-control-bg)] text-[color:var(--utility-foreground)]">
-              <Users className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <h2 id="group-invitation-title" className="truncate text-[15px] font-semibold leading-5">
-                {preview?.group.name || 'Group invitation'}
-              </h2>
-              <p className="mt-0.5 text-[10.5px] text-[color:var(--utility-muted-text)]">
-                {preview ? `${memberCount} ${memberCount === 1 ? 'member' : 'members'}` : 'Loading invitation…'}
-              </p>
-            </div>
-          </div>
+        <div className="flex items-start justify-between gap-3">
+          <span
+            className="app-group-invitation-group-avatar grid h-11 w-11 place-items-center rounded-[14px]"
+            style={{ background: 'var(--app-transient-raised-bg)' }}
+          >
+            <Users className="h-5 w-5" aria-hidden="true" />
+          </span>
           <button
-            ref={closeButtonRef}
             type="button"
-            className="app-button-quiet grid h-8 w-8 shrink-0 place-items-center rounded-[10px] p-0"
+            className="app-button-quiet app-transient-muted grid h-7 w-7 place-items-center rounded-[9px] p-0"
             aria-label="Dismiss group invitation"
             onClick={onDismiss}
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
 
+        <h2 id="group-invitation-title" className="mt-3 truncate text-[15px] font-semibold leading-5">
+          {summary ? `Join ${summary.groupName}?` : 'Group invitation'}
+        </h2>
         {state.status === 'loading' ? (
-          <div className="flex min-h-36 items-center justify-center" aria-live="polite">
+          <div className="flex min-h-16 items-center justify-center" aria-live="polite">
             <LoaderCircle className="h-5 w-5 animate-spin text-[color:var(--utility-muted-text)] motion-reduce:animate-none" />
-            <span className="sr-only">Loading group invitation</span>
+            <span id="group-invitation-description" className="sr-only">Loading group invitation</span>
           </div>
-        ) : preview ? (
-          <>
-            <div className="mt-4 flex items-center gap-2.5 border-y border-[color:var(--app-divider)] py-3">
-              <IdentityAvatar
-                kind="human"
-                seed={`group-inviter:${preview.inviter.kordiId}`}
-                name={inviterName}
-                imageUrl={preview.inviter.avatarUrl}
-                className="h-8 w-8 border border-white/10"
-              />
-              <p id="group-invitation-description" className="min-w-0 text-[11px] leading-[1.5]">
-                <span className="font-semibold">{inviterName}</span>{' '}
-                invited you to join. You will not add this person or any group member as a contact.
-              </p>
-            </div>
+        ) : summary ? (
+          <p id="group-invitation-description" className="app-transient-metadata mt-1 text-[11.5px]">
+            {summary.inviterName} invited you · {memberLabel}
+          </p>
+        ) : null}
 
-            <p className="mt-3 text-[10px] leading-4 text-[color:var(--utility-muted-text)]">
-              {invitationExpiryLabel(preview.expiresAt)}
-            </p>
+        {state.message ? (
+          <p
+            id={summary ? undefined : 'group-invitation-description'}
+            role={failed && !finalError ? 'alert' : 'status'}
+            className={finalError
+              ? 'mt-2 text-[11.5px] leading-4 text-[color:var(--app-transient-text)]'
+              : `mt-3 rounded-[10px] px-3 py-2 text-[11px] leading-4 ${
+                failed
+                  ? 'bg-rose-500/10 text-[color:var(--app-transient-danger-text)]'
+                  : 'bg-emerald-500/10 text-emerald-600'
+              }`}
+          >
+            {state.message}
+          </p>
+        ) : null}
 
-            {state.message ? (
-              <div
-                role={state.status === 'error' ? 'alert' : 'status'}
-                className={`mt-3 rounded-[11px] px-3 py-2 text-[10.5px] leading-4 ${
-                  state.status === 'error'
-                    ? 'bg-rose-500/10 text-[color:var(--app-transient-danger-text)]'
-                    : 'bg-emerald-500/10 text-emerald-600'
-                }`}
-              >
-                {state.message}
-              </div>
-            ) : null}
-
-            <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
-              {state.status === 'joined' ? (
-                <Button
-                  ref={primaryActionRef}
-                  type="button"
-                  className="h-10 rounded-[11px] text-[11px]"
-                  onClick={onDismiss}
-                >
-                  <Check className="mr-1.5 h-3.5 w-3.5" /> Open group
-                </Button>
-              ) : (
-                <Button
-                  ref={primaryActionRef}
-                  type="button"
-                  className="h-10 rounded-[11px] text-[11px]"
-                  disabled={state.status === 'joining'}
-                  onClick={() => { void joinGroup(); }}
-                >
-                  {state.status === 'joining' ? (
-                    <><LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Joining…</>
-                  ) : 'Join group'}
-                </Button>
-              )}
+        {state.status === 'loading' ? null : (
+          <div className={`mt-4 grid gap-2 ${finalError ? 'grid-cols-1' : 'grid-cols-[1fr_auto]'}`}>
+            <button
+              ref={primaryActionRef}
+              type="button"
+              className="app-button-primary inline-flex h-9 items-center justify-center rounded-[10px] text-[12px] font-medium disabled:opacity-70"
+              disabled={state.status === 'joining'}
+              onClick={() => {
+                if (state.status === 'joined' || finalError) onDismiss();
+                else if (canRetryPreview) retryPreview();
+                else void joinGroup();
+              }}
+            >
+              {state.status === 'joining' ? (
+                <><LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> Joining…</>
+              ) : primaryLabel}
+            </button>
+            {finalError ? null : (
               <button
                 type="button"
-                className="app-button-quiet min-h-10 rounded-[11px] px-3 text-[11px]"
+                className="app-button-quiet h-9 rounded-[10px] px-3 text-[12px]"
                 onClick={onDismiss}
               >
                 Not now
               </button>
-            </div>
-          </>
-        ) : (
-          <div className="mt-4">
-            <p id="group-invitation-description" role="alert" className="rounded-[11px] bg-rose-500/10 px-3 py-2.5 text-[11px] leading-4 text-[color:var(--app-transient-danger-text)]">
-              {state.message}
-            </p>
-            <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-              <Button
-                ref={primaryActionRef}
-                type="button"
-                className="h-10 rounded-[11px] text-[11px]"
-                onClick={() => { void retryPreview(); }}
-              >
-                Try again
-              </Button>
-              <button
-                type="button"
-                className="app-button-quiet min-h-10 rounded-[11px] px-3 text-[11px]"
-                onClick={onDismiss}
-              >
-                Dismiss
-              </button>
-            </div>
+            )}
           </div>
         )}
       </section>

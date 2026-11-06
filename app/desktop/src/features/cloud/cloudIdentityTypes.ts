@@ -100,3 +100,22 @@ export type CloudGroupInvitationAcceptance = {
   groupSpaceId: string;
   groupTitle: string;
 };
+
+/** An invitation the signed-in account claimed (on the web or from a link) and has not answered yet. */
+export type CloudPendingGroupInvitation = {
+  id: string;
+  invitationId: string;
+  groupName: string;
+  inviterName: string;
+  memberCount: number;
+  expiresAt: string;
+};
+
+export type CloudGroupInvitationClaim = {
+  pending: CloudPendingGroupInvitation;
+  deepLink: string;
+};
+
+export type CloudPendingGroupInvitationAcceptance = CloudGroupInvitationAcceptance & {
+  conversationId: string;
+};
