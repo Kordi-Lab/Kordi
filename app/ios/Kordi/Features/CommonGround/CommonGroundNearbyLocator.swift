@@ -345,14 +345,15 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
 
     /// Before signing out: deletes the location with the old token, waiting
     /// at most 3 seconds, then forgets everything.
-    func signOut(api: CloudAPIClient, token: String) async {
+    /// A nil token stops locally only, for an account whose tokens are already revoked.
+    func signOut(api: CloudAPIClient, token: String?) async {
         locationGeneration += 1
         let wasSending = state?.enabled == true || state?.lastPostAt != nil
         stopForeground()
         stopBackground()
         state = nil
         lastReply = nil
-        guard wasSending else { return }
+        guard wasSending, let token else { return }
         await withTaskGroup(of: Void.self) { group in
             group.addTask { try? await api.deleteCommonGroundNearbyLocation(token: token) }
             group.addTask { try? await Task.sleep(for: .seconds(3)) }

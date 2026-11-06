@@ -2992,6 +2992,7 @@ struct ConversationView: View {
     private func canSendWithCurrentAuthentication(
         mention: ComposerMentionTarget?
     ) -> Bool {
+        guard model.allowsAIRequest(for: conversation, mention: mention) else { return false }
         // The bound Agent owner's runtime authenticates shared subsession turns.
         if conversation.subsessionId != nil { return true }
         let invokesOwnedAgent = ProviderAuthenticationPolicy.requiresAuthentication(

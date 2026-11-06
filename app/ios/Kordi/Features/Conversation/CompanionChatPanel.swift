@@ -244,6 +244,7 @@ struct CompanionChatPanel: View {
     }
 
     private func createSession(from conversation: ConversationSummary) {
+        guard model.requireAIConsent() else { return }
         selectedConversation = model.makeAgentSession(from: conversation)
     }
 }

@@ -6,6 +6,8 @@ import SwiftUI
 struct MemorySettingsView: View {
     @StateObject private var model: MemorySettingsModel
     @State private var confirmsForget = false
+    /// Turning memory on needs the AI choice; true when it may proceed.
+    private var allowsAI: @MainActor () -> Bool = { true }
 
     init(service: any MemoryService, accountLabel: String?, viewerAccountId: String? = nil,
          cardsEnabled: Bool = false, conversations: [ConversationSummary] = []) {
@@ -27,6 +29,7 @@ struct MemorySettingsView: View {
                 && (CommonGroundAvailability.hasProfiles(capabilities: capabilities) || appModel.isPreviewMode),
             conversations: appModel.conversations
         )
+        allowsAI = { [weak appModel] in appModel?.requireAIConsent() ?? true }
     }
 
     var body: some View {
@@ -83,7 +86,10 @@ struct MemorySettingsView: View {
         }
         Toggle(isOn: Binding(
             get: { settings.memoryEnabled },
-            set: { enabled in Task { await model.setMemoryEnabled(enabled) } }
+            set: { enabled in
+                guard !enabled || allowsAI() else { return }
+                Task { await model.setMemoryEnabled(enabled) }
+            }
         )) {
             CompactSettingsLabel(
                 title: "Let Kordi save memories",
