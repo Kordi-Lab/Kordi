@@ -126,6 +126,9 @@ function CallDevicePreview() {
     setDetachedCallFolded: () => undefined,
     updateDetachedThumbnail: () => undefined,
     dismissError: () => undefined,
+    permissionIssue: null,
+    dismissPermissionIssue: () => undefined,
+    openPermissionSettings: async () => undefined,
   };
 
   return (

@@ -1,6 +1,7 @@
 import type { CloudAccount } from './authClient';
 import type { CloudCall, CloudCallKind } from './cloudCalls';
 import { cloudCallTargetForConversation } from './cloudCalls';
+import type { CallPermissionIssue } from './callMediaPermission';
 import type { Conversation } from '@/kordi-app/types';
 
 export type CloudCallPhase =
@@ -86,4 +87,8 @@ export type CloudCallsController = {
   setDetachedCallFolded: (folded: boolean) => void;
   updateDetachedThumbnail: (dataUrl: string) => void;
   dismissError(): void;
+  /** Set when a call needs microphone or camera access the person has not allowed. */
+  permissionIssue: CallPermissionIssue | null;
+  dismissPermissionIssue(): void;
+  openPermissionSettings(): Promise<void>;
 };

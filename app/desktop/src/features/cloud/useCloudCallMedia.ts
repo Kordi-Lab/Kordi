@@ -21,6 +21,12 @@ import type {
   CurrentCallState,
 } from './cloudCallController';
 import { canSwitchAudioOutput, mediaDeviceFallbackLabel } from './cloudCallState';
+import {
+  isMediaPermissionError,
+  type CallMediaSource,
+  type CallPermissionIssue,
+} from './callMediaPermission';
+import { isNativeDesktopShell } from '@/lib/desktop';
 
 const mediaDeviceKinds: MediaDeviceKind[] = ['audioinput', 'audiooutput', 'videoinput'];
 
@@ -29,6 +35,7 @@ type UseCloudCallMediaInput = {
   currentRef: MutableRefObject<CurrentCallState | null>;
   setPhase: Dispatch<SetStateAction<CloudCallPhase>>;
   setError: Dispatch<SetStateAction<string | null>>;
+  setPermissionIssue?: Dispatch<SetStateAction<CallPermissionIssue | null>>;
 };
 
 export const callUsesAdaptiveVideo = (kind: CloudCall['kind']): boolean => kind === 'meeting';
@@ -38,7 +45,17 @@ export function useCloudCallMedia({
   currentRef,
   setPhase,
   setError,
+  setPermissionIssue,
 }: UseCloudCallMediaInput) {
+  // A device refused mid-call (for example access turned off in System
+  // Settings) asks through the permission dialog instead of an error notice.
+  const reportMediaError = useCallback((caught: unknown, sources: CallMediaSource[]) => {
+    if (setPermissionIssue && isMediaPermissionError(caught)) {
+      setPermissionIssue({ sources, canOpenSettings: isNativeDesktopShell() });
+      return;
+    }
+    setError(callMediaErrorMessage(caught));
+  }, [setError, setPermissionIssue]);
   const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(true);
   const [isCameraEnabled, setIsCameraEnabled] = useState(false);
   const [isAudioPlaybackBlocked, setIsAudioPlaybackBlocked] = useState(false);
@@ -163,7 +180,9 @@ export function useCloudCallMedia({
       setIsAudioPlaybackBlocked(!playing || !room.canPlaybackAudio);
     });
     room.on(RoomEvent.MediaDevicesError, (mediaError) => {
-      if (isCurrentRoom()) setError(callMediaErrorMessage(mediaError));
+      if (!isCurrentRoom()) return;
+      const sources: CallMediaSource[] = currentRef.current?.call.kind === 'voice' ? ['microphone'] : ['microphone', 'camera'];
+      reportMediaError(mediaError, sources);
     });
     try {
       await room.connect(session.media.url, session.media.token);
@@ -204,7 +223,7 @@ export function useCloudCallMedia({
     setPhase(connected ? 'connected' : 'ringing');
     if (connected) setConnectedAtMs(Date.parse(session.call.answeredAt ?? '') || Date.now());
     await rebuildMediaParticipants(room);
-  }, [currentRef, operationRef, rebuildMediaParticipants, refreshMediaDevices, setError, setPhase]);
+  }, [currentRef, operationRef, rebuildMediaParticipants, refreshMediaDevices, reportMediaError, setError, setPhase]);
 
   const toggleMicrophone = useCallback(async () => {
     const room = roomRef.current;
@@ -215,9 +234,9 @@ export function useCloudCallMedia({
       setIsMicrophoneEnabled(enabled);
       await rebuildMediaParticipants(room);
     } catch (caught) {
-      setError(callMediaErrorMessage(caught));
+      reportMediaError(caught, ['microphone']);
     }
-  }, [isMicrophoneEnabled, rebuildMediaParticipants, setError]);
+  }, [isMicrophoneEnabled, rebuildMediaParticipants, reportMediaError]);
 
   const toggleCamera = useCallback(async () => {
     const room = roomRef.current;
@@ -228,9 +247,9 @@ export function useCloudCallMedia({
       setIsCameraEnabled(enabled);
       await rebuildMediaParticipants(room);
     } catch (caught) {
-      setError(callMediaErrorMessage(caught));
+      reportMediaError(caught, ['camera']);
     }
-  }, [currentRef, isCameraEnabled, rebuildMediaParticipants, setError]);
+  }, [currentRef, isCameraEnabled, rebuildMediaParticipants, reportMediaError]);
 
   const resumeAudio = useCallback(async () => {
     const room = roomRef.current;

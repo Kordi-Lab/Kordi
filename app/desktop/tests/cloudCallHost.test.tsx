@@ -190,3 +190,29 @@ test('device and publication failures are not mislabeled as network loss', () =>
     },
   );
 });
+
+test('blocked call devices ask in a dialog instead of an error notice', () => {
+  const controller = {
+    currentCall: null,
+    incomingCall: null,
+    handoffCall: null,
+    phase: 'idle',
+    error: null,
+    mediaParticipants: [],
+    permissionIssue: { sources: ['microphone'], canOpenSettings: true },
+  } as unknown as CloudCallsController;
+
+  const markup = renderToStaticMarkup(createElement(CloudCallHost, { controller }));
+  assert.match(markup, /role="dialog"/);
+  assert.match(markup, /Allow microphone access/);
+  assert.match(markup, /Open System Settings/);
+  assert.match(markup, />Cancel</);
+  assert.doesNotMatch(markup, /app-call-error/);
+
+  const browserMarkup = renderToStaticMarkup(createElement(CloudCallHost, {
+    controller: { ...controller, permissionIssue: { sources: ['microphone', 'camera'], canOpenSettings: false } },
+  }));
+  assert.match(browserMarkup, /Allow microphone and camera access/);
+  assert.match(browserMarkup, /browser&#x27;s site settings/);
+  assert.doesNotMatch(browserMarkup, /Open System Settings/);
+});
