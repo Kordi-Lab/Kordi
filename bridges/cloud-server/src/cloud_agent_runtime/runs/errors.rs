@@ -14,7 +14,7 @@ pub enum RunError {
     #[error("Cloud agent run persistence failed: {0}")]
     Persistence(#[from] sqlx_core::Error),
     /// The owner or requester declined AI models (`crate::ai_consent`).
-    #[error("The agent's owner turned off AI models.")]
+    #[error("The agent's owner hasn't turned on AI models.")]
     AiConsentRequired,
 }
 

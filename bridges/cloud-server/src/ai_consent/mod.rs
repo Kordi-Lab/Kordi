@@ -91,22 +91,41 @@ where
     Ok(load(executor, account_id).await?.status == AiConsentStatus::Declined)
 }
 
-/// The accounts among `account_ids` that declined AI models.
-pub async fn declined_among<'e, E>(
+/// The people among `account_ids` who have not allowed AI models: declined
+/// or still undecided. Background AI leaves them out. Server-managed
+/// accounts are not people and are never listed.
+pub async fn not_allowed_among<'e, E>(
     executor: E,
     account_ids: &[String],
 ) -> sqlx_core::Result<std::collections::HashSet<String>>
 where
     E: sqlx_core::executor::Executor<'e, Database = Postgres>,
 {
+    let people: Vec<String> = account_ids
+        .iter()
+        .filter(|id| !crate::system_account::is_service_account(id))
+        .cloned()
+        .collect();
     let rows: Vec<(String,)> = query_as(
         "SELECT account_id FROM cloud_accounts \
-         WHERE account_id = ANY($1) AND ai_consent_status = 'declined'",
+         WHERE account_id = ANY($1) AND ai_consent_status <> 'allowed'",
     )
-    .bind(account_ids)
+    .bind(&people)
     .fetch_all(executor)
     .await?;
     Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
+/// Whether `account_id` allowed AI models, which background AI needs.
+/// Server-managed accounts always count as allowed.
+pub async fn is_allowed<'e, E>(executor: E, account_id: &str) -> sqlx_core::Result<bool>
+where
+    E: sqlx_core::executor::Executor<'e, Database = Postgres>,
+{
+    if crate::system_account::is_service_account(account_id) {
+        return Ok(true);
+    }
+    Ok(load(executor, account_id).await?.status == AiConsentStatus::Allowed)
 }
 
 /// Whether any of `account_ids` declined AI models.
@@ -133,6 +152,46 @@ pub fn required_response() -> Response {
         })),
     )
         .into_response()
+}
+
+/// The error code when someone asks another person's agent and that person
+/// has not allowed AI models.
+pub const AGENT_OWNER_AI_CONSENT_REQUIRED: &str = "agent_owner_ai_consent_required";
+
+/// The refusal for a run of another person's agent whose owner has not
+/// allowed AI models.
+pub fn owner_required_response() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        Json(json!({
+            "errorCode": AGENT_OWNER_AI_CONSENT_REQUIRED,
+            "message": "This agent's owner hasn't turned on AI models.",
+        })),
+    )
+        .into_response()
+}
+
+/// Refuses a run that `requester` asks of `owner`'s agent: the requester
+/// must not have declined AI, and when they ask someone else's agent, its
+/// owner did not start the work, so the owner must have allowed AI. A
+/// person's own request while undecided runs, since their client asks first.
+pub async fn require_for_run(
+    pool: &PgPool,
+    requester: &str,
+    owner: &str,
+) -> Result<(), Box<Response>> {
+    require(pool, &[requester]).await?;
+    if owner == requester {
+        return require(pool, &[owner]).await;
+    }
+    match is_allowed(pool, owner).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(Box::new(owner_required_response())),
+        Err(error) => {
+            eprintln!("[ai-consent] Could not read AI consent: {error}");
+            Err(Box::new(unavailable()))
+        }
+    }
 }
 
 fn unavailable() -> Response {

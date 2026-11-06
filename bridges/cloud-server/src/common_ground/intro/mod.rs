@@ -61,12 +61,17 @@ async fn introduced(
     room_id: Uuid,
     accounts: &[(String, Role)],
 ) -> sqlx_core::Result<Vec<Introduced>> {
-    // People who declined AI are neither named nor quoted (`crate::ai_consent`).
-    let all: Vec<String> = accounts.iter().map(|(id, _)| id.clone()).collect();
-    let declined = crate::ai_consent::declined_among(pool, &all).await?;
+    // The creator asked for the intro; anyone else is named or quoted only
+    // when they allowed AI (`crate::ai_consent`).
+    let others: Vec<String> = accounts
+        .iter()
+        .filter(|(_, role)| !matches!(role, Role::Creator))
+        .map(|(id, _)| id.clone())
+        .collect();
+    let excluded = crate::ai_consent::not_allowed_among(pool, &others).await?;
     let accounts: Vec<(String, Role)> = accounts
         .iter()
-        .filter(|(id, _)| !declined.contains(id))
+        .filter(|(id, _)| !excluded.contains(id))
         .cloned()
         .collect();
     let ids: Vec<String> = accounts.iter().map(|(id, _)| id.clone()).collect();

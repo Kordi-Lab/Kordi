@@ -17,38 +17,55 @@ pub(crate) const DUE: &str = "retry_after<=now() AND active_run_id IS NULL AND (
         OR dirty_since <= now() - make_interval(mins => $2)))
     OR checked_at <= now() - make_interval(mins => $3))";
 
+/// Background runs need an owner who allowed AI; an undecided owner gets a
+/// digest only by opening it or pressing refresh (`crate::ai_consent`).
+const ALLOWED: &str = "EXISTS (SELECT 1 FROM cloud_accounts consent
+    WHERE consent.account_id = cloud_account_digests.account_id
+      AND consent.ai_consent_status = 'allowed')";
+
+/// Claims up to 20 digests due for a background run and marks them checked.
+pub(super) async fn claim_due(pool: &sqlx_postgres::PgPool) -> sqlx_core::Result<Vec<String>> {
+    let rows: Vec<(String,)> = query_as(&format!(
+        "UPDATE cloud_account_digests SET checked_at=now() WHERE account_id IN (
+            SELECT account_id FROM cloud_account_digests WHERE {DUE} AND {ALLOWED}
+            ORDER BY checked_at LIMIT 20)
+         RETURNING account_id"
+    ))
+    .bind(super::changes::QUIET_WINDOW_MINUTES as i32)
+    .bind(super::changes::MAX_WAIT_MINUTES as i32)
+    .bind(super::changes::SAFETY_CHECK_MINUTES as i32)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
+/// Digests whose marked messages are due their quick check, once a burst
+/// has settled.
+pub(super) async fn urgent_due(pool: &sqlx_postgres::PgPool) -> sqlx_core::Result<Vec<String>> {
+    let rows: Vec<(String,)> = query_as(&format!(
+        "SELECT account_id FROM cloud_account_digests
+         WHERE urgent_since <= now() - make_interval(secs => $1)
+           AND active_run_id IS NULL AND retry_after <= now()
+           AND {ALLOWED}
+         ORDER BY urgent_since LIMIT 20"
+    ))
+    .bind(super::urgent::SETTLE_SECONDS as f64)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
 pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut timer = tokio::time::interval(std::time::Duration::from_secs(5));
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             timer.tick().await;
-            let accounts: Result<Vec<(String,)>, _> = query_as(&format!(
-                "UPDATE cloud_account_digests SET checked_at=now() WHERE account_id IN (
-                    SELECT account_id FROM cloud_account_digests WHERE {DUE}
-                    ORDER BY checked_at LIMIT 20)
-                 RETURNING account_id"
-            ))
-            .bind(super::changes::QUIET_WINDOW_MINUTES as i32)
-            .bind(super::changes::MAX_WAIT_MINUTES as i32)
-            .bind(super::changes::SAFETY_CHECK_MINUTES as i32)
-            .fetch_all(state.db_pool())
-            .await;
+            let accounts = claim_due(state.db_pool()).await;
             // Marked messages that may be urgent get their quick check once
             // a burst has settled.
-            let urgent: Result<Vec<(String,)>, _> = query_as(
-                "SELECT account_id FROM cloud_account_digests
-                 WHERE urgent_since <= now() - make_interval(secs => $1)
-                   AND active_run_id IS NULL AND retry_after <= now()
-                   AND NOT EXISTS (SELECT 1 FROM cloud_accounts consent
-                                   WHERE consent.account_id = cloud_account_digests.account_id
-                                     AND consent.ai_consent_status = 'declined')
-                 ORDER BY urgent_since LIMIT 20",
-            )
-            .bind(super::urgent::SETTLE_SECONDS as f64)
-            .fetch_all(state.db_pool())
-            .await;
-            for (account,) in urgent.unwrap_or_default() {
+            let urgent = urgent_due(state.db_pool()).await;
+            for account in urgent.unwrap_or_default() {
                 if super::urgent::start(state.db_pool(), &account)
                     .await
                     .is_err()
@@ -57,7 +74,7 @@ pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
                 }
             }
             if let Ok(accounts) = accounts {
-                for (account,) in accounts {
+                for account in accounts {
                     if super::store::refresh_as(
                         state.db_pool(),
                         &account,

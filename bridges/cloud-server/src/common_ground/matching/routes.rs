@@ -109,15 +109,23 @@ pub(in crate::common_ground) async fn results(
         .filter(|o| !fresh.contains_key(&o.profile_id))
         .cloned()
         .collect();
-    // Room themes leave out people who declined AI (`crate::ai_consent`).
-    let ids: Vec<String> = cards.iter().map(|c| c.account_id.clone()).collect();
-    let declined = match crate::ai_consent::declined_among(pool, &ids).await {
-        Ok(declined) => declined,
+    // Room themes leave out the viewer if they declined AI and anyone else
+    // who has not allowed it (`crate::ai_consent`).
+    let ids: Vec<String> = others.iter().map(|c| c.account_id.clone()).collect();
+    let mut excluded = match crate::ai_consent::not_allowed_among(pool, &ids).await {
+        Ok(excluded) => excluded,
         Err(error) => return db_error(error),
     };
+    match crate::ai_consent::is_declined(pool, account).await {
+        Ok(true) => {
+            excluded.insert(account.to_string());
+        }
+        Ok(false) => {}
+        Err(error) => return db_error(error),
+    }
     let theme_members: Vec<SharedCard> = cards
         .iter()
-        .filter(|c| !declined.contains(&c.account_id))
+        .filter(|c| !excluded.contains(&c.account_id))
         .take(MAX_THEME_MEMBERS)
         .cloned()
         .collect();

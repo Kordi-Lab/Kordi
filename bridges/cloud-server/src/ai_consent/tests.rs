@@ -213,10 +213,23 @@ async fn unset_and_allowed_accounts_pass_the_gate() {
 
 #[tokio::test]
 #[ignore = "Requires a task-owned disposable PostgreSQL database"]
-async fn another_persons_declined_agent_is_not_run() {
+async fn another_persons_agent_runs_only_when_its_owner_allowed_ai() {
     let harness = harness().await;
-    let requester = harness.account("allowed").await;
-    let owner = harness.account("declined").await;
+    let requester = harness.account("unset").await;
+    for consent in ["declined", "unset"] {
+        let owner = harness.account(consent).await;
+        let (status, body) = harness
+            .send(
+                "POST",
+                "/v1/cloud/agent-runs/claim",
+                &requester.token,
+                Some(claim(&owner.id, &requester.id)),
+            )
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{consent}: {body}");
+        assert_eq!(error_code(&body), "agent_owner_ai_consent_required");
+    }
+    let owner = harness.account("allowed").await;
     let (status, body) = harness
         .send(
             "POST",
@@ -225,8 +238,7 @@ async fn another_persons_declined_agent_is_not_run() {
             Some(claim(&owner.id, &requester.id)),
         )
         .await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
-    assert_eq!(error_code(&body), "ai_consent_required");
+    assert!(!error_code(&body).contains("ai_consent"), "{status} {body}");
 }
 
 #[tokio::test]
@@ -317,15 +329,18 @@ async fn due_scheduled_tasks_of_a_declined_owner_wait() {
             .bind(account.id.clone())
             .bind(status)
     };
-    set_consent("declined")
-        .execute(&harness.pool)
-        .await
-        .unwrap();
     let claim_due = || {
         crate::scheduled_tasks::store::claim_due_scheduled_task_runs(&harness.pool, Utc::now(), 50)
     };
-    let claimed = claim_due().await.unwrap();
-    assert!(claimed.iter().all(|run| run.task_id != task_id));
+    // Firing is background work: an undecided owner waits too.
+    for consent in ["declined", "unset"] {
+        set_consent(consent).execute(&harness.pool).await.unwrap();
+        let claimed = claim_due().await.unwrap();
+        assert!(
+            claimed.iter().all(|run| run.task_id != task_id),
+            "{consent}"
+        );
+    }
 
     set_consent("allowed").execute(&harness.pool).await.unwrap();
     let claimed = claim_due().await.unwrap();

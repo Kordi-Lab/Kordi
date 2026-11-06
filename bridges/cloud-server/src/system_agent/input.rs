@@ -165,7 +165,7 @@ pub(super) async fn build_input(
          FROM cloud_chat_messages message
          JOIN cloud_accounts account ON account.account_id = message.sender_account_id
          WHERE message.conversation_id = $1 AND message.deleted_at IS NULL
-           AND account.ai_consent_status <> 'declined'
+           AND (account.ai_consent_status = 'allowed' OR message.sender_account_id = ANY($4))
            AND message.conversation_sequence > $2
            AND message.message_kind IN ('text', 'voice')
           ORDER BY message.conversation_sequence DESC
@@ -174,6 +174,10 @@ pub(super) async fn build_input(
     .bind(candidate.conversation_id)
     .bind(candidate.context_start_sequence)
     .bind(context::CONTEXT_MESSAGE_FETCH)
+    .bind(vec![
+        crate::system_account::SYSTEM_ACCOUNT_ID,
+        config.account_id.as_str(),
+    ])
     .fetch_all(pool)
     .await?;
     // Whom each message is for, and the ids an agent run may name as its

@@ -1,4 +1,4 @@
-//! The System agent never reads messages from members who declined AI.
+//! The System agent reads only messages from members who allowed AI.
 
 use crate::chat_sync::models::SendMessageRequest;
 use crate::plan_cards::tests::{seed_account, seed_conversation};
@@ -26,7 +26,7 @@ async fn send(pool: &sqlx_postgres::PgPool, sender: &str, chat: Uuid, text: &str
 
 #[tokio::test]
 #[ignore = "requires a task-owned PostgreSQL database in KORDI_DIGEST_TEST_DATABASE_URL"]
-async fn messages_of_members_who_declined_ai_stay_out_of_the_context() {
+async fn only_messages_of_members_who_allowed_ai_reach_the_context() {
     let url =
         std::env::var("KORDI_DIGEST_TEST_DATABASE_URL").expect("isolated test database required");
     let pool = sqlx_postgres::PgPoolOptions::new()
@@ -45,7 +45,11 @@ async fn messages_of_members_who_declined_ai_stay_out_of_the_context() {
     for account in [&system_agent, &allowed, &declined, &undecided] {
         seed_account(&pool, account).await;
     }
-    for (account, status) in [(&allowed, "allowed"), (&declined, "declined")] {
+    for (account, status) in [
+        (&allowed, "allowed"),
+        (&declined, "declined"),
+        (&undecided, "unset"),
+    ] {
         query("UPDATE cloud_accounts SET ai_consent_status = $2 WHERE account_id = $1")
             .bind(account)
             .bind(status)
@@ -110,10 +114,7 @@ async fn messages_of_members_who_declined_ai_stay_out_of_the_context() {
         .iter()
         .filter_map(|message| message["text"].as_str())
         .collect();
-    assert_eq!(
-        texts,
-        ["Lunch on Friday at noon?", "Friday works for me"],
-        "{input}"
-    );
+    // The System agent is background AI: it reads only people who allowed it.
+    assert_eq!(texts, ["Lunch on Friday at noon?"], "{input}");
     assert!(!input.to_string().contains("My private reply"), "{input}");
 }

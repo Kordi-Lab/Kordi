@@ -154,18 +154,16 @@ pub(in crate::common_ground) async fn queue_matches(
     room_id: Option<Uuid>,
     organization_id: Option<&str>,
 ) -> sqlx_core::Result<Queued> {
-    // Cards of people who declined AI never reach the model.
-    let ids: Vec<String> = std::iter::once(viewer)
-        .chain(stale)
-        .map(|card| card.account_id.clone())
-        .collect();
-    let declined = crate::ai_consent::declined_among(pool, &ids).await?;
-    if declined.contains(&viewer.account_id) {
+    // The viewer asked, so only declining stops them; another person's
+    // card reaches the model only when they allowed AI (`crate::ai_consent`).
+    if crate::ai_consent::is_declined(pool, &viewer.account_id).await? {
         return Ok(Queued::Skipped);
     }
+    let ids: Vec<String> = stale.iter().map(|card| card.account_id.clone()).collect();
+    let excluded = crate::ai_consent::not_allowed_among(pool, &ids).await?;
     let stale: Vec<SharedCard> = stale
         .iter()
-        .filter(|card| !declined.contains(&card.account_id))
+        .filter(|card| !excluded.contains(&card.account_id))
         .cloned()
         .collect();
     if stale.is_empty() {
@@ -266,12 +264,17 @@ pub(super) async fn queue_themes(
     members: &[SharedCard],
     organization_id: Option<&str>,
 ) -> sqlx_core::Result<Queued> {
-    // Callers leave out people who declined AI; a card that slipped through
-    // is never sent.
-    let ids: Vec<String> = members.iter().map(|card| card.account_id.clone()).collect();
-    if !crate::ai_consent::declined_among(pool, &ids)
-        .await?
-        .is_empty()
+    // Callers leave out the requester if they declined AI and anyone else
+    // who has not allowed it; a card that slipped through is never sent.
+    let others: Vec<String> = members
+        .iter()
+        .filter(|card| card.account_id != requester)
+        .map(|card| card.account_id.clone())
+        .collect();
+    if crate::ai_consent::is_declined(pool, requester).await?
+        || !crate::ai_consent::not_allowed_among(pool, &others)
+            .await?
+            .is_empty()
     {
         return Ok(Queued::Skipped);
     }
