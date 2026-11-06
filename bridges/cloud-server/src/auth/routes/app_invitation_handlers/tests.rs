@@ -102,6 +102,53 @@ fn invitation_document_can_offer_a_safe_open_app_action() {
 }
 
 #[test]
+fn app_invitation_can_continue_on_the_web_beside_the_download() {
+    let document = invitation_landing_document_with_actions(
+        "Alex <Morgan> invited you to Kordi.",
+        "Join @alex in a shared workspace.",
+        None,
+        Some(BROWSER_APP_PATH),
+        Some(VERSIONED_DMG_URL),
+    );
+    assert!(document
+        .contains(r#"<a class="button button-primary" href="/app/">Continue on the web</a>"#));
+    assert!(document.contains(&format!(
+        r#"<a class="button button-secondary" href="{VERSIONED_DMG_URL}">"#
+    )));
+    assert!(
+        document.contains(r#"class="button button-secondary" href="https://kordi.ai/">Learn more"#)
+    );
+    assert!(document.contains("Alex &lt;Morgan&gt; invited you to Kordi."));
+    assert!(!document.contains("<script"));
+    assert!(!document.contains("<form"));
+    assert!(!document.contains("kordi://"));
+    assert!(
+        !invitation_landing_document_with_open_action("Join Kordi", "Preview", None, None)
+            .contains("Continue on the web")
+    );
+    let response = invitation_landing_html_with_browser_action(
+        StatusCode::OK,
+        "Join Kordi",
+        "Preview",
+        None,
+        Some(BROWSER_APP_PATH),
+        None,
+    );
+    assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
+    assert_eq!(
+        response.headers().get("referrer-policy").unwrap(),
+        "no-referrer"
+    );
+    assert!(response
+        .headers()
+        .get("content-security-policy")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains("frame-ancestors 'none'"));
+}
+
+#[test]
 fn invitation_response_allows_the_same_origin_favicon() {
     let response = invitation_landing_html(
         StatusCode::OK,

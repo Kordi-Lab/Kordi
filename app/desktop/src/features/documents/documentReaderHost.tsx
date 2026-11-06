@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { createContext, useContext } from 'react';
 
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/cloudContactMapping';
@@ -109,7 +110,7 @@ export function documentReaderHostForConversation({
           attachments: [attachment],
         })
       : undefined,
-    addDocument: account && isNativeShell ? sendAttachmentMessage : undefined,
+    addDocument: account && (isNativeShell || isBrowserAppRuntime()) ? sendAttachmentMessage : undefined,
     revealPath: isNativeShell ? (path) => revealDesktopAttachment(path) : undefined,
   };
 }

@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { useKordiAppActions } from '@/app/useKordiAppActions';
 import { useKordiAppFoundation } from '@/app/useKordiAppFoundation';
 import { useKordiAppShellComposition } from '@/app/useKordiAppShellComposition';
@@ -53,7 +54,7 @@ export function useKordiAppModel({
     agents: workspace.directory.displayedAgents,
     canonicalState: foundation.canonical.canonicalSessionState,
     setCanonicalState: foundation.canonical.setCanonicalSessionState,
-    canCreateSessions: foundation.environment.isNativeShell && foundation.canonical.canonicalInitialRefreshSettled,
+    canCreateSessions: (foundation.environment.isNativeShell || isBrowserAppRuntime()) && foundation.canonical.canonicalInitialRefreshSettled,
     reportWarning: reportCloudAgentAvailabilityWarning,
   });
   const actions = useKordiAppActions({ foundation, workspace });

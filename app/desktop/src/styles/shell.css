@@ -112,30 +112,30 @@
 /* Native macOS window vibrancy is deliberately visible through the complete
  * left navigation stack. The workspace remains opaque, while the lighter
  * rail and session tint preserve contrast over the system material. */
-html.kordi-native-shell .kordi-app.app-page-bg,
-html.kordi-native-shell .kordi-app .app-shell,
-html.kordi-native-shell .kordi-app .app-side-shell {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app.app-page-bg,
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-shell,
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-side-shell {
   background: transparent;
 }
 
-html.kordi-native-shell .kordi-app .app-shell,
-html.kordi-native-shell .kordi-app .app-side-shell,
-html.kordi-native-shell .kordi-app .app-session-panel,
-html.kordi-native-shell .kordi-app .app-main-panel {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-shell,
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-side-shell,
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-session-panel,
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-main-panel {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
-html.kordi-native-shell .kordi-app .app-shell {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-shell {
   box-shadow: none;
 }
 
-html.kordi-native-shell .kordi-app .app-workspace-sidebar,
-html.kordi-native-shell .kordi-app .app-main-panel {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-workspace-sidebar,
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-main-panel {
   border-radius: 0;
 }
 
-html.kordi-native-shell .kordi-app .app-left-glass {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-left-glass {
   background: var(--app-nav-rail-glass-bg);
   padding-top: 8px;
   box-shadow: none;
@@ -148,7 +148,7 @@ html.kordi-native-shell .kordi-app .app-left-glass {
  * from the titlebar and the rail (both sides of the corner carry it, so the
  * stroke stays even through the curve); it runs flush to the bottom and to the
  * divider before the conversation. */
-html.kordi-native-shell .kordi-app .app-session-panel {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-session-panel {
   margin: 0;
   padding-top: 0;
   border: 1px solid var(--app-nav-rail-glass-border);
@@ -161,24 +161,24 @@ html.kordi-native-shell .kordi-app .app-session-panel {
   box-shadow: none;
 }
 
-html.kordi-native-shell .kordi-app .app-main-panel {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-main-panel {
   background: var(--app-native-main-bg);
   box-shadow: none;
 }
 
 /* AppKit paints the continuous outer tint, including the titlebar and bottom
  * inset. WebKit adds only the darker rounded list surface above that backing. */
-html.kordi-native-shell .kordi-app[data-native-backdrop="ready"] .app-session-panel {
+html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app[data-native-backdrop="ready"] .app-session-panel {
   background: var(--app-native-session-surface);
 }
 
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  html.kordi-native-shell .kordi-app .app-left-glass {
+  html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-left-glass {
     background: var(--app-nav-rail-glass-fallback);
   }
 
-  html.kordi-native-shell .kordi-app .app-session-panel,
-  html.kordi-native-shell .kordi-app[data-native-backdrop="ready"] .app-session-panel {
+  html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-session-panel,
+  html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app[data-native-backdrop="ready"] .app-session-panel {
     background: var(--app-native-session-fallback);
   }
 }

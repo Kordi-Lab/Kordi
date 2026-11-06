@@ -1,3 +1,6 @@
+import { shouldRefreshCloudContactsForWsSubject } from './cloudContactsEvents';
+export { shouldRefreshCloudContactsForWsSubject } from './cloudContactsEvents';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { Contact, ContactRequest } from '@/kordi-app/types';
@@ -187,16 +190,8 @@ export function removeCloudContactRequestSnapshot(
   };
 }
 
-export function shouldRefreshCloudContactsForWsSubject(subject: string | undefined | null): boolean {
-  return Boolean(
-    subject?.startsWith('kordi.events.contact.request.')
-      || subject?.startsWith('kordi.events.contact.added.') || subject?.startsWith('kordi.events.contact.removed.')
-      || subject?.startsWith('kordi.events.account.profile.updated.'),
-  );
-}
-
-function cloudContactsStoreFor(accountId: string): CloudContactsStore {
-  const existing = cloudContactStores.get(accountId);
+function cloudContactsStoreFor(accountId: string, fresh = false): CloudContactsStore {
+  const existing = fresh ? null : cloudContactStores.get(accountId);
   if (existing) return existing;
   const store: CloudContactsStore = {
     accountId,
@@ -209,7 +204,7 @@ function cloudContactsStoreFor(accountId: string): CloudContactsStore {
     ws: null,
     wsOpening: false,
   };
-  cloudContactStores.set(accountId, store);
+  if (!fresh) cloudContactStores.set(accountId, store);
   return store;
 }
 
@@ -339,7 +334,8 @@ function startCloudContactsStore(store: CloudContactsStore, client: CloudAuthCli
 
 export function useCloudContacts(account: CloudAccount | null): UseCloudContactsResult {
   const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
-  const store = account ? cloudContactsStoreFor(account.accountId) : null;
+  const accountId = account?.accountId;
+  const store = useMemo(() => accountId ? cloudContactsStoreFor(accountId, isBrowserAppRuntime()) : null, [accountId]);
   const [snapshotState, setSnapshotState] = useState<CloudContactsSnapshotState>(() => ({
     accountId: store?.accountId ?? null,
     snapshot: store?.snapshot ?? EMPTY_CLOUD_CONTACTS_SNAPSHOT,

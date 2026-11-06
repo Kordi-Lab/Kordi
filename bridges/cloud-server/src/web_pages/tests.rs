@@ -29,6 +29,9 @@ impl Fixture {
             ("assets/logo.svg", "<svg/>"),
             ("assets/.hidden.css", "hidden"),
             ("notes.sql", "select 1;"),
+            ("app/index.html", "<p>Kordi application</p>"),
+            ("app/assets/app.js", "void 1;"),
+            ("app/licenses/index.html", "<p>Licenses</p>"),
         ] {
             let file = pages.join(path);
             std::fs::create_dir_all(file.parent().unwrap()).unwrap();
@@ -116,6 +119,88 @@ async fn account_routes_serve_clean_url_pages() {
             "nosniff"
         );
     }
+}
+
+#[tokio::test]
+async fn browser_app_routes_restore_the_same_entry_point() {
+    let fixture = Fixture::new();
+    let router = fixture.router();
+    for uri in [
+        "/app",
+        "/app/",
+        "/app/chats",
+        "/app/contacts",
+        "/app/agent-chats",
+        "/app/factory",
+        "/app/digest",
+        "/app/chats/cloud%3Agroup_123?tab=info",
+        "/app/agent-chats/session_123",
+        "/app/chats/",
+        "/app/chats/session~with.dot%2Fid/",
+    ] {
+        let (status, headers, body) = get_body(&router, uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(body, "<p>Kordi application</p>", "{uri}");
+        assert_eq!(header_value(&headers, header::CACHE_CONTROL), "no-cache");
+        assert_eq!(header_value(&headers, header::X_FRAME_OPTIONS), "DENY");
+    }
+    assert_eq!(
+        request(&router, Method::POST, "/app/chats").await.status(),
+        StatusCode::METHOD_NOT_ALLOWED
+    );
+}
+
+#[tokio::test]
+async fn browser_app_fallback_never_masks_missing_assets_or_api_routes() {
+    let fixture = Fixture::new();
+    let router = fixture.router();
+    for uri in [
+        "/app/assets/missing.js",
+        "/app/v1/cloud/auth/me",
+        "/v1/unknown",
+        "/v2/unknown",
+        "/app/.hidden",
+        "/app/../notes.sql",
+        "/app/assets/%2e%2e/notes.sql",
+        "/app/chats/../../notes.sql",
+        "/app//chats",
+        "/app/unknown",
+        "/app/index.html",
+    ] {
+        let (status, _, body) = get_body(&router, uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+        assert!(body.is_empty(), "{uri}");
+    }
+    let (status, headers, body) = get_body(&router, "/app/assets/app.js").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        header_value(&headers, header::CONTENT_TYPE),
+        "text/javascript; charset=utf-8"
+    );
+    assert_eq!(body, "void 1;");
+    let (status, headers, _) = get_body(&router, "/app/licenses/index.html").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        header_value(&headers, header::X_FRAME_OPTIONS),
+        "SAMEORIGIN"
+    );
+    assert!(
+        header_value(&headers, header::CONTENT_SECURITY_POLICY).contains("frame-ancestors 'self'")
+    );
+}
+
+#[tokio::test]
+async fn absent_browser_bundle_does_not_fall_back_to_account_pages() {
+    let fixture = Fixture::new();
+    std::fs::remove_file(fixture.pages.join("app/index.html")).unwrap();
+    assert_eq!(
+        get_body(&fixture.router(), "/app/chats").await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        get_body(&fixture.router(), "/login").await.0,
+        StatusCode::OK
+    );
 }
 
 #[tokio::test]

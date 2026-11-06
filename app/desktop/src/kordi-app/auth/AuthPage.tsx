@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -61,7 +62,7 @@ const defaultCloudSources: AuthPageCloudSources = {
   loadCatalog: () => createCloudProviderAuthApi().ompProviderCatalog(),
   loadSnapshots: loadCloudSnapshots,
   login: createCloudProviderLoginClient(),
-  callbackCapture: createDesktopLoginCallbackCapture(),
+  callbackCapture: isBrowserAppRuntime() ? null : createDesktopLoginCallbackCapture(),
   revokeSnapshot: revokeCloudSnapshot,
   openExternal: (url) => { void Promise.resolve(openDesktopExternalUrl(url)).catch(() => undefined); },
 };
@@ -136,7 +137,8 @@ export function AuthPage({
   initialLoginMethod = null,
 }: AuthPageProps) {
   const showHero = variant === 'gate';
-  const showNativeNote = !isNativeShell && variant === 'settings';
+  const browserApp = isBrowserAppRuntime();
+  const showNativeNote = !isNativeShell && !browserApp && variant === 'settings';
   const [cloudSnapshots, setCloudSnapshots] = useState<DisplayAuthSnapshot[]>([]);
   const knownLoginMethods = useRef(new Map<string, 'sign-in' | 'api-key'>());
   const [snapshotState] = useState(() => createAuthSnapshotState((snapshots) => {
@@ -153,6 +155,12 @@ export function AuthPage({
   // The composer offers hosted Custom API models, so every load is shared with it.
   const refreshCloudSnapshots = async () => {
     await snapshotState.refresh(async () => withKnownLoginMethods(await cloudSources.loadSnapshots(), knownLoginMethods.current));
+  };
+  const refreshAccounts = () => {
+    if (!browserApp) onRefresh();
+    void refreshCloudSnapshots().catch((caught) => setCloudActionError(
+      caught instanceof Error ? caught.message : 'Could not refresh provider accounts.',
+    ));
   };
   useEffect(() => {
     void snapshotState.refresh(async () => withKnownLoginMethods(await cloudSources.loadSnapshots(), knownLoginMethods.current))
@@ -259,10 +267,10 @@ export function AuthPage({
           notice={[
             ompUnavailable ? OMP_UNAVAILABLE_MESSAGE : null,
             catalogNotice,
-            authState ? null : LOCAL_ACCOUNTS_UNAVAILABLE_NOTICE,
+            authState || browserApp ? null : LOCAL_ACCOUNTS_UNAVAILABLE_NOTICE,
           ].filter(Boolean).join(' ') || null}
           onSelectProvider={openProviderDetail}
-          onRefresh={onRefresh}
+          onRefresh={refreshAccounts}
           variant={showHero ? 'gate' : 'settings'}
         />
       );
@@ -301,7 +309,7 @@ export function AuthPage({
           void refreshCloudSnapshots().catch(() => undefined);
         }}
         onLogoutProvider={onLogoutProvider}
-        onRefreshAuth={onRefresh}
+        onRefreshAuth={refreshAccounts}
         onDismissGate={onDismissGate}
         onEnterChat={onEnterChat}
         onTestRoute={onTestRoute ?? testCloudProviderRoute}

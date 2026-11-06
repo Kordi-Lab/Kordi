@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Copy, Download, ExternalLink, FolderOpen, LoaderCircle, X } from 'lucide-react';
@@ -126,17 +127,20 @@ async function copyTextToClipboard(text: string) {
   document.body.removeChild(textarea);
 }
 
-function FileMenuAction({ icon: Icon, label, busy = false, onClick }: {
+function FileMenuAction({ icon: Icon, label, busy = false, disabled = false, title, onClick }: {
   icon: typeof FolderOpen;
   label: string;
   busy?: boolean;
+  disabled?: boolean;
+  title?: string;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
-      disabled={busy}
+      disabled={busy || disabled}
+      title={title}
       onClick={onClick}
       className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left transition disabled:cursor-wait disabled:opacity-55"
     >
@@ -178,7 +182,7 @@ export function TranscriptFileAttachmentLink({
     if (!attachment.attachmentId) return null;
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
-    if (isNativeShell()) {
+    if (isNativeShell() || isBrowserAppRuntime()) {
       return downloadCloudAttachmentToLocalPath(
         session.token,
         attachment.attachmentId,
@@ -412,6 +416,8 @@ export function TranscriptFileAttachmentLink({
               <FileMenuAction
                 icon={FolderOpen}
                 label="Show in Finder"
+                disabled={isBrowserAppRuntime()}
+                title={isBrowserAppRuntime() ? 'Available in the Kordi desktop app. Use Save As to download this file.' : undefined}
                 busy={menuAction === 'reveal'}
                 onClick={() => void handleRevealInFinder()}
               />

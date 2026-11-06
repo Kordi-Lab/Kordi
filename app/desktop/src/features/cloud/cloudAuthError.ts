@@ -13,6 +13,7 @@ export type CloudAuthErrorCode =
   | 'invalid_avatar_version'
   | 'avatar_conflict'
   | 'invalid_session'
+  | 'browser_account_changed'
   | 'invalid_session_id'
   | 'invalid_attachment'
   | 'invalid_provider_auth_snapshot'
@@ -103,7 +104,8 @@ export function isRetryableCloudDeliveryError(error: unknown): boolean {
 type ServerErrorBody = {
   errorCode?: string;
   message?: string;
-  error?: { code?: string; message?: string };
+  error?: string | { code?: string; message?: string };
+  error_description?: string;
 };
 
 const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
@@ -111,7 +113,7 @@ const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'email_missing', 'email_already_verified',
   'invalid_email', 'weak_password', 'email_in_use', 'invalid_credentials',
   'invalid_avatar', 'invalid_avatar_seed', 'invalid_avatar_version', 'avatar_conflict',
-  'invalid_session', 'invalid_session_id',
+  'invalid_session', 'invalid_session_id', 'browser_account_changed',
   'invalid_attachment', 'invalid_provider_auth_snapshot', 'provider_auth_not_configured',
   'provider_auth_snapshot_not_found', 'oauth_not_configured', 'oauth_email_requires_sign_in',
   'requester_mismatch',
@@ -143,8 +145,9 @@ export function buildCloudAuthError(
   retryAfter?: string | null,
 ): CloudAuthError {
   const data = (body as ServerErrorBody) ?? {};
-  const codeValue = data.errorCode ?? data.error?.code;
-  const messageValue = data.message ?? data.error?.message;
+  const serverCode = data.errorCode ?? (typeof data.error === 'string' ? data.error : data.error?.code);
+  const codeValue = serverCode === 'login_required' ? 'invalid_session' : serverCode;
+  const messageValue = data.message ?? data.error_description ?? (typeof data.error === 'object' ? data.error?.message : undefined);
   const code = isErrorCode(codeValue) ? codeValue : 'unknown';
   const message = typeof messageValue === 'string' && messageValue.length > 0
     ? messageValue

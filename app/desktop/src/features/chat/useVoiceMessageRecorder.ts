@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { pendingVoiceTranscription } from './voiceTranscription';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -91,15 +92,15 @@ function voiceAttachment({
 }): AttachmentItem {
   return {
     id: `voice:${path}`,
-    name: 'Voice message.m4a',
+    name: isBrowserAppRuntime() ? 'Voice message.wav' : 'Voice message.m4a',
     path,
     localPath: path,
     kind: 'file',
-    mimeType: 'audio/mp4',
-    formatLabel: 'M4A',
+    mimeType: isBrowserAppRuntime() ? 'audio/wav' : 'audio/mp4',
+    formatLabel: isBrowserAppRuntime() ? 'WAV' : 'M4A',
     sizeBytes,
     voiceMessage: {
-      mimeType: 'audio/mp4',
+      mimeType: isBrowserAppRuntime() ? 'audio/wav' : 'audio/mp4',
       durationMs,
       waveformSamples,
       transcript: '',

@@ -15,24 +15,28 @@ const DOCUMENT_EDITOR_SOURCE = /[\\/]src[\\/]features[\\/]documents[\\/]editor[\
 const HELP_CENTER_SOURCE = /[\\/]src[\\/]features[\\/]onboarding[\\/](?:HelpMenu|HelpTour|helpTourSteps|helpTourGeometry|HelpPermissions|HelpReleaseNotes|helpContent|permissionAccess)\.[tj]sx?$/;
 const DOCUMENT_EDITOR_PACKAGES = /[\\/]node_modules[\\/](?:@tiptap|prosemirror-[a-z-]+|marked|linkifyjs|orderedmap|rope-sequence|w3c-keyname|yjs|y-websocket|y-protocols|lib0)[\\/]/;
 
-export default defineConfig(({ command, mode }) => {
+export function desktopViteConfig({ command, mode }, environment) {
+  const env = environment ?? { ...loadEnv(mode, __dirname, ''), ...process.env }
   if (command === 'serve') {
-    resolveCloudDevApiBase({
-      ...loadEnv(mode, __dirname, ''),
-      ...process.env,
-    })
+    resolveCloudDevApiBase(env)
   }
 
   const selection = command === 'build' ? distributionFromEnvironment(process.env, { required: false }) : null
   return {
-    define: { __KORDI_DISTRIBUTION__: JSON.stringify(selection ? publicDesktopConfiguration(selection.profile) : null) },
+    base: '/',
+    define: {
+      __KORDI_DISTRIBUTION__: JSON.stringify(selection ? publicDesktopConfiguration(selection.profile) : null),
+      'import.meta.env.VITE_KORDI_WEB_APP': JSON.stringify('0'),
+    },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),
+        '@web': path.resolve(__dirname, '../web/src'),
       },
     },
     build: {
+      outDir: 'dist',
       chunkSizeWarningLimit: 700,
       rolldownOptions: {
         output: {
@@ -71,4 +75,6 @@ export default defineConfig(({ command, mode }) => {
       },
     },
   }
-})
+}
+
+export default defineConfig(desktopViteConfig)

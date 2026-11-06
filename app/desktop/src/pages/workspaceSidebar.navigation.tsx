@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import type { Dispatch, SetStateAction } from 'react';
 
 import { navItems } from '@/kordi-app/data';
@@ -36,6 +37,8 @@ export function WorkspaceNavigationRail({
   onOpenSupport?: () => Promise<void> | void;
   onOpenSession: (id: string) => void;
 }) {
+  const browserApp = isBrowserAppRuntime();
+  const NavigationControl = browserApp ? 'a' : 'button';
   const { menuAction, popover } = useSidebarUpdater({ isNativeShell, ...updater });
   return (
     <div
@@ -46,13 +49,6 @@ export function WorkspaceNavigationRail({
       style={{ width: `${LEFT_RAIL_WIDTH}px` }}
     >
       <div className="flex w-full flex-col items-center gap-4">
-        {!isNativeShell ? (
-          <div className="flex w-full items-center justify-center gap-1 px-0 pt-1.5">
-            <span className="h-2 w-2 rounded-full bg-[#ff5f57] shadow-[0_0_0_1px_rgba(0,0,0,0.18)]" />
-            <span className="h-2 w-2 rounded-full bg-[#febc2e] shadow-[0_0_0_1px_rgba(0,0,0,0.18)]" />
-            <span className="h-2 w-2 rounded-full bg-[#28c840] shadow-[0_0_0_1px_rgba(0,0,0,0.18)]" />
-          </div>
-        ) : null}
         <div className="flex w-full flex-col items-center gap-2">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -61,10 +57,15 @@ export function WorkspaceNavigationRail({
             const requests = item.id === 'contacts' ? pendingContactRequestCount : 0;
             const badgeCount = unread > 0 ? unread : requests;
             return (
-              <button
+              <NavigationControl
                 key={item.id}
-                type="button"
-                onClick={() => setActiveNav(item.id)}
+                type={browserApp ? undefined : 'button'}
+                href={browserApp ? `/app/${item.id === 'agents' ? 'factory' : item.id}` : undefined}
+                onClick={(event) => {
+                  if (browserApp && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)) return;
+                  event.preventDefault();
+                  setActiveNav(item.id);
+                }}
                 className="app-workspace-nav-button relative mx-auto grid h-8 w-8 place-items-center rounded-[10px] p-0"
                 data-help-target={`nav-${item.id}`}
                 data-active={active ? 'true' : 'false'}
@@ -84,7 +85,7 @@ export function WorkspaceNavigationRail({
                     {formatRailBadgeCount(badgeCount)}
                   </span>
                 ) : null}
-              </button>
+              </NavigationControl>
             );
           })}
         </div>

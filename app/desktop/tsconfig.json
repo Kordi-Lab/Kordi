@@ -17,7 +17,8 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@web/*": ["../web/src/*"]
     }
   },
   "include": ["src"]

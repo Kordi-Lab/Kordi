@@ -1,3 +1,5 @@
+import { contactForWorkspaceSelection, searchWorkspaceConversations } from './viewModels/workspaceSelection';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { localProjectSessions } from '@/features/projects/localProjectSessions';
 import { useProjectRoutingGroups } from '@/features/projects/useProjectRoutingGroups';
@@ -117,6 +119,8 @@ export function useWorkspaceViewModels({
   cloudLegacyGroupSessionTitlesById = EMPTY_CLOUD_LEGACY_GROUP_SESSION_TITLES, cloudReliableGroupSessionTitleIds = EMPTY_DESKTOP_SESSION_IDS, cloudReliableGroupSessionActivityAtMs = EMPTY_CLOUD_GROUP_NUMBERS,
   transientChatConversations = [],
 }: UseWorkspaceViewModelsArgs) {
+  // Both shipping clients use authoritative data; fixture fallbacks belong only to previews.
+  const hasLiveWorkspace = isNativeShell || isBrowserAppRuntime();
   const threadAttention = useThreadAttention(cloudAccountId);
   const [transcriptReferenceStabilizer] = useState(createTranscriptReferenceStabilizer);
   const canonicalReadModel = useMemo(
@@ -178,7 +182,7 @@ export function useWorkspaceViewModels({
   }, [desktopCollaborationState?.conversations]);
 
   const localChatConversations = useMemo(() => {
-    if (!isNativeShell || !desktopChatState?.activeSession) {
+    if (!hasLiveWorkspace || !desktopChatState?.activeSession) {
       return [];
     }
 
@@ -271,29 +275,29 @@ export function useWorkspaceViewModels({
         _updatedAtMs: session.updatedAtMs,
       };
     });
-  }, [activeConvId, activeNav, cachedChatSessionMessages, cachedDesktopSessionSourceMessages, canonicalSessionState, desktopCollaborationState, desktopChatState, desktopLiveTurnsForViewModel, hydratedDesktopSessionIds, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
+  }, [activeConvId, activeNav, cachedChatSessionMessages, cachedDesktopSessionSourceMessages, canonicalSessionState, desktopCollaborationState, desktopChatState, desktopLiveTurnsForViewModel, hydratedDesktopSessionIds, hasLiveWorkspace, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
 
   const mapCollaborationConversationToViewModel = useMemo(() => createCollaborationConversationMapper(), []);
   const localAgentLabel = desktopChatState?.localAgent?.label || 'My agent';
   const collaborationHostById = useMemo(() => new Map((desktopCollaborationState?.hosts ?? []).map(host => [host.id, host])), [desktopCollaborationState?.hosts]);
 
   const localAgentCollaborationReachoutConversations = useMemo(() => {
-    if (!isNativeShell) return [];
+    if (!hasLiveWorkspace) return [];
     return (desktopCollaborationState?.conversations ?? [])
       .filter(collaborationChatConversationRoutesToLocalAgentPage)
       .map((conversation) => (
         mapCollaborationConversationToViewModel(conversation, collaborationHostById.get(conversation.hostId), localAgentLabel)
       ));
-  }, [desktopCollaborationState, localAgentLabel, isNativeShell, mapCollaborationConversationToViewModel, collaborationHostById]);
+  }, [desktopCollaborationState, localAgentLabel, hasLiveWorkspace, mapCollaborationConversationToViewModel, collaborationHostById]);
 
   const collaborationChatConversations = useMemo(() => {
-    if (!isNativeShell) return [];
+    if (!hasLiveWorkspace) return [];
     return (desktopCollaborationState?.conversations ?? [])
       .filter((conversation) => !collaborationChatConversationRoutesToLocalAgentPage(conversation))
       .map((conversation) => (
         mapCollaborationConversationToViewModel(conversation, collaborationHostById.get(conversation.hostId), localAgentLabel)
       ));
-  }, [desktopCollaborationState, localAgentLabel, isNativeShell, mapCollaborationConversationToViewModel, collaborationHostById]);
+  }, [desktopCollaborationState, localAgentLabel, hasLiveWorkspace, mapCollaborationConversationToViewModel, collaborationHostById]);
 
   const visibleCollaborationChatConversations = useMemo(
     () => collaborationChatConversations.filter(collaborationChatConversationIsVisible),
@@ -305,7 +309,7 @@ export function useWorkspaceViewModels({
   ), [localAgentCollaborationReachoutConversations]);
 
   const hydratedChatConversations = useMemo(() => {
-    if (!isNativeShell) {
+    if (!hasLiveWorkspace) {
       return conversations;
     }
     const collaborationSourceConversations = canonicalReadModel ? collaborationChatConversations : visibleCollaborationChatConversations;
@@ -318,7 +322,7 @@ export function useWorkspaceViewModels({
       .sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0))
       .map(({ _updatedAtMs, ...conversation }) => ({ ...conversation, messages: presentLocalAgentMessages(conversation.messages, localAgentDisplayName) }));
     return conversationsWithStableOrder;
-  }, [collaborationChatConversations, canonicalReadModel, isNativeShell, localAgentDisplayName, localChatConversations, transientChatConversations, visibleCollaborationChatConversations]);
+  }, [collaborationChatConversations, canonicalReadModel, hasLiveWorkspace, localAgentDisplayName, localChatConversations, transientChatConversations, visibleCollaborationChatConversations]);
 
   const decoratedChatConversations = useMemo(() => {
     const withPresence=applyCloudPresenceToConversations(hydratedChatConversations,cloudPresence);
@@ -364,15 +368,15 @@ export function useWorkspaceViewModels({
 
   const activeConv = useMemo(() => {
     const selected = activeConversationForSelection(activeConvId, chatConversations, {
-      isNativeShell,
+      isNativeShell: hasLiveWorkspace,
       nativeChatPlaceholder,
       fallbackConversation:
         visibleMaterializedChatConversations[0]
-        ?? (!isNativeShell ? conversations[0] : undefined),
+        ?? (!hasLiveWorkspace ? conversations[0] : undefined),
     });
     return applyCanonicalHydrationPlaceholder(selected, transcriptHydration?.[selected.canonicalSessionId ?? selected.id]);
-  }, [activeConvId, chatConversations, isNativeShell, nativeChatPlaceholder, transcriptHydration, visibleMaterializedChatConversations]);
-  const activeConversationUsesCollaboration = isNativeShell && (
+  }, [activeConvId, chatConversations, hasLiveWorkspace, nativeChatPlaceholder, transcriptHydration, visibleMaterializedChatConversations]);
+  const activeConversationUsesCollaboration = hasLiveWorkspace && (
     activeConv.id.startsWith('bridge:')
     || isLegacyCanonicalCollaborationSessionId(activeConv.canonicalSessionId ?? activeConv.id)
     || isCanonicalCloudSessionId(activeConv.canonicalSessionId ?? activeConv.id)
@@ -382,17 +386,11 @@ export function useWorkspaceViewModels({
   const activeConvHasSubtitle = activeConv.subtitle.trim().length > 0;
 
   const filteredConversations = useMemo(() => {
-    const normalizedSearch = chatSearch.trim().toLowerCase();
-    if (normalizedSearch.length === 0) return chatConversations;
-    return chatConversations.filter((conversation) => (
-      [conversation.name, conversation.subtitle, conversation.participants.join(' '), conversation.messages[conversation.messages.length - 1]?.text]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(normalizedSearch))
-    ));
+    return searchWorkspaceConversations(chatConversations, chatSearch);
   }, [chatConversations, chatSearch]);
 
   const displayedContacts = useMemo<Contact[]>(() => {
-    if (!isNativeShell) return contacts;
+    if (!hasLiveWorkspace) return contacts;
     const byId = new Map<string, Contact>();
     const collaborationLabel = (url: string) => url.replace(/^https?:\/\//, '');
     const localAgent = desktopChatState?.localAgent;
@@ -504,10 +502,10 @@ export function useWorkspaceViewModels({
     }
 
     return Array.from(byId.values());
-  }, [desktopCollaborationState?.hosts, desktopChatState?.localAgent, isNativeShell]);
+  }, [desktopCollaborationState?.hosts, desktopChatState?.localAgent, hasLiveWorkspace]);
 
   const addableContacts = useMemo<Contact[]>(() => {
-    if (!isNativeShell) return [];
+    if (!hasLiveWorkspace) return [];
     const byId = new Map<string, Contact>();
     const collaborationLabel = (url: string) => url.replace(/^https?:\/\//, '');
 
@@ -555,7 +553,7 @@ export function useWorkspaceViewModels({
     }
 
     return Array.from(byId.values()).sort((left, right) => left.name.localeCompare(right.name));
-  }, [desktopCollaborationState?.hosts, isNativeShell]);
+  }, [desktopCollaborationState?.hosts, hasLiveWorkspace]);
 
   const localAgentCollaborationReachoutsByAgentId = useMemo(() => {
     const byAgentId = new Map<string, Agent['collaborationReachouts']>();
@@ -585,7 +583,7 @@ export function useWorkspaceViewModels({
   }, [localAgentCollaborationReachoutConversations]);
 
   const displayedAgents = useMemo<Agent[]>(() => {
-    if (!isNativeShell) return [];
+    if (!hasLiveWorkspace) return [];
 
     const collaborationLabel = (url: string) => url.replace(/^https?:\/\//, '');
     const localAgent = desktopChatState?.localAgent;
@@ -703,7 +701,7 @@ export function useWorkspaceViewModels({
     }
 
     return items;
-  }, [cloudAgentDefinitionsById, desktopCollaborationState?.hosts, desktopCollaborationState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell, localAgentCollaborationReachoutsByAgentId, localAgentDisplayName]);
+  }, [cloudAgentDefinitionsById, desktopCollaborationState?.hosts, desktopCollaborationState?.localAgentRouting, desktopChatState?.localAgent, hasLiveWorkspace, localAgentCollaborationReachoutsByAgentId, localAgentDisplayName]);
 
   const groupedContacts = useMemo(
     () =>
@@ -730,12 +728,12 @@ export function useWorkspaceViewModels({
     }));
   }, [contactSearch, groupedContacts]);
 
-  const activeContact = displayedContacts.find((contact) => contact.id === activeContactId) ?? displayedContacts[0] ?? contacts[0];
+  const activeContact = contactForWorkspaceSelection(displayedContacts, activeContactId, hasLiveWorkspace ? undefined : contacts[0]);
   const activeAgent = displayedAgents.find((agent) => agent.id === activeAgentId) ?? displayedAgents[0];
 
   const projectRouting = useProjectRoutingGroups(desktopChatState, canonicalSessionState);
   const runtimeProjects = useMemo(() => {
-    if (!isNativeShell) {
+    if (!hasLiveWorkspace) {
       return projectWorkspaces;
     }
 
@@ -872,7 +870,7 @@ export function useWorkspaceViewModels({
         }),
       };
     });
-  }, [activeNav, activeProjectId, activeProjectSessionId, cachedDesktopSessionSourceMessages, cachedProjectSessionMessages, canonicalReadModel, canonicalSessionState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectRouting, projectWorkspaces]);
+  }, [activeNav, activeProjectId, activeProjectSessionId, cachedDesktopSessionSourceMessages, cachedProjectSessionMessages, canonicalReadModel, canonicalSessionState, desktopChatState, desktopLiveTurnsForViewModel, hasLiveWorkspace, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectRouting, projectWorkspaces]);
 
   const filteredProjects = useMemo(() => {
     const normalizedSearch = projectSearch.trim().toLowerCase();
@@ -929,7 +927,7 @@ export function useWorkspaceViewModels({
       }],
     }],
   };
-  const fallbackProject = isNativeShell
+  const fallbackProject = hasLiveWorkspace
     ? (runtimeProjects[0] ?? emptyNativeProject)
     : (runtimeProjects[0] ?? projectWorkspaces[0]);
   const activeProject = runtimeProjects.find((project) => project.id === resolvedProjectSelection?.projectId)
@@ -949,7 +947,7 @@ export function useWorkspaceViewModels({
     statusIndicator: undefined,
     messages: [] as Message[],
   };
-  const activeProjectSession = isNativeShell && isProjectDraftSessionId(activeProjectSessionId)
+  const activeProjectSession = hasLiveWorkspace && isProjectDraftSessionId(activeProjectSessionId)
     ? nativeProjectDraftSession
     : activeProject.sessions.find((session) => session.id === resolvedProjectSelection?.sessionId)
       ?? activeProject.sessions[0]

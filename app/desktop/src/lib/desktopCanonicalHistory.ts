@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import type { CanonicalMessagePage, CanonicalTimelineCursor } from '@/kordi-app/types';
 import { beginChatPerformanceSpan, chatPerformancePayloadBytes, finishChatPerformanceSpan } from '@/features/performance/chatPerformance';
 import { invokeDesktop, isNativeDesktopShell } from './desktop';
@@ -8,7 +9,7 @@ export async function fetchCanonicalSessionMessages(
   limit = 100,
   timeline?: { before?: CanonicalTimelineCursor | null },
 ) {
-  if (!isNativeDesktopShell()) return null;
+  if (!isNativeDesktopShell() && !isBrowserAppRuntime()) return null;
   const performanceSpan = beginChatPerformanceSpan('canonical-page-ipc');
   try {
     const page = await invokeDesktop<CanonicalMessagePage>('desktop_canonical_session_messages', {

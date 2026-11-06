@@ -1,6 +1,7 @@
 import { distributionLinkTarget } from './distribution';
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { useCallback, useEffect, useState } from 'react';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 
 import type { CloudGroupInvitationAcceptance } from './cloudIdentityTypes';
 
@@ -14,7 +15,11 @@ export type CloudGroupInvitationAcceptedDetail = Pick<
   'groupId' | 'groupSpaceId' | 'groupTitle'
 >;
 
-export function groupInvitationTokenFromUrl(value: string | null | undefined): string | null {
+function browserInvitationOrigin(): string | null {
+  return isBrowserAppRuntime() ? window.location.origin : null;
+}
+
+export function groupInvitationTokenFromUrl(value: string | null | undefined, browserAppOrigin = browserInvitationOrigin()): string | null {
   const raw = value?.trim() ?? '';
   if (!raw) return null;
   if (GROUP_INVITATION_TOKEN_PATTERN.test(raw)) return raw;
@@ -24,15 +29,26 @@ export function groupInvitationTokenFromUrl(value: string | null | undefined): s
     const target = distributionLinkTarget();
     const trustedWebHost = url.origin === target.origin
       || url.origin === target.origin.replace('https://', 'https://www.');
+    const browserInvitation = browserAppOrigin === url.origin
+      && (url.pathname === '/app' || url.pathname.startsWith('/app/'))
+      && url.searchParams.getAll('groupInvite').length === 1;
     const candidate = url.protocol === `${target.scheme}:` && url.hostname === 'group-invite'
       ? pathParts[0]
       : url.protocol === 'https:' && trustedWebHost && pathParts[0] === 'g'
         ? pathParts[1]
-        : null;
+        : browserInvitation ? url.searchParams.get('groupInvite') : null;
     return candidate && GROUP_INVITATION_TOKEN_PATTERN.test(candidate) ? candidate : null;
   } catch {
     return null;
   }
+}
+
+/** Remove only the invitation handled by this dialog, retaining route state. */
+export function browserPathAfterGroupInvitation(href: string, handledToken: string | null): string | null {
+  const url = new URL(href);
+  if (!handledToken || url.searchParams.get('groupInvite') !== handledToken) return null;
+  url.searchParams.delete('groupInvite');
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 function readStoredGroupInvitationToken(): string | null {
@@ -56,10 +72,10 @@ export function dispatchCloudGroupInvitationAccepted(detail: CloudGroupInvitatio
 
 export function usePendingGroupInvitation() {
   const [token, setToken] = useState<string | null>(() => {
-    const initial = readStoredGroupInvitationToken()
-      ?? (typeof window === 'undefined' || typeof window.location?.href !== 'string'
+    const initial = (typeof window === 'undefined' || typeof window.location?.href !== 'string'
         ? null
-        : groupInvitationTokenFromUrl(window.location.href));
+        : groupInvitationTokenFromUrl(window.location.href))
+      ?? readStoredGroupInvitationToken();
     if (initial) storeGroupInvitationToken(initial);
     return initial;
   });
@@ -72,9 +88,16 @@ export function usePendingGroupInvitation() {
   }, []);
 
   const dismiss = useCallback(() => {
+    if (isBrowserAppRuntime()) {
+      const path = browserPathAfterGroupInvitation(window.location.href, token);
+      if (path) {
+        const state: unknown = window.history.state;
+        window.history.replaceState(state, '', path);
+      }
+    }
     storeGroupInvitationToken(null);
     setToken(null);
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     let disposed = false;

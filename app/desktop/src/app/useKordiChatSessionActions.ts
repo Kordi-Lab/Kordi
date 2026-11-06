@@ -1,11 +1,8 @@
-import {
-  useCallback,
-  type Dispatch,
-  type SetStateAction,
-} from 'react';
+import { persistBrowserSessionTitle } from '@web/app/browserSessionTitle';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { useCallback } from 'react';
+import type { UseKordiChatSessionActionsArgs } from './useKordiChatSessionActions.types';
 
-import type { CloudAccount } from '@/features/cloud/authClient';
-import type { SendCloudGroupControlInput } from '@/features/cloud/cloudGroupControl.types';
 import {
   cloudGroupManualSessionTitleSnapshot,
   cloudGroupParticipantsForCollaborationSession,
@@ -15,14 +12,11 @@ import {
   buildChatGroupCollaborationUpdateParticipants,
   buildChatGroupCollaborationUpdateTargets,
 } from '@/features/chat/chatCreateFlows';
-import type { ComposerDraftState } from '@/features/chat/composerDrafts';
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { conversationIdAfterRemoval } from '@/features/chat/chatNavigation';
 import type {
   CanonicalSessionState,
-  DesktopChatState,
-  Conversation,
 } from '@/kordi-app/types';
 import {
   archiveDesktopChatSession,
@@ -41,46 +35,6 @@ import {
 } from './useKordiAppModelHelpers';
 import { appendCanonicalRenameNotice } from './canonicalRenameNotice';
 import { isDesktopRuntimeSessionId } from './desktopRuntimeSessionMembership';
-
-type UseKordiChatSessionActionsArgs = {
-  conversations?: readonly Conversation[];
-  account: CloudAccount | null;
-  activeConversationId: string;
-  canonicalState: CanonicalSessionState | null;
-  desktopState: DesktopChatState | null;
-  isNativeShell: boolean;
-  deleteCloudSession: (sessionId: string) => Promise<void>;
-  hideCloudSession: (sessionId: string) => Promise<void>;
-  unhideCloudSession: (sessionId: string) => Promise<void>;
-  setCloudSessionPinned: (sessionId: string, pinned: boolean) => Promise<void>;
-  setCloudSessionMuted: (sessionId: string, muted: boolean) => Promise<void>;
-  setCloudSessionUnread: (sessionId: string, unread: boolean) => Promise<void>;
-  markCloudSessionsRead: (sessionIds: string[]) => Promise<void>;
-  setCloudGroupSpacePinned: (groupSpaceId: string, pinned: boolean) => Promise<void>;
-  setCloudGroupSpaceMuted: (
-    groupSpaceId: string,
-    sessionIds: string[],
-    muted: boolean,
-  ) => Promise<void>;
-  setCloudGroupSpaceArchived: (
-    groupSpaceId: string,
-    sessionIds: string[],
-    archived: boolean,
-  ) => Promise<void>;
-  refreshCanonicalState: () => Promise<void>;
-  refreshDesktopChat: (activeSessionId?: string) => Promise<void>;
-  sendCloudGroupControl: (
-    input: SendCloudGroupControlInput,
-  ) => Promise<void>;
-  setActiveConversationId: Dispatch<SetStateAction<string>>;
-  setCanonicalState: Dispatch<
-    SetStateAction<CanonicalSessionState | null>
-  >;
-  setComposerDrafts: Dispatch<SetStateAction<ComposerDraftState>>;
-  setDesktopError: Dispatch<SetStateAction<string | null>>;
-  setDesktopState: Dispatch<SetStateAction<DesktopChatState | null>>;
-  setLocallyHiddenSessionIds: Dispatch<SetStateAction<Set<string>>>;
-};
 
 export function useKordiChatSessionActions({
   conversations = [],
@@ -211,7 +165,7 @@ export function useKordiChatSessionActions({
     sessionId: string,
     title: string,
   ) => {
-    if (!isNativeShell || !sessionId.trim()) return;
+    if ((!isNativeShell && !isBrowserAppRuntime()) || !sessionId.trim()) return;
     const nextTitle = title.trim();
     if (!nextTitle) return;
     const actorIdentityId =
@@ -219,6 +173,9 @@ export function useKordiChatSessionActions({
     const isDesktopRuntimeSession = isDesktopRuntimeSessionId(desktopSessions, desktopState?.projects, sessionId);
     try {
       setDesktopError(null);
+      if (isBrowserAppRuntime() && canonicalState?.sessions.some(row => row.id === sessionId && row.kind === 'self-agent')) {
+        await persistBrowserSessionTitle(account?.accountId ?? '', sessionId, nextTitle);
+      }
       let nextCanonical = await renameCanonicalSession({
         sessionId,
         title: nextTitle,
@@ -267,7 +224,8 @@ export function useKordiChatSessionActions({
       );
     }
   }, [
-    canonicalState?.profile.humanIdentityId,
+    account,
+    canonicalState,
     desktopSessions,
     desktopState?.projects,
     isNativeShell,
@@ -281,11 +239,11 @@ export function useKordiChatSessionActions({
 
   const archiveSession = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
-    if (!isNativeShell || !trimmedSessionId) return;
+    if ((!isNativeShell && !isBrowserAppRuntime()) || !trimmedSessionId) return;
 
     try {
       setDesktopError(null);
-      if (shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) {
+      if (isBrowserAppRuntime() || shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) {
         await hideCloudSession(trimmedSessionId);
         optimisticallyRemoveSession(trimmedSessionId, false);
         await refreshCanonicalState();
@@ -327,13 +285,17 @@ export function useKordiChatSessionActions({
 
   const deleteSession = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
-    if (!isNativeShell || !trimmedSessionId) return;
+    if ((!isNativeShell && !isBrowserAppRuntime()) || !trimmedSessionId) return;
 
     try {
       setDesktopError(null);
-      if (shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) {
+      if (isBrowserAppRuntime() || shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) {
         await deleteCloudSession(trimmedSessionId);
         optimisticallyRemoveSession(trimmedSessionId, false);
+        if (isBrowserAppRuntime()) {
+          await refreshCanonicalState();
+          return;
+        }
         try {
           const nextState = await archiveDesktopChatSession(
             trimmedSessionId,
@@ -374,7 +336,7 @@ export function useKordiChatSessionActions({
       const message =
         error instanceof Error ? error.message : 'Unable to remove chat';
       setDesktopError(message.startsWith('Session not found') ? null : message);
-      if (shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) throw error;
+      if (isBrowserAppRuntime() || shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) throw error;
     }
   }, [
     activeConversationId,
@@ -392,7 +354,7 @@ export function useKordiChatSessionActions({
 
   const restoreSession = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
-    if (!isNativeShell || !trimmedSessionId) return;
+    if ((!isNativeShell && !isBrowserAppRuntime()) || !trimmedSessionId) return;
     await runChatListAction(async () => {
       await unhideCloudSession(trimmedSessionId);
       setLocallyHiddenSessionIds((current) => {
@@ -413,7 +375,7 @@ export function useKordiChatSessionActions({
 
   const setSessionPinned = useCallback(async (sessionId: string, pinned: boolean) => {
     const trimmedSessionId = sessionId.trim();
-    if (!isNativeShell || !trimmedSessionId) return;
+    if ((!isNativeShell && !isBrowserAppRuntime()) || !trimmedSessionId) return;
     await runChatListAction(
       () => setCloudSessionPinned(trimmedSessionId, pinned),
       pinned ? 'Unable to pin chat' : 'Unable to unpin chat',
@@ -422,7 +384,7 @@ export function useKordiChatSessionActions({
 
   const setSessionMuted = useCallback(async (sessionId: string, muted: boolean) => {
     const trimmedSessionId = sessionId.trim();
-    if (!isNativeShell || !trimmedSessionId) return;
+    if ((!isNativeShell && !isBrowserAppRuntime()) || !trimmedSessionId) return;
     await runChatListAction(
       () => setCloudSessionMuted(trimmedSessionId, muted),
       muted ? 'Unable to mute chat' : 'Unable to unmute chat',
@@ -431,7 +393,7 @@ export function useKordiChatSessionActions({
 
   const setSessionUnread = useCallback(async (sessionId: string, unread: boolean) => {
     const trimmedSessionId = sessionId.trim();
-    if (!isNativeShell || !trimmedSessionId) return;
+    if ((!isNativeShell && !isBrowserAppRuntime()) || !trimmedSessionId) return;
     await runChatListAction(
       () => unread
         ? setCloudSessionUnread(trimmedSessionId, true)
@@ -441,7 +403,7 @@ export function useKordiChatSessionActions({
   }, [isNativeShell, markCloudSessionsRead, runChatListAction, setCloudSessionUnread]);
 
   const markSessionsRead = useCallback(async (sessionIds: string[]) => {
-    if (!isNativeShell) return;
+    if (!isNativeShell && !isBrowserAppRuntime()) return;
     await runChatListAction(
       () => markCloudSessionsRead(sessionIds),
       'Unable to mark group read',
@@ -450,7 +412,7 @@ export function useKordiChatSessionActions({
 
   const setGroupPinned = useCallback(async (groupSpaceId: string, pinned: boolean) => {
     const trimmedGroupSpaceId = groupSpaceId.trim();
-    if (!isNativeShell || !trimmedGroupSpaceId) return;
+    if ((!isNativeShell && !isBrowserAppRuntime()) || !trimmedGroupSpaceId) return;
     await runChatListAction(
       () => setCloudGroupSpacePinned(trimmedGroupSpaceId, pinned),
       pinned ? 'Unable to pin group' : 'Unable to unpin group',
@@ -462,7 +424,7 @@ export function useKordiChatSessionActions({
     sessionIds: string[],
     muted: boolean,
   ) => {
-    if (!isNativeShell) return;
+    if (!isNativeShell && !isBrowserAppRuntime()) return;
     await runChatListAction(
       () => setCloudGroupSpaceMuted(groupSpaceId, sessionIds, muted),
       muted ? 'Unable to mute group' : 'Unable to unmute group',
@@ -474,7 +436,7 @@ export function useKordiChatSessionActions({
     sessionIds: string[],
     archived: boolean,
   ) => {
-    if (!isNativeShell) return;
+    if (!isNativeShell && !isBrowserAppRuntime()) return;
     await runChatListAction(
       // A stale group is archived locally; the refresh drops its canonical session from the list.
       () => setCloudGroupSpaceArchived(groupSpaceId, sessionIds, archived).then(() => (archived ? refreshCanonicalState() : undefined)),

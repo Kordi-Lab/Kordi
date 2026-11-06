@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { formatDesktopLastActiveLabel } from '@/lib/time';
 import type { DesktopVisibleTaskRecord } from '@/lib/desktop';
@@ -37,7 +38,7 @@ export function cloudActivityStorageKey(accountId: string) {
 }
 
 function browserLocalStorage(): Storage | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined' || isBrowserAppRuntime()) return null;
   try {
     return window.localStorage ?? null;
   } catch {

@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import type {
   Dispatch,
   MutableRefObject,
@@ -75,7 +76,7 @@ export function useRecoveredCloudGroupReplay({
   onSettled?: () => void;
   reportWarning: (message: string, error: unknown) => void;
 }) {
-  const nativeShell = isNativeDesktopShell();
+  const nativeShell = isNativeDesktopShell() || isBrowserAppRuntime();
   const recoverySettled = useCloudAgentTurnRecovery({
     account,
     canonicalStateRef,
@@ -247,8 +248,10 @@ export function useRecoveredCloudGroupReplay({
           undefined,
           100,
         );
+        if (!active) return;
         await applyChatSyncLocalBatch({
           accountId,
+          expectedOrganizationId: cloudSession.organizationId ?? null,
           bootstrap: false,
           conversations: [conversation],
           messages: page.messages,

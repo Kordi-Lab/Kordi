@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import {
   useCallback,
   type Dispatch,
@@ -68,7 +69,7 @@ export function useKordiGroupMemberInvites({
     sessionIds: string[],
     contactIds: string[],
   ) => {
-    if (!isNativeShell) return;
+    if (!isNativeShell && !isBrowserAppRuntime()) return;
     const groupSessionIds = uniqueStrings(sessionIds);
     if (groupSessionIds.length === 0) return;
     setDesktopError(null);

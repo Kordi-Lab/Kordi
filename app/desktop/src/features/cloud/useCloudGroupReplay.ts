@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import {
   useEffect,
   useReducer,
@@ -136,7 +137,7 @@ export function useCloudGroupReplay({
       }),
     );
     const run = async () => {
-      const nativeShell = isNativeDesktopShell();
+      const nativeShell = isNativeDesktopShell() || isBrowserAppRuntime();
       const flushIfCurrent = () => {
         if (
           !mountedRef.current
