@@ -111,7 +111,7 @@ export default function HelpTour({ progressKey, tourId = 'workspace', initialSec
   const sections = [...new Set(steps.map((item) => item.section).filter(Boolean))];
   const position = helpTourGeometry(rect ?? anchor?.rect ?? null, viewport, size);
   return createPortal(<div className="help-tour-layer">
-    {rect ? <div className="help-tour-spotlight" data-target={targetName} style={rect} aria-hidden="true" /> : null}
+    {rect ? <div key={targetName} className="help-tour-spotlight" data-target={targetName} style={rect} aria-hidden="true" /> : null}
     <div className="help-tour-card" ref={panel} data-target={targetName} data-positioned={Boolean(rect)} style={{ left: position.left, top: position.top, visibility: popoverVisible ? undefined : 'hidden' }} role="dialog" aria-labelledby={titleId} aria-describedby={bodyId} tabIndex={-1} onKeyDown={(event) => {
       if (event.altKey || event.ctrlKey || event.metaKey) return;
       if (event.key === 'ArrowRight') { event.preventDefault(); next(); }
