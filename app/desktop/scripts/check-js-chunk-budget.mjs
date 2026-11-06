@@ -41,15 +41,18 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // The tidied empty Memory tab and the site sign-in hand-off add 2 kB.
 // The dense menu shared by Help and Start a chat moves 1.3 kB of styles out of the on-demand
 // help chunk and adds the popover's focus handling, 3 kB in all.
-// The dense Start group picker and its Invite with a link step add 4 kB, so it moves to 5.791 MB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_791_000;
+// The dense Start group picker and its Invite with a link step add 4 kB.
+// Handing a Mac run without hosted credentials back to the cloud and reconciling a
+// requester's ended runs add 3 kB, so it moves to 5.794 MB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_794_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.
 // Removing deleted and blocked contacts at once and Unblock on profiles add 3 kB there.
 // The tidied empty Memory tab adds under 1 kB to the browser target.
-// The dense menu and the dense Start group picker add the same 7 kB, so it moves to 5.823 MB.
-const MAX_WEB_APP_DIST_BYTES = 5_823_000;
+// The dense menu and the dense Start group picker add the same 7 kB.
+// Reconciling a requester's ended agent runs and the cloud hand-back add 3 kB there too, so it moves to 5.826 MB.
+const MAX_WEB_APP_DIST_BYTES = 5_826_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;

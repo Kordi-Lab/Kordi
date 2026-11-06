@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { useVoiceAgentRequestGate } from './useVoiceAgentRequestGate';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
+import { desktopTurnNeedsCloudHandBack, handBackDesktopRun } from './cloudDesktopRunHandback';
 import { publishModelSubsessions } from './agentSubsessionSync';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
 import {
@@ -35,8 +36,10 @@ import {
 import {
   cloudAgentNativeContextMessagesFromDirectCloudSession,
   cloudDirectAgentReplyThreadAction,
+  cloudAgentCouldNotAnswerText,
   cloudAgentProviderFailureNotice,
   encodeCloudAgentResponse,
+  isCloudAgentHostedCredentialUnavailableError,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
@@ -48,7 +51,7 @@ import { publishCloudDirectBackgroundFollowUp } from './cloudDirectBackgroundFol
 import {
   cloudAgentRuntimeSessionId,
 } from './cloudAgentRuntime';
-import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
+import { cloudAgentRuntimeRouteForTargetCloudAgent, ownerRequestRoute } from './cloudAgentTargetRuntimeRoute';
 import {
   cloudDirectMessageAgentRuntimeRoute,
   cloudDirectMessageDisplayText,
@@ -258,7 +261,12 @@ export function useCloudDirectAgentExecution({
                 routesByRuntimeSessionId: cloudAgentRuntimeRoutesBySessionId,
                 runtimeSessionId,
                 fallbackRoute: defaultCloudAgentRuntimeRoute,
-                requestRoute: cloudDirectMessageAgentRuntimeRoute(message.body),
+                // Another person's message never picks the owner's account or model.
+                requestRoute: ownerRequestRoute(
+                  cloudDirectMessageAgentRuntimeRoute(message.body),
+                  message.fromAccountId,
+                  account.accountId,
+                ),
               });
           const lease = await acquireDesktopExecutionLease(client, session.token, {
             requestMessageId: message.messageId, sessionId: activitySessionId,
@@ -342,6 +350,22 @@ export function useCloudDirectAgentExecution({
             await progress.finish();
           }
 
+          // This Mac could not load the owner's hosted account before the
+          // model ran. The cloud runner resolves it on the server, so it
+          // answers instead of the request failing for everyone.
+          if (desktopTurnNeedsCloudHandBack(finalTurn)
+            && await handBackDesktopRun(client, session.token, lease)) {
+            setLocalTurns((current) => {
+              if (!(message.messageId in current)) return current;
+              const next = { ...current };
+              delete next[message.messageId];
+              return next;
+            });
+            reportWarning('[cloud-agent-mention] handed back to the cloud', finalTurn.error);
+            void syncMessages();
+            return;
+          }
+
           try {
             if (activitySessionId && !agentExchangeTurnIsWaiting(finalTurn)) {
               await publishDerivedCloudSessionActivity({
@@ -378,10 +402,18 @@ export function useCloudDirectAgentExecution({
             }
             const replyText = cloudAgentTurnReplyText(finalTurn);
             const responseSucceeded = replyText.length > 0;
+            const failureDetail = finalTurn.error || finalTurn.message;
             const responseText = responseSucceeded
               ? replyText
               : finalTurn.status === 'cancelled'
                 ? 'Request stopped.'
+              // Every member reads this row; the owner's own turn shows
+              // how to reconnect the account.
+              : isCloudAgentHostedCredentialUnavailableError(failureDetail)
+                ? cloudAgentCouldNotAnswerText(
+                  cloudAgentDefinitionsById[targetCloudAgentId ?? '']?.name
+                  || account.defaultAgent?.displayName,
+                )
               : cloudAgentProviderFailureNotice(finalTurn.error || finalTurn.message)
                 ?? `Failed: ${
                   finalTurn.error
