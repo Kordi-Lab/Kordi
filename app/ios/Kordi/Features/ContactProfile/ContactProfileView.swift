@@ -30,6 +30,8 @@ struct ContactProfileView: View {
     @State private var isMuting = false
     @State private var confirmsDelete = false
     @State private var deleteError: String?
+    @State private var blockAccount: SafetyAccount?
+    @State private var reportTarget: ReportTarget?
 
     init(
         subject: ContactProfileSubject,
@@ -129,6 +131,7 @@ struct ContactProfileView: View {
         } message: {
             Text(deleteError ?? "")
         }
+        .safetyActions(block: $blockAccount, report: $reportTarget) { dismiss() }
         .sheet(isPresented: $showsShare) {
             ContactProfileShareSheet(name: presentation.name, kordiId: presentation.kordiId ?? "")
         }
@@ -300,8 +303,8 @@ struct ContactProfileView: View {
                         Button("Share", systemImage: "square.and.arrow.up") { showsShare = true }
                             .disabled(presentation.kordiId == nil)
                     }
-                    Button("Block", systemImage: "nosign") {}.disabled(true)
-                    Button("Report", systemImage: "flag") {}.disabled(true)
+                    Button("Block", systemImage: "nosign") { blockAccount = presentation.blockAccount }.disabled(presentation.blockAccount == nil)
+                    Button("Report", systemImage: "flag") { reportTarget = presentation.reportTarget }.disabled(presentation.reportTarget == nil)
                     Divider()
                     if presentation.offersDelete {
                         Button("Delete contact", systemImage: "trash", role: .destructive) { confirmsDelete = true }

@@ -387,6 +387,8 @@ struct MessageActionOverlay: View {
     let onDelete: (Bool) -> Void
     let onSaveSticker: (ChatAttachment) -> Void
     let onSelect: () -> Void
+    /// Report for a message someone else wrote; nil hides it.
+    var onReport: (() -> Void)? = nil
 
     private var targetReactions: [MessageReaction] {
         if let mediaAttachment { return message.attachmentReactions[mediaAttachment.id] ?? [] }
@@ -407,6 +409,7 @@ struct MessageActionOverlay: View {
             + mediaActionCount
             + (stickerAttachment == nil ? 0 : 1)
             + (readReceiptLabel == nil ? 0 : 1)
+            + (onReport == nil ? 0 : 1)
     }
 
     private var actionCount: Int {
@@ -499,6 +502,7 @@ struct MessageActionOverlay: View {
                             threadActionRow("Save to My Stickers", systemImage: "square.stack.3d.up") { onSaveSticker(stickerAttachment) }
                         }
                         threadActionRow("Select", systemImage: "checkmark.circle", action: onSelect)
+                        if let onReport { threadActionRow("Report", systemImage: "flag", action: onReport) }
                         if allowsDelete {
                             threadActionRow(message.isLocalFailedSend ? "Remove failed message" : mediaAttachment == nil ? "Delete" : "Delete photo", systemImage: "trash", role: .destructive, dismissesMenu: false) {
                                 isConfirmingDelete = true
@@ -990,12 +994,7 @@ struct MessageActionOverlay: View {
                     if allowsEdit {
                         actionButton("Edit", systemImage: "pencil", action: onEdit)
                     }
-                    actionButton(
-                        "Forward",
-                        systemImage: "arrowshape.turn.up.right",
-                        disabled: cannotForwardOrPin,
-                        action: onForward
-                    )
+                    actionButton("Forward", systemImage: "arrowshape.turn.up.right", disabled: cannotForwardOrPin, action: onForward)
                     if let stickerAttachment {
                         actionButton(
                             "Save to My Stickers",
@@ -1011,6 +1010,7 @@ struct MessageActionOverlay: View {
                     )
                     Divider().padding(.horizontal, 14)
                     actionButton("Select", systemImage: "checkmark.circle", action: onSelect)
+                    if let onReport { actionButton("Report", systemImage: "flag", action: onReport) }
                     if allowsDelete {
                         actionButton(
                             message.isLocalFailedSend ? "Remove failed message" : mediaAttachment == nil ? "Delete" : "Delete photo",

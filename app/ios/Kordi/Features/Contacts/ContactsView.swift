@@ -71,7 +71,7 @@ struct ContactsView<PinnedRows: View>: View {
                 if showsRequests {
                     Section {
                         ForEach(incomingRequests) { request in
-                            ContactRequestRow(request: request)
+                            ContactRequestRow(request: request).contactRequestSafetyActions(request)
                                 .contactsListRow()
                         }
                         ForEach(outgoingRequests) { request in
