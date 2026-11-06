@@ -132,8 +132,7 @@ export type SendCloudMessageOptions = Pick<ChatSyncConversationInput, 'sourceGro
   conversationKind?: ChatSyncConversation['kind'];
   memberAccountIds?: string[];
   sharedTitle?: string | null;
-  /** Sent once, without the durable outbox: the caller undoes its own work when it fails. */
-  transient?: boolean;
+  /** Sent once, without the durable outbox: the caller undoes its own work when it fails. */ transient?: boolean;
 };
 
 export type { CloudMessage, CloudMessageDirection } from './cloudMessageTypes';
@@ -599,25 +598,17 @@ export class CloudAuthClient {
     const encoded = encodeURIComponent(requestMessageId.trim());
     const response = await this.send<CloudAgentRunLookup>(
       `/v1/cloud/agent-runs/request/${encoded}`,
-      {
-        method: 'GET',
-        headers: { authorization: `Bearer ${token}` },
-      },
+      { method: 'GET', headers: { authorization: `Bearer ${token}` } },
       'Could not load Kordi fallback status.',
     );
     return response?.run ?? null;
   }
 
   async ensureChatConversation(token: string, input: ChatSyncConversationInput): Promise<ChatSyncConversation> { return this.chat.ensureConversation(token, input); }
+  dissolveGroup(token: string, groupSpaceId: string): Promise<void> { return this.chat.dissolveGroup(token, groupSpaceId); } dissolveGroupChannel(token: string, groupSpaceId: string, channelSessionId: string): Promise<void> { return this.chat.dissolveGroupChannel(token, groupSpaceId, channelSessionId); }
 
   async sendMessage(token: string, peerAccountId: string, body: string, options: SendCloudMessageOptions = {}): Promise<CloudMessage> {
     return this.chat.sendMessage(token, peerAccountId, body, options);
-  }
-
-  dissolveGroup(token: string, groupSpaceId: string): Promise<void> { return this.chat.dissolveGroup(token, groupSpaceId); }
-
-  dissolveGroupChannel(token: string, groupSpaceId: string, channelSessionId: string): Promise<void> {
-    return this.chat.dissolveGroupChannel(token, groupSpaceId, channelSessionId);
   }
 
   async drainChatOutbox(token: string, accountId: string): Promise<CloudMessage[]> { return this.chat.drainOutbox(token, accountId); } async editMessage(token: string, conversationId: string, messageId: string, expectedVersion: number, text: string): Promise<CloudMessage> { return this.chat.editMessage(token, conversationId, messageId, expectedVersion, text); } async deleteMessage(token: string, conversationId: string, messageId: string, forEveryone: boolean): Promise<void> { return this.chat.deleteMessage(token, conversationId, messageId, forEveryone); }

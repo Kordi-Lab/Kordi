@@ -13,14 +13,9 @@ import type {
 } from '@/pages/ChatCreateDialog';
 import { GroupDetailsDialog } from '@/pages/GroupDetailsDialog';
 import type { GroupManagementPopoverAnchor } from '@/pages/GroupDetailsDialog';
-import {
-  DeleteSessionDialog,
-  DissolveDialog,
-  GroupContextMenu,
-  ProjectCreateDialog,
-  RenameSessionDialog,
-  SessionContextMenu,
-} from '@/pages/SessionActionOverlays';
+import { DissolveDialog } from '@/pages/DissolveDialog';
+import { ProjectCreateDialog } from '@/pages/ProjectCreateDialog';
+import { DeleteSessionDialog, GroupContextMenu, RenameSessionDialog, SessionContextMenu } from '@/pages/SessionActionOverlays';
 import type {
   SessionActionTarget,
   GroupContextMenuTarget,

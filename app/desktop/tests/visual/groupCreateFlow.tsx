@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { canonicalMessageRole } from '../../src/features/canonical/readModel/messageRole';
 import { MessageBubble } from '../../src/kordi-app/components/transcript';
-import { DissolveDialog, SessionContextMenu, type SessionActionTarget } from '../../src/pages/SessionActionOverlays';
+import { DissolveDialog } from '../../src/pages/DissolveDialog';
+import { SessionContextMenu, type SessionActionTarget } from '../../src/pages/SessionActionOverlays';
 import type { CanonicalSessionMessage, Message } from '../../src/kordi-app/types';
 
 // Synthetic data only. ?theme=light|dark, ?mode=transcript|channel

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CircleOff, LogOut } from 'lucide-react';
 
-import { DissolveDialog } from '@/pages/SessionActionOverlays';
+import { DissolveDialog } from '@/pages/DissolveDialog';
 
 const ROW_CLASS = 'app-transient-flat-action app-transient-flat-action-danger app-group-management-action-row mt-3 flex w-full items-center gap-2 rounded-[10px] px-2 py-2 text-left text-[11px]';
 

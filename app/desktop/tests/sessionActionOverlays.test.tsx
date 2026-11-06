@@ -6,10 +6,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   DeleteSessionDialog,
   GroupContextMenu,
-  ProjectCreateDialog,
   RenameSessionDialog,
   SessionContextMenu,
 } from '../src/pages/SessionActionOverlays';
+import { ProjectCreateDialog } from '../src/pages/ProjectCreateDialog';
 
 function dialogPanelClass(markup: string) {
   const match = markup.match(/<div class="([^"]*)"[^>]*role="dialog"/);
