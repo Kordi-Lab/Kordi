@@ -41,8 +41,11 @@
 .app-dense-menu-divider { border-top: 1px solid var(--app-transient-border); margin: 4px 6px; }
 /* Muted section label, as Help's "Jump to a tour section". */
 .app-dense-menu-label { margin: 2px 8px; font-size: 11px; color: var(--app-transient-muted-text); }
-.app-dense-menu:focus { outline: none; }
-.app-dense-menu :focus-visible { outline: 2px solid var(--app-transient-focus-ring); outline-offset: 2px; }
+/* No focus rings inside pop-up menus, including the row a menu focuses when it opens.
+ * Keyboard focus shows as the row hover fill instead. */
+.app-dense-menu, .app-dense-menu :is(:focus, :focus-visible) { outline: none !important; }
+.app-dense-menu :is(button, a[href], summary, [role="menuitem"], [tabindex]:not([tabindex="-1"])):focus-visible:not(:disabled) { background: var(--app-transient-hover-bg); }
+.app-dense-menu .app-dense-menu-danger:focus-visible:not(:disabled) { background: var(--app-transient-danger-hover-bg); }
 .app-dense-menu > .app-dialog-popover-arrow { display: none; }
 
 /* Context menus of the chat list share the Start a chat width. */
@@ -76,8 +79,6 @@
 .app-chat-create-group .app-dense-menu-items { margin-inline: -5px; }
 .app-chat-create-group .app-dense-menu-items > button[aria-pressed="true"] { background: var(--app-transient-selected-bg); }
 .app-chat-create-group .app-dense-menu-items > button[aria-pressed="true"]:hover { background: var(--app-transient-hover-bg); }
-/* The people list scrolls, so its focus ring stays inside the rows instead of being clipped. */
-.app-chat-create-group .app-dense-menu-items > button:focus-visible { outline-offset: -2px; }
 .app-dense-menu-items > button > .app-chat-create-row-avatar { flex: none; width: 20px; height: 20px; }
 .app-dense-menu-items > button > .app-chat-create-check { flex: none; display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid; border-radius: 999px; }
 .app-chat-create-check > svg { width: 10px; height: 10px; }

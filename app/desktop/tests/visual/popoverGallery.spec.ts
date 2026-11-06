@@ -92,4 +92,31 @@ for (const theme of ['light', 'dark'] as const) {
       }
     }
   });
+
+  test(`menu focus shows the hover fill, never a ring (${theme})`, async ({ page }) => {
+    await openGallery(page, theme);
+    const all = surfaces(page);
+    // The organization list focuses the current organization as it opens.
+    const current = all.organizations.locator('[aria-pressed="true"]');
+    await expect(current).toBeFocused();
+    await expect(current).toHaveCSS('outline-style', 'none');
+    for (const [name, surface] of Object.entries(all)) {
+      const hover = await surface.evaluate((element) => {
+        const probe = document.createElement('div');
+        probe.style.background = 'var(--app-transient-hover-bg)';
+        element.append(probe);
+        const value = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return value;
+      });
+      const controls = surface.locator('.app-dense-menu-row:not(.app-dense-menu-danger):not(:disabled), .app-dense-menu-items > button:not(:disabled), .app-model-picker-row:not(:disabled), .app-dense-menu-header > button');
+      expect(await controls.count(), name).toBeGreaterThan(0);
+      for (const control of (await controls.all()).slice(0, 4)) {
+        await control.focus();
+        await expect(control, name).toBeFocused();
+        await expect(control, name).toHaveCSS('outline-style', 'none');
+        await expect(control, name).toHaveCSS('background-color', hover);
+      }
+    }
+  });
 }
