@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { decorateCloudConversations } from '../src/app/viewModels/cloudConversationPresence';
+import { decorateCloudConversations, mainTranscriptUnread } from '../src/app/viewModels/cloudConversationPresence';
 import { EMPTY_CLOUD_SESSION_ACTIVITY } from '../src/features/cloud/cloudSessionActivity';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import { WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
@@ -45,4 +45,24 @@ test('genuinely unread discussions retain their independent attention total', ()
   assert.equal(conversations[0].unread, 3);
   assert.match(markup, /Jump to next unread discussion/);
   assert.match(markup, /data-unread-count="3"/);
+});
+
+test('unread discussion replies add to the live main count instead of replacing it', () => {
+  const { conversations, markup } = sidebar(1, 5, 2);
+  assert.equal(conversations[0].unread, 3);
+  assert.equal(mainTranscriptUnread(conversations[0]), 1);
+  assert.match(markup, /data-unread-count="3"/);
+});
+
+test('a discussion reply read in its panel no longer counts anywhere', () => {
+  const { conversations, markup } = sidebar(0, 0, 0);
+  assert.equal(conversations[0].unread, 0);
+  assert.equal(mainTranscriptUnread(conversations[0]), 0);
+  assert.doesNotMatch(markup, /data-unread-count=/);
+});
+
+test('the jump-to-latest badge counts only main transcript messages', () => {
+  const { conversations } = sidebar(0, 1, 1);
+  assert.equal(conversations[0].unread, 1);
+  assert.equal(mainTranscriptUnread(conversations[0]), 0);
 });

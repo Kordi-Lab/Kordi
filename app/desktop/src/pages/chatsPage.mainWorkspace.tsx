@@ -2,6 +2,7 @@ import type { CompanionToolbarProps } from './chatsPage.companionToolbar';
 import { PinnedMessageShelf } from './PinnedMessageShelf';
 import { ProviderConnectTray } from '@/components/ProviderConnectTray';
 import { ChatPaneLayout } from '@/pages/ChatPaneLayout';
+import { mainTranscriptUnread } from '@/app/viewModels/cloudConversationPresence';
 import {
   localOwnedAgentSenderLabel,
 } from '@/app/viewModels/helpers';
@@ -316,7 +317,7 @@ export function ChatMainWorkspace({
                 sessionKey: activeConv.id,
                 messages: presentation.messages,
                 scrollRef: transcript.chatTranscriptScrollRef,
-                unreadCount: activeConv.unread,
+                unreadCount: mainTranscriptUnread(activeConv),
                 scrollClassName:
                   'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain',
                 hasOlderMessages: Boolean(

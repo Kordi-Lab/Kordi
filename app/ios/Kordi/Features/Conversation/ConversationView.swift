@@ -549,7 +549,7 @@ struct ConversationView: View {
             model.pendingMentionMessages(for: conversation).map(\.id)
         )
         let pendingMentionCount = model.pendingMentionCount(for: conversation)
-        let newMessageCount = max(0, conversation.unreadCount)
+        let newMessageCount = scopedThreadRootMessageID == nil ? max(0, conversation.unreadCount - (model.threadAttentionBySession[conversation.sessionId]?.threadUnreadCount ?? 0)) : 0 // Main transcript only; discussion replies have their own cursor.
         let conversationTimeline = ScrollViewReader { proxy in
             let timelineContent = VStack(spacing: 0) {
                 if !coordinatorOwnsConversationCall,

@@ -3,7 +3,8 @@ import type {
   DesktopCollaborationState,
 } from '@/kordi-app/types';
 import type { CloudMessage } from './authClient';
-import { cloudDirectMessageIsUnreadForAccount } from './cloudAgentMessages';
+import { cloudDirectMessageIsUnreadForAccount, parseCloudAgentResponse } from './cloudAgentMessages';
+import { cloudDirectMessageAction } from './cloudDirectMessages';
 import {
   cloudGroupUnreadCountsBySessionId,
   isCloudGroupSessionId,
@@ -38,8 +39,10 @@ export function cloudUnreadCountsBySessionId({
     const locallyReadIds = readInboundMessageIdsByPeer[peerId];
     for (const message of messages) {
       const envelope = parseCloudGroupControl(message.body);
+      // Discussion replies count against their own thread read cursor, which
+      // the server attention summary reports; never against the conversation.
       if (envelope) {
-        if (locallyReadIds?.has(message.messageId)) continue;
+        if (locallyReadIds?.has(message.messageId) || envelope.message?.messageAction?.kind === 'thread') continue;
         const reliableWire = message.readAt
           && message.conversationId
           && Number.isSafeInteger(message.conversationSequence)
@@ -58,6 +61,7 @@ export function cloudUnreadCountsBySessionId({
         || isCloudGroupSessionId(sessionId)
         || locallyReadIds?.has(message.messageId)
         || !cloudDirectMessageIsUnreadForAccount(message, accountId)
+        || (parseCloudAgentResponse(message.body)?.messageAction ?? cloudDirectMessageAction(message.body))?.kind === 'thread'
       ) continue;
       unreadBySessionId[sessionId] = (unreadBySessionId[sessionId] ?? 0) + 1;
     }

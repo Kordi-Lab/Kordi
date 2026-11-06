@@ -1,5 +1,5 @@
 use super::compaction::{compact_agent_response_snapshots, compact_startup_snapshots};
-use super::unread_policy::{chat_sync_unread_key, is_self_agent_reply};
+use super::unread_policy::{chat_sync_unread_key, is_self_agent_reply, is_thread_message};
 use super::*;
 use std::collections::HashSet;
 
@@ -380,7 +380,8 @@ fn load_conversation_heads(
         .prepare(
             "SELECT json_extract(snapshot_json, '$.id'),
                     json_extract(snapshot_json, '$.content.blocks[0].text'),
-                    COALESCE(json_extract(snapshot_json, '$.sender_account_id'), '')
+                    COALESCE(json_extract(snapshot_json, '$.sender_account_id'), ''),
+                    json_extract(snapshot_json, '$.reply_to_message_id')
              FROM chat_sync_messages
              WHERE account_id = ?1 AND conversation_id = ?2
                AND conversation_sequence > ?3
@@ -414,14 +415,23 @@ fn load_conversation_heads(
                         row.get::<_, String>(0)?,
                         row.get::<_, Option<String>>(1)?,
                         row.get::<_, String>(2)?,
+                        row.get::<_, Option<String>>(3)?,
                     ))
                 },
             )
             .map_err(|error| error.to_string())?;
         let mut unread_keys = HashSet::new();
         for row in unread_rows {
-            let (message_id, body, sender) = row.map_err(|error| error.to_string())?;
-            if sender == account_id && !is_self_agent_reply(body.as_deref()) {
+            let (message_id, body, sender, reply_to) = row.map_err(|error| error.to_string())?;
+            if (sender == account_id && !is_self_agent_reply(body.as_deref()))
+                || is_thread_message(
+                    conn,
+                    account_id,
+                    conversation_id,
+                    body.as_deref(),
+                    reply_to.as_deref(),
+                )?
+            {
                 continue;
             }
             if let Some(key) = chat_sync_unread_key(&message_id, body.as_deref()) {
