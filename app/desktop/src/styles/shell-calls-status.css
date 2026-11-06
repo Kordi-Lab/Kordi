@@ -1,5 +1,4 @@
-.app-call-card,
-.app-call-error {
+.app-call-card {
   position: absolute;
   z-index: 82;
   display: flex;
@@ -96,8 +95,7 @@
   white-space: nowrap;
 }
 
-.app-call-card-copy span,
-.app-call-error span {
+.app-call-card-copy span {
   margin-top: 2px;
   color: var(--utility-muted-text);
   font-size: 11px;
@@ -132,40 +130,6 @@
 
 .app-call-card-decline:hover {
   background: rgb(190 24 24);
-}
-
-.app-call-error button {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
-}
-
-.app-call-error {
-  right: 18px;
-  bottom: 18px;
-  max-width: min(460px, calc(100% - 36px));
-  gap: 10px;
-  padding: 11px 10px 11px 13px;
-  border-color: rgb(244 63 94 / 0.28);
-  border-radius: 14px;
-  color: rgb(253 164 175);
-}
-
-.app-call-error > svg {
-  flex: none;
-}
-
-.app-call-error > span {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  line-height: 1.45;
-}
-
-.app-call-error strong {
-  margin-bottom: 1px;
-  color: inherit;
-  font-size: 12px;
 }
 
 .app-conversation-call-banner {
@@ -212,7 +176,7 @@
 }
 
 .app-conversation-call-banner-icon[data-phase='failed'] > i {
-  background: rgb(235 87 87);
+  background: var(--app-error-text);
 }
 
 .app-conversation-call-banner-copy {
@@ -291,8 +255,7 @@
   font: inherit;
 }
 
-.kordi-app.theme-light .app-call-card,
-.kordi-app.theme-light .app-call-error {
+.kordi-app.theme-light .app-call-card {
   background: rgb(250 249 247 / 0.98);
   box-shadow: 0 22px 60px rgb(31 27 25 / 0.16);
 }

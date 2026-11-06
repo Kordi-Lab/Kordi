@@ -74,7 +74,76 @@ test('an idle call lifecycle never shows a stale connection error', () => {
   const failedMarkup = renderToStaticMarkup(createElement(CloudCallHost, {
     controller: { ...controller, phase: 'failed' },
   }));
+  assert.match(failedMarkup, /role="dialog"/);
   assert.match(failedMarkup, /Connection lost/);
+  assert.match(failedMarkup, /Check your network, then try again\./);
+  assert.match(failedMarkup, />OK</);
+  assert.doesNotMatch(failedMarkup, /app-call-error|Dismiss call error/);
+});
+
+function openCallController(overrides: Partial<Record<string, unknown>>) {
+  const call = {
+    id: 'call-open',
+    revision: 1,
+    conversationId: 'conversation-1',
+    kind: 'voice' as const,
+    state: 'active' as const,
+    createdByAccountId: 'acct_me',
+    createdAt: '2026-08-15T09:00:00Z',
+    answeredAt: '2026-08-15T09:00:01Z',
+    endedAt: null,
+    participants: [],
+  };
+  return {
+    account: { accountId: 'acct_me' },
+    currentCall: { call, sessionId: 'session-1' },
+    incomingCall: null,
+    handoffCall: null,
+    phase: 'connected',
+    error: null,
+    isPresented: true,
+    isMicrophoneEnabled: true,
+    isCameraEnabled: false,
+    isAudioPlaybackBlocked: false,
+    connectedAtMs: null,
+    mediaParticipants: [],
+    mediaDevices: [],
+    activeDeviceIds: {},
+    canSelectAudioOutput: false,
+    ...overrides,
+  } as unknown as CloudCallsController;
+}
+
+test('an open call shows one error line above the controls instead of a card', () => {
+  const failedMarkup = renderToStaticMarkup(createElement(CloudCallHost, {
+    controller: openCallController({
+      phase: 'failed',
+      error: 'The call disconnected. Check your connection and try again.',
+    }),
+  }));
+  assert.match(failedMarkup, /class="app-error-line app-call-notice"/);
+  assert.match(failedMarkup, /Connection lost\. Your call is still open\./);
+  assert.match(failedMarkup, /class="app-error-line-action">Try again</);
+  assert.doesNotMatch(failedMarkup, /app-call-recovery|Dismiss call notice|role="dialog" aria-modal="true" aria-labelledby/);
+
+  const audioMarkup = renderToStaticMarkup(createElement(CloudCallHost, {
+    controller: openCallController({ isAudioPlaybackBlocked: true }),
+  }));
+  assert.match(audioMarkup, /Audio is paused\./);
+  assert.match(audioMarkup, /class="app-error-line-action">Start audio</);
+
+  const switchMarkup = renderToStaticMarkup(createElement(CloudCallHost, {
+    controller: openCallController({
+      error: 'Kordi could not switch the camera. Check macOS permissions and try again.',
+    }),
+  }));
+  assert.match(switchMarkup, /Couldn&#x27;t switch the camera\./);
+  assert.match(switchMarkup, /class="app-error-line-action">Dismiss</);
+
+  const quietMarkup = renderToStaticMarkup(createElement(CloudCallHost, {
+    controller: openCallController({}),
+  }));
+  assert.doesNotMatch(quietMarkup, /app-error-line/);
 });
 
 test('a detached call leaves chat usable with a compact return card', () => {
@@ -179,16 +248,40 @@ test('device and publication failures are not mislabeled as network loss', () =>
     recoveryContent('Kordi could not find the microphone or camera needed for this call.', 'failed'),
     {
       title: 'Microphone or camera unavailable',
-      description: 'Kordi could not find the microphone or camera needed for this call.',
+      description: 'Connect a microphone or camera, then try again.',
+      line: "Couldn't find a microphone or camera.",
     },
   );
   assert.deepEqual(
     recoveryContent('Camera publication failed. Check camera access and try again.', 'failed'),
     {
       title: 'Call media unavailable',
-      description: 'Camera publication failed. Check camera access and try again.',
+      description: 'Some audio or video could not connect.',
+      line: 'Some audio or video could not connect.',
     },
   );
+});
+
+test('device switch failures name the device instead of a permission notice', () => {
+  for (const device of ['microphone', 'camera', 'speaker']) {
+    const content = recoveryContent(
+      `Kordi could not switch the ${device}. Check macOS permissions and try again.`,
+      'connected',
+    );
+    assert.equal(content.title, `Couldn't switch the ${device}`);
+    assert.equal(content.line, `Couldn't switch the ${device}.`);
+  }
+  assert.equal(
+    recoveryContent('Kordi could not read the media devices on this Mac. Check System Settings and try again.', 'connected').title,
+    "Couldn't read call devices",
+  );
+  for (const content of [
+    recoveryContent('Kordi could not switch the camera. Check macOS permissions and try again.', 'connected'),
+    recoveryContent('Speaker selection uses the output chosen in macOS System Settings on this Mac.', 'connected'),
+  ]) {
+    assert.notEqual(content.title, 'Check your call devices');
+    assert.notEqual(content.title, 'Microphone or camera unavailable');
+  }
 });
 
 test('blocked call devices ask in a dialog instead of an error notice', () => {

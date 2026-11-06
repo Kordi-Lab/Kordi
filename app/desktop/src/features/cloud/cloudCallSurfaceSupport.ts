@@ -21,8 +21,12 @@ const CALL_FOCUSABLE_SELECTOR = [
 ].join(',');
 
 type CallRecoveryContent = {
+  /** Dialog title when no call surface is open. */
   title: string;
+  /** The one dialog line under the title. */
   description: string;
+  /** The single error line shown on an open call surface. */
+  line: string;
 };
 
 export function useCallDuration(connectedAtMs: number | null): string | null {
@@ -120,30 +124,59 @@ export function recoveryContent(
   phase: CloudCallsController['phase'],
 ): CallRecoveryContent {
   const normalized = error.toLowerCase();
+  // Checked before the permission wording, which this message also mentions.
+  const switchFailure = /could not switch the (microphone|camera|speaker)/.exec(normalized);
+  if (switchFailure) {
+    const device = switchFailure[1];
+    return {
+      title: `Couldn't switch the ${device}`,
+      description: 'Choose another device or check its access in System Settings.',
+      line: `Couldn't switch the ${device}.`,
+    };
+  }
+  if (normalized.includes('could not read the media devices')) {
+    return {
+      title: "Couldn't read call devices",
+      description: 'Check System Settings, then try again.',
+      line: "Couldn't read call devices.",
+    };
+  }
+  if (normalized.includes('speaker selection')) {
+    return {
+      title: 'Speaker follows macOS',
+      description: 'Choose the speaker in macOS Sound settings.',
+      line: 'Choose the speaker in macOS Sound settings.',
+    };
+  }
+  if (normalized.includes('start audio')) {
+    return {
+      title: 'Audio is paused',
+      description: 'Select Start audio to hear the others.',
+      line: 'Audio is paused.',
+    };
+  }
+  // Refused devices normally open the permission dialog; this is a fallback.
   if (normalized.includes('permission')
     || normalized.includes('notallowed')
     || normalized.includes('denied')) {
     return {
       title: 'Microphone or camera unavailable',
-      description: 'Allow Kordi access in macOS System Settings, then try again.',
-    };
-  }
-  if (normalized.includes('system settings') || normalized.includes('switch the')) {
-    return {
-      title: 'Check your call devices',
-      description: error,
+      description: 'Allow Kordi access in System Settings, then try again.',
+      line: 'Microphone or camera access is off.',
     };
   }
   if (normalized.includes('could not find') || normalized.includes('notfound')) {
     return {
       title: 'Microphone or camera unavailable',
-      description: error,
+      description: 'Connect a microphone or camera, then try again.',
+      line: "Couldn't find a microphone or camera.",
     };
   }
   if (normalized.includes('publication') || normalized.includes('subscribed')) {
     return {
       title: 'Call media unavailable',
-      description: error,
+      description: 'Some audio or video could not connect.',
+      line: 'Some audio or video could not connect.',
     };
   }
   if (phase === 'failed'
@@ -154,12 +187,14 @@ export function recoveryContent(
     || normalized.includes('pc ')) {
     return {
       title: 'Connection lost',
-      description: 'Your call is still open. Check your network, then try again.',
+      description: 'Check your network, then try again.',
+      line: 'Connection lost. Your call is still open.',
     };
   }
   return {
     title: 'Call needs attention',
-    description: 'Kordi could not continue this action. Try again or choose another device.',
+    description: 'Kordi could not finish that. Try again in a moment.',
+    line: 'Kordi could not finish that.',
   };
 }
 

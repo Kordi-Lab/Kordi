@@ -42,8 +42,8 @@
     padding: 8px 12px 128px;
   }
 
-  .app-call-recovery {
-    bottom: 126px;
+  .app-call-surface .app-call-notice {
+    bottom: 114px;
   }
 
   .app-call-controls {
@@ -103,14 +103,8 @@
     font-size: 9px;
   }
 
-  .app-call-recovery {
+  .app-call-surface .app-call-notice {
     width: calc(100% - 24px);
-    gap: 9px;
-    padding-left: 10px;
-  }
-
-  .app-call-recovery-icon {
-    display: none;
   }
 
   .app-call-device-menu {
@@ -131,7 +125,6 @@
 
   .app-call-icon-button,
   .app-call-card-button,
-  .app-call-error button,
   .app-conversation-call-banner button,
   .app-call-control-disc {
     transition: none;

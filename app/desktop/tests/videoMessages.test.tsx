@@ -15,8 +15,13 @@ import { AttachmentPreview } from '../src/kordi-app/components/transcriptAttachm
 import { captureVideoPreview } from '../src/features/chat/composerVideoPreview';
 import {
   formatVideoRecordingDuration,
+  openVideoRecordingStream,
   preferredMp4RecordingMimeType,
+  videoRecordingErrorMessage,
+  type VideoComposerState,
+  type VideoMessageRecorderController,
 } from '../src/features/chat/useVideoMessageRecorder';
+import { VideoRecordingSurface } from '../src/pages/chatsPage.videoComposer';
 import type { Message } from '../src/kordi-app/types';
 
 test('MP4 classification prefers MIME metadata and only falls back for untyped files', () => {
@@ -237,4 +242,71 @@ test('large video paths stay chunked and file-backed', () => {
   );
   assert.match(videoCard, /deliveryVisual\?\.kind === 'uploading' && uploadComplete\s*\? null/);
   assert.match(videoCard, /const transferPending = !uploadComplete/);
+});
+
+function recorderController(state: Partial<VideoComposerState>): VideoMessageRecorderController {
+  const noop = () => undefined;
+  return {
+    state: {
+      phase: 'idle',
+      durationMs: 0,
+      stream: null,
+      attachment: null,
+      error: null,
+      permissionIssue: null,
+      ...state,
+    },
+    surfaceActive: true,
+    start: async () => undefined,
+    stop: noop,
+    reset: noop,
+    retake: async () => undefined,
+    send: noop,
+    openPermissionSettings: noop,
+  };
+}
+
+test('a refused camera opens the permission dialog for the video recorder', async () => {
+  const calls: string[] = [];
+  const refused = await openVideoRecordingStream({
+    native: async (source, request) => {
+      calls.push(`${source}:${request}`);
+      return source === 'camera' ? 'denied' : 'granted';
+    },
+    getUserMedia: async () => { throw new Error('devices must not open after a refusal'); },
+  });
+  assert.deepEqual(refused, { status: 'blocked', issue: { sources: ['camera'], canOpenSettings: true } });
+  assert.deepEqual(calls, ['microphone:false', 'camera:false']);
+
+  const macMarkup = renderToStaticMarkup(createElement(VideoRecordingSurface, {
+    video: recorderController({ phase: 'permission', permissionIssue: { sources: ['camera'], canOpenSettings: true } }),
+  }));
+  assert.match(macMarkup, /role="dialog"/);
+  assert.match(macMarkup, /Allow camera access/);
+  assert.match(macMarkup, /then record again\./);
+  assert.match(macMarkup, /Open System Settings/);
+  assert.match(macMarkup, />Cancel</);
+
+  const browserMarkup = renderToStaticMarkup(createElement(VideoRecordingSurface, {
+    video: recorderController({
+      phase: 'permission',
+      permissionIssue: { sources: ['microphone', 'camera'], canOpenSettings: false },
+    }),
+  }));
+  assert.match(browserMarkup, /Allow microphone and camera access/);
+  assert.doesNotMatch(browserMarkup, /Open System Settings/);
+  assert.match(browserMarkup, />OK</);
+});
+
+test('other video recording failures show one error line with a retry', () => {
+  const missing = Object.assign(new Error('none'), { name: 'NotFoundError' });
+  assert.equal(videoRecordingErrorMessage(missing), "Couldn't find a camera and microphone.");
+  const markup = renderToStaticMarkup(createElement(VideoRecordingSurface, {
+    video: recorderController({ phase: 'error', error: videoRecordingErrorMessage(missing) }),
+  }));
+  assert.match(markup, /class="app-error-line[^"]*" role="alert"/);
+  assert.match(markup, /Couldn&#x27;t find a camera and microphone\./);
+  assert.match(markup, /class="app-error-line-action">Try again</);
+  assert.doesNotMatch(markup, /text-red-500/);
+  assert.doesNotMatch(markup, /role="dialog"/);
 });

@@ -7,6 +7,15 @@ import {
   finishDesktopChatAttachmentStream,
   startDesktopChatAttachmentStream,
 } from '@/lib/desktopAttachmentStream';
+import {
+  callMediaSources,
+  defaultCallPermissionDeps,
+  openCallPermissionSettings,
+  openMediaStreamWithPermission,
+  type CallPermissionDeps,
+  type CallPermissionIssue,
+  type MediaStreamPermissionResult,
+} from '@/features/cloud/callMediaPermission';
 import { composerAttachmentItemFromStoredPath } from './composerAttachments';
 import type { AttachmentItem } from './composerController.types';
 
@@ -17,13 +26,23 @@ const MP4_RECORDING_TYPES = [
   'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
   'video/mp4',
 ];
+const VIDEO_RECORDING_CONSTRAINTS: MediaStreamConstraints = {
+  video: {
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 30, max: 30 },
+  },
+  audio: true,
+};
 
-type VideoComposerState = {
-  phase: 'idle' | 'requesting' | 'recording' | 'processing' | 'review' | 'error';
+export type VideoComposerState = {
+  /** `permission` waits on the access dialog after macOS or the browser refused. */
+  phase: 'idle' | 'requesting' | 'recording' | 'processing' | 'review' | 'error' | 'permission';
   durationMs: number;
   stream: MediaStream | null;
   attachment: AttachmentItem | null;
   error: string | null;
+  permissionIssue: CallPermissionIssue | null;
 };
 
 const IDLE_STATE: VideoComposerState = {
@@ -32,6 +51,7 @@ const IDLE_STATE: VideoComposerState = {
   stream: null,
   attachment: null,
   error: null,
+  permissionIssue: null,
 };
 
 export function preferredMp4RecordingMimeType(
@@ -40,20 +60,31 @@ export function preferredMp4RecordingMimeType(
   return MP4_RECORDING_TYPES.find(isTypeSupported) ?? null;
 }
 
+/**
+ * Opens the camera and microphone for a video message. In the Mac app macOS
+ * is asked first, so its prompt appears when access was never decided.
+ */
+export function openVideoRecordingStream(
+  deps: CallPermissionDeps,
+): Promise<MediaStreamPermissionResult> {
+  return openMediaStreamWithPermission(callMediaSources('video'), VIDEO_RECORDING_CONSTRAINTS, deps);
+}
+
+/** One short line for a recording failure; refused access uses the dialog. */
 export function videoRecordingErrorMessage(error: unknown) {
-  const name = error instanceof DOMException ? error.name : '';
+  const name = error && typeof error === 'object' && 'name' in error ? String(error.name) : '';
   if (name === 'NotAllowedError' || name === 'SecurityError') {
-    return 'Allow Kordi to use the camera and microphone in System Settings, then try again.';
+    return 'Camera and microphone access is off.';
   }
   if (name === 'NotFoundError' || name === 'OverconstrainedError') {
-    return 'Kordi could not find an available camera and microphone on this Mac.';
+    return "Couldn't find a camera and microphone.";
   }
   if (name === 'NotReadableError' || name === 'AbortError') {
-    return 'The camera or microphone is already in use. Finish the current call or recording and try again.';
+    return 'The camera or microphone is already in use.';
   }
   return error instanceof Error && error.message.trim()
     ? error.message
-    : 'Kordi could not record this video. Try again.';
+    : "Couldn't record this video.";
 }
 
 function videoFileName(now = new Date()) {
@@ -73,10 +104,13 @@ export function useVideoMessageRecorder({
   conversationId,
   onSend,
   focusComposer,
+  permissionDeps,
 }: {
   conversationId: string;
   onSend: (draftOverride?: string, attachmentOverride?: AttachmentItem[]) => Promise<void> | void;
   focusComposer: () => void;
+  /** Injected in tests; defaults to the Mac app or browser device access. */
+  permissionDeps?: CallPermissionDeps;
 }) {
   const [state, setState] = useState<VideoComposerState>(IDLE_STATE);
   const stateRef = useRef(state);
@@ -125,7 +159,7 @@ export function useVideoMessageRecorder({
   const reset = useCallback(() => clear(true), [clear]);
 
   const start = useCallback(async () => {
-    if (!['idle', 'error', 'review'].includes(stateRef.current.phase)) return;
+    if (!['idle', 'error', 'review', 'permission'].includes(stateRef.current.phase)) return;
     reset();
     const generation = generationRef.current;
     commit({ ...IDLE_STATE, phase: 'requesting' });
@@ -137,18 +171,16 @@ export function useVideoMessageRecorder({
       if (!mimeType) {
         throw new Error('This Mac cannot record MP4 video in Kordi. Attach an MP4 file instead.');
       }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30, max: 30 },
-        },
-        audio: true,
-      });
+      const opened = await openVideoRecordingStream(permissionDeps ?? defaultCallPermissionDeps());
       if (generation !== generationRef.current) {
-        stopStream(stream);
+        if (opened.status === 'granted') stopStream(opened.stream);
         return;
       }
+      if (opened.status === 'blocked') {
+        commit({ ...IDLE_STATE, phase: 'permission', permissionIssue: opened.issue });
+        return;
+      }
+      const { stream } = opened;
       captureStreamRef.current = stream;
       const fileName = videoFileName();
       const attachmentStreamId = await startDesktopChatAttachmentStream(fileName);
@@ -182,7 +214,7 @@ export function useVideoMessageRecorder({
         commit({
           ...IDLE_STATE,
           phase: 'error',
-          error: 'The camera stopped before the video could be saved. Try again.',
+          error: 'The camera stopped before the video could be saved.',
         });
       };
       recorder.onstop = () => {
@@ -219,6 +251,7 @@ export function useVideoMessageRecorder({
                 previewUrl: attachment.previewUrl ?? posterRef.current,
               },
               error: null,
+              permissionIssue: null,
             });
           } catch (error) {
             attachmentStreamRef.current = null;
@@ -236,6 +269,7 @@ export function useVideoMessageRecorder({
         stream,
         attachment: null,
         error: null,
+        permissionIssue: null,
       });
       timerRef.current = window.setInterval(() => {
         if (generation !== generationRef.current || recorder.state !== 'recording') return;
@@ -255,7 +289,7 @@ export function useVideoMessageRecorder({
         commit({ ...IDLE_STATE, phase: 'error', error: videoRecordingErrorMessage(error) });
       }
     }
-  }, [commit, reset, stopTimer]);
+  }, [commit, permissionDeps, reset, stopTimer]);
 
   const stop = useCallback((posterUrl?: string | null) => {
     const recorder = recorderRef.current;
@@ -282,6 +316,12 @@ export function useVideoMessageRecorder({
     }
   }, [clear, commit, focusComposer, onSend]);
 
+  const openPermissionSettings = useCallback(() => {
+    const issue = stateRef.current.permissionIssue;
+    reset();
+    if (issue) void openCallPermissionSettings(issue).catch(() => undefined);
+  }, [reset]);
+
   useEffect(() => reset, [conversationId, reset]);
 
   return {
@@ -292,6 +332,7 @@ export function useVideoMessageRecorder({
     reset,
     retake: start,
     send,
+    openPermissionSettings,
   };
 }
 

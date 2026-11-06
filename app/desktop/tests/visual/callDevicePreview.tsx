@@ -31,7 +31,10 @@ const mediaDevices = [
 const connectedAtMs = Date.now() - 5 * 60 * 1000;
 
 function CallDevicePreview() {
-  const isDetachedPreview = new URLSearchParams(window.location.search).get('mode') === 'detached';
+  const params = new URLSearchParams(window.location.search);
+  const isDetachedPreview = params.get('mode') === 'detached';
+  // `?notice=failed` or `?notice=audio` previews the error line above the controls.
+  const notice = params.get('notice');
   const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(true);
   const [isCameraEnabled, setIsCameraEnabled] = useState(true);
   const [activeDeviceIds, setActiveDeviceIds] = useState<CloudCallsController['activeDeviceIds']>({
@@ -42,7 +45,7 @@ function CallDevicePreview() {
   useEffect(() => {
     document.documentElement.classList.add('app-call-window-root');
     document.body.classList.add('app-call-window-root');
-    if (!isDetachedPreview) {
+    if (!isDetachedPreview && !notice) {
       document.querySelector<HTMLButtonElement>('[aria-label="Choose call devices"]')?.click();
     }
     document.body.dataset.visualReady = 'true';
@@ -50,7 +53,7 @@ function CallDevicePreview() {
       document.documentElement.classList.remove('app-call-window-root');
       document.body.classList.remove('app-call-window-root');
     };
-  }, [isDetachedPreview]);
+  }, [isDetachedPreview, notice]);
 
   const controller: CloudCallsController = {
     account: {
@@ -68,12 +71,12 @@ function CallDevicePreview() {
     detachedCall: isDetachedPreview ? { call, sessionId: 'session-device-preview' } : null,
     detachedThumbnailUrl: null,
     isDetachedCallFolded: isDetachedPreview,
-    phase: 'connected',
-    error: null,
+    phase: notice === 'failed' ? 'failed' : 'connected',
+    error: notice === 'failed' ? 'The call disconnected. Check your connection and try again.' : null,
     isPresented: !isDetachedPreview,
     isMicrophoneEnabled,
     isCameraEnabled,
-    isAudioPlaybackBlocked: false,
+    isAudioPlaybackBlocked: notice === 'audio',
     connectedAtMs,
     mediaParticipants: [
       {

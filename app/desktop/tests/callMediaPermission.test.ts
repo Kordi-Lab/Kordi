@@ -5,6 +5,8 @@ import {
   callPermissionCopy,
   callPermissionSettingsUrl,
   ensureCallMediaPermission,
+  mediaPermissionCopy,
+  openMediaStreamWithPermission,
   type CallMediaSource,
   type CallPermissionDeps,
 } from '../src/features/cloud/callMediaPermission';
@@ -122,4 +124,49 @@ test('dialog copy and settings panes match the blocked devices', () => {
   assert.equal(callPermissionCopy({ sources: ['microphone', 'camera'], canOpenSettings: true }).title, 'Allow microphone and camera access');
   assert.equal(callPermissionSettingsUrl('microphone'), 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone');
   assert.equal(callPermissionSettingsUrl('camera'), 'x-apple.systempreferences:com.apple.preference.security?Privacy_Camera');
+});
+
+test('a recording keeps the opened stream after macOS grants access', async () => {
+  const { stream } = fakeStream();
+  const constraints: MediaStreamConstraints[] = [];
+  const { deps, calls } = nativeDeps(
+    { microphone: ['granted'], camera: ['not_determined', 'granted'] },
+    async (value) => { constraints.push(value); return stream; },
+  );
+  const result = await openMediaStreamWithPermission(['microphone', 'camera'], { audio: true, video: true }, deps);
+  assert.deepEqual(result, { status: 'granted', stream });
+  assert.deepEqual(calls.map((call) => `${call.source}:${call.request}`), [
+    'microphone:false',
+    'camera:false',
+    'camera:true',
+  ]);
+  assert.deepEqual(constraints, [{ audio: true, video: true }]);
+});
+
+test('a refused recording returns an issue instead of opening the devices', async () => {
+  let opened = false;
+  const { deps } = nativeDeps(
+    { microphone: ['granted'], camera: ['denied'] },
+    async () => { opened = true; return fakeStream().stream; },
+  );
+  const result = await openMediaStreamWithPermission(['microphone', 'camera'], { audio: true, video: true }, deps);
+  assert.deepEqual(result, { status: 'blocked', issue: { sources: ['camera'], canOpenSettings: true } });
+  assert.equal(opened, false);
+  assert.deepEqual(mediaPermissionCopy({ sources: ['camera'], canOpenSettings: true }, 'record again'), {
+    title: 'Allow camera access',
+    description: 'Turn on Kordi in Privacy & Security › Camera, then record again.',
+  });
+});
+
+test('a browser recording refusal cannot open System Settings and other failures throw', async () => {
+  const refused = await openMediaStreamWithPermission(['microphone', 'camera'], { audio: true, video: true }, {
+    getUserMedia: async () => { throw Object.assign(new Error('blocked'), { name: 'NotAllowedError' }); },
+  });
+  assert.deepEqual(refused, { status: 'blocked', issue: { sources: ['microphone', 'camera'], canOpenSettings: false } });
+  await assert.rejects(
+    openMediaStreamWithPermission(['microphone', 'camera'], { audio: true, video: true }, {
+      getUserMedia: async () => { throw Object.assign(new Error('none'), { name: 'NotFoundError' }); },
+    }),
+    { name: 'NotFoundError' },
+  );
 });
