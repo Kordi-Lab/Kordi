@@ -52,7 +52,9 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Per-account rate limit wait times in sign-in and link errors add under 1 kB.
 // The discussion panel, artifacts tab alignment, border contrast and thread read state add 1.5 kB.
 // The dense popover help styles remove 5.5 kB, so it moves to 5.809 MB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_809_000;
+// Folding long groups of background session rows adds 2.9 kB.
+// Running reply Stop on the status line with Fork on hover removes 1 kB, so it moves to 5.811 MB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_811_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.
