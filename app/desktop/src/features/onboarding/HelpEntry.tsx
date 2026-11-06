@@ -2,9 +2,12 @@ import { lazy, Suspense, useContext, useRef, useState } from 'react';
 import type { AppDialogAnchor } from '@/components/ui/dialog';
 import { CircleHelp } from 'lucide-react';
 import { cloudApiBaseUrl } from '@/features/cloud/authClient';
+import { useGroupInvitationPromptBusy } from '@/features/cloud/groupInvitationPromptPresence';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
+import { takeBrowserWelcomeLink } from '@web/app/browserWelcomeLink';
 import type { NavId } from '@/kordi-app/types';
 import type { WorkspaceSidebarAccount } from '@/pages/workspaceSidebar.types';
-import { helpProgressKey, readHelpProgress, saveHelpProgress } from './helpProgress';
+import { helpProgressKey, markHelpWelcome, readHelpProgress, saveHelpProgress } from './helpProgress';
 import { requestHelpGrounding } from './helpNavigation';
 import type { HelpTourId } from './helpTourSteps';
 import type { HelpAction } from './helpContent';
@@ -39,8 +42,14 @@ function AccountHelpEntry({ setActiveNav, account, onOpenSupport, onOpenSession,
   const tourOpenedSettings = useRef(false);
   const settingsAvailable = Boolean(account.cloudAccount && account.cloudSettings && account.setCloudAccountDialogTab);
   const trigger = useRef<HTMLButtonElement>(null);
-  const progressKey = helpProgressKey(account.cloudAccount?.accountId ?? 'local', cloudApiBaseUrl());
-  const [welcome, setWelcome] = useState(() => readHelpProgress(progressKey).welcome);
+  const accountId = account.cloudAccount?.accountId;
+  const progressKey = helpProgressKey(accountId ?? 'local', cloudApiBaseUrl());
+  const [welcome, setWelcome] = useState(() => {
+    // A new web account arrives with ?welcome=1, like a desktop sign-up.
+    if (accountId && isBrowserAppRuntime() && takeBrowserWelcomeLink()) markHelpWelcome(accountId, cloudApiBaseUrl());
+    return readHelpProgress(progressKey).welcome;
+  });
+  const invitationBusy = useGroupInvitationPromptBusy();
   const openHelp = () => {
     setAnchor(trigger.current?.getBoundingClientRect() ?? null);
     if (tourOpenedSettings.current) { account.setCloudAccountDialogTab?.(null); tourOpenedSettings.current = false; }
@@ -77,7 +86,7 @@ function AccountHelpEntry({ setActiveNav, account, onOpenSupport, onOpenSession,
       <CircleHelp className="h-[18px] w-[18px]" aria-hidden="true" />
       {updateAvailable ? <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-red-500" aria-hidden="true" /> : welcome ? <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" /> : null}
     </button>
-    {welcome && !open && !tour ? <HelpWelcome trigger={trigger} onStart={() => startTour()} onDismiss={() => {
+    {welcome && !open && !tour && !invitationBusy ? <HelpWelcome trigger={trigger} onStart={() => startTour()} onDismiss={() => {
           setWelcome(false);
           saveHelpProgress(progressKey, { ...readHelpProgress(progressKey), welcome: false });
         }} /> : null}
