@@ -105,6 +105,8 @@ for (const theme of ['light', 'dark'] as const) {
     const dialog = page.getByRole('dialog', { name: 'Start group', exact: true });
     await expect(dialog).toBeVisible();
     await settle(page);
+    // The detail view keeps its own width; only the action menu is narrow.
+    expect((await rowBox(dialog)).width).toBeCloseTo(284, 1);
     await expect(dialog.getByText('Kordi contact')).toHaveCount(0);
     await expect(dialog.getByText(/Select at least|Pick \d/)).toHaveCount(0);
     const people = dialog.getByRole('group', { name: 'People' });
