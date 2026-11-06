@@ -97,6 +97,28 @@ export function parseRetryAfterSeconds(value: string | null | undefined, now = D
   return Math.max(0, Math.ceil((at - now) / 1000));
 }
 
+/** "42 seconds", "3 minutes", or "2 hours", rounded up like the server's message. */
+export function retryWaitPhrase(seconds: number): string {
+  const whole = Math.max(1, Math.ceil(seconds));
+  const [amount, unit] = whole < 90
+    ? [whole, 'second']
+    : whole < 90 * 60
+      ? [Math.ceil(whole / 60), 'minute']
+      : [Math.ceil(whole / 3600), 'hour'];
+  return `${amount} ${unit}${amount === 1 ? '' : 's'}`;
+}
+
+/**
+ * Copy for a rate-limit refusal: `lead` followed by the exact wait when the
+ * server named one, or "Wait a moment, then try again." when it did not.
+ */
+export function rateLimitedMessage(error: unknown, lead = 'Too many attempts.'): string {
+  const seconds = error instanceof CloudAuthError ? error.retryAfterSeconds : undefined;
+  return seconds !== undefined && seconds > 0
+    ? `${lead} Try again in ${retryWaitPhrase(seconds)}.`
+    : `${lead} Wait a moment, then try again.`;
+}
+
 export function isRetryableCloudDeliveryError(error: unknown): boolean {
   const status = error instanceof CloudAuthError ? error.status : null;
   return status === null
@@ -111,7 +133,14 @@ type ServerErrorBody = {
   message?: string;
   error?: string | { code?: string; message?: string };
   error_description?: string;
+  /** The wait a 429 names in its body, matching `Retry-After`. */
+  retryAfterSeconds?: unknown;
 };
+
+function bodyRetryAfterSeconds(data: ServerErrorBody): number | undefined {
+  const value = data.retryAfterSeconds;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.ceil(value) : undefined;
+}
 
 const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'email_verification_required', 'invalid_verification_code', 'email_delivery_unavailable',
@@ -160,5 +189,6 @@ export function buildCloudAuthError(
     : fallbackMessage;
   // The account turned AI models off; the consent store shows the "AI models are off" prompt.
   if (code === 'ai_consent_required') signalAiConsentRequired();
-  return new CloudAuthError(code, message, status, parseRetryAfterSeconds(retryAfter));
+  const retryAfterSeconds = parseRetryAfterSeconds(retryAfter) ?? bodyRetryAfterSeconds(data);
+  return new CloudAuthError(code, message, status, retryAfterSeconds);
 }

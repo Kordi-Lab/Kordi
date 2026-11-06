@@ -1,3 +1,5 @@
+import { CloudAuthError, retryWaitPhrase } from '@/features/cloud/cloudAuthError';
+
 /**
  * Copy and rules for creating and sharing a group. Failures get short, human
  * copy: server messages such as "group member count is invalid" never reach
@@ -44,7 +46,10 @@ export function groupInvitationLinkErrorMessage(error: unknown, { asCreator = fa
   if (/enter a group name/.test(text)) return 'Name the group before sharing a link.';
   if (/cannot create a share link/.test(text)) return "This group can't share a link yet. Try again in a moment.";
   if (/member count|fewer than|at least/.test(text)) return 'Add someone to the group before sharing a link.';
-  if (/too many|rate limit|429/.test(text)) return 'Too many tries right now. Try again in a minute.';
+  if (error instanceof CloudAuthError && error.code === 'rate_limited' && error.retryAfterSeconds) {
+    return `Too many links right now. Try again in ${retryWaitPhrase(error.retryAfterSeconds)}.`;
+  }
+  if (/too many|rate limit|429/.test(text)) return 'Too many links right now. Try again later.';
   return "Couldn't create the link. Try again.";
 }
 

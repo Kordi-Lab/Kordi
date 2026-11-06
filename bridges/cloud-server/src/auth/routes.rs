@@ -40,7 +40,11 @@ use crate::auth::password::{
     hash_password, validate_email, validate_password_strength, verify_password, EmailFormatError,
     PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
 };
-use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, CONTACT_ADD_LIMIT};
+use crate::auth::rate_limit::{
+    CloudRateLimiter, RateLimitDecision, APP_AUTHORIZE_ADDRESS_LIMIT, APP_INVITATION_CREATE_LIMIT,
+    CONTACT_ADD_LIMIT, GROUP_INVITATION_CREATE_LIMIT, INVITATION_ACCEPT_LIMIT,
+    INVITATION_PAGE_CLAIM_ADDRESS_LIMIT, INVITATION_VIEW_ADDRESS_LIMIT, PROFILE_LOOKUP_LIMIT,
+};
 use crate::auth::rows::{
     AccountRecordRow, ContactListRow, ContactRequestRow, DefaultAgentProfileRow,
     OwnerAccountRecordRow, ACCOUNT_RECORD_COLUMNS, OWNER_ACCOUNT_RECORD_COLUMNS,

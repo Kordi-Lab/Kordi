@@ -1,3 +1,4 @@
+use crate::auth::rate_limit::{SIGNUP_CODE_ADDRESS_LIMIT, SIGNUP_CODE_EMAIL_LIMIT};
 use crate::auth::signup_email::{request_signup_code, SignupCodeError};
 
 use super::*;
@@ -15,7 +16,10 @@ pub(super) async fn send_signup_code(
     Json(req): Json<SignupCodeRequest>,
 ) -> Response {
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(&headers, connect_info.as_ref()))
+        .observe_address_limit(
+            SIGNUP_CODE_ADDRESS_LIMIT,
+            client_ip(&headers, connect_info.as_ref()),
+        )
         .await
     {
         return limited_response(retry_after);
@@ -24,6 +28,12 @@ pub(super) async fn send_signup_code(
         Ok(email) => email,
         Err(error) => return map_email_format(error),
     };
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_identifier_limit(SIGNUP_CODE_EMAIL_LIMIT, &email)
+        .await
+    {
+        return limited_response(retry_after);
+    }
     let Some(service) = state.signup_email() else {
         return signup_code_error(SignupCodeError::Unavailable);
     };

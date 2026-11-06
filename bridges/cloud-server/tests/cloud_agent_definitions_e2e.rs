@@ -8,7 +8,9 @@ use std::time::Duration;
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
-use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
+use kordi_cloud_server::auth::rate_limit::{
+    BudgetOverrides, CloudRateLimitConfig, CloudRateLimiter,
+};
 use kordi_cloud_server::pg::init_pool;
 use kordi_cloud_server::server::router_with_rate_limiter;
 use serde_json::{json, Value};
@@ -26,12 +28,14 @@ async fn try_pool() -> Option<sqlx_postgres::PgPool> {
 
 fn test_router(pool: sqlx_postgres::PgPool) -> axum::Router {
     let limiter = CloudRateLimiter::memory(CloudRateLimitConfig {
-        per_ip_limit: 10_000,
-        per_ip_window: Duration::from_secs(60),
         per_email_failure_limit: 5,
         per_email_lockout: Duration::from_secs(900),
         per_email_global_failure_limit: 50,
-    });
+    })
+    .with_budget_overrides(BudgetOverrides::unauthenticated(
+        10_000,
+        Duration::from_secs(60),
+    ));
     router_with_rate_limiter(Arc::new(signup_email_fixture::state(pool)), limiter)
 }
 

@@ -99,7 +99,7 @@ fn from_address(mut request: Request<Body>, last_octet: u8) -> Request<Body> {
 }
 
 #[tokio::test]
-async fn address_limited_and_no_op_requests_do_not_spend_the_account_budget() {
+async fn no_op_requests_do_not_spend_the_account_budget() {
     let Some(pool) = try_pool().await else { return };
     let (token, account_id, _) = legacy_account(
         &email_router(pool.clone(), Arc::new(Inbox::default())),
@@ -107,14 +107,9 @@ async fn address_limited_and_no_op_requests_do_not_spend_the_account_budget() {
         "budget-order",
     )
     .await;
-    // One request per address, so each later address starts fresh.
-    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig {
-        per_ip_limit: 1,
-        per_ip_window: Duration::from_secs(60),
-        per_email_failure_limit: 5,
-        per_email_lockout: Duration::from_secs(900),
-        per_email_global_failure_limit: 50,
-    });
+    // Verification counts per account: every request below comes from a
+    // different address, yet they all draw from one account budget.
+    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::production());
     let state = ServerState::new(pool.clone(), EventBus::noop()).with_signup_email(
         SignupEmailService::new(
             Arc::new(Inbox::default()),
@@ -138,12 +133,6 @@ async fn address_limited_and_no_op_requests_do_not_spend_the_account_budget() {
         async move { router.oneshot(request).await.unwrap().status() }
     };
     assert_eq!(status(&router, guess(1)).await, StatusCode::BAD_REQUEST);
-    for _ in 0..20 {
-        assert_eq!(
-            status(&router, guess(1)).await,
-            StatusCode::TOO_MANY_REQUESTS
-        );
-    }
     // A request with nothing to verify is not charged either.
     sqlx_core::query::query("UPDATE cloud_accounts SET primary_email = NULL WHERE account_id = $1")
         .bind(&account_id)

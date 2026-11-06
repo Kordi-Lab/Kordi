@@ -2,12 +2,20 @@ use super::*;
 
 /// Answers with the group's live link, made the first time an admin asks.
 /// `reset` revokes the group's live links and makes a new one. Repeat requests
-/// return the same link, so this authenticated route has no per-address limit.
+/// return the same link. The route is charged against the caller's account
+/// budget rather than a per-address limit.
 pub(crate) async fn create_group_invitation(
     State(state): State<Arc<ServerState>>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
     Json(req): Json<CreateGroupInvitationRequest>,
 ) -> Response {
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_account_limit(GROUP_INVITATION_CREATE_LIMIT, &session.account_id)
+        .await
+    {
+        return limited_response(retry_after);
+    }
     let group_id = req.group_id.trim();
     let group_space_id = req.group_space_id.trim();
     let Some(group_title) = clean_group_title(&req.group_title) else {
@@ -114,7 +122,10 @@ pub(crate) async fn get_group_invitation(
     axum::extract::Path(token): axum::extract::Path<String>,
 ) -> Response {
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(&headers, connect_info.as_ref()))
+        .observe_address_limit(
+            INVITATION_VIEW_ADDRESS_LIMIT,
+            client_ip(&headers, connect_info.as_ref()),
+        )
         .await
     {
         return limited_response(retry_after);
@@ -157,9 +168,16 @@ pub(crate) async fn get_group_invitation(
 /// when the group has none yet or the viewer is not an admin.
 pub(crate) async fn list_active_group_invitations(
     State(state): State<Arc<ServerState>>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
     axum::extract::Path(group_space_id): axum::extract::Path<String>,
 ) -> Response {
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_account_limit(GROUP_INVITATION_CREATE_LIMIT, &session.account_id)
+        .await
+    {
+        return limited_response(retry_after);
+    }
     let group_space_id = group_space_id.trim();
     if !is_shareable_group_id(group_space_id) {
         return err(

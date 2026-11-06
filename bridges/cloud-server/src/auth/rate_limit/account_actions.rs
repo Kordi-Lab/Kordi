@@ -1,8 +1,7 @@
 //! Per-account budgets for authenticated actions, such as starting a provider
-//! login. The memory backend keeps a sliding window; the Redis backend uses the
-//! same fixed-window counter as the per-IP limit and also falls open on Redis
-//! errors.
+//! login. Each budget counts in its own bucket (see [`super::buckets`]).
 
+use super::buckets::Namespace;
 use super::*;
 
 /// A per-account budget for one authenticated action.
@@ -115,7 +114,7 @@ impl CloudRateLimiter {
         limit: AccountActionLimit,
         account_id: &str,
     ) -> RateLimitDecision {
-        self.observe_account_action(limit.action, account_id, limit.limit, limit.window)
+        self.observe_bucket(Namespace::Account, limit, account_id)
             .await
     }
 
@@ -127,58 +126,8 @@ impl CloudRateLimiter {
         limit: AccountActionLimit,
         account_id: &str,
     ) -> RateLimitDecision {
-        let AccountActionLimit {
-            action,
-            limit,
-            window,
-        } = limit;
-        match &self.backend {
-            Backend::Memory(store) => {
-                let mut buckets = store
-                    .per_account_action
-                    .lock()
-                    .expect("rate limiter poisoned");
-                let Some(entry) = buckets.get_mut(&format!("{action}:{account_id}")) else {
-                    return RateLimitDecision::Allowed;
-                };
-                let now = Instant::now();
-                let window_start = now.checked_sub(window).unwrap_or(now);
-                while entry.front().is_some_and(|front| *front < window_start) {
-                    entry.pop_front();
-                }
-                if (entry.len() as u32) < limit {
-                    return RateLimitDecision::Allowed;
-                }
-                let oldest = entry.front().copied().unwrap_or(now);
-                RateLimitDecision::Limited {
-                    retry_after: window
-                        .checked_sub(now.duration_since(oldest))
-                        .unwrap_or(window),
-                }
-            }
-            Backend::Redis(store) => {
-                let mut conn = store.conn.clone();
-                let redis_key = format!("{}:acct:{action}:{account_id}", store.key_prefix);
-                let count: Option<i64> = match conn.get(&redis_key).await {
-                    Ok(value) => value,
-                    Err(err) => {
-                        eprintln!("[rate_limit] redis GET {redis_key}: {err}");
-                        return RateLimitDecision::Allowed;
-                    }
-                };
-                if count.unwrap_or(0) < limit as i64 {
-                    return RateLimitDecision::Allowed;
-                }
-                let pttl_ms: i64 = conn.pttl(&redis_key).await.unwrap_or(0);
-                RateLimitDecision::Limited {
-                    retry_after: if pttl_ms > 0 {
-                        Duration::from_millis(pttl_ms as u64)
-                    } else {
-                        window
-                    },
-                }
-            }
-        }
+        self.peek_bucket(Namespace::Account, limit, account_id)
+            .await
     }
 
     /// Records one `action` for `account_id`, allowing at most `limit` actions
@@ -186,82 +135,21 @@ impl CloudRateLimiter {
     /// already spent.
     pub async fn observe_account_action(
         &self,
-        action: &str,
+        action: &'static str,
         account_id: &str,
         limit: u32,
         window: Duration,
     ) -> RateLimitDecision {
-        match &self.backend {
-            Backend::Memory(store) => {
-                observe_account_action_memory(store, action, account_id, limit, window)
-            }
-            Backend::Redis(store) => {
-                observe_account_action_redis(store, action, account_id, limit, window).await
-            }
-        }
+        self.observe_account_limit(
+            AccountActionLimit {
+                action,
+                limit,
+                window,
+            },
+            account_id,
+        )
+        .await
     }
-}
-
-fn observe_account_action_memory(
-    store: &MemoryStore,
-    action: &str,
-    account_id: &str,
-    limit: u32,
-    window: Duration,
-) -> RateLimitDecision {
-    let mut buckets = store
-        .per_account_action
-        .lock()
-        .expect("rate limiter poisoned");
-    let entry = buckets.entry(format!("{action}:{account_id}")).or_default();
-    let now = Instant::now();
-    let window_start = now.checked_sub(window).unwrap_or(now);
-    while entry.front().is_some_and(|front| *front < window_start) {
-        entry.pop_front();
-    }
-    if entry.len() as u32 >= limit {
-        let oldest = entry.front().copied().unwrap_or(now);
-        let retry_after = window
-            .checked_sub(now.duration_since(oldest))
-            .unwrap_or(window);
-        return RateLimitDecision::Limited { retry_after };
-    }
-    entry.push_back(now);
-    RateLimitDecision::Allowed
-}
-
-async fn observe_account_action_redis(
-    store: &RedisStore,
-    action: &str,
-    account_id: &str,
-    limit: u32,
-    window: Duration,
-) -> RateLimitDecision {
-    let mut conn = store.conn.clone();
-    let redis_key = format!("{}:acct:{action}:{account_id}", store.key_prefix);
-    let window_secs = window.as_secs().max(1) as i64;
-    let count: i64 = match conn.incr(&redis_key, 1).await {
-        Ok(value) => value,
-        Err(err) => {
-            eprintln!("[rate_limit] redis INCR {redis_key}: {err}");
-            return RateLimitDecision::Allowed;
-        }
-    };
-    if count == 1 {
-        if let Err(err) = conn.expire::<_, ()>(&redis_key, window_secs).await {
-            eprintln!("[rate_limit] redis EXPIRE {redis_key}: {err}");
-        }
-    }
-    if count > limit as i64 {
-        let pttl_ms: i64 = conn.pttl(&redis_key).await.unwrap_or(window_secs * 1000);
-        let retry_after = if pttl_ms > 0 {
-            Duration::from_millis(pttl_ms as u64)
-        } else {
-            window
-        };
-        return RateLimitDecision::Limited { retry_after };
-    }
-    RateLimitDecision::Allowed
 }
 
 #[cfg(test)]
