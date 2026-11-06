@@ -113,6 +113,55 @@ where
     allowed(executor, card_allowed_sql("$1", "$2"), owner, viewer).await
 }
 
+/// Takes the transaction lock for what `owner` allows `subject`. Saving
+/// permissions and admitting a run for another account both take it, so a
+/// run admitted at the same time as a restriction is either refused or seen
+/// and cancelled by it.
+pub(crate) async fn lock_pair(
+    tx: &mut sqlx_core::transaction::Transaction<'_, Postgres>,
+    owner: &str,
+    subject: &str,
+) -> sqlx_core::Result<()> {
+    sqlx_core::query::query(
+        "SELECT pg_advisory_xact_lock(hashtext('contact-permission:' || $1 || ':' || $2))",
+    )
+    .bind(owner.trim())
+    .bind(subject.trim())
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Locks the pair (see [`lock_pair`]) and answers whether `subject` may use
+/// `owner`'s agents. An account and itself need no lock.
+pub(crate) async fn lock_and_check_agent(
+    tx: &mut sqlx_core::transaction::Transaction<'_, Postgres>,
+    owner: &str,
+    subject: &str,
+) -> sqlx_core::Result<bool> {
+    if owner.trim() == subject.trim() {
+        return Ok(true);
+    }
+    lock_pair(tx, owner, subject).await?;
+    agent_allowed(&mut **tx, owner, subject).await
+}
+
+/// Ends a run refused because its owner stopped the requester from using
+/// their agents: its pending reply becomes the generic "isn't available"
+/// answer, so nothing shows the restriction and nothing stays processing.
+pub(crate) async fn publish_refusal(pool: &PgPool, run_id: &str) {
+    use crate::cloud_agent_runtime::runs::terminal_backfill::{
+        publish_terminal_response, TerminalReply,
+    };
+    let reply = TerminalReply {
+        text: AGENT_REFUSAL_MESSAGE,
+        ending: None,
+    };
+    if let Err(error) = publish_terminal_response(pool, run_id, Some(reply)).await {
+        eprintln!("[contact-permissions] refusal reply for {run_id}: {error}");
+    }
+}
+
 /// The accounts among `owners` that stopped `viewer` from seeing their card.
 pub(crate) async fn card_hidden_owners(
     pool: &PgPool,

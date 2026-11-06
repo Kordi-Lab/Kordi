@@ -269,6 +269,19 @@ async fn claim_run_with_executor(
     .await?;
     let lease_expires_at =
         desktop_executor.map(|_| (Utc::now() + chrono::Duration::seconds(45)).to_rfc3339());
+    // The permission check and the insert hold the owner and requester's
+    // permission lock, so a restriction saved meanwhile either refuses this
+    // run or sees it and cancels it.
+    let mut tx = pool.begin().await?;
+    if !crate::contact_permissions::lock_and_check_agent(
+        &mut tx,
+        &input.owner_account_id,
+        &input.requester_account_id,
+    )
+    .await?
+    {
+        return Err(super::RunError::AgentUnavailable);
+    }
     let row: (String, String, Option<String>, String, String, String) = query_as(
         "INSERT INTO cloud_agent_fallback_runs (
             run_id, idempotency_key, request_message_id, session_id, owner_account_id,
@@ -299,8 +312,9 @@ async fn claim_run_with_executor(
     .bind(trigger.as_str())
     .bind(audience.as_str())
     .bind(desktop_preferred_until.filter(|_| desktop_executor.is_none()))
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
+    tx.commit().await?;
     if let Some(executor) = desktop_executor.filter(|_| row.0 != run_id) {
         // A concurrent cloud admission won the insert; the Mac still goes first.
         super::desktop_takeover::take(pool, &row.0, input, executor).await?;

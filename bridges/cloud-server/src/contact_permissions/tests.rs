@@ -32,16 +32,24 @@ async fn befriend(pool: &PgPool, left: &str, right: &str) {
 /// A group conversation with these active members; returns its session id.
 async fn group(pool: &PgPool, members: &[&str]) -> String {
     let session = format!("session:group:perm-{}", Uuid::new_v4().simple());
+    conversation(pool, "group", &session, members).await;
+    session
+}
+
+async fn conversation(pool: &PgPool, kind: &str, session: &str, members: &[&str]) {
     let id = Uuid::new_v4();
     query(
         "INSERT INTO cloud_chat_conversations (conversation_id, kind, created_by_account_id, \
          client_operation_id, creation_fingerprint, legacy_session_id, group_space_id, group_title) \
-         VALUES ($1, 'group', $2, $3, 'fixture', $4, $4, 'Group')",
+         VALUES ($1, $5, $2, $3, 'fixture', $4, $6, $7)",
     )
     .bind(id)
     .bind(members[0])
     .bind(Uuid::new_v4())
-    .bind(&session)
+    .bind(session)
+    .bind(kind)
+    .bind((kind == "group").then_some(session))
+    .bind((kind == "group").then_some("Group"))
     .execute(pool)
     .await
     .unwrap();
@@ -53,7 +61,6 @@ async fn group(pool: &PgPool, members: &[&str]) -> String {
             .await
             .unwrap();
     }
-    session
 }
 
 async fn shared_agent(app: &axum::Router, token: &str) -> String {
@@ -85,20 +92,27 @@ fn claim(owner: &str, requester: &str, session: &str) -> ClaimRunRequest {
     }
 }
 
-async fn insert_run(pool: &PgPool, owner: &str, requester: &str, status: &str) -> String {
+async fn insert_run(
+    pool: &PgPool,
+    owner: &str,
+    requester: &str,
+    status: &str,
+    session: &str,
+) -> String {
     let run_id = format!("car_{}", Uuid::new_v4().simple());
     let now = chrono::Utc::now().to_rfc3339();
     query(
         "INSERT INTO cloud_agent_fallback_runs \
          (run_id, idempotency_key, request_message_id, session_id, owner_account_id, \
           requester_account_id, status, prompt, created_at, updated_at) \
-         VALUES ($1, $1, $1, 'session:perm', $2, $3, $4, 'hello', $5, $5)",
+         VALUES ($1, $1, $1, $6, $2, $3, $4, 'hello', $5, $5)",
     )
     .bind(&run_id)
     .bind(owner)
     .bind(requester)
     .bind(status)
     .bind(&now)
+    .bind(session)
     .execute(pool)
     .await
     .unwrap();
@@ -312,33 +326,116 @@ async fn agent_off_refuses_every_claim_path_for_that_person_only() {
 }
 
 #[tokio::test]
-async fn agent_off_stops_waiting_and_running_requests() {
+async fn agent_off_ends_waiting_and_running_requests_with_the_generic_reply() {
     let Some(pool) = pool().await else { return };
     let app = app(&pool, None);
     let (mina, mina_token) = signed_in(&pool, "perm_stop_owner").await;
     let (riya, _) = signed_in(&pool, "perm_stop_asker").await;
     let (sam, _) = signed_in(&pool, "perm_stop_other").await;
     befriend(&pool, &mina, &riya).await;
-    let queued = insert_run(&pool, &mina, &riya, "queued").await;
-    let running = insert_run(&pool, &mina, &riya, "running").await;
-    let others = insert_run(&pool, &mina, &sam, "queued").await;
+    let direct = crate::auth::routes::direct_person_session_id(&mina, &riya);
+    conversation(&pool, "direct", &direct, &[&mina, &riya]).await;
+    let queued = insert_run(&pool, &mina, &riya, "queued", &direct).await;
+    let running = insert_run(&pool, &mina, &riya, "running", "session:perm").await;
+    let others = insert_run(&pool, &mina, &sam, "queued", "session:perm").await;
     let card_only = json!({"cardAccess": false});
-    assert_eq!(
-        send(&app, "PUT", &path(&riya), &mina_token, Some(card_only))
-            .await
-            .0,
-        200
-    );
+    let (status, _) = send(&app, "PUT", &path(&riya), &mina_token, Some(card_only)).await;
+    assert_eq!(status, 200);
     assert_eq!(run_state(&pool, &queued).await, ("queued".into(), false));
 
     let off = json!({"agentAccess": false});
-    assert_eq!(
-        send(&app, "PUT", &path(&riya), &mina_token, Some(off))
-            .await
-            .0,
-        200
-    );
+    let (status, _) = send(&app, "PUT", &path(&riya), &mina_token, Some(off)).await;
+    assert_eq!(status, 200);
     assert_eq!(run_state(&pool, &queued).await, ("cancelled".into(), true));
-    assert_eq!(run_state(&pool, &running).await, ("running".into(), true));
+    assert_eq!(run_state(&pool, &running).await, ("cancelled".into(), true));
     assert_eq!(run_state(&pool, &others).await, ("queued".into(), false));
+    // The waiting request is answered, so it does not stay processing.
+    let (reply,): (Option<String>,) =
+        query_as("SELECT response_message_id FROM cloud_agent_fallback_runs WHERE run_id = $1")
+            .bind(&queued)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(reply.is_some(), "the refusal reply is published");
+
+    // The owner's Mac reads the same rules.
+    let (status, body) = send(
+        &app,
+        "GET",
+        "/v1/cloud/contacts/permissions",
+        &mina_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body["people"],
+        json!([{"accountId": riya, "agentAccess": false, "cardAccess": false, "updatedAt": body["people"][0]["updatedAt"]}])
+    );
+}
+
+#[tokio::test]
+async fn a_restriction_saved_while_admitting_either_refuses_or_ends_the_run() {
+    let Some(pool) = pool().await else { return };
+    let (mina, _) = signed_in(&pool, "perm_race_owner").await;
+    let (riya, _) = signed_in(&pool, "perm_race_asker").await;
+    befriend(&pool, &mina, &riya).await;
+    let session = group(&pool, &[&mina, &riya]).await;
+    // Hold the pair's lock as a concurrent save would: admission waits for
+    // it, then sees the restriction.
+    let mut tx = pool.begin().await.unwrap();
+    super::lock_pair(&mut tx, &mina, &riya).await.unwrap();
+    query("INSERT INTO cloud_contact_permissions (owner_account_id, subject_account_id, agent_access) VALUES ($1, $2, false)")
+        .bind(&mina)
+        .bind(&riya)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let mut admit = Box::pin(async {
+        let mut tx = pool.begin().await.unwrap();
+        super::lock_and_check_agent(&mut tx, &mina, &riya)
+            .await
+            .unwrap()
+    });
+    let waited = tokio::time::timeout(std::time::Duration::from_millis(300), admit.as_mut()).await;
+    assert!(waited.is_err(), "admission waits for the lock");
+    tx.commit().await.unwrap();
+    assert!(!admit.await, "and then sees the restriction");
+    assert!(matches!(
+        claim_run_for_person_message(&pool, &claim(&mina, &riya, &session), None).await,
+        Err(RunError::AgentUnavailable)
+    ));
+}
+
+#[tokio::test]
+async fn a_run_leased_after_a_restriction_ends_with_the_generic_reply() {
+    let Some(pool) = pool().await else { return };
+    let (mina, _) = signed_in(&pool, "perm_lease_owner").await;
+    let (riya, _) = signed_in(&pool, "perm_lease_asker").await;
+    befriend(&pool, &mina, &riya).await;
+    let direct = crate::auth::routes::direct_person_session_id(&mina, &riya);
+    conversation(&pool, "direct", &direct, &[&mina, &riya]).await;
+    let run = insert_run(&pool, &mina, &riya, "queued", &direct).await;
+    // Written directly, as if the save had missed this run.
+    query("INSERT INTO cloud_contact_permissions (owner_account_id, subject_account_id, agent_access) VALUES ($1, $2, false)")
+        .bind(&mina)
+        .bind(&riya)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let leased = crate::cloud_agent_runtime::runs::lease_canary_run(&pool, "perm-runner", &run)
+        .await
+        .unwrap()
+        .expect("the run is offered once");
+    assert_eq!(leased.status, "cancelled");
+    assert!(leased.prompt.is_empty(), "the runner gets nothing to run");
+    let (status, reply): (String, Option<String>) = query_as(
+        "SELECT status, response_message_id FROM cloud_agent_fallback_runs WHERE run_id = $1",
+    )
+    .bind(&run)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(status, "cancelled");
+    assert!(reply.is_some(), "the refusal reply is published");
 }

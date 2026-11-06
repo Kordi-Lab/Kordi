@@ -106,7 +106,15 @@ pub(crate) async fn claim(
     let Some((run_id, agent_id, requester, public_reader)) = run else {
         return Ok(None);
     };
-    if public_reader || requester != input.requester_account_id.trim() {
+    if public_reader
+        || requester != input.requester_account_id.trim()
+        || !crate::contact_permissions::agent_allowed(
+            pool,
+            input.owner_account_id.trim(),
+            &requester,
+        )
+        .await?
+    {
         return Ok(None);
     }
     let (ready,): (bool,) = query_as(
@@ -129,13 +137,18 @@ pub(crate) async fn claim(
         .then(|| owner_route(input.runtime_route.as_ref()))
         .flatten();
     let now = Utc::now();
-    query(
+    query(&format!(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'leased', execution_backend = 'desktop', claimed_by = $2, \
              lease_expires_at = $3, desktop_preferred_until = NULL, updated_at = $4, \
              runtime_route_json = COALESCE($5, runtime_route_json) \
-         WHERE run_id = $1 AND status = 'queued' AND cancel_requested_at IS NULL",
-    )
+         WHERE run_id = $1 AND status = 'queued' AND cancel_requested_at IS NULL \
+           AND {allowed}",
+        allowed = crate::contact_permissions::agent_allowed_sql(
+            "owner_account_id",
+            "requester_account_id"
+        ),
+    ))
     .bind(&run_id)
     .bind(executor)
     .bind((now + chrono::Duration::seconds(DESKTOP_LEASE_SECONDS)).to_rfc3339())

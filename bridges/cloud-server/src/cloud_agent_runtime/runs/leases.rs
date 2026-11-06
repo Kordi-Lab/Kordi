@@ -310,6 +310,7 @@ pub(super) async fn runner_response_from_row(
         .bind(&row.0)
         .execute(pool)
         .await?;
+        crate::contact_permissions::publish_refusal(pool, &row.0).await;
         row.1 = "cancelled".into();
         row.2.clear();
     }

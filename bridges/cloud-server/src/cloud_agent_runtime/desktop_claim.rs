@@ -36,6 +36,15 @@ async fn claim_request(
     if !input.run.is_well_formed() || input.run.owner_account_id != session.account_id {
         return denied();
     }
+    // A restricted requester gets the one generic refusal on every route, so
+    // the Mac drops the request without answering in the conversation.
+    match runs::requester_may_use_owner_agents(state.db_pool(), &input.run).await {
+        Ok(true) => {}
+        Ok(false) => return runs::agent_unavailable(),
+        Err(e) => {
+            return run_error_response("desktop claim", "Could not claim agent execution.", e)
+        }
+    }
     // Proactive runs need no project folder, so they skip the project rule:
     // an evaluation's only tool searches memories, and an approved run works
     // in an empty folder of its own. Matched by run id before any chat

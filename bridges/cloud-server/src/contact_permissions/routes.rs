@@ -3,6 +3,9 @@
 //! conversation with, or anyone you already set permissions for (so a
 //! removed contact's restrictions can still be read and lifted). Anything
 //! else is a 404, so the route never confirms that an account exists.
+//!
+//! `GET /v1/cloud/contacts/permissions` lists the people you restricted, so
+//! your Mac can apply the same rules to the runs it executes.
 
 use std::sync::Arc;
 
@@ -25,6 +28,7 @@ use crate::server::ServerState;
 
 pub fn routes(state: Arc<ServerState>) -> Router {
     Router::new()
+        .route("/v1/cloud/contacts/permissions", get(list))
         .route(
             "/v1/cloud/contacts/:account_id/permissions",
             get(read).put(update),
@@ -117,6 +121,42 @@ async fn view(pool: &PgPool, owner: &str, subject: &str) -> sqlx_core::Result<se
     }))
 }
 
+type RestrictionRow = (String, bool, bool, chrono::DateTime<chrono::Utc>);
+
+/// `GET /v1/cloud/contacts/permissions`: everyone the signed-in owner
+/// restricted in any way, newest change first.
+pub(super) async fn list(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+) -> Response {
+    let rows: sqlx_core::Result<Vec<RestrictionRow>> = query_as(
+        "SELECT subject_account_id, agent_access, card_access, updated_at
+         FROM cloud_contact_permissions
+         WHERE owner_account_id = $1 AND NOT (agent_access AND card_access)
+         ORDER BY updated_at DESC, subject_account_id",
+    )
+    .bind(&session.account_id)
+    .fetch_all(state.db_pool())
+    .await;
+    match rows {
+        Ok(rows) => {
+            let people: Vec<serde_json::Value> = rows
+                .into_iter()
+                .map(|(account_id, agent_access, card_access, updated_at)| {
+                    json!({
+                        "accountId": account_id,
+                        "agentAccess": agent_access,
+                        "cardAccess": card_access,
+                        "updatedAt": updated_at,
+                    })
+                })
+                .collect();
+            (StatusCode::OK, Json(json!({ "people": people }))).into_response()
+        }
+        Err(error) => db_error(error),
+    }
+}
+
 pub(super) async fn read(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -150,7 +190,11 @@ pub(super) async fn update(
         Err(error) => return db_error(error),
     }
     match save(pool, owner, subject, &input).await {
-        Ok(()) => {}
+        Ok(refused) => {
+            for run_id in refused {
+                super::publish_refusal(pool, &run_id).await;
+            }
+        }
         Err(error) => return db_error(error),
     }
     match view(pool, owner, subject).await {
@@ -160,15 +204,16 @@ pub(super) async fn update(
 }
 
 /// Writes the keys present in `input`; missing keys keep their value. Taking
-/// agent access away also stops the subject's waiting and running requests
-/// to the owner's agents.
+/// agent access away also ends the subject's waiting and running requests
+/// to the owner's agents; their ids are returned for the refusal reply.
 pub(super) async fn save(
     pool: &PgPool,
     owner: &str,
     subject: &str,
     input: &UpdateRequest,
-) -> sqlx_core::Result<()> {
+) -> sqlx_core::Result<Vec<String>> {
     let mut tx = pool.begin().await?;
+    super::lock_pair(&mut tx, owner, subject).await?;
     let current: Option<(bool, bool)> = query_as(
         "SELECT agent_access, card_access FROM cloud_contact_permissions
          WHERE owner_account_id = $1 AND subject_account_id = $2 FOR UPDATE",
@@ -204,38 +249,34 @@ pub(super) async fn save(
     .bind(next.card_access)
     .execute(&mut *tx)
     .await?;
-    if !next.agent_access {
-        stop_requests(&mut tx, owner, subject).await?;
-    }
-    tx.commit().await
+    let refused = if next.agent_access {
+        Vec::new()
+    } else {
+        stop_requests(&mut tx, owner, subject).await?
+    };
+    tx.commit().await?;
+    Ok(refused)
 }
 
-/// Ends the subject's requests to the owner's agents: waiting runs are
-/// cancelled, and running ones are asked to stop the way Stop asks.
+/// Ends the subject's requests to the owner's agents, waiting or running.
+/// An executor still holding one finds it cancelled at its next renewal and
+/// can no longer publish.
 async fn stop_requests(
     tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     owner: &str,
     subject: &str,
-) -> sqlx_core::Result<()> {
-    query(
+) -> sqlx_core::Result<Vec<String>> {
+    let rows: Vec<(String,)> = query_as(
         "UPDATE cloud_agent_fallback_runs
          SET status = 'cancelled', cancel_requested_at = COALESCE(cancel_requested_at, now()),
              completed_at = now()::text, updated_at = now()::text
-         WHERE owner_account_id = $1 AND requester_account_id = $2 AND status = 'queued'",
-    )
-    .bind(owner)
-    .bind(subject)
-    .execute(&mut **tx)
-    .await?;
-    query(
-        "UPDATE cloud_agent_fallback_runs
-         SET cancel_requested_at = COALESCE(cancel_requested_at, now()), updated_at = now()::text
          WHERE owner_account_id = $1 AND requester_account_id = $2
-           AND status IN ('leased', 'running')",
+           AND status IN ('queued', 'leased', 'running')
+         RETURNING run_id",
     )
     .bind(owner)
     .bind(subject)
-    .execute(&mut **tx)
+    .fetch_all(&mut **tx)
     .await?;
-    Ok(())
+    Ok(rows.into_iter().map(|(run_id,)| run_id).collect())
 }
