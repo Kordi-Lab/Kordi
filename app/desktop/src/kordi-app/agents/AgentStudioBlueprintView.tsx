@@ -7,6 +7,7 @@ import { CloudSignupAvatarPicker } from '../cloud/CloudSignupAvatarPicker';
 import type { Agent } from '../types';
 import { cloudAgentAccessDescription, cloudAgentAccessLabel, cloudAgentProactiveDescription, cloudAgentProactiveLabel, personalAgentProactiveDescription, type AgentStudioConfigDraft } from './model';
 import { BlueprintMenuRow } from './BlueprintMenuRow';
+import { openConnectorsSettings, usePersonalAgentStatus } from '@/features/personalAgent/personalAgentStatus';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
 import { factoryAvatarSeed } from './useFactoryCreationAvatar';
 
@@ -20,7 +21,15 @@ export type AgentSettingControl = { enabled: boolean; onChange?: (enabled: boole
  * Runs tab loads its activity for the default agent, and the Proactive row
  * (reaching out in Personal agent) when the agent has it.
  */
-export type AgentProactiveControl = AgentSettingControl & { activity?: { agentId: string; enabled: boolean }; personal?: AgentSettingControl };
+export type AgentProactiveControl = AgentSettingControl & {
+  activity?: { agentId: string; enabled: boolean };
+  /**
+   * `agentId` is the server id whose connectors decide whether it can be on:
+   * null for a new agent, which has none yet. `connected` is known for the
+   * default agent; a Factory agent's is loaded here.
+   */
+  personal?: AgentSettingControl & { agentId?: string | null; connected?: boolean };
+};
 
 const ACCESS_OPTIONS = (['private', 'participant_conversations'] as const).map((scope) => ({ value: scope, label: cloudAgentAccessLabel(scope) }));
 const PROACTIVE_OPTIONS = (['off', 'on'] as const).map((value) => ({ value, label: cloudAgentProactiveLabel(value === 'on'), description: cloudAgentProactiveDescription(value === 'on') }));
@@ -147,6 +156,8 @@ export function AgentStudioBlueprintView({
   const skills = creating ? creationDraft?.skills.map((skill) => skill.name) ?? [] : config?.loadedSkills ?? [];
   const tools = creating ? builderStatus?.draft?.tools ?? [] : config?.loadedTools ?? [];
   const totalChanges = creating ? (creationDraft ? 1 : 0) : changes.length;
+  const personalStatus = usePersonalAgentStatus(proactive?.personal?.connected === undefined ? proactive?.personal?.agentId ?? null : null);
+  const personalNotSetUp = proactive?.personal?.agentId === null || (proactive?.personal?.connected ?? personalStatus?.connected) === false;
 
   const shortPrompt = prompt.replace(/\s+/g, ' ').trim();
   return (
@@ -186,7 +197,16 @@ export function AgentStudioBlueprintView({
         {proactive ? (
           <BlueprintMenuRow icon={Users} label="Cooperative" menuLabel="Agent cooperative" value={proactive.enabled ? 'on' : 'off'} detail={cloudAgentProactiveDescription(proactive.enabled)} options={PROACTIVE_OPTIONS} onSelect={proactive.onChange && (creating || agent) ? (value) => proactive.onChange?.(value === 'on') : undefined} />
         ) : null}
-        {proactive?.personal ? (
+        {proactive?.personal && personalNotSetUp ? (
+          <div className="app-agent-studio-blueprint-row" data-testid="blueprint-proactive-not-set-up">
+            <div className="app-agent-studio-blueprint-label"><RadioTower className="h-4 w-4" />Proactive</div>
+            <div className="min-w-0">
+              <div className="app-agent-studio-blueprint-value">Not set up</div>
+              <div className="app-agent-studio-blueprint-detail">Add a connector to turn it on.</div>
+            </div>
+            {proactive.personal.agentId ? <button type="button" className="app-button-quiet app-agent-studio-connect" onClick={openConnectorsSettings}>Connect</button> : <span />}
+          </div>
+        ) : proactive?.personal ? (
           <BlueprintMenuRow icon={RadioTower} label="Proactive" menuLabel="Agent proactive" value={proactive.personal.enabled ? 'on' : 'off'} detail={personalAgentProactiveDescription(proactive.personal.enabled)} options={PERSONAL_PROACTIVE_OPTIONS} onSelect={proactive.personal.onChange && (creating || agent) ? (value) => proactive.personal?.onChange?.(value === 'on') : undefined} />
         ) : null}
         {totalChanges > 0 ? (

@@ -25,6 +25,8 @@ import { ContactInfoPopover } from '@/pages/ContactInfoPopover';
 import { MainComposer } from '@/pages/chatsPage.mainComposer';
 import { ToolApprovalPrompts } from '@/features/connectors/ToolApprovalPrompts';
 import { ProactiveOfferPrompt } from '@/features/proactive/ProactiveOfferPrompt';
+import { PersonalAgentPage } from '@/features/personalAgent/PersonalAgentPage';
+import { usePersonalAgentPageOpen } from '@/features/personalAgent/personalAgentPageState';
 import { MainChatHeader } from '@/pages/chatsPage.mainHeader';
 import {
   canonicalHistorySessionIdForConversation,
@@ -115,6 +117,7 @@ export function ChatMainWorkspace({
   threadShortcut,
 }: ChatMainWorkspaceProps) {
   const { activeConv } = session;
+  const personalAgentPageOpen = usePersonalAgentPageOpen();
   const openAuthentication =
     auth.onOpenAccountAuthentication ?? auth.onOpenAuthSettings;
   const activePaneKind = conversationPaneKind(activeConv);
@@ -190,6 +193,9 @@ export function ChatMainWorkspace({
     return sendResult;
   };
 
+  if (personalAgentPageOpen) {
+    return <div className="app-chat-main-workspace flex h-full min-h-0 min-w-0 overflow-hidden"><PersonalAgentPage account={session.cloudAccount} /></div>;
+  }
   return (
     <>
       <div className="app-chat-main-workspace flex h-full min-h-0 min-w-0 overflow-hidden">

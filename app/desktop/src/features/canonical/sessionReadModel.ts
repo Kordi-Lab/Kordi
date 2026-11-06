@@ -405,8 +405,10 @@ export function createCanonicalSessionReadModel(
           const fallbackMessages = this.messages(fallbackSession.id);
           const fallbackMetadata = sessionMetadata(fallbackSession);
           const createdFromChatFlow = fallbackMetadata.createdFrom === 'chat-create-flow';
+          // A personal session has its sidebar row before the first message.
+          const isPersonalSession = Boolean(fallbackMetadata.personalAgent);
           if (fallbackMessages.length === 0 && (
-            (fallbackSession.kind === 'self-agent' && !createdFromChatFlow)
+            (fallbackSession.kind === 'self-agent' && !createdFromChatFlow && !isPersonalSession)
             || fallbackMetadata.source === 'desktop-bridge-conversation'
           )) {
             return [];

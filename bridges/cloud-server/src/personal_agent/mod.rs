@@ -24,6 +24,7 @@ pub(crate) mod sessions;
 pub mod setting;
 mod snapshot;
 mod sources;
+mod status;
 mod sweep;
 mod worker;
 

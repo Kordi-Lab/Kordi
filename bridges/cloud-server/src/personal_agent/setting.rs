@@ -2,7 +2,10 @@
 //! turning it on and off does, and what archiving a definition removes. One
 //! table holds it for definitions and the default agent alike. With no row
 //! the default agent is on and a definition is off; a stored row wins, so
-//! turning the default agent off sticks.
+//! turning the default agent off sticks. Either way the setting is in
+//! effect only while the agent has a live connector granted to it: without
+//! one there is nothing to watch, turning it on is refused, and losing the
+//! last grant turns it off.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -33,47 +36,69 @@ impl PersonalAgentSetting {
 
 type Tx<'a, 'b> = &'a mut Transaction<'b, Postgres>;
 
+/// SQL that is true while the agent in column `$agent`, owned by the account
+/// in column `$owner`, has a connector granted to it that is not revoked.
+macro_rules! live_grant_sql {
+    ($agent:literal, $owner:literal) => {
+        concat!(
+            "EXISTS (SELECT 1 FROM cloud_connector_agent_grants pa_grant \
+             JOIN cloud_connectors pa_connector ON pa_connector.connector_id = pa_grant.connector_id \
+             WHERE pa_grant.agent_id = ",
+            $agent,
+            " AND pa_connector.account_id = ",
+            $owner,
+            " AND pa_connector.status <> 'revoked')"
+        )
+    };
+}
+pub(crate) use live_grant_sql;
+
 /// SQL that is true while the Proactive setting of the agent in column
 /// `$agent`, owned by the account in column `$owner`, is on: its row, else
-/// on for the default agent only.
+/// on for the default agent only, and in either case only with a live grant.
 macro_rules! effective_on_sql {
     ($agent:literal, $owner:literal) => {
         concat!(
-            "COALESCE((SELECT setting.proactive FROM cloud_personal_agent_settings setting \
+            "(COALESCE((SELECT setting.proactive FROM cloud_personal_agent_settings setting \
              WHERE setting.agent_id = ",
             $agent,
             "), ",
             $agent,
             " = 'cloud-agent:' || ",
             $owner,
+            ") AND ",
+            $crate::personal_agent::setting::live_grant_sql!($agent, $owner),
             ")"
         )
     };
 }
 pub(crate) use effective_on_sql;
 
+/// Whether the owner's agent has a live connector granted to it.
+pub(crate) async fn has_live_grant<'e, E>(
+    executor: E,
+    owner_account_id: &str,
+    agent_id: &str,
+) -> Result<bool, sqlx_core::Error>
+where
+    E: sqlx_core::executor::Executor<'e, Database = Postgres>,
+{
+    let (found,): (bool,) = query_as(concat!("SELECT ", live_grant_sql!("$1", "$2")))
+        .bind(agent_id)
+        .bind(owner_account_id)
+        .fetch_one(executor)
+        .await?;
+    Ok(found)
+}
+
 /// The setting of `agent_id` without a stored row.
 fn default_for(agent_id: &str) -> bool {
     crate::proactive::agents::default_owner(agent_id).is_some()
 }
 
-/// The setting in effect for `agent_id`: its row, else the default.
-pub(crate) async fn stored(
-    pool: &PgPool,
-    agent_id: &str,
-) -> Result<PersonalAgentSetting, sqlx_core::Error> {
-    let row: Option<(bool,)> =
-        query_as("SELECT proactive FROM cloud_personal_agent_settings WHERE agent_id = $1")
-            .bind(agent_id)
-            .fetch_optional(pool)
-            .await?;
-    Ok(PersonalAgentSetting {
-        proactive: row.map_or_else(|| default_for(agent_id), |(on,)| on),
-    })
-}
-
 /// Stores `setting` for the owner's agent as an explicit row and returns the
-/// one in effect before. Turning it on starts the cursor at now, so history
+/// one in effect before. Callers refuse to turn it on without a live grant
+/// ([`has_live_grant`]). Turning it on starts the cursor at now, so history
 /// is never evaluated. While it is on, the agent's personal session is made
 /// ready (created, unhidden, or replaced after a delete). Turning it off
 /// cancels the agent's queued evaluations and frees it. Every change tells
@@ -90,8 +115,9 @@ pub(crate) async fn store_in_transaction(
     .bind(agent_id)
     .fetch_optional(&mut **transaction)
     .await?;
+    let granted = has_live_grant(&mut **transaction, owner_account_id, agent_id).await?;
     let was = PersonalAgentSetting {
-        proactive: was.map_or_else(|| default_for(agent_id), |(on,)| on),
+        proactive: granted && was.map_or_else(|| default_for(agent_id), |(on,)| on),
     };
     query(
         "INSERT INTO cloud_personal_agent_settings (agent_id, owner_account_id, proactive)
@@ -205,6 +231,45 @@ pub(crate) async fn forget_in_transaction(
             .bind(agent_id)
             .execute(&mut **transaction)
             .await?;
+    }
+    Ok(())
+}
+
+/// Turns the setting off for each of the owner's `agent_ids` that has no
+/// live grant left but whose setting was on: it stores an explicit off row,
+/// stops its evaluations, and tells the owner's devices that its session is
+/// an ordinary chat now. Run in the transaction that removed the grants.
+pub(crate) async fn grants_removed_in_transaction(
+    transaction: Tx<'_, '_>,
+    owner_account_id: &str,
+    agent_ids: &[String],
+) -> Result<(), sqlx_core::Error> {
+    for agent_id in agent_ids {
+        if has_live_grant(&mut **transaction, owner_account_id, agent_id).await? {
+            continue;
+        }
+        let row: Option<(bool,)> = query_as(
+            "SELECT proactive FROM cloud_personal_agent_settings WHERE agent_id = $1 FOR UPDATE",
+        )
+        .bind(agent_id)
+        .fetch_optional(&mut **transaction)
+        .await?;
+        if !row.map_or_else(|| default_for(agent_id), |(on,)| on) {
+            continue;
+        }
+        query(
+            "INSERT INTO cloud_personal_agent_settings (agent_id, owner_account_id, proactive)
+             VALUES ($1, $2, FALSE)
+             ON CONFLICT (agent_id) DO UPDATE SET proactive = FALSE, updated_at = now()",
+        )
+        .bind(agent_id)
+        .bind(owner_account_id)
+        .execute(&mut **transaction)
+        .await?;
+        stop_in_transaction(transaction, agent_id).await?;
+        crate::chat_sync::store::announce_personal_session(transaction, agent_id)
+            .await
+            .map_err(store_error)?;
     }
     Ok(())
 }

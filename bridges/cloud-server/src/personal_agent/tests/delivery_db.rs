@@ -75,10 +75,14 @@ async fn a_share_posts_one_agent_message_with_its_sources() {
     let (_, list) = f
         .send("GET", "/v1/cloud/personal-agents", &f.owner_token, None)
         .await;
-    assert_eq!(
-        list["agents"][1]["conversationId"],
-        conversation_id.to_string()
-    );
+    let scout = list["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|agent| agent["agentId"] == f.agent_id.as_str())
+        .unwrap()
+        .clone();
+    assert_eq!(scout["conversationId"], conversation_id.to_string());
 }
 
 #[tokio::test]

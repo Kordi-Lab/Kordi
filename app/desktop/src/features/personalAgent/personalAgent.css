@@ -1,42 +1,95 @@
-/* Personal agent rows in Agent Chats and the personal session header. */
-.app-workspace-sidebar .app-personal-agent-row {
+/* The Personal agent entry under New in Agent Chats, its page, and the personal session header. */
+.app-personal-agent-entry-row { flex-shrink: 0; padding: 0 4px 6px; }
+.app-personal-agent-entry {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 50px;
-  padding: 6px 12px;
-  border-radius: 9px;
+  gap: 9px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--app-control-border);
+  border-radius: 10px;
+  color: var(--app-sidebar-title-text);
+  text-align: left;
 }
-.app-personal-agent-row-main { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
-.app-personal-agent-row-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.app-workspace-sidebar .app-personal-agent-row-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 16px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.app-personal-agent-row-muted { flex: none; width: 12px; height: 12px; color: var(--app-sidebar-time-text); }
-.app-personal-agent-row-time {
+.app-personal-agent-entry:hover { background: var(--app-control-hover); }
+.app-personal-agent-entry.is-active { border-color: transparent; background: var(--app-sidebar-selected-bg); }
+.app-personal-agent-entry:focus-visible { outline: 2px solid var(--app-sidebar-title-text); outline-offset: -2px; }
+.app-personal-agent-entry-icon {
+  display: grid;
   flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--app-control-bg);
   color: var(--app-sidebar-time-text);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  line-height: 16px;
 }
-.app-personal-agent-row-preview {
-  flex: 1;
-  min-width: 0;
+.app-personal-agent-entry-icon.is-live { color: rgb(52 199 89); }
+.app-personal-agent-entry-main { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 16px; }
+.app-personal-agent-entry-title { font-size: 12.5px; font-weight: 600; }
+.app-personal-agent-entry-status {
   overflow: hidden;
   color: var(--app-sidebar-preview-text);
-  font-size: 10.5px;
-  line-height: 16px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.app-personal-agent-page { display: flex; flex: 1; flex-direction: column; min-width: 0; height: 100%; min-height: 0; }
+.app-personal-agent-page-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--app-divider);
+}
+.app-personal-agent-page-title { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 17px; }
+.app-personal-agent-page-title h2 { margin: 0; font-size: 13.5px; font-weight: 600; }
+.app-personal-agent-page-title span { overflow: hidden; color: var(--utility-muted-text); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.app-personal-agent-page-body { flex: 1; min-height: 0; overflow: auto; padding: 18px 28px 28px; }
+.app-personal-agent-page-body > .app-settings-section { max-width: 640px; }
+.app-personal-agent-page-body > .app-settings-section.is-off .app-settings-row:not(.app-settings-row-button) { opacity: 0.55; }
+.app-personal-agent-page-status { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--utility-muted-text); font-size: 12px; }
+.app-personal-agent-page-status > span { width: 7px; height: 7px; border-radius: 50%; background: var(--utility-muted-text); opacity: 0.6; }
+.app-personal-agent-page-status[data-on] > span { background: rgb(52 199 89); opacity: 1; }
+.app-personal-agent-page-error { margin: 8px 0 0; color: rgb(220 38 38); font-size: 12px; }
+.app-personal-agent-page-time { color: var(--utility-muted-text); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.app-personal-agent-page-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 24px 64px;
+  text-align: center;
+}
+.app-personal-agent-page-empty p { margin: 0; color: var(--utility-muted-text); font-size: 13px; }
+.app-personal-agent-page-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--app-control-bg);
+  color: var(--utility-muted-text);
+}
+.app-personal-agent-page-connect {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--app-sidebar-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+}
+.app-personal-agent-page-connect:focus-visible { outline: 2px solid var(--app-sidebar-title-text); outline-offset: 2px; }
 
 .app-personal-agent-header { gap: 10px; }
 .app-personal-agent-header h2 {

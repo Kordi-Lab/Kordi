@@ -4,6 +4,7 @@ import { isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver'
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { hasKnownTranscriptContent, transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
 import { cloudSystemAgentIdFromSessionId } from '@/features/collaboration/conversationIds';
+import { isPersonalAgentSession } from '@/features/personalAgent/personalAgentStore';
 import {
   cloudConversationKindFromConversationId,
   cloudPeerAccountIdFromConversationId,
@@ -139,6 +140,8 @@ export function activeConversationForSelection(
   if (pendingCloudConversation) return pendingCloudConversation;
   const pendingCanonicalCloudConversation = pendingCanonicalCloudConversationForActiveId(activeConvId);
   if (pendingCanonicalCloudConversation) return pendingCanonicalCloudConversation;
+  // A listed personal session is selectable before this Mac has it; never show another chat under its row.
+  if (options.isNativeShell && isPersonalAgentSession(activeConvId)) return options.nativeChatPlaceholder;
   return options.fallbackConversation
     ?? (options.isNativeShell
       ? options.nativeChatPlaceholder
