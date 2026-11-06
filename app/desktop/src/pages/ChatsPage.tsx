@@ -111,8 +111,9 @@ export function ChatsPage({
   const activePresenceTarget = cloudAccount
     ? cloudCallTargetForConversation(cloudAccount, activeConv)
     : null;
+  // Unknown until the first snapshot arrives, so the header shows no presence instead of a guess.
   const activeContactPresence = activePresenceTarget?.kind === 'direct'
-    ? cloudPresence.snapshot[activePresenceTarget.peerAccountId] ?? null
+    ? cloudPresence.presenceForAccount(activePresenceTarget.peerAccountId)
     : undefined;
   const chatHeader = useChatHeaderModel({
     contactPresence: activeContactPresence,

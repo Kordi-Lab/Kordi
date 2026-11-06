@@ -1,4 +1,5 @@
 import { measureElement, type Virtualizer } from '@tanstack/react-virtual';
+import { rememberTranscriptRowSize } from './transcriptRowSizeMemory';
 
 /** Preserve the reading point when paging changes a row's date or sender header. */
 export function createTranscriptContentMeasure(isSuspended: () => boolean) {
@@ -39,6 +40,8 @@ export function createTranscriptContentMeasure(isSuspended: () => boolean) {
     if (!instance.itemSizeCache.has(key) && size === instance.options.estimateSize(index)) {
       instance.itemSizeCache.set(key, size);
     }
+    // A later visit to this chat starts from the measured height instead of an estimate.
+    rememberTranscriptRowSize(key, size);
     return size;
   };
 }
