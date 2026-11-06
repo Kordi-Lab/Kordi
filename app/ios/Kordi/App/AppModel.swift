@@ -46,7 +46,7 @@ enum KordiPreviewModePersistence {
         "--preview-consent", "--preview-privacy-settings", "--preview-delete-account", "--preview-delete-account-confirm",
         "--preview-settings-about",
         "--preview-blocked", "--preview-report", "--preview-blocked-message",
-        "--preview-contact-permissions",
+        "--preview-contact-permissions", "--preview-contact-blocked",
     ]
 
     static func launchRequested(by arguments: [String]) -> Bool {
@@ -4918,6 +4918,81 @@ final class AppModel: ObservableObject {
             mutedSessionIds.subtract(sessionIds)
         }
         return true
+    }
+
+    /// Drops a contact's row at once while its removal is sent; returns the
+    /// row and its position so a failed removal can put it back.
+    func removeContactLocally(accountId: String) -> (index: Int, contact: CloudContact)? {
+        guard let index = contacts.firstIndex(where: { $0.accountId == accountId }) else { return nil }
+        return (index, contacts.remove(at: index))
+    }
+
+    func restoreContactLocally(_ removed: (index: Int, contact: CloudContact)) {
+        guard !contacts.contains(where: { $0.accountId == removed.contact.accountId }) else { return }
+        contacts.insert(removed.contact, at: min(removed.index, contacts.count))
+    }
+
+    /// Dissolves the whole group for everyone: every member is removed and
+    /// every channel deleted. Group owners and admins only.
+    func dissolveGroupSpace(_ space: GroupSpaceSummary) async -> Bool {
+        guard let account, space.canManage(accountId: account.accountId) else {
+            errorMessage = "Only a group admin can dissolve this group."
+            return false
+        }
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await api.dissolveGroupSpace(token: token, groupSpaceId: space.preferenceId)
+            } catch {
+                errorMessage = userFacing(error, fallback: "Could not dissolve the group.")
+                return false
+            }
+        }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        pinnedGroupSpaceIds.remove(space.preferenceId)
+        for conversation in space.membershipSessions + space.sessions {
+            removeConversationLocally(conversation)
+        }
+        cacheCurrentConversations()
+        return true
+    }
+
+    /// The group's live invitation link, or nil when it has none yet.
+    func activeGroupInviteLink(_ space: GroupSpaceSummary) async -> GroupInviteLinkInfo? {
+        if previewMode { return nil }
+        guard let token, space.canManage(accountId: account?.accountId) else { return nil }
+        return try? await api.activeGroupInviteLink(token: token, groupSpaceId: space.preferenceId)
+    }
+
+    /// Returns the group's live link, making one if needed. `reset` revokes
+    /// the current link first.
+    func groupInviteLink(_ space: GroupSpaceSummary, reset: Bool) async -> GroupInviteLinkInfo? {
+        guard space.canManage(accountId: account?.accountId) else {
+            errorMessage = "Only group admins can share a link."
+            return nil
+        }
+        if previewMode {
+            try? await Task.sleep(for: .milliseconds(250))
+            let expiry = ISO8601DateFormatter().string(from: Date().addingTimeInterval(30 * 86_400))
+            return GroupInviteLinkInfo(
+                invitationId: "preview-invitation",
+                inviteUrl: "https://kordi.ai/g/\(reset ? "pZ3kTn8wDeF9" : "pQ7pXr2mAbC4")",
+                expiresAt: expiry
+            )
+        }
+        guard let token else { return nil }
+        do {
+            return try await api.groupInviteLink(
+                token: token,
+                groupSpaceId: space.preferenceId,
+                groupTitle: space.displayName,
+                reset: reset
+            )
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not create a group link.")
+            return nil
+        }
     }
 
     func archiveGroupSpace(_ space: GroupSpaceSummary) async -> Bool {

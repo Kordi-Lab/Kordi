@@ -34,6 +34,9 @@ struct ChatHomeView: View {
     @State private var deleteTarget: ConversationSummary?
     @State private var showingArchivedChats = false
     @State private var groupManagementPresentation: GroupManagementPresentation?
+    /// Previews open the sheet at full height so every section shows.
+    @State private var groupManagementDetent: PresentationDetent =
+        ProcessInfo.processInfo.arguments.contains("--preview-group-management") ? .large : .medium
     @State private var channelCreationSpace: GroupSpaceSummary?
     @State private var pullRefreshState: ChatPullRefreshVisualState = .idle
     @State private var activeSwipeRowID: String?
@@ -228,7 +231,7 @@ struct ChatHomeView: View {
         }
         .sheet(item: $groupManagementPresentation) { presentation in
             GroupManagementSheet(presentation: presentation)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.medium, .large], selection: $groupManagementDetent)
                 .presentationDragIndicator(.visible)
         }
         .fullScreenCover(item: $channelCreationSpace) { space in
