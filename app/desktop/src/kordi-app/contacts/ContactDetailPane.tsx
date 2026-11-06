@@ -150,8 +150,9 @@ function ContactDetailBody({
     setRemoveState('saving');
     setRemoveError('');
     try {
-      onCloseOverlay();
+      // The row leaves the list at once; the pane closes once the delete lands, and a failure stays here.
       await onRemoveContact?.(contact);
+      onCloseOverlay();
     } catch (error) {
       setRemoveState('error');
       setRemoveError(error instanceof Error ? error.message : 'Unable to delete contact');

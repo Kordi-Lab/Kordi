@@ -1,19 +1,7 @@
 import { filterGroupManagementMembers, normalizedSearch } from './groupManagementMembers';
 export { filterGroupManagementMembers } from './groupManagementMembers';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
-import {
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  ChevronUp,
-  LoaderCircle,
-  Plus,
-  Search,
-  Star,
-  UserMinus,
-  X,
-} from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, LoaderCircle, Plus, Search, Star, UserMinus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type {
@@ -44,6 +32,7 @@ import {
   type ViewportSize,
 } from '@/pages/groupManagementGeometry';
 import { MemberContactProfileContent } from '@/pages/MemberContactProfilePopover';
+import { GroupInfoFooterActions } from '@/pages/GroupInfoFooterActions';
 
 export type { GroupManagementPopoverAnchor } from '@/pages/groupManagementGeometry';
 
@@ -65,6 +54,7 @@ export type GroupDetailsDialogProps = {
   onListGroupInvitations?: (groupSpaceId: string) => Promise<CloudGroupInvitationSummary[]>;
   onRevokeGroupInvitation?: (invitationId: string) => Promise<void>;
   onMessageContact?: (contact: Contact) => Promise<void> | void;
+  onDissolveGroup?: (groupSpaceId: string, sessionIds: string[]) => Promise<void> | void;
   anchorRect?: GroupManagementPopoverAnchor | null;
 };
 
@@ -185,6 +175,7 @@ export function GroupDetailsDialog({
   onListGroupInvitations,
   onRevokeGroupInvitation,
   onMessageContact,
+  onDissolveGroup,
   anchorRect = null,
 }: GroupDetailsDialogProps) {
   const memberSearchId = useId();
@@ -790,7 +781,7 @@ export function GroupDetailsDialog({
                         setActionError(null);
                       }}
                     >
-                      Share link
+                      Invite with a link
                     </button>
                   </div>
 
@@ -908,6 +899,15 @@ export function GroupDetailsDialog({
                 onNameDraftChange={setNameDraft}
                 onCancel={() => { setNameDraft(space.title); setIsEditingName(false); }}
                 onSubmit={submitRename}
+              />
+              <GroupInfoFooterActions spaceId={space.id} title={space.title} sessionIds={groupMembershipSessionIds} isAdmin={currentMemberIsAdmin}
+                canLeave={Boolean(currentMember) && !currentMemberIsCreator} disabled={Boolean(pendingAction)} onDissolveGroup={onDissolveGroup}
+                onLeave={() => {
+                  if (!currentMember) return;
+                  setIsAddPeopleOpen(false);
+                  setSelectedMemberId(currentMember.id);
+                  setConfirmingRemovalId(currentMember.id);
+                }}
               />
           </>
           </div>

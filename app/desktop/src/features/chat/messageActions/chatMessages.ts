@@ -12,7 +12,7 @@ import { resolvedPublishedAgentRuntimeRoute } from '@/features/chat/agentSession
 import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
 import { persistQueuedDesktopMessage } from '@/features/chat/queuedDesktopMessages';
 import { restoredSelfAgentContextMessages } from './restoredSelfAgentContext';
-import { cloudAgentNoProviderNoticeText,cloudAgentProviderFailureNotice,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages'; import { isCloudAgentProviderFailureNoticeText } from '@/features/cloud/cloudAgentReplyText';
+import { cloudAgentNoProviderNoticeText,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages'; import { cloudAgentProviderFailureNotice } from '@/features/cloud/cloudAgentFailureNotices'; import { isCloudAgentProviderFailureNoticeText } from '@/features/cloud/cloudAgentReplyText';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import {

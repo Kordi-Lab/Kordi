@@ -24,18 +24,17 @@ import {
 import { publishModelSubsessions } from './agentSubsessionSync';
 import { cloudGroupBackgroundFollowUpRoute } from './cloudGroupBackgroundFollowUp';
 import { cloudAgentPublicBackgroundToolsFromTurn } from './cloudAgentBackgroundSessions';
-import {
-  cloudAgentProviderFailureNotice,
-  promptTextForCloudAgentMention,
-} from './cloudAgentMessages';
+import { promptTextForCloudAgentMention } from './cloudAgentMessages';
+import { cloudAgentSharedReplyFailureNotice } from './cloudAgentFailureNotices';
 import {
   cloudGroupAgentRequestRuntimeSessionId,
 } from './cloudAgentRuntime';
 import { cloudAgentTurnReplyText } from './cloudAgentReplyText';
-import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
+import { cloudAgentRuntimeRouteForTargetCloudAgent, ownerRequestRoute } from './cloudAgentTargetRuntimeRoute';
 import { agentRestrictedAccountIds } from './agentRestrictions';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
 import { handBackDesktopRun } from './cloudDesktopRunHandback';
+import { handBackHostedCredentialTurn } from './cloudHostedCredentialHandBack';
 import type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
 import { handleCloudGroupAgentFailure } from './cloudGroupAgentFailure';
 import {
@@ -146,7 +145,7 @@ export async function respondToCloudGroupAgentMention(
         routesByRuntimeSessionId: runtime.routesBySessionId,
         runtimeSessionId,
         fallbackRoute: runtime.defaultRoute,
-        requestRoute: message.agentRuntimeRoute,
+        requestRoute: ownerRequestRoute(message.agentRuntimeRoute, message.senderAccountId, account.accountId),
       });
   const lease = await acquireDesktopExecutionLease(runtime.client, session.token, {
     requestMessageId: cloudMessage.messageId, sessionId: envelope.groupId,
@@ -333,6 +332,7 @@ export async function respondToCloudGroupAgentMention(
   rememberLocalTurn(finalTurn);
   finalTurn = rememberedTurn ?? finalTurn;
   void publishModelSubsessions(finalTurn).catch(() => undefined);
+  if (!signal.aborted && await handBackHostedCredentialTurn(runtime, session.token, lease, finalTurn, message.id)) return;
   if (finalTurn.status === 'cancelled') {
     await lease.cancel();
     await persistCloudGroupAgentCancellation(
@@ -347,7 +347,7 @@ export async function respondToCloudGroupAgentMention(
   const succeeded = responseText.length > 0;
   const failureMessage = succeeded
     ? null
-    : cloudAgentProviderFailureNotice(withoutProviderResponse(finalTurn.error) || finalTurn.message)
+    : cloudAgentSharedReplyFailureNotice(withoutProviderResponse(finalTurn.error) || finalTurn.message, presentation.displayName)
       ?? (withoutProviderResponse(finalTurn.error)?.trim()
         || finalTurn.message?.trim()
         || 'Cloud agent returned no text response');

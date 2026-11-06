@@ -300,7 +300,7 @@ struct CommonGroundStartGroupSheet: View {
                 }
             }
             .buttonStyle(CommonGroundPrimaryButtonStyle())
-            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || selected.isEmpty || model.busy == "group")
+            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selected.isEmpty || model.busy == "group")
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)

@@ -9,7 +9,9 @@ pub async fn add_conversation_members(
     request: AddConversationMembersRequest,
 ) -> Result<ConversationSnapshot, StoreError> {
     let desired = normalized_members(account_id, &request.member_account_ids);
-    if desired.len() > MAX_GROUP_MEMBERS || (request.replace && desired.len() < 2) {
+    // `desired` always includes the caller, so a replacement may leave the
+    // group with only its admin: a group can have a single member.
+    if desired.len() > MAX_GROUP_MEMBERS {
         return Err(StoreError::InvalidInput(
             "group member additions are invalid",
         ));

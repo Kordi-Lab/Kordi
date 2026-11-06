@@ -19,8 +19,13 @@ type PopoverGeometry = {
   placement: PopoverPlacement;
 };
 
-export function popoverGeometry(anchorRect?: ChatCreatePopoverAnchor | null): PopoverGeometry {
-  const width = 284;
+/** Width of the dense action menu, matching the Help menu. */
+// Start a chat has four short actions, so its menu is narrower than Help's.
+export const DENSE_MENU_WIDTH = 196;
+/** Width of the contact, agent, group and add-contact pickers. */
+export const DETAIL_WIDTH = 284;
+
+export function popoverGeometry(anchorRect?: ChatCreatePopoverAnchor | null, width: number = DETAIL_WIDTH): PopoverGeometry {
   const gap = 10;
   const margin = 10;
   const fallbackLeft = 92;

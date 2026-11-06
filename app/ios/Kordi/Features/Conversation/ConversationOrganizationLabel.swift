@@ -4,7 +4,9 @@ import Foundation
 /// when the group belongs to one, before the participant count.
 enum ConversationOrganizationLabel {
     static func groupStatus(for conversation: ConversationSummary) -> String {
-        let participants = "\(max(2, conversation.groupParticipants.count)) participants"
+        // A group may have only its creator. An unknown list keeps the old floor of two.
+        let count = conversation.groupParticipants.count
+        let participants = count == 1 ? "1 participant" : "\(max(2, count)) participants"
         guard let organization = conversation.organizationName.nonEmpty else {
             return participants
         }

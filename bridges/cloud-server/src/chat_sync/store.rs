@@ -242,6 +242,10 @@ pub use attachment_actions::{delete_attachment, message_for_viewer, set_attachme
 mod channels;
 mod conversation;
 pub use channels::create_group_channel;
+mod dissolve;
+pub use dissolve::{dissolve_group, dissolve_group_channel, DissolveOutcome};
+mod group_events;
+pub use group_events::{group_created_text, post_group_created, GROUP_CREATED_EVENT};
 mod cursors;
 mod grounding_origin;
 mod legacy_client_events;

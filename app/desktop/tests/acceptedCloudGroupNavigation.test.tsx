@@ -80,7 +80,9 @@ function canonicalState(withGroup: boolean) {
       ...(withGroup ? [{
         id: GROUP_SESSION_ID, kind: 'group', title: 'New chat', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null,
         metadata: { schemaVersion: 1, kind: 'chat-group', customName: 'Agent design and personalization', groupId: GROUP_SESSION_ID, groupSpaceId: GROUP_SESSION_ID, createdFrom: 'cloud-group-sync' },
-        ...at(5), lastMessageAtMs: null,
+        // An empty group sorts by its creation time; created before Nadia's
+        // last message, it lists below her, so the first chat stays Nadia.
+        createdAtMs: 1, updatedAtMs: 5, lastMessageAtMs: null,
       }] : []),
     ],
     participants: [

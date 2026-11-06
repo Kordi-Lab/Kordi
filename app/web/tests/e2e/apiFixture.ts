@@ -2,6 +2,13 @@ import type { Page } from '@playwright/test';
 
 // Synthetic protocol fixtures exercise the complete production application,
 // without Tauri mocks. They are not two-account/backend acceptance evidence.
+// WebKit reports a same-origin request that a reload or navigation cancels as a
+// page error ("... due to access control checks."). The app already catches
+// those failures, so specs ignore exactly that message for the local fixture.
+export function isCancelledFixtureRequest(message: string) {
+  return /127\.0\.0\.1:\d+\/\S* due to access control checks\.$/.test(message);
+}
+
 export const account = {
   accountId: 'acct_browser_test_owner', displayName: 'Browser Test',
   primaryEmail: 'browser@example.test', primaryEmailVerified: true,
@@ -11,7 +18,7 @@ export const account = {
   nodeId: null, passwordSet: true, defaultAgent: null,
 };
 
-export async function installApiFixture(page: Page, baseURL: string, signedIn: boolean) {
+export async function installApiFixture(page: Page, baseURL: string, signedIn: boolean | (() => boolean)) {
   const requests: { path: string; headers: Record<string, string> }[] = [];
   await page.route('**/*', async route => {
     const request = route.request();
@@ -22,7 +29,7 @@ export async function installApiFixture(page: Page, baseURL: string, signedIn: b
     let body: unknown;
     switch (url.pathname) {
       case '/v1/cloud/auth/web/session':
-        if (!signedIn) return route.fulfill({ status: 401, json: { errorCode: 'login_required' } });
+        if (!(typeof signedIn === 'function' ? signedIn() : signedIn)) return route.fulfill({ status: 401, json: { errorCode: 'login_required' } });
         body = { account, csrfToken: 'synthetic-csrf', session: { organizationId: 'browser-test-org', deviceId: 'browser-test-device', expiresAt: '2099-01-01T00:00:00Z' } };
         break;
       case '/v1/cloud/auth/me': body = account; break;
@@ -37,4 +44,16 @@ export async function installApiFixture(page: Page, baseURL: string, signedIn: b
     return route.fulfill({ status: 200, json: body });
   });
   return requests;
+}
+
+/** The site's /login and /register pages, served on the same origin as /app/ in production. */
+export async function stubSitePages(page: Page) {
+  const visits: string[] = [];
+  await page.route(/\/(login|register)(\?|#|$)/, async route => {
+    const url = new URL(route.request().url());
+    visits.push(`${url.pathname}${url.search}`);
+    const title = url.pathname === '/register' ? 'Site sign up' : 'Site login';
+    return route.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><title>${title}</title><h1>${title}</h1>` });
+  });
+  return visits;
 }

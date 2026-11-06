@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Brain, Plus } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -48,6 +48,12 @@ export type MemoryListProps = {
   addTarget?: MemoryAddTarget | null;
   /** Labels under a row's caption; they replace the category chip. */
   renderLabels?: (lesson: MemoryLesson) => ReactNode;
+  /** Shown at the start of the Add memory row while the list has memories, such as the sync status. */
+  header?: ReactNode;
+  /** `centered` shows an empty list as a centered icon, line, and Add memory button instead of one row. */
+  emptyStyle?: 'row' | 'centered';
+  /** Extra classes for the centered empty state, such as a taller block on a full page. */
+  emptyClassName?: string;
 };
 
 function lessonPrefix(text: string): string {
@@ -64,6 +70,9 @@ export function MemoryList({
   viewerAccountId,
   addTarget,
   renderLabels,
+  header,
+  emptyStyle = 'row',
+  emptyClassName,
 }: MemoryListProps) {
   const [edit, setEdit] = useState<LessonEdit | null>(null);
   const [pendingDelete, setPendingDelete] = useState<MemoryLesson | null>(null);
@@ -166,16 +175,26 @@ export function MemoryList({
   };
 
   const startAdd = () => setEdit({ lessonId: null, draft: '', error: null, busy: false });
-  const addRow: ReactNode = !addTarget ? null : edit?.lessonId === null
-    ? renderEditor(null, edit, 'New memory')
-    : (
-      <div data-memory-add="" className="my-1">
-        <Button type="button" variant="quiet" className={cn(quietButtonClass, 'gap-1.5 px-2')} onClick={startAdd}>
-          <Plus aria-hidden="true" className="h-3.5 w-3.5" />
-          Add memory
-        </Button>
-      </div>
-    );
+  const adding = Boolean(addTarget) && edit?.lessonId === null;
+  const centeredEmpty = emptyStyle === 'centered' && lessons.length === 0 && !adding;
+  const addButton = addTarget && !adding ? (
+    // Beside a header it lines up with the rows' Edit and Delete buttons; alone, its icon lines up with the text edge.
+    <Button type="button" variant="quiet" className={cn(quietButtonClass, 'shrink-0 gap-1.5', !header && '-ml-2 px-2')} onClick={startAdd}>
+      <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+      Add memory
+    </Button>
+  ) : null;
+  const addRow: ReactNode = centeredEmpty ? null : (
+    <>
+      {header || addButton ? (
+        <div data-memory-add="" className={cn('flex min-h-8 items-center gap-3', header ? 'justify-between' : 'my-1')}>
+          {header ? <div className="min-w-0 flex-1">{header}</div> : null}
+          {addButton}
+        </div>
+      ) : null}
+      {adding && edit ? renderEditor(null, edit, 'New memory') : null}
+    </>
+  );
 
   const renderLesson = (lesson: MemoryLesson) => {
     // A conversation lists its own memories, and settings name the origin in the row labels, so the caption leaves it out.
@@ -211,7 +230,20 @@ export function MemoryList({
     );
   };
 
-  const rows: ReactNode = lessons.length === 0
+  const rows: ReactNode = centeredEmpty ? (
+    <div data-memory-empty="" className={cn('flex flex-col items-center justify-center px-6 py-6 text-center', emptyClassName)}>
+      <Brain aria-hidden="true" className="h-5 w-5 text-[color:var(--utility-muted-text)] opacity-70" strokeWidth={1.75} />
+      <p className="m-0 mt-2.5 text-[13px] leading-5 text-[color:var(--utility-muted-text)]">{emptyLabel}</p>
+      {addTarget ? (
+        <div data-memory-add="" className="mt-4">
+          <Button type="button" variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-[12px]" onClick={startAdd}>
+            <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+            Add memory
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  ) : lessons.length === 0 && adding ? null : lessons.length === 0
     ? <SettingsRow title={<span className="font-normal text-slate-400">{emptyLabel}</span>} />
     : [...lessons].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(renderLesson);
 

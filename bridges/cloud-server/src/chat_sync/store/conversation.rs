@@ -72,7 +72,7 @@ pub async fn create_conversation_with_trusted_peer(
     )
     .await?;
     transaction.commit().await?;
-    Ok(outcome)
+    super::group_events::after_create(pool, account_id, outcome).await
 }
 
 pub(crate) async fn create_conversation_in_transaction(
@@ -152,7 +152,7 @@ async fn create_conversation_in_transaction_with_trusted_peer(
         account_id,
         request,
         trusted_peer_account_id,
-        2,
+        1, // A group may start with only its creator; others join later.
         None,
         None,
     )

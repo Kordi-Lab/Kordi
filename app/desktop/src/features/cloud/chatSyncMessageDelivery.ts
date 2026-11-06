@@ -61,7 +61,8 @@ export class ChatSyncMessageDelivery {
       ? [...new Set(options.memberAccountIds ?? [])].map((value) => value.trim()).filter(Boolean).sort()[0]
         ?? peerAccountId.trim()
       : peerAccountId.trim();
-    if (accountId) {
+    const durable = Boolean(accountId) && !options.transient;
+    if (durable) {
       await this.outbox.enqueue(accountId, clientMessageId, {
         peerAccountId: durablePeerAccountId,
         body,
@@ -113,7 +114,7 @@ export class ChatSyncMessageDelivery {
         ),
       };
       this.state.rememberConversation(advancedConversation);
-      if (accountId) await this.outbox.complete(accountId, clientMessageId, deliveryScope.expectedOrganizationId);
+      if (durable) await this.outbox.complete(accountId, clientMessageId, deliveryScope.expectedOrganizationId);
       return cloudMessageFromChatSync(
         response.message,
         advancedConversation,
@@ -121,7 +122,7 @@ export class ChatSyncMessageDelivery {
       );
     } catch (error) {
       deliveryScope.assertCurrent();
-      if (accountId) {
+      if (durable) {
         await this.outbox.fail(
           accountId,
           clientMessageId,

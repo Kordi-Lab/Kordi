@@ -112,6 +112,8 @@ export function useKordiAppMutationActions({
     setGroupMuted: handleSetChatGroupMuted,
     setGroupArchived: handleSetChatGroupArchived,
     deleteSession: handleDeleteChatSession,
+    dissolveGroup: handleDissolveChatGroup,
+    dissolveChannel: handleDissolveChatChannel,
   } = useKordiChatSessionActions({
     conversations: chatConversations,
     account: cloudSession.account,
@@ -307,6 +309,8 @@ export function useKordiAppMutationActions({
       handleSetChatGroupMuted,
       handleSetChatGroupArchived,
       handleDeleteChatSession,
+      handleDissolveChatGroup,
+      handleDissolveChatChannel,
     },
     project: {
       handleMoveChatSessionToProject,

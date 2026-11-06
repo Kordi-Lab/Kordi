@@ -58,15 +58,16 @@ gets `membership.removed`.
 1. A short transaction locks the account, checks that its password and email
    are unchanged since the proof was checked, and spends an emailed code.
    Then, outside any transaction, connectors are revoked at their providers
-   while their credentials still exist. Sign in with Apple revocation will be called
-   from the same place (`account_deletion::prepare`). Failures are logged and
+   while their credentials still exist, and Sign in with Apple tokens are
+   revoked with Apple (`account_deletion::prepare`). Failures are logged and
    never stop the deletion.
 2. One transaction locks and checks the account again, moves or deletes conversations, clears
    rows that point at the account's attachments, sandboxes or personal
    organization, deletes records that have no foreign key
    (`cloud_audit_events`, `cloud_agent_omp_state`, `cloud_connector_audit`,
    `cloud_connector_removal_requests`), queues object-store keys in
-   `cloud_object_deletions`, deletes the account row, and writes the
+   `cloud_object_deletions`, moves Apple tokens that could not be revoked to
+   `cloud_apple_token_revocations` for a retry worker, deletes the account row, and writes the
    `account.deleted` audit event with counts only.
 3. After commit every device's live connections are closed, contacts' devices
    are told the contact is gone, and queued objects are deleted. A failed

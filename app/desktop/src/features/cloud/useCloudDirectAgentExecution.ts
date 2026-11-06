@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { useVoiceAgentRequestGate } from './useVoiceAgentRequestGate';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
+import { handBackHostedCredentialTurn } from './cloudHostedCredentialHandBack';
 import { publishModelSubsessions } from './agentSubsessionSync';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
 import {
@@ -35,10 +36,10 @@ import {
 import {
   cloudAgentNativeContextMessagesFromDirectCloudSession,
   cloudDirectAgentReplyThreadAction,
-  cloudAgentProviderFailureNotice,
   encodeCloudAgentResponse,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
+import { cloudAgentSharedReplyFailureNotice } from './cloudAgentFailureNotices';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
 import {
   registerCloudBackgroundFollowUpHandler,
@@ -48,7 +49,7 @@ import { publishCloudDirectBackgroundFollowUp } from './cloudDirectBackgroundFol
 import {
   cloudAgentRuntimeSessionId,
 } from './cloudAgentRuntime';
-import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
+import { cloudAgentRuntimeRouteForTargetCloudAgent, ownerRequestRoute } from './cloudAgentTargetRuntimeRoute';
 import {
   cloudDirectMessageAgentRuntimeRoute,
   cloudDirectMessageDisplayText,
@@ -258,7 +259,12 @@ export function useCloudDirectAgentExecution({
                 routesByRuntimeSessionId: cloudAgentRuntimeRoutesBySessionId,
                 runtimeSessionId,
                 fallbackRoute: defaultCloudAgentRuntimeRoute,
-                requestRoute: cloudDirectMessageAgentRuntimeRoute(message.body),
+                // Another person's message never picks the owner's account or model.
+                requestRoute: ownerRequestRoute(
+                  cloudDirectMessageAgentRuntimeRoute(message.body),
+                  message.fromAccountId,
+                  account.accountId,
+                ),
               });
           const lease = await acquireDesktopExecutionLease(client, session.token, {
             requestMessageId: message.messageId, sessionId: activitySessionId,
@@ -342,6 +348,13 @@ export function useCloudDirectAgentExecution({
             await progress.finish();
           }
 
+          // This Mac could not load the owner's hosted account before the
+          // model ran; the cloud runner resolves it on the server instead.
+          if (await handBackHostedCredentialTurn(
+            { client, setLocalTurns, syncDiff: syncMessages },
+            session.token, lease, finalTurn, message.messageId,
+          )) return;
+
           try {
             if (activitySessionId && !agentExchangeTurnIsWaiting(finalTurn)) {
               await publishDerivedCloudSessionActivity({
@@ -382,7 +395,11 @@ export function useCloudDirectAgentExecution({
               ? replyText
               : finalTurn.status === 'cancelled'
                 ? 'Request stopped.'
-              : cloudAgentProviderFailureNotice(finalTurn.error || finalTurn.message)
+              // Every member reads this row; the owner's own turn shows how to reconnect.
+              : cloudAgentSharedReplyFailureNotice(
+                finalTurn.error || finalTurn.message,
+                cloudAgentDefinitionsById[targetCloudAgentId ?? '']?.name || account.defaultAgent?.displayName,
+              )
                 ?? `Failed: ${
                   finalTurn.error
                   || finalTurn.message

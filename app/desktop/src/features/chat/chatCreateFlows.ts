@@ -441,16 +441,6 @@ export function existingSessionIdForPersonStart(contact: Contact, conversations:
   return existingConversation?.canonicalSessionId ?? existingConversation?.id ?? null;
 }
 
-export function canCreateGroup(selectedContactIds: string[]) {
-  return uniqueNonEmpty(selectedContactIds).length >= 2;
-}
-
-export function groupDefaultName(names: string[]) {
-  const clean = uniqueNonEmpty(names);
-  if (clean.length <= 2) return clean.join(', ');
-  return `${clean.slice(0, 2).join(', ')} +${clean.length - 2} more`;
-}
-
 export type ChatCreateGroupCollaborationInviteTarget = {
   hostId: string;
   nodeId: string;
