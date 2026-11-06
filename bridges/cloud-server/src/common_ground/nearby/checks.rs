@@ -90,6 +90,20 @@ pub(super) async fn queue(
     need: &Need,
     people: &[&Present],
 ) -> sqlx_core::Result<()> {
+    // Neither the request's owner nor anyone checked against it may have
+    // declined AI (`crate::ai_consent`).
+    let ids: Vec<String> = std::iter::once(need.account_id.clone())
+        .chain(people.iter().map(|person| person.account_id.clone()))
+        .collect();
+    let declined = crate::ai_consent::declined_among(pool, &ids).await?;
+    if declined.contains(&need.account_id) {
+        return Ok(());
+    }
+    let people: Vec<&Present> = people
+        .iter()
+        .copied()
+        .filter(|person| !declined.contains(&person.account_id))
+        .collect();
     if people.is_empty() {
         return Ok(());
     }

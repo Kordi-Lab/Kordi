@@ -93,6 +93,9 @@ pub(in crate::common_ground) enum Queued {
     Pending(Pending),
     /// A new run would exceed the matching budget; nothing was queued.
     Limited(Duration),
+    /// Nobody could be matched: the viewer or every other person declined
+    /// AI (`crate::ai_consent`). Nothing was queued or charged.
+    Skipped,
 }
 
 /// Charges the matching budget for one run about to be queued. Only called
@@ -151,6 +154,23 @@ pub(in crate::common_ground) async fn queue_matches(
     room_id: Option<Uuid>,
     organization_id: Option<&str>,
 ) -> sqlx_core::Result<Queued> {
+    // Cards of people who declined AI never reach the model.
+    let ids: Vec<String> = std::iter::once(viewer)
+        .chain(stale)
+        .map(|card| card.account_id.clone())
+        .collect();
+    let declined = crate::ai_consent::declined_among(pool, &ids).await?;
+    if declined.contains(&viewer.account_id) {
+        return Ok(Queued::Skipped);
+    }
+    let stale: Vec<SharedCard> = stale
+        .iter()
+        .filter(|card| !declined.contains(&card.account_id))
+        .cloned()
+        .collect();
+    if stale.is_empty() {
+        return Ok(Queued::Skipped);
+    }
     let mut tx = pool.begin().await?;
     query("SELECT pg_advisory_xact_lock(hashtext('common-ground-match:' || $1))")
         .bind(&viewer.profile_id)
@@ -246,6 +266,15 @@ pub(super) async fn queue_themes(
     members: &[SharedCard],
     organization_id: Option<&str>,
 ) -> sqlx_core::Result<Queued> {
+    // Callers leave out people who declined AI; a card that slipped through
+    // is never sent.
+    let ids: Vec<String> = members.iter().map(|card| card.account_id.clone()).collect();
+    if !crate::ai_consent::declined_among(pool, &ids)
+        .await?
+        .is_empty()
+    {
+        return Ok(Queued::Skipped);
+    }
     let mut tx = pool.begin().await?;
     query("SELECT pg_advisory_xact_lock(hashtext('common-ground-room:' || $1))")
         .bind(room_id.to_string())

@@ -109,7 +109,18 @@ pub(in crate::common_ground) async fn results(
         .filter(|o| !fresh.contains_key(&o.profile_id))
         .cloned()
         .collect();
-    let theme_members: Vec<SharedCard> = cards.iter().take(MAX_THEME_MEMBERS).cloned().collect();
+    // Room themes leave out people who declined AI (`crate::ai_consent`).
+    let ids: Vec<String> = cards.iter().map(|c| c.account_id.clone()).collect();
+    let declined = match crate::ai_consent::declined_among(pool, &ids).await {
+        Ok(declined) => declined,
+        Err(error) => return db_error(error),
+    };
+    let theme_members: Vec<SharedCard> = cards
+        .iter()
+        .filter(|c| !declined.contains(&c.account_id))
+        .take(MAX_THEME_MEMBERS)
+        .cloned()
+        .collect();
     let key = store::members_key(&theme_members);
     let themes = if open {
         store::stored_themes(pool, room_id, &key).await
@@ -138,6 +149,7 @@ pub(in crate::common_ground) async fn results(
         .await;
         match queued {
             Ok(Queued::Pending(state)) => pending = Some(state),
+            Ok(Queued::Skipped) => {}
             Ok(Queued::Limited(retry_after)) => return limited(retry_after),
             Err(error) => return db_error(error),
         }
@@ -155,6 +167,7 @@ pub(in crate::common_ground) async fn results(
         .await;
         match queued {
             Ok(Queued::Pending(state)) => pending = pending.or(Some(state)),
+            Ok(Queued::Skipped) => {}
             Ok(Queued::Limited(retry_after)) => return limited(retry_after),
             Err(error) => return db_error(error),
         }
@@ -310,6 +323,11 @@ pub(in crate::common_ground) async fn match_detail(
             Err(error) => db_error(error),
         },
         Ok(Queued::Limited(retry_after)) => limited(retry_after),
+        Ok(Queued::Skipped) => crate::common_ground::err(
+            "common_ground_match_not_found",
+            "No match was saved for this person.",
+            StatusCode::NOT_FOUND,
+        ),
         Err(error) => db_error(error),
     }
 }

@@ -61,6 +61,14 @@ async fn introduced(
     room_id: Uuid,
     accounts: &[(String, Role)],
 ) -> sqlx_core::Result<Vec<Introduced>> {
+    // People who declined AI are neither named nor quoted (`crate::ai_consent`).
+    let all: Vec<String> = accounts.iter().map(|(id, _)| id.clone()).collect();
+    let declined = crate::ai_consent::declined_among(pool, &all).await?;
+    let accounts: Vec<(String, Role)> = accounts
+        .iter()
+        .filter(|(id, _)| !declined.contains(id))
+        .cloned()
+        .collect();
     let ids: Vec<String> = accounts.iter().map(|(id, _)| id.clone()).collect();
     let members = room_profiles(pool, room_id, &ids).await?;
     let mut cards: HashMap<String, Topics> = shared_cards(pool, &members)

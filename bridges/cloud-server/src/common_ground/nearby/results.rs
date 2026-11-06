@@ -104,7 +104,7 @@ pub(super) async fn evaluate(
                 .await?;
         if matches!(
             queued,
-            Queued::Pending(Pending::Failed) | Queued::Limited(_)
+            Queued::Pending(Pending::Failed) | Queued::Limited(_) | Queued::Skipped
         ) {
             unmatched_status = "failed";
         }
