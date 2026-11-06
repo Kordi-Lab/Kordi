@@ -60,7 +60,9 @@ export function useDesktopAgentReadiness({
   account, client, runtimeReady = true, cloudAgentDefinitionsById, defaultRoute, reportWarning,
 }: Pick<CloudSelfAgentExecutionInput, 'account' | 'client' | 'runtimeReady' | 'cloudAgentDefinitionsById' | 'defaultRoute' | 'reportWarning'>) {
   const accountId = account?.accountId;
-  useProjectSync(isNativeDesktopShell() && runtimeReady, accountId);
+  // Only the Mac app runs agents; the browser app never announces readiness.
+  const nativeShell = isNativeDesktopShell();
+  useProjectSync(nativeShell && runtimeReady, accountId);
   const agentIdsKey = JSON.stringify(runtimeReady && accountId
     ? [...new Set([defaultCloudAgentId(accountId), ...Object.values(cloudAgentDefinitionsById ?? {})
       .filter(agent => agent.ownerAccountId === accountId && agent.status !== 'archived')
@@ -78,7 +80,7 @@ export function useDesktopAgentReadiness({
   const [acknowledged, setAcknowledged] = useState<typeof registration | null>(null);
 
   useEffect(() => {
-    if (!accountId) return;
+    if (!accountId || !nativeShell) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let failures = 0;
@@ -126,7 +128,7 @@ export function useDesktopAgentReadiness({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [accountId, agentIdsKey, client, digest, proactive, registration, reportWarning, scheduled]);
+  }, [accountId, agentIdsKey, client, digest, nativeShell, proactive, registration, reportWarning, scheduled]);
 
   // Presence alone does not grant a desktop execution lease. Admission must
   // wait until the server has accepted this account's current capabilities.

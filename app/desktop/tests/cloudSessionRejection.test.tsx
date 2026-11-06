@@ -37,8 +37,10 @@ async function flush() {
   for (let i = 0; i < 20; i += 1) await act(async () => { await new Promise(resolve => setImmediate(resolve)); });
 }
 
-async function withWindow<T>(run: (dom: JSDOM, signedOut: () => number) => Promise<T>) {
+async function withWindow<T>(run: (dom: JSDOM, signedOut: () => number) => Promise<T>, { native = false } = {}) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
+  // Readiness belongs to the Mac app, which is detected by Tauri's internals.
+  if (native) Object.assign(dom.window, { __TAURI_INTERNALS__: {} });
   const replacements = { window: dom.window, document: dom.window.document, Event: dom.window.Event, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(replacements).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(replacements)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
@@ -153,7 +155,7 @@ test('readiness stops after an expired or revoked session instead of retrying ev
       await act(async () => root.unmount());
       mock.timers.reset();
     }
-  });
+  }, { native: true });
 });
 
 test('readiness keeps the session and backs off while the server cannot be reached', async () => {
@@ -191,6 +193,31 @@ test('readiness keeps the session and backs off while the server cannot be reach
       assert.equal(requests, 5, 'A success returns to the normal interval');
       assert.equal(state.clears, 0);
       assert.equal(signedOut(), 0);
+    } finally {
+      await act(async () => root.unmount());
+      mock.timers.reset();
+    }
+  }, { native: true });
+});
+
+test('the browser app never announces desktop readiness', async () => {
+  await withWindow(async (dom) => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { backend } = memoryBackend({ accountId: 'acct_test', token: 'live', expiresAt: '2099-01-01' });
+    __setSessionBackendForTests(backend);
+    const client = new CloudAuthClient('http://localhost');
+    let requests = 0;
+    client.desktopAgentExecution = async () => { requests += 1; };
+    const warnings: string[] = [];
+    const Probe = readinessProbe(client, warnings);
+    const root = createRoot(dom.window.document.getElementById('root')!);
+    try {
+      await act(async () => root.render(<Probe />));
+      await flush();
+      mock.timers.tick(DESKTOP_READINESS_MAX_RETRY_MS);
+      await flush();
+      assert.equal(requests, 0);
+      assert.deepEqual(warnings, []);
     } finally {
       await act(async () => root.unmount());
       mock.timers.reset();
