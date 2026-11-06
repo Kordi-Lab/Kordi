@@ -126,7 +126,21 @@ pub async fn start(
     .bind(&room_name)
     .execute(&mut *transaction)
     .await?;
+    // A meeting leaves out everyone the caller blocked or who blocked the
+    // caller: they are not rung, not told, and cannot join it.
+    let blocked: Vec<(String,)> = query_as(
+        "SELECT account_id FROM cloud_chat_conversation_members \
+         WHERE conversation_id = $1 AND membership_state = 'active' \
+           AND cloud_accounts_blocked_either_way($2, account_id)",
+    )
+    .bind(conversation_id)
+    .bind(account_id)
+    .fetch_all(&mut *transaction)
+    .await?;
     for (member_id,) in members {
+        if blocked.iter().any(|(blocked_id,)| *blocked_id == member_id) {
+            continue;
+        }
         let participant_state = if member_id == account_id {
             "joined"
         } else {

@@ -419,7 +419,7 @@ pub async fn replace_message_snapshot(
     if stored_sender_account_id != sender_account_id {
         return Err(StoreError::Forbidden);
     }
-    require_active_member(&mut transaction, conversation_id, sender_account_id).await?;
+    require_active_writer(&mut transaction, conversation_id, sender_account_id).await?;
     if !normalized_attachments.is_empty() {
         let valid_attachments: (i64,) = query_as(
             "SELECT COUNT(*) FROM cloud_attachments \

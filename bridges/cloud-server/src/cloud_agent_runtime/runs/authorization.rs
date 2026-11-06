@@ -42,6 +42,11 @@ pub async fn requester_can_target_owner(
     if is_service_owner(owner_account_id) {
         return Ok(false);
     }
+    if crate::safety::blocks::blocked_either_way(pool, requester_account_id, owner_account_id)
+        .await?
+    {
+        return Ok(false);
+    }
     let row: Option<(String,)> = query_as(
         "SELECT peer_account_id FROM cloud_contacts WHERE account_id = $1 AND peer_account_id = $2 LIMIT 1",
     )
@@ -53,6 +58,16 @@ pub async fn requester_can_target_owner(
 }
 
 pub async fn validate_group_agent_claim(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<bool> {
+    // Neither side of a block can use the other's agents, in any chat.
+    let (requester, owner) = (
+        input.requester_account_id.trim(),
+        input.owner_account_id.trim(),
+    );
+    if requester != owner
+        && crate::safety::blocks::blocked_either_way(pool, requester, owner).await?
+    {
+        return Ok(false);
+    }
     if let Some(allowed) = super::exchanges::validate_claim(pool, input).await? {
         return Ok(allowed);
     }

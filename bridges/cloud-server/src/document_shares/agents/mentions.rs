@@ -209,7 +209,8 @@ pub(crate) async fn candidates_for_account(
                   WHERE COALESCE(conversation.legacy_session_id, \
                                  conversation.conversation_id::text) = $2 \
                     AND member.account_id = definition.owner_account_id \
-                    AND member.membership_state = 'active'))) \
+                    AND member.membership_state = 'active') \
+                 AND NOT cloud_accounts_blocked_either_way($1, definition.owner_account_id))) \
          ORDER BY definition.agent_id",
     )
     .bind(account_id)

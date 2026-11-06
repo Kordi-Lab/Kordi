@@ -81,8 +81,14 @@ pub(super) async fn directory(pool: &PgPool, parent: &Parent) -> RunResult<Vec<T
         "SELECT 'cloud-agent:'||a.account_id,a.account_id,COALESCE(p.display_name,'Kordi'),a.display_name FROM cloud_chat_conversation_members m JOIN cloud_accounts a USING(account_id) LEFT JOIN cloud_default_agent_profiles p ON p.owner_account_id=a.account_id WHERE m.conversation_id=$1 AND m.membership_state='active'
          UNION ALL SELECT d.agent_id,d.owner_account_id,d.name,a.display_name FROM cloud_agent_definitions d JOIN cloud_accounts a ON a.account_id=d.owner_account_id JOIN cloud_chat_conversation_members m ON m.account_id=d.owner_account_id WHERE m.conversation_id=$1 AND m.membership_state='active' AND d.status='active' AND d.access_scope='participant_conversations'"
     ).bind(parent.conversation).fetch_all(pool).await?;
-    Ok(rows
+    // Agents whose owner blocked, or was blocked by, the requester or the
+    // parent agent's owner are not offered.
+    let blocked: Vec<(String,)> = query_as("SELECT m.account_id FROM cloud_chat_conversation_members m WHERE m.conversation_id=$1 AND (cloud_accounts_blocked_either_way($2,m.account_id) OR cloud_accounts_blocked_either_way($3,m.account_id))")
+        .bind(parent.conversation).bind(&parent.requester).bind(&parent.owner).fetch_all(pool).await?;
+    let rows = rows
         .into_iter()
+        .filter(|r| !blocked.iter().any(|(id,)| *id == r.1));
+    Ok(rows
         .filter(|r| r.0 != parent.agent && !crate::system_account::is_service_account(&r.1))
         .map(|(agent_id, owner_account_id, name, owner_name)| {
             let handle = format!("{name} {owner_name}")
