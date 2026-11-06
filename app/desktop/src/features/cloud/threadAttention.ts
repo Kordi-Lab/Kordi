@@ -19,6 +19,9 @@ export function requestThreadNavigation(sessionId: string, messageId?: string) {
 export function useThreadNavigation() {
   return useSyncExternalStore(listener => {listeners.add(listener); return () => {listeners.delete(listener);};}, () => navigation, () => null);
 }
+// Chat sync commits and local reads refresh attention immediately; the poll only
+// repairs counts nothing announced (for example a thread read on another device).
+export const THREAD_ATTENTION_REFRESH_MS = 15_000;
 export function refreshThreadAttention() { window.dispatchEvent(new Event('kordi-thread-read')); }
 
 export function useThreadAttention(accountId?: string | null) {
@@ -46,11 +49,14 @@ export function useThreadAttention(accountId?: string | null) {
       finally{running=false;if(pending&&!cancelled){pending=false;void refresh();}}
     };
     void refresh();
-    const timer=setInterval(()=>void refresh(),2000);
+    const timer=setInterval(()=>{if(document.visibilityState!=='hidden')void refresh();},THREAD_ATTENTION_REFRESH_MS);
     const onRead=()=>void refresh();
+    const onVisible=()=>{if(document.visibilityState==='visible')void refresh();};
     window.addEventListener('kordi-thread-read',onRead);
     window.addEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT,onRead);
-    return()=>{cancelled=true;clearInterval(timer);window.removeEventListener('kordi-thread-read',onRead);window.removeEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT,onRead);};
+    window.addEventListener('focus',onRead);
+    document.addEventListener('visibilitychange',onVisible);
+    return()=>{cancelled=true;clearInterval(timer);window.removeEventListener('kordi-thread-read',onRead);window.removeEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT,onRead);window.removeEventListener('focus',onRead);document.removeEventListener('visibilitychange',onVisible);};
   },[accountId]);
   return state && state.accountId===accountId?state.values:undefined;
 }

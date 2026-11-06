@@ -8,6 +8,9 @@ import { discoverSubsessionFollowups } from '@/features/cloud/subsessionFollowEx
 import { publishCloudBackgroundFollowUp } from '@/features/cloud/cloudBackgroundFollowUps';
 import { sessionRunsLeasedTurn } from '@/features/cloud/cloudLeasedTurnSessions';
 
+/** Pending follow-ups for this Mac's subsessions are polled at most this often. */
+export const SUBSESSION_FOLLOWUP_POLL_MS = 3_000;
+
 export function useBackgroundTurnDiscovery({
   enabled,
   watchTurn,
@@ -22,14 +25,20 @@ export function useBackgroundTurnDiscovery({
     let cancelled = false;
     let recovered = false;
     let recoveryAccountId: string | null = null;
+    let followupsPolledAtMs = Number.NEGATIVE_INFINITY;
 
     const discover = async () => {
-      void discoverSubsessionFollowups().catch(()=>undefined);
       const accountId = (await loadSession())?.accountId ?? null;
       if (accountId !== recoveryAccountId) { recoveryAccountId = accountId; recovered = false; discoveredTurnIdsRef.current.clear(); }
       const turns = await fetchDesktopChatActiveTurns().catch(() => []);
       const subsessionIds = new Set(await fetchDesktopSubsessionIds().catch(() => []));
       if (cancelled) return;
+      // A follow-up can only resume a runtime subsession stored on this Mac,
+      // so a Mac without one never needs to ask the server for follow-ups.
+      if (subsessionIds.size > 0 && Date.now() - followupsPolledAtMs >= SUBSESSION_FOLLOWUP_POLL_MS) {
+        followupsPolledAtMs = Date.now();
+        void discoverSubsessionFollowups().catch(()=>undefined);
+      }
       if (!recovered && accountId) {
         recovered = true;
         for (const id of subsessionIds) void publishModelSubsession(id).catch(() => undefined);
