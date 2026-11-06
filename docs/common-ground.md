@@ -115,6 +115,7 @@ Each profile has one card.
 - The card leaves out health, family, money, relationships, locations and similar personal topics.
 - Others see your topics only after you share a room or a pairing with them, only while both of you share the profiles linked there, and never see references or hidden topics.
 - Card building and matching run on Kordi's servers; source text is kept only as the short references your card cites.
+- An owner can stop one person from seeing their card ([contact-permissions.md](contact-permissions.md)); that person then sees them as if the card were not shared.
 
 ## Server
 
