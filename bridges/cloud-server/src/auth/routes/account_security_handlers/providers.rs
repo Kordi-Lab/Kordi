@@ -16,8 +16,6 @@ pub(super) async fn unlink_provider(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
     axum::extract::Path(provider): axum::extract::Path<String>,
 ) -> Response {
     let caller = Caller {
@@ -25,7 +23,7 @@ pub(super) async fn unlink_provider(
         rate_limiter: &rate_limiter,
         session: &session,
     };
-    if let Err(response) = caller.charge_change(&headers, connect_info.as_ref()).await {
+    if let Err(response) = caller.charge_change().await {
         return *response;
     }
     let Some(provider) = OAuthProviderId::parse(&provider) else {

@@ -1,6 +1,7 @@
 //! Email and password sign-in.
 
 use super::*;
+use crate::auth::rate_limit::{LOGIN_ADDRESS_LIMIT, LOGIN_EMAIL_LIMIT};
 
 pub(in crate::auth::routes) async fn login(
     State(state): State<Arc<ServerState>>,
@@ -10,7 +11,10 @@ pub(in crate::auth::routes) async fn login(
     Json(req): Json<LoginRequest>,
 ) -> Response {
     let peer_ip = client_ip(&headers, connect_info.as_ref());
-    if let RateLimitDecision::Limited { retry_after } = rate_limiter.observe_ip(peer_ip).await {
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_address_limit(LOGIN_ADDRESS_LIMIT, peer_ip)
+        .await
+    {
         return limited_response(retry_after);
     }
 
@@ -18,6 +22,12 @@ pub(in crate::auth::routes) async fn login(
         Ok(value) => value,
         Err(err_value) => return map_email_format(err_value),
     };
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_identifier_limit(LOGIN_EMAIL_LIMIT, &normalized_email)
+        .await
+    {
+        return limited_response(retry_after);
+    }
 
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
         .check_email_lockout(&normalized_email, peer_ip)

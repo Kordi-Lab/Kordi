@@ -22,17 +22,10 @@ pub(super) fn boxed_err(
     Box::new(err(code, message, status))
 }
 
+/// A 429 with `Retry-After` and the wait in the body; see
+/// [`crate::auth::rate_limit::rate_limited_response`].
 pub(super) fn limited_response(retry_after: std::time::Duration) -> Response {
-    let secs = retry_after.as_secs().max(1);
-    let mut response = err(
-        "rate_limited",
-        "Too many attempts. Try again shortly.",
-        StatusCode::TOO_MANY_REQUESTS,
-    );
-    response
-        .headers_mut()
-        .insert("Retry-After", secs.to_string().parse().unwrap());
-    response
+    crate::auth::rate_limit::rate_limited_response(retry_after)
 }
 
 pub(super) fn map_password_policy(err_value: PasswordPolicyError) -> Response {

@@ -128,9 +128,20 @@ the release-identity Job use `imagePullPolicy: Never`, so run the deploy script
 hand. See [MinIO images built from source](../../../../deploy/minio/README.md).
 
 `KORDI_CLOUD_TRUSTED_PROXIES` lists the peer addresses or CIDR ranges whose
-`X-Real-IP` (then `X-Forwarded-For`) header names the client for sign-in rate
-limits, login lockouts, and audit records. It defaults to loopback only, and
-headers from any other peer are ignored.
+`X-Real-IP` (then `X-Forwarded-For`) header names the client for per-address
+rate limits, login lockouts, avatar render limits, and audit records. Every
+route resolves the client this way. It defaults to loopback only, and headers
+from any other peer are ignored.
+
+**Production needs the pod-network gateway in this list.** Host Caddy reaches
+the pod from the CNI gateway (for k3s, typically `10.42.0.1/32`), not from
+loopback. With only loopback trusted, every client resolves to the gateway and
+shares one address for every per-address budget. That fails safe (no client can
+choose its own address, and authenticated routes count per account), but
+sign-in, sign-up, public invitation pages, and avatar renders then share one
+bucket across all users. The server logs a warning at startup when it runs in
+Kubernetes with only loopback trusted, and the first time an untrusted internal
+peer forwards `X-Real-IP` or `X-Forwarded-For`; the warning names the peer.
 
 List only proxies that overwrite `X-Real-IP` with the client address. Never
 add pod or service ranges that other workloads can originate from. Pods see
@@ -185,8 +196,46 @@ Before adding the gateway, roll that configuration out on the product host:
    manifest and roll the cloud server. Until this step, every client shares one
    rate-limit and lockout bucket, so do it promptly after step 4.
 
-Avatar rendering uses its own throttle, which follows a private proxy's
-`X-Real-IP`.
+Avatar renders that miss the cache use their own per-address budget, resolved
+through `KORDI_CLOUD_TRUSTED_PROXIES` like every other route.
+
+### Rate-limit budgets
+
+Each route has its own budget, so ordinary use of one route never spends
+another's. Authenticated routes count per account; unauthenticated routes count
+per client address and, where the request names one, per email. A refusal is a
+`429` with `Retry-After` and a JSON body
+`{"errorCode": "rate_limited", "message": "...", "retryAfterSeconds": N}`.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `KORDI_CLOUD_TRUSTED_PROXIES` | `127.0.0.0/8,::1/128` | Proxies whose forwarded client address is used. See above. |
+| `KORDI_RATE_LIMIT_BUDGETS` | Unset | Comma-separated overrides, `name=<count>/<window>` or `name=off`. The window is seconds or takes an `s`, `m`, `h`, or `d` suffix, for example `login-address=60/1m,profile-lookup=off`. A malformed entry stops the server at startup; an unknown name is logged. |
+| `KORDI_RATE_LIMIT_TRUSTED_NETWORKS` | Unset | Client ranges (such as an event venue) whose per-address budgets are multiplied. |
+| `KORDI_RATE_LIMIT_TRUSTED_MULTIPLIER` | `20` | The multiplier for those ranges. |
+
+| Budget | Counts per | Default | Routes |
+| --- | --- | --- | --- |
+| `login-address` | Address | 30 per minute | Password sign-in (app and web) |
+| `login-email` | Email | 30 per 15 minutes | Password sign-in; failed attempts also feed the email lockout |
+| `signup-address` | Address | 20 per 10 minutes | Account creation (app and web) |
+| `signup-email` | Email | 10 per 10 minutes | Account creation |
+| `signup-code-address` | Address | 20 per 10 minutes | Sign-up email codes |
+| `signup-code-email` | Email | 10 per hour | Sign-up email codes |
+| `app-token-address` | Address | 60 per minute | Browser sign-in code exchange (refreshes use a per-app budget) |
+| `app-authorize-address` | Address | 60 per minute | Browser sign-in approval |
+| `invitation-view-address` | Address | 120 per minute | Public invitation previews and landing pages |
+| `invitation-page-claim-address` | Address | 30 per minute | Joining a group from its landing page |
+| `avatar-render-address` | Address | 240 per minute | Avatar renders that miss the cache |
+| `profile-lookup` | Account | 600 per minute | Profile lookup by Kordi ID |
+| `group-invitation-link` | Account | 60 per minute | Creating a group invitation link and listing active links |
+| `group-invitation-reset` | Account | 10 per hour | Resetting a group invitation link |
+| `app-invitation-create` | Account | 30 per hour | Creating an app invitation link |
+| `invitation-accept` | Account | 60 per hour | Accepting or claiming group invitations |
+| `email-verification` | Account | 10 per hour | Verifying the account email, organization email codes |
+| `account-security-change`, `account-security-proof` | Account | 30 and 20 per hour | Account security page |
+
+Pending-invitation lists and cached avatar renders are not limited.
 
 ### Temporary signup window for older clients
 

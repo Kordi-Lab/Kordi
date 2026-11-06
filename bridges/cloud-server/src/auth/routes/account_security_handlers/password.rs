@@ -21,8 +21,6 @@ pub(super) async fn set_password(
     Extension(session): Extension<CloudSession>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(hasher_config): Extension<Arc<PasswordHasherConfig>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
     Json(request): Json<SetPasswordRequest>,
 ) -> Response {
     let caller = Caller {
@@ -30,7 +28,7 @@ pub(super) async fn set_password(
         rate_limiter: &rate_limiter,
         session: &session,
     };
-    if let Err(response) = caller.charge_change(&headers, connect_info.as_ref()).await {
+    if let Err(response) = caller.charge_change().await {
         return *response;
     }
     if let Err(error) = validate_password_strength(&request.new_password) {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::auth::rate_limit::{SIGNUP_ADDRESS_LIMIT, SIGNUP_EMAIL_LIMIT};
 use crate::organizations::admission::hooks::record_verified_primary_email;
 mod existing_account;
 #[cfg(test)]
@@ -21,7 +22,10 @@ pub(super) async fn signup(
     Json(req): Json<SignupRequest>,
 ) -> Response {
     let peer_ip = client_ip(&headers, connect_info.as_ref());
-    if let RateLimitDecision::Limited { retry_after } = rate_limiter.observe_ip(peer_ip).await {
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_address_limit(SIGNUP_ADDRESS_LIMIT, peer_ip)
+        .await
+    {
         return limited_response(retry_after);
     }
 
@@ -29,6 +33,12 @@ pub(super) async fn signup(
         Ok(value) => value,
         Err(err_value) => return map_email_format(err_value),
     };
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_identifier_limit(SIGNUP_EMAIL_LIMIT, &normalized_email)
+        .await
+    {
+        return limited_response(retry_after);
+    }
     if let Err(policy_err) = validate_password_strength(&req.password) {
         return map_password_policy(policy_err);
     }

@@ -4,7 +4,7 @@
 // user pastes a displayed code), and exchanges it here with its PKCE verifier.
 
 import type { CloudAccount, CloudAuthResult } from '../authClient';
-import { CloudAuthError } from '../cloudAuthError';
+import { CloudAuthError, rateLimitedMessage } from '../cloudAuthError';
 import { clientDistribution } from '../distribution';
 import type { CloudDeviceRegistration } from '../deviceIdentity';
 import type { StoredSession } from '../session';
@@ -194,7 +194,10 @@ function tokenError(status: number, body: unknown): CloudAuthError {
     return new CloudAuthError('network_error', 'Could not reach the server. Check your connection and try again.', 0);
   }
   if (status === 429 || error === 'rate_limited') {
-    return new CloudAuthError('rate_limited', 'Too many attempts. Wait a moment, then try again.', status);
+    const wait = (body as { retryAfterSeconds?: unknown } | null)?.retryAfterSeconds;
+    const retryAfterSeconds = typeof wait === 'number' && Number.isFinite(wait) && wait > 0 ? Math.ceil(wait) : undefined;
+    const limited = new CloudAuthError('rate_limited', '', status, retryAfterSeconds);
+    return new CloudAuthError('rate_limited', rateLimitedMessage(limited), status, retryAfterSeconds);
   }
   if (error === 'invalid_grant') {
     return new CloudAuthError(

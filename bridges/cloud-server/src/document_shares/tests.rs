@@ -394,7 +394,9 @@ async fn public_writes_are_limited_per_address_while_reads_continue() {
         .await
         .is_ok());
     assert_eq!(
-        limiter.observe_ip(reader).await,
+        limiter
+            .observe_address_limit(crate::auth::rate_limit::LOGIN_ADDRESS_LIMIT, reader)
+            .await,
         RateLimitDecision::Allowed,
         "documents leave the sign-in budget alone"
     );
