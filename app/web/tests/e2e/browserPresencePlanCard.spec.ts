@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { isCancelledFixtureRequest } from './apiFixture';
 import { chatConversationId } from './chatFixture';
 import {
   hiddenTranscriptFrames, installFrameRecorder, installPresenceAndPlanCard, subtitlesSeen, takeFrames, visibleCardBoxes,
@@ -6,7 +7,7 @@ import {
 
 test('chat header presence, the plan card, and history stay still when the chat opens and when pages switch', async ({ page, baseURL }) => {
   const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
+  page.on('pageerror', error => { if (!isCancelledFixtureRequest(error.message)) errors.push(error.message); });
   await installFrameRecorder(page);
   const { presenceRequests } = await installPresenceAndPlanCard(page, baseURL!, { history: 30 });
   await page.goto(`/app/chats/${encodeURIComponent(chatConversationId)}`);

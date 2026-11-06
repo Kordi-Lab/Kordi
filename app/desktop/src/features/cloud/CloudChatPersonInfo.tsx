@@ -46,7 +46,7 @@ export function CloudChatPersonInfo({ account, conversation, peerAccountId, onRe
     onMessageContact: () => onReturnToChat(),
     onSelectContact: () => undefined,
     onCloseOverlay: onReturnToChat,
-    refreshContacts: () => cloud.refresh(),
+    removeContact: cloud.removeContact,
   });
   if (!host) return <>{legacy}</>;
   return (

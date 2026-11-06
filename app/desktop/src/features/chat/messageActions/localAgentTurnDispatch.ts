@@ -1,6 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
-import { cloudAgentNoProviderNoticeText, cloudAgentProviderFailureNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages'; import { cloudAgentProviderFailureNotice } from '@/features/cloud/cloudAgentFailureNotices';
 import { isCloudAgentProviderFailureNoticeText } from '@/features/cloud/cloudAgentReplyText';
 import { routeRunsOnKordiCloud } from '@/features/cloud/cloudAgentRuntimeRoute';
 import { hostedRequestContextContent } from '@/features/cloud/cloudAgentRequestContext';

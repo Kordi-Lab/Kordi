@@ -194,7 +194,8 @@ export function MemoryOrganizer({
           client={client}
           lessons={visible}
           onLessonsChange={onLessonsChange}
-          emptyLabel={lessons.length === 0 ? 'No memories yet.' : 'No memories match.'}
+          emptyLabel={lessons.length === 0 ? 'No memories yet' : 'No memories match.'}
+          emptyStyle={lessons.length === 0 ? 'centered' : 'row'}
           onChanged={onChanged}
           viewerAccountId={viewerAccountId}
           addTarget={addTarget}

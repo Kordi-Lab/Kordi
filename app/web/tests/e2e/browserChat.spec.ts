@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
+import { isCancelledFixtureRequest } from './apiFixture';
 import { chatConversationId, installChatFixture } from './chatFixture';
 
 test('browser chat sends through the hosted protocol and restores authoritative history after reload', async ({ page, baseURL }) => {
   const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
+  page.on('pageerror', error => { if (!isCancelledFixtureRequest(error.message)) errors.push(error.message); });
   const fixture = await installChatFixture(page, baseURL!);
   await page.goto(`/app/chats/${encodeURIComponent(chatConversationId)}`);
   await expect(page.getByText('The browser conversation is ready.', { exact: true }).last()).toBeVisible();

@@ -15,8 +15,6 @@ import {
   cloudMessageMentionsNamedAgent,
   encodeCloudAgentCancel,
   encodeCloudAgentResponse,
-  cloudAgentProviderFailureNeedsAuthentication,
-  cloudAgentProviderFailureNotice,
   isCloudAgentNoProviderConfiguredError,
   isCloudAgentStoredNoProviderFailure,
   isCloudAgentControlMessage,
@@ -25,6 +23,10 @@ import {
   parseCloudAgentResponse,
   promptTextForCloudAgentMention,
 } from '../src/features/cloud/cloudAgentMessages';
+import {
+  cloudAgentProviderFailureNeedsAuthentication,
+  cloudAgentProviderFailureNotice,
+} from '../src/features/cloud/cloudAgentFailureNotices';
 import {
   cloudGroupAgentRuntimeSessionId,
   cloudAgentRuntimeRouteForSession,

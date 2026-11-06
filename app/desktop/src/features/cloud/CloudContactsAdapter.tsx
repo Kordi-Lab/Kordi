@@ -8,7 +8,7 @@
 // raw cloud-aware contact list for the ChatCreateDialog so the "+"
 // menu's "Add contacts" surface can route through cloud too.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ComponentProps } from 'react';
 
 import { CLOUD_HOST_SENTINEL, cloudContactToContact, useCloudContacts } from './useCloudContacts';
@@ -38,6 +38,8 @@ type CloudContactsAdapterProps = {
  */
 export function CloudContactsAdapter({ account, contactsPageProps }: CloudContactsAdapterProps) {
   const cloud = useCloudContacts(account);
+  // The contact being deleted: its row leaves the list at once, while its pane stays until the server answers.
+  const [removing, setRemoving] = useState<Contact | null>(null);
   const presence = useCloudPresence(account);
   const commonGround = useCommonGroundEntry({
     onSelectContact: contactsPageProps.onSelectContact,
@@ -50,7 +52,14 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     onMessageContact: contactsPageProps.onMessageContact,
     onSelectContact: commonGround.onSelectContact,
     onCloseOverlay: commonGround.onCloseOverlay,
-    refreshContacts: () => cloud.refresh(),
+    removeContact: async (accountId) => {
+      setRemoving(cloud.contacts.find((contact) => !contact.systemContact && cloudAccountIdForContact(contact) === accountId) ?? null);
+      try {
+        await cloud.removeContact(accountId);
+      } finally {
+        setRemoving(null);
+      }
+    },
   });
 
   const visibleCloudContacts = useMemo(() => {
@@ -156,9 +165,9 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     account,
     activeContactId: contactsPageProps.activeContactId,
     parentActiveContact: contactsPageProps.activeContact,
-    cloudContacts: cloud.contacts,
+    cloudContacts: removing ? [...cloud.contacts, removing] : cloud.contacts,
     visibleCloudContacts,
-  }) ?? contactsPageProps.activeContact ?? cloudAccountToSelfContact(account), [contactsPageProps.activeContactId, contactsPageProps.activeContact, account, cloud.contacts, visibleCloudContacts]);
+  }) ?? contactsPageProps.activeContact ?? cloudAccountToSelfContact(account), [contactsPageProps.activeContactId, contactsPageProps.activeContact, account, cloud.contacts, removing, visibleCloudContacts]);
   const activeContactId = activeContact?.id ?? contactsPageProps.activeContactId;
 
   const activeContactRequest = useMemo(() => {

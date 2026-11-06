@@ -257,7 +257,7 @@ async fn exercise_stop(pool: &PgPool, accounts: &[String; 2], actor: &str, tasks
     .await
     .unwrap();
     let count: (i64,) =
-        query_as("SELECT count(*) FROM cloud_chat_messages WHERE conversation_id=$1")
+        query_as("SELECT count(*) FROM cloud_chat_messages WHERE conversation_id=$1 AND NOT content ? 'group_event'")
             .bind(conversation)
             .fetch_one(pool)
             .await

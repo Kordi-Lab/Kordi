@@ -22,4 +22,7 @@ export type ChatListShellArgs = {
     sessionIds: string[],
     archived: boolean,
   ) => Promise<void>;
+  /** Group owners and admins: dissolve a whole group, or one channel other than its first. */
+  handleDissolveChatGroup: (groupSpaceId: string, sessionIds: string[]) => Promise<void>;
+  handleDissolveChatChannel: (groupSpaceId: string, sessionId: string) => Promise<void>;
 };

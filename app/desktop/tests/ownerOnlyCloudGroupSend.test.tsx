@@ -113,3 +113,55 @@ test('the owner-addressed send lands in the existing group conversation without 
   assert.equal(post[0].method, 'POST');
   assert.equal(message.sessionId, GROUP);
 });
+
+test('a new group with only its creator posts its invite to the owner so the server group exists', async () => {
+  const { restore } = installDom();
+  const root = createRoot(document.createElement('div'));
+  const sent: Array<{ peer: string; body: string; options: Record<string, unknown> }> = [];
+  let send!: ReturnType<typeof useCloudGroupControlSender>;
+  __setSessionBackendForTests({
+    load: async () => ({ token: 'synthetic', accountId: 'acct_self', expiresAt: '2099-01-01' }),
+    save: async () => {}, clear: async () => {},
+  });
+  function Harness() {
+    send = useCloudGroupControlSender({
+      account: { accountId: 'acct_self', displayName: 'Self', avatar: {} } as CloudAccount,
+      canonical: { stateRef: { current: null } },
+      transport: {
+        client: { sendMessage: async (_token: string, peer: string, body: string, options: Record<string, unknown>) => {
+          sent.push({ peer, body, options });
+          return { messageId: `wire-${sent.length}`, body };
+        } } as unknown as CloudAuthClient,
+        messageIndex: buildCloudMessageIndex('acct_self', {}), outbox: null,
+        mergeMessage() {}, persistOutboxDelivery: async () => {},
+        claimFreshFallback: async () => {}, syncDiff: async () => {},
+      },
+      reportWarning() {},
+    });
+    return null;
+  }
+  try {
+    await act(async () => root.render(<Harness />));
+    await send({
+      kind: 'group-invite', groupId: GROUP, groupSpaceId: GROUP, groupTitle: 'New group',
+      targetAccountIds: [], createdByAccountId: 'acct_self',
+      participants: [{ accountId: 'acct_self', displayName: 'Self', avatarUrl: null, role: 'admin' }],
+    });
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].peer, 'acct_self');
+    assert.equal(sent[0].options.conversationKind, 'group');
+    assert.deepEqual(sent[0].options.memberAccountIds, ['acct_self']);
+    const envelope = parseCloudGroupControl(sent[0].body);
+    assert.equal(envelope?.kind, 'group-invite');
+    assert.equal(envelope?.groupTitle, 'New group');
+    assert.deepEqual(envelope?.participants.map((participant) => participant.accountId), ['acct_self']);
+
+    // Other updates of an owner-only group still need a recipient.
+    await send({ kind: 'group-update', groupId: GROUP, groupSpaceId: GROUP, targetAccountIds: [], participants: [] });
+    assert.equal(sent.length, 1);
+  } finally {
+    await act(async () => root.unmount());
+    __setSessionBackendForTests(null);
+    restore();
+  }
+});

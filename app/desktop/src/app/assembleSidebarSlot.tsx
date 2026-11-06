@@ -181,6 +181,8 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
         onDeleteChatSession: (sessionId) => {
           void args.handleDeleteChatSession(sessionId);
         },
+        onDissolveChatGroup: args.handleDissolveChatGroup,
+        onDissolveChatChannel: args.handleDissolveChatChannel,
         onArchiveChatSession: (sessionId) => {
           void args.handleArchiveChatSession(sessionId);
         },

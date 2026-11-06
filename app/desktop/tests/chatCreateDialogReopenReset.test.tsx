@@ -38,7 +38,7 @@ test('reopening the dialog clears a draft group name left over from a previous s
     });
 
     render(true);
-    const input = () => host.querySelector<HTMLInputElement>('input[placeholder="Group name (optional)"]');
+    const input = () => host.querySelector<HTMLInputElement>('input[aria-label="Group name"]');
     assert.ok(input(), 'the group form must be visible for the group initial mode');
 
     await act(async () => {

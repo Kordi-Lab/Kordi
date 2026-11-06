@@ -111,6 +111,33 @@ export class ChatSyncConversationClient {
     return new ChatSyncMessageDelivery(this.state).sendMessage(token, peerAccountId, body, options);
   }
 
+  /** Dissolves a whole group, every channel in it. Group owners and admins only. */
+  async dissolveGroup(token: string, groupSpaceId: string): Promise<void> {
+    const space = groupSpaceId.trim().replace(/^(group:)+/, '');
+    if (!space) throw new Error('This group is unavailable.');
+    await this.state.send<unknown>(
+      `/v2/chat/group-spaces/${encodeURIComponent(space)}`,
+      { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
+      'Could not dissolve the group.',
+    );
+    for (const conversation of [...this.state.conversationBySessionId.values()]) {
+      const conversationSpace = (conversation.group_space_id ?? conversation.legacy_session_id ?? '').replace(/^(group:)+/, '');
+      if (conversationSpace === space) this.state.forgetSession(conversation.legacy_session_id ?? conversation.id);
+    }
+  }
+
+  /** Dissolves one channel of a group other than its first. Group owners and admins only. */
+  async dissolveGroupChannel(token: string, groupSpaceId: string, channelSessionId: string): Promise<void> {
+    const space = groupSpaceId.trim().replace(/^(group:)+/, '');
+    const conversation = await this.mutationConversation(token, channelSessionId.trim());
+    await this.state.send<unknown>(
+      `/v2/chat/group-spaces/${encodeURIComponent(space)}/channels/${encodeURIComponent(conversation.id)}`,
+      { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
+      'Could not dissolve the channel.',
+    );
+    this.state.forgetSession(conversation.legacy_session_id ?? conversation.id);
+  }
+
   drainChatOutbox(token: string, accountId: string): Promise<CloudMessage[]> {
     return new ChatSyncMessageDelivery(this.state).drainChatOutbox(token, accountId);
   }

@@ -60,6 +60,22 @@ fn invitation_snapshot_requires_a_real_group_membership_set() {
         (
             uuid::Uuid::now_v7(),
             "acct_owner".to_string(),
+            Some("Empty".to_string()),
+        ),
+        Vec::new(),
+        "session:group:empty",
+        "session:group:empty",
+        "Empty",
+    );
+    assert!(snapshot.is_none());
+}
+
+#[test]
+fn a_creator_only_group_can_share_an_invitation() {
+    let snapshot = snapshot_from_rows(
+        (
+            uuid::Uuid::now_v7(),
+            "acct_owner".to_string(),
             Some("Solo".to_string()),
         ),
         vec![(
@@ -71,8 +87,48 @@ fn invitation_snapshot_requires_a_real_group_membership_set() {
         "session:group:solo",
         "session:group:solo",
         "Solo",
+    )
+    .expect("a group of one may invite");
+    assert_eq!(snapshot.participants.len(), 1);
+    assert_eq!(snapshot.participants[0].role, "admin");
+    assert_eq!(snapshot.group_title, "Solo");
+}
+
+#[test]
+fn invitation_snapshot_lists_people_but_not_service_members() {
+    let snapshot = snapshot_from_rows(
+        (
+            uuid::Uuid::now_v7(),
+            "acct_owner".to_string(),
+            Some("Solo".to_string()),
+        ),
+        vec![
+            (
+                "acct_owner".to_string(),
+                Some("Owner".to_string()),
+                None,
+                "owner".to_string(),
+            ),
+            (
+                crate::system_account::SYSTEM_ACCOUNT_ID.to_string(),
+                Some("System".to_string()),
+                None,
+                "member".to_string(),
+            ),
+        ],
+        "session:group:solo",
+        "session:group:solo",
+        "Solo",
+    )
+    .expect("a group of one may invite");
+    assert_eq!(
+        snapshot
+            .participants
+            .iter()
+            .map(|participant| participant.account_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["acct_owner"],
     );
-    assert!(snapshot.is_none());
 }
 
 #[test]

@@ -92,6 +92,8 @@ export type KordiShellCompositionArgs = {
     | 'handleSetChatGroupMuted'
     | 'handleSetChatGroupArchived'
     | 'handleDeleteChatSession'
+    | 'handleDissolveChatGroup'
+    | 'handleDissolveChatChannel'
     | 'handleMoveChatSessionToProject'
     | 'handleCreateProjectFromFolder'
     | 'handleCreateProject'

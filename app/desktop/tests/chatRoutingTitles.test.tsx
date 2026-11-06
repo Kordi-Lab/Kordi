@@ -121,8 +121,8 @@ test('canonical read model sorts group latest by chat activity instead of metada
 
   assert.equal(spaces[0]?.title, 'testgroup two');
   assert.equal(spaces[0]?.sessions[0]?.canonicalSessionId, 'session:group:testgroup-two');
-  assert.equal(emptyConversation?.updatedAtLabel, '');
-  assert.equal(emptyConversation?._updatedAtMs, 0);
+  // A group without messages sorts by when it was created, never by metadata touches.
+  assert.equal(emptyConversation?._updatedAtMs, 1_000);
 });
 
 test('canonical read model keeps direct titles while group channels use deterministic defaults', () => {

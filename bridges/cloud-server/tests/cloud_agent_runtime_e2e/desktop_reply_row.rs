@@ -7,16 +7,24 @@ fn encode_response(value: Value) -> String {
     )
 }
 
-#[tokio::test]
-async fn desktop_progress_edits_one_reply_row_and_the_terminal_reply_wins() {
-    let Some(pool) = try_pool().await else { return };
+/// A direct chat whose request the owner's Mac has claimed.
+struct ClaimedReplyRun {
+    router: axum::Router,
+    owner: TestAccount,
+    conversation: uuid::Uuid,
+    wire: String,
+    run: String,
+    claim_id: uuid::Uuid,
+}
+
+async fn claimed_direct_reply_run(pool: &sqlx_postgres::PgPool, prefix: &str) -> ClaimedReplyRun {
     let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
-    let owner = signup(&router, "reply-row-owner", "Owner").await;
-    let peer = signup(&router, "reply-row-peer", "Requester").await;
+    let owner = signup(&router, &format!("{prefix}-owner"), "Owner").await;
+    let peer = signup(&router, &format!("{prefix}-peer"), "Requester").await;
     accept_contacts(&router, &owner, &peer).await;
     sqlx_core::query::query("UPDATE cloud_devices SET device_platform='macos' WHERE account_id=$1")
         .bind(&owner.account_id)
-        .execute(&pool)
+        .execute(pool)
         .await
         .unwrap();
     let agent = format!("cloud-agent:{}", owner.account_id);
@@ -30,12 +38,12 @@ async fn desktop_progress_edits_one_reply_row_and_the_terminal_reply_wins() {
         .await
         .unwrap();
     assert_eq!(ready.status(), StatusCode::OK);
-    sqlx_core::query::query("UPDATE cloud_agent_desktop_capabilities SET updated_at=now()+interval '10 minutes' WHERE agent_id=$1").bind(&agent).execute(&pool).await.unwrap();
+    sqlx_core::query::query("UPDATE cloud_agent_desktop_capabilities SET updated_at=now()+interval '10 minutes' WHERE agent_id=$1").bind(&agent).execute(pool).await.unwrap();
     let mut ids = [owner.account_id.clone(), peer.account_id.clone()];
     ids.sort();
     let session = format!("session:direct-person:{}:{}", ids[0], ids[1]);
     let conversation = create_test_conversation(
-        &pool,
+        pool,
         &owner.account_id,
         &session,
         ConversationKind::Direct,
@@ -44,7 +52,7 @@ async fn desktop_progress_edits_one_reply_row_and_the_terminal_reply_wins() {
     .await;
     let request = json!({"schemaVersion":1,"kind":"message","text":"Write a story","targetCloudAgentId":agent,"targetCloudAgentOwnerAccountId":owner.account_id});
     let wire = insert_test_message(
-        &pool,
+        pool,
         &owner.account_id,
         conversation,
         &format!(
@@ -66,6 +74,27 @@ async fn desktop_progress_edits_one_reply_row_and_the_terminal_reply_wins() {
     let claimed = read_json(claimed).await;
     assert_eq!(claimed["acquired"], true);
     let run = claimed["runId"].as_str().unwrap().to_string();
+    ClaimedReplyRun {
+        router,
+        owner,
+        conversation,
+        wire,
+        run,
+        claim_id,
+    }
+}
+
+#[tokio::test]
+async fn desktop_progress_edits_one_reply_row_and_the_terminal_reply_wins() {
+    let Some(pool) = try_pool().await else { return };
+    let ClaimedReplyRun {
+        router,
+        owner,
+        conversation,
+        wire,
+        run,
+        claim_id,
+    } = claimed_direct_reply_run(&pool, "reply-row").await;
     let uri = format!("/v1/cloud/agent-runs/desktop/{run}/progress");
     let publish = |state: &str, text: &str| json!({"claimId":claim_id,"clientMessageId":uuid::Uuid::new_v4(),"body":encode_response(json!({"kind":"agent-response","requestId":wire,"text":text,"deliveryState":state}))});
     let post = |body: Value| {
@@ -126,4 +155,52 @@ async fn desktop_progress_edits_one_reply_row_and_the_terminal_reply_wins() {
     .await
     .unwrap();
     assert_eq!(status.0, "cancelled");
+}
+
+#[tokio::test]
+async fn an_edited_reply_row_drops_the_owners_local_paths() {
+    let Some(pool) = try_pool().await else { return };
+    let ClaimedReplyRun {
+        router,
+        owner,
+        conversation,
+        wire,
+        run,
+        claim_id,
+    } = claimed_direct_reply_run(&pool, "reply-row-paths").await;
+    let uri = format!("/v1/cloud/agent-runs/desktop/{run}/progress");
+    for (state, text) in [
+        ("processing", ""),
+        ("processing", "Drafting /Users/example/Documents/draft.md"),
+        ("failed", "Saved to /Users/example/Documents/plan.md."),
+    ] {
+        let body = json!({"claimId":claim_id,"clientMessageId":uuid::Uuid::new_v4(),"body":encode_response(json!({"kind":"agent-response","requestId":wire,"text":text,"deliveryState":state}))});
+        let response = router
+            .clone()
+            .oneshot(post_json_with_token(&uri, &owner.token, body))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let (version, content): (i32, Value) = sqlx_core::query_as::query_as(
+            "SELECT version, content FROM cloud_chat_messages WHERE conversation_id=$1 AND sender_account_id=$2 AND content::text LIKE '%kordi-cloud-agent-response%'",
+        )
+        .bind(conversation)
+        .bind(&owner.account_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let stored = content["blocks"][0]["text"].as_str().unwrap();
+        let encoded = stored.strip_prefix("kordi-cloud-agent-response:").unwrap();
+        let envelope: Value = serde_json::from_slice(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(encoded)
+                .unwrap(),
+        )
+        .unwrap();
+        let expected = text
+            .replace("/Users/example/Documents/draft.md", "draft.md")
+            .replace("/Users/example/Documents/plan.md", "plan.md");
+        assert_eq!(envelope["text"], expected, "version {version}");
+        assert!(!stored.contains("/Users/"));
+    }
 }

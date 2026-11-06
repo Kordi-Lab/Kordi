@@ -114,6 +114,10 @@ button {
   padding: 12px;
 }
 
+.visual-dense-menu {
+  width: 260px;
+}
+
 .visual-attachment-menu {
   width: 254px;
   padding: 6px;
@@ -133,7 +137,8 @@ button {
 }
 
 .visual-compact-action svg,
-.visual-contact-action svg {
+.visual-contact-action svg,
+.visual-dense-menu svg {
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -192,7 +197,6 @@ button {
   line-height: 1.45;
 }
 
-.visual-choice,
 .visual-row {
   display: flex;
   width: 100%;
@@ -207,36 +211,19 @@ button {
   text-align: left;
 }
 
-.visual-choice {
-  justify-content: flex-start;
-}
-
-.visual-choice strong,
-.visual-choice small,
 .visual-member strong,
 .visual-member small {
   display: block;
 }
 
-.visual-choice strong,
 .visual-member strong {
   font-size: 12px;
 }
 
-.visual-choice small,
 .visual-member small {
   margin-top: 2px;
   color: var(--app-transient-muted-text);
   font-size: 10px;
-}
-
-.visual-icon {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  place-items: center;
-  border-radius: 9px;
 }
 
 .visual-model-menu {

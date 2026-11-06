@@ -85,6 +85,7 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
             get(history).post(send_message),
         )
         .merge(message_mutations::routes())
+        .merge(channels::dissolve_routes())
         .merge(attachment_actions::routes())
         .route("/v2/chat/attention", get(thread_reads::attention))
         .route(

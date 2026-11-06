@@ -1,6 +1,6 @@
 import { ChatProjectPicker } from '@/features/projects/ChatProjectPicker';
 import { useState } from 'react';
-import { Archive, ArchiveRestore, Bell, BellOff, CheckCircle2, LoaderCircle, Mail, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Bell, BellOff, CheckCircle2, CircleOff, LoaderCircle, Mail, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +22,8 @@ export type SessionContextMenuTarget = {
   muted?: boolean;
   unread?: boolean;
   /** An agent's personal session: read state, mute, and its agent's settings only. */ personalAgent?: { agentId: string; localAgentId: string | null };
+  /** A group channel other than its first, for a group admin: it can be dissolved. */
+  dissolvableChannel?: { groupSpaceId: string };
 };
 
 export type GroupContextMenuTarget = {
@@ -51,6 +53,7 @@ type SessionContextMenuProps = {
   onSetMuted: (sessionId: string, muted: boolean) => void;
   onSetUnread: (sessionId: string, unread: boolean) => void;
   onDelete: (target: SessionActionTarget) => void;
+  onDissolveChannel?: (target: SessionActionTarget & { groupSpaceId: string }) => void;
 };
 
 export function SessionContextMenu({
@@ -63,6 +66,7 @@ export function SessionContextMenu({
   onSetMuted,
   onSetUnread,
   onDelete,
+  onDissolveChannel,
 }: SessionContextMenuProps) {
   const run = (action: () => void) => {
     onClose();
@@ -161,6 +165,25 @@ export function SessionContextMenu({
           <Trash2 className="app-transient-action-icon" aria-hidden="true" />
           Delete chat
         </button>
+        {target.dissolvableChannel && onDissolveChannel ? (
+          <button
+            type="button"
+            data-session-context-action="dissolve-channel"
+            className="app-transient-row app-transient-row-danger app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+            onClick={() => {
+              onClose();
+              onDissolveChannel({
+                sessionId: target.sessionId,
+                sessionName: target.sessionName,
+                groupSpaceId: target.dissolvableChannel!.groupSpaceId,
+                anchorRect: { left: target.x, top: target.y, width: 1, height: 1 },
+              });
+            }}
+          >
+            <CircleOff className="app-transient-action-icon" aria-hidden="true" />
+            Dissolve channel
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -364,132 +387,6 @@ export function DeleteSessionDialog({ target, onCancel, onConfirm }: DeleteSessi
         >
           {isDeleting ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
           <span>{isDeleting ? 'Deleting…' : error ? 'Try again' : 'Delete chat'}</span>
-        </Button>
-      </AppDialogActions>
-    </AppDialog>
-  );
-}
-
-type ProjectCreateDialogProps = {
-  onCancel: () => void;
-  onCreateFromFolder: (folderPath: string, name?: string) => Promise<void> | void;
-  onCreateNew: (name: string, parentDir?: string) => Promise<void> | void;
-};
-
-export function ProjectCreateDialog({
-  onCancel,
-  onCreateFromFolder,
-  onCreateNew,
-}: ProjectCreateDialogProps) {
-  const [mode, setMode] = useState<'folder' | 'new'>('folder');
-  const [folderPath, setFolderPath] = useState('');
-  const [folderName, setFolderName] = useState('');
-  const [newName, setNewName] = useState('');
-  const [parentDir, setParentDir] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const submit = async () => {
-    try {
-      setError(null);
-      setIsSubmitting(true);
-      await (mode === 'folder'
-        ? onCreateFromFolder(folderPath.trim(), folderName.trim() || undefined)
-        : onCreateNew(newName.trim(), parentDir.trim() || undefined));
-      onCancel();
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Unable to create project');
-      setIsSubmitting(false);
-    }
-  };
-
-  const canSubmit = mode === 'folder' ? folderPath.trim().length > 0 : newName.trim().length > 0;
-
-  return (
-    <AppDialog
-      titleId="create-project-dialog-title"
-      onDismiss={onCancel}
-      dismissDisabled={isSubmitting}
-      busy={isSubmitting}
-      className="max-w-xl"
-    >
-      <AppDialogTitle id="create-project-dialog-title">Create project</AppDialogTitle>
-
-      <div className="mt-4 grid grid-cols-2 gap-2 rounded-[18px] bg-[color:var(--app-control-bg)] p-1">
-        <button
-          type="button"
-          onClick={() => setMode('folder')}
-          className={`rounded-[14px] px-3 py-2 text-[12px] font-medium transition ${mode === 'folder' ? 'bg-[color:var(--app-control-active-bg)] text-[color:var(--utility-foreground)] shadow-sm' : 'text-[color:var(--utility-muted-text)] hover:text-[color:var(--utility-foreground)]'}`}
-        >
-          From local folder
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode('new')}
-          className={`rounded-[14px] px-3 py-2 text-[12px] font-medium transition ${mode === 'new' ? 'bg-[color:var(--app-control-active-bg)] text-[color:var(--utility-foreground)] shadow-sm' : 'text-[color:var(--utility-muted-text)] hover:text-[color:var(--utility-foreground)]'}`}
-        >
-          New folder
-        </button>
-      </div>
-
-      {mode === 'folder' ? (
-        <div className="mt-4 space-y-3">
-          <label className="block">
-            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Folder path</span>
-            <input
-              value={folderPath}
-              onChange={(event) => setFolderPath(event.target.value)}
-              placeholder="/Users/you/work/project"
-              className="app-input-shell mt-2 w-full rounded-[16px] px-3 py-2.5 text-[13px] outline-none"
-            />
-            <span className="mt-1 block text-[11px] text-[color:var(--utility-muted-text)]">Use a folder path without spaces.</span>
-          </label>
-          <label className="block">
-            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Display name optional</span>
-            <input
-              value={folderName}
-              onChange={(event) => setFolderName(event.target.value)}
-              placeholder="Use folder name"
-              className="app-input-shell mt-2 w-full rounded-[16px] px-3 py-2.5 text-[13px] outline-none"
-            />
-          </label>
-        </div>
-      ) : (
-        <div className="mt-4 space-y-3">
-          <label className="block">
-            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Project name</span>
-            <input
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-              placeholder="Website refresh"
-              className="app-input-shell mt-2 w-full rounded-[16px] px-3 py-2.5 text-[13px] outline-none"
-            />
-          </label>
-          <label className="block">
-            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Parent folder optional</span>
-            <input
-              value={parentDir}
-              onChange={(event) => setParentDir(event.target.value)}
-              placeholder="Defaults to ~/KordiProjects"
-              className="app-input-shell mt-2 w-full rounded-[16px] px-3 py-2.5 text-[13px] outline-none"
-            />
-            <span className="mt-1 block text-[11px] text-[color:var(--utility-muted-text)]">Kordi-created project paths cannot contain spaces.</span>
-          </label>
-        </div>
-      )}
-
-      {error ? <div className="app-error-text mt-4 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{error}</div> : null}
-
-      <AppDialogActions>
-        <Button variant="quiet" className="rounded-full px-4" disabled={isSubmitting} onClick={onCancel}>Cancel</Button>
-        <Button
-          className="rounded-full px-4"
-          disabled={!canSubmit || isSubmitting}
-          onClick={() => {
-            void submit();
-          }}
-        >
-          {isSubmitting ? 'Creating…' : 'Create project'}
         </Button>
       </AppDialogActions>
     </AppDialog>

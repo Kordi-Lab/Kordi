@@ -2,8 +2,8 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_174_adds_contact_permissions() {
-    let pool = fixture(174).await;
+async fn upgrade_from_183_adds_contact_permissions() {
+    let pool = fixture(183).await;
     let before: Option<String> = sqlx_core::query_scalar::query_scalar(
         "SELECT to_regclass('public.cloud_contact_permissions')::text",
     )

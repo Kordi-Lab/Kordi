@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { isCancelledFixtureRequest } from './apiFixture';
 import { chatConversationId, installChatFixture } from './chatFixture';
 
 // Chromium's synthetic microphone supplies actual MediaRecorder audio frames.
@@ -9,7 +10,7 @@ test.skip(({ browserName }) => browserName !== 'chromium', 'Synthetic microphone
 test('browser microphone records playable WAV bytes and sends a voice message', async ({ page, baseURL }) => {
   const fixture = await installChatFixture(page, baseURL!);
   const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
+  page.on('pageerror', error => { if (!isCancelledFixtureRequest(error.message)) errors.push(error.message); });
   await page.goto(`/app/chats/${encodeURIComponent(chatConversationId)}`);
   await page.getByRole('button', { name: 'Record voice message', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Cancel voice recording', exact: true })).toBeVisible();

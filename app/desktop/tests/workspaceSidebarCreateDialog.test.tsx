@@ -177,7 +177,7 @@ test('ChatCreateDialog add contact mode shows visible non-contact Bridge users',
   assert.match(markup, /Request/);
 });
 
-test('ChatCreateDialog group picker requires at least 2 contacts and excludes agents', () => {
+test('ChatCreateDialog group picker needs a name, lets one person start a group and excludes agents', () => {
   const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
     isOpen: true,
     initialMode: 'group',
@@ -191,9 +191,21 @@ test('ChatCreateDialog group picker requires at least 2 contacts and excludes ag
     onStartPerson: () => {},
     onStartAgent: () => {},
     onCreateGroup: () => {},
+    onCreateGroupInvitation: async () => ({ invitationId: 'groupinv_1', inviteUrl: 'https://kordi.example/g/kordi_gi_1', expiresAt: '2026-11-13T00:00:00Z' }),
   }));
 
-  assert.match(markup, /Select at least 2 contacts/);
+  assert.doesNotMatch(markup, /Select at least/);
+  assert.doesNotMatch(markup, /Pick \d (person|people)/);
+  assert.doesNotMatch(markup, /New group/);
+  assert.doesNotMatch(markup, /verified group admin/);
+  assert.match(markup, /placeholder="Group name"/);
+  // Nothing is picked, but a group of one is fine: only the empty name keeps both actions off.
+  const submit = markup.match(/<button[^>]*type="submit"[^>]*>[^<]*<\/button>/)?.[0] ?? '';
+  assert.match(submit, />Create group</);
+  assert.match(submit, /\sdisabled(=""|\s|>)/);
+  const invite = markup.match(/<button[^>]*>(?:(?!<\/button>).)*Invite with a link(?:(?!<\/button>).)*<\/button>/)?.[0] ?? '';
+  assert.ok(invite, 'Invite with a link row renders');
+  assert.match(invite, /\sdisabled(=""|\s|>)/);
   assert.match(markup, /Alice/);
   assert.match(markup, /Bob/);
   assert.doesNotMatch(markup, /Helper Kordi/);

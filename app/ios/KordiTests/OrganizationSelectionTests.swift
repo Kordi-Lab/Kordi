@@ -158,6 +158,14 @@ final class OrganizationSelectionTests: XCTestCase {
 
         conversation.organizationName = "Example team"
         XCTAssertEqual(ConversationOrganizationLabel.groupStatus(for: conversation), "Example team · 2 participants")
+
+        let solo = ConversationSummary(
+            id: "group:solo", kind: .group, peerAccountId: "acct_self", agentId: nil, ownerDisplayName: nil,
+            displayName: "New group", lastMessage: "", lastActivityAt: .distantPast, unreadCount: 0,
+            avatarSource: nil, agentActivity: nil, sessionId: "solo",
+            groupParticipants: [CloudGroupParticipant(accountId: "acct_self", displayName: "Me", avatarUrl: nil, role: "self")]
+        )
+        XCTAssertEqual(ConversationOrganizationLabel.groupStatus(for: solo), "1 participant")
     }
 
     // MARK: Token switch

@@ -6,6 +6,14 @@ export function isSystemNoticeKind(messageKind: CanonicalSessionMessage['message
   return messageKind?.trim() === KORDI_SYSTEM_NOTICE_KIND;
 }
 
+/** A server group event, such as "Ava created the group": a notice that names its `group_event`.
+ * It reads as a small centered line, not a bubble. */
+export function isGroupEventNotice(messageKind: CanonicalSessionMessage['messageKind'] | null | undefined, content: unknown): boolean {
+  if (!isSystemNoticeKind(messageKind) || !content || typeof content !== 'object' || Array.isArray(content)) return false;
+  const event = (content as { group_event?: unknown }).group_event;
+  return Boolean(event) && typeof event === 'object' && !Array.isArray(event);
+}
+
 /** Sender identity for a server notice or the plan agent; null keeps the poster's own identity.
  * The seed keeps notices from grouping with the posting account's own messages. A notice is
  * never an own bubble, even when the viewer's account posted it (an organizer's plan card). */

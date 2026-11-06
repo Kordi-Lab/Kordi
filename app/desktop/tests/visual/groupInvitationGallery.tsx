@@ -179,6 +179,7 @@ createRoot(document.querySelector('#root')!).render(
           expiresAt: '2026-08-15T00:00:00Z',
         }]) : undefined}
         onRevokeGroupInvitation={async () => undefined}
+        onDissolveGroup={async () => { document.body.dataset.dissolved = 'true'; }}
       />
     ) : (
       <GroupInvitationDialog

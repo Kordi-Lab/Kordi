@@ -32,6 +32,8 @@ export type SendCloudGroupControlInput = {
   message?: CloudGroupControlEnvelope['message'];
   attachments?: AttachmentItem[];
   retryFailed?: boolean;
+  /** Group creation: send once without the durable outbox, so a failure can be undone cleanly. */
+  transient?: boolean;
   /** Forwarding can finish at delivery acknowledgement while sync and agent work continue. */
   completion?: 'acknowledged';
   /**

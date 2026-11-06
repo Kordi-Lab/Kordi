@@ -29,7 +29,6 @@
 
 .app-transient-row,
 .app-composer-popover-item,
-.app-chat-create-choice,
 .app-chat-create-list-item {
   border-color: transparent;
   background: var(--app-transient-raised-bg);
@@ -39,7 +38,6 @@
 .app-transient-row:hover,
 .app-transient-row:focus-visible,
 .app-composer-popover-item:hover,
-.app-chat-create-choice:hover,
 .app-chat-create-list-item:hover {
   border-color: var(--app-transient-border);
   background: var(--app-transient-hover-bg);
@@ -294,7 +292,6 @@
   color: var(--app-transient-danger-text);
 }
 
-.app-chat-create-popover-arrow,
 .app-dialog-popover-arrow,
 .app-group-management-popover-arrow {
   border-color: var(--app-transient-border);

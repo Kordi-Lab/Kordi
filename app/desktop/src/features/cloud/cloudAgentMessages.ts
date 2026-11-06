@@ -154,18 +154,6 @@ export function isCloudAgentStoredNoProviderFailure(value: unknown): boolean {
   return isCloudAgentNoProviderConfiguredError(value) || isCloudAgentModelUnavailableError(value);
 }
 
-/** The short notice for an account or model failure, or null for any other error. */
-export function cloudAgentProviderFailureNotice(value: unknown): string | null {
-  if (isCloudAgentSignInAgainError(value)) return CLOUD_AGENT_SIGN_IN_AGAIN_NOTICE;
-  if (isCloudAgentModelUnavailableError(value)) return CLOUD_AGENT_MODEL_UNAVAILABLE_NOTICE;
-  return isCloudAgentNoProviderConfiguredError(value) ? CLOUD_AGENT_NO_PROVIDER_NOTICE : null;
-}
-
-/** Failures the Authentication page can fix: a missing account or an expired sign-in. */
-export function cloudAgentProviderFailureNeedsAuthentication(value: unknown): boolean {
-  return isCloudAgentSignInAgainError(value) || isCloudAgentNoProviderConfiguredError(value);
-}
-
 export type CloudAgentCancelEnvelope = {
   kind: 'agent-cancel';
   requestId: string;

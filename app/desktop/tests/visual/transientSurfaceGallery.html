@@ -21,11 +21,13 @@
         <section class="visual-stage" data-visual-surface="start-chat">
           <div class="visual-underlay" aria-hidden="true">Message history behind the popup<br />Dense text must not remain readable</div>
           <div class="visual-caption">Start a chat</div>
-          <div class="app-transient-surface app-frosted-popover app-chat-create-popover visual-surface visual-popover">
-            <div class="visual-surface-title">Start a chat <span>×</span></div>
-            <button class="app-chat-create-choice visual-choice"><span class="app-chat-create-icon visual-icon">▣</span><span><strong>Chat with contact</strong></span></button>
-            <button class="app-chat-create-choice visual-choice"><span class="app-chat-create-icon visual-icon">◇</span><span><strong>Chat with agent</strong></span></button>
-            <button class="app-chat-create-choice visual-choice"><span class="app-chat-create-icon visual-icon">◎</span><span><strong>Start group</strong></span></button>
+          <div class="app-transient-surface app-frosted-popover app-chat-create-popover app-dense-menu visual-surface visual-dense-menu">
+            <header class="app-dense-menu-header"><h2>Start a chat</h2><button aria-label="Close">×</button></header>
+            <div class="app-dense-menu-items">
+              <button><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg><span>Chat with contact</span></button>
+              <button><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8V4H8M4 8h16v12H4zM9 13v2m6-2v2" /></svg><span>Chat with agent</span></button>
+              <button><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-8 0v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8" /></svg><span>Start group</span></button>
+            </div>
           </div>
         </section>
 

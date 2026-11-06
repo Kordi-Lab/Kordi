@@ -141,11 +141,12 @@ async fn scheduled_group_completion_routes_back_to_originating_group_session() {
         .unwrap()
         .to_string();
 
+    // Sequence 1 is the "created the group" line and 2 the request.
     let rows: Vec<(String, String, String)> = sqlx_core::query_as::query_as(
         "SELECT message.message_id::text, message.sender_account_id, \
                 message.content #>> '{blocks,0,text}' \
          FROM cloud_chat_messages message \
-         WHERE message.conversation_id = $1 AND message.conversation_sequence > 1 \
+         WHERE message.conversation_id = $1 AND message.conversation_sequence > 2 \
          ORDER BY message.conversation_sequence ASC",
     )
     .bind(conversation_id)

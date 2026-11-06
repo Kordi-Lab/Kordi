@@ -31,6 +31,8 @@ pub struct Deletion {
     pub contacts: Vec<String>,
     pub conversations: ConversationRemoval,
     pub queued_objects: usize,
+    /// Apple tokens left for the revocation retry queue.
+    pub queued_apple_tokens: u64,
 }
 
 impl Deletion {
@@ -44,6 +46,7 @@ impl Deletion {
             "conversationsKept": self.conversations.kept,
             "groupsTransferred": self.conversations.transferred,
             "objectsQueued": self.queued_objects,
+            "appleTokensQueued": self.queued_apple_tokens,
         })
     }
 }
@@ -77,9 +80,9 @@ pub async fn prepare(state: &ServerState, account_id: &str) {
         }
         Err(error) => eprintln!("[account-deletion] Could not list connectors: {error}"),
     }
-    // Sign in with Apple hook: a later change revokes the account's Apple
-    // tokens here, with `revoke_apple_tokens_for_account(...)`, before the
-    // stored refresh tokens are deleted with the account.
+    // Revoke Sign in with Apple tokens while they are stored. Tokens Apple
+    // could not revoke move to a retry queue in the deletion transaction.
+    crate::auth::oauth::apple::revoke_apple_tokens_for_account(state, account_id).await;
 }
 
 /// Deletes `account_id` in `tx`. The caller holds the account row lock and
@@ -138,6 +141,8 @@ pub async fn delete_in_transaction(
         );
     }
     let queued_objects = objects::queue(tx, &keys).await?;
+    let queued_apple_tokens =
+        crate::auth::oauth::apple::revocations::queue_unrevoked(tx, account_id).await?;
 
     let deleted = query("DELETE FROM cloud_accounts WHERE account_id = $1")
         .bind(account_id)
@@ -151,6 +156,7 @@ pub async fn delete_in_transaction(
         contacts,
         conversations,
         queued_objects,
+        queued_apple_tokens,
     })
 }
 

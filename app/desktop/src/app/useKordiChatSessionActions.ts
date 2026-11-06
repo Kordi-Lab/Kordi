@@ -20,9 +20,12 @@ import type {
 } from '@/kordi-app/types';
 import {
   archiveDesktopChatSession,
+  deleteDesktopChatSessionForever,
   renameCanonicalSession,
   renameDesktopChatSession,
 } from '@/lib/desktop';
+import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import { loadSession } from '@/features/cloud/session';
 
 import {
   activeGroupAdminIds,
@@ -444,7 +447,33 @@ export function useKordiChatSessionActions({
     );
   }, [isNativeShell, refreshCanonicalState, runChatListAction, setCloudGroupSpaceArchived]);
 
+  // Dissolving removes the group (or channel) for everyone. The server tells
+  // every member's devices; this device drops it right away.
+  const dropDissolvedSessions = useCallback(async (sessionIds: string[]) => {
+    for (const sessionId of sessionIds) {
+      optimisticallyRemoveSession(sessionId);
+      await deleteDesktopChatSessionForever(sessionId).catch(() => undefined);
+    }
+    await refreshCanonicalState();
+  }, [optimisticallyRemoveSession, refreshCanonicalState]);
+
+  const dissolveGroup = useCallback(async (groupSpaceId: string, sessionIds: string[]) => {
+    const login = await loadSession();
+    if (!login?.token) throw new Error('Sign in to Kordi first.');
+    await defaultCloudAuthClient().dissolveGroup(login.token, groupSpaceId);
+    await dropDissolvedSessions(sessionIds);
+  }, [dropDissolvedSessions]);
+
+  const dissolveChannel = useCallback(async (groupSpaceId: string, sessionId: string) => {
+    const login = await loadSession();
+    if (!login?.token) throw new Error('Sign in to Kordi first.');
+    await defaultCloudAuthClient().dissolveGroupChannel(login.token, groupSpaceId, sessionId);
+    await dropDissolvedSessions([sessionId]);
+  }, [dropDissolvedSessions]);
+
   return {
+    dissolveGroup,
+    dissolveChannel,
     renameSession,
     archiveSession,
     restoreSession,

@@ -47,6 +47,7 @@ struct NewChatView: View {
     @State private var groupAvatarDataURL: String?
     @State private var selectedGroupContactIDs = Set<String>()
     @State private var isCreatingGroup = false
+    @FocusState private var isGroupNameFocused: Bool
     @State private var showsProviderAuthentication = false
 
     private let mode: NewChatMode
@@ -105,7 +106,7 @@ struct NewChatView: View {
                     Button(isCreatingGroup ? "Creating…" : "Create") {
                         createGroup()
                     }
-                    .disabled(selectedGroupContactIDs.count < 2 || isCreatingGroup)
+                    .disabled(!canCreateGroup)
                 }
             }
         }
@@ -181,16 +182,19 @@ struct NewChatView: View {
                                   disabled: isCreatingGroup) { groupAvatarDataURL = $0 }
                     .frame(maxWidth: .infinity)
             }
-            Section("Group name") {
-                TextField("Optional", text: $groupName)
+            Section {
+                TextField("Group name", text: $groupName)
                     .textInputAutocapitalization(.words)
+                    .focused($isGroupNameFocused)
+                    .submitLabel(.done)
+                    .onSubmit(createGroup)
             }
 
             if groupContacts.isEmpty {
                 ContentUnavailableView(
                     searchText.isEmpty ? "No contacts available" : "No contacts found",
                     systemImage: searchText.isEmpty ? "person.3" : "magnifyingglass",
-                    description: Text(searchText.isEmpty ? "Add contacts before starting a group." : "Try another name or Kordi ID.")
+                    description: searchText.isEmpty ? nil : Text("Try another name or Kordi ID.")
                 )
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -229,8 +233,6 @@ struct NewChatView: View {
                     }
                 } header: {
                     Text("People")
-                } footer: {
-                    Text("Select at least 2 people. Agents can be invited from the session later.")
                 }
             }
         }
@@ -240,6 +242,11 @@ struct NewChatView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Contacts"
         )
+        .task {
+            // Wait for the push transition so the keyboard focus sticks.
+            try? await Task.sleep(for: .milliseconds(350))
+            isGroupNameFocused = true
+        }
     }
 
     private func startAgentSession(from template: ConversationSummary) {
@@ -266,13 +273,21 @@ struct NewChatView: View {
         }
     }
 
+    private var trimmedGroupName: String {
+        groupName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canCreateGroup: Bool {
+        !isCreatingGroup && !trimmedGroupName.isEmpty
+    }
+
     private func createGroup() {
-        guard !isCreatingGroup else { return }
+        guard canCreateGroup else { return }
+        let title = trimmedGroupName
         let selected = model.contacts.filter { selectedGroupContactIDs.contains($0.accountId) }
-        guard selected.count >= 2 else { return }
         isCreatingGroup = true
         Task {
-            if let conversation = await model.createGroup(with: selected, title: groupName, avatarDataURL: groupAvatarDataURL) {
+            if let conversation = await model.createGroup(with: selected, title: title, avatarDataURL: groupAvatarDataURL) {
                 select(conversation)
             }
             isCreatingGroup = false

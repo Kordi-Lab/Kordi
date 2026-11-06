@@ -28,6 +28,8 @@ test('common app error surfaces opt into contained error text', () => {
     'pages/CloudProfilePanel.tsx',
     'kordi-app/cloud/CloudProfileFieldRow.tsx',
     'pages/SessionActionOverlays.tsx',
+    'pages/DissolveDialog.tsx',
+    'pages/ProjectCreateDialog.tsx',
     'pages/WorkspaceSidebar.tsx',
     'features/cloud/CloudContactsPanel.tsx',
     'features/cloud/CloudPeerChatPanel.tsx',

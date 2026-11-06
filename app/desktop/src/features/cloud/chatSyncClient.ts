@@ -53,6 +53,14 @@ export class ChatSyncClient {
     return this.conversations.sendMessage(token, peerAccountId, body, options);
   }
 
+  dissolveGroup(token: string, groupSpaceId: string): Promise<void> {
+    return this.conversations.dissolveGroup(token, groupSpaceId);
+  }
+
+  dissolveGroupChannel(token: string, groupSpaceId: string, channelSessionId: string): Promise<void> {
+    return this.conversations.dissolveGroupChannel(token, groupSpaceId, channelSessionId);
+  }
+
   drainOutbox(token: string, accountId: string): Promise<CloudMessage[]> {
     return this.conversations.drainChatOutbox(token, accountId);
   }
