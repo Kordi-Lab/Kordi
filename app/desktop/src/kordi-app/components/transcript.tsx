@@ -5,7 +5,7 @@ import { beginChatPerformanceSpan, finishChatPerformanceSpan } from '@/features/
 import { agentMessageAvatarSeed } from '@/features/chat/agentMessageAvatar';
 import { transcriptAttachmentLayout } from './transcriptAttachmentLayout';
 import { messageDeliveryVisual,shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
-import { humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
+import { transcriptMessageSurfaceClassName } from './transcriptMessageSurfaceClass';
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { relatedAgentSessionsFromTools,type RelatedAgentSessionRunStatus } from '@/features/chat/relatedAgentSessions';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
@@ -726,35 +726,12 @@ function MessageBubbleView({
           event.stopPropagation();
           onToggleSelectedMessage?.(msg);
         }}
-        className={cn(
-        'app-message-hover-time-trigger min-w-0',
-        hasDetachedImageGroup ? cn('flex flex-col gap-2', isOwnHumanMessage ? 'items-end' : 'items-start') : '',
-        hasGroupedImageAttachments ? (isOwnHumanMessage ? 'mr-4' : isPeerHumanMessage ? 'ml-4' : '') : '',
-        bareSurface || hasDetachedImageGroup || standaloneEmojiItem ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
-        isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
-        isOwnHumanMessage
-          ? bareSurface || hasDetachedImageGroup || standaloneEmojiItem
-            ? 'w-fit max-w-[31rem] p-0'
-            : useHumanCompactDensity
-              ? cn('app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
-              : cn('w-fit px-4 py-2.5', 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
-          : isPeerHumanMessage
-            ? bareSurface || hasDetachedImageGroup || standaloneEmojiItem
-              ? 'w-fit max-w-[31rem] p-0'
-              : useHumanCompactDensity
-                ? cn(
-                  'app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', 'max-w-[52rem]',
-                  msg.supportContactTyping ? 'min-w-[3.25rem]' : undefined,
-                  humanMessageBubbleShapeClass('peer'),
-                )
-                : cn(
-                  'w-fit px-4 py-2.5', 'max-w-[52rem]',
-                  msg.supportContactTyping ? 'min-w-[4rem]' : undefined,
-                  humanMessageBubbleShapeClass('peer'),
-                )
-             : hasDetachedImageGroup ? 'w-fit max-w-[31rem] p-0' : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyBorderlessMediaAttachments ? 'pl-2.5 py-1.5' : '',
-        !bareSurface && !hasDetachedImageGroup && !standaloneEmojiItem && bubble,
-      )}
+        className={transcriptMessageSurfaceClassName({
+          side: isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent', plain: Boolean(bareSurface || hasDetachedImageGroup || standaloneEmojiItem),
+          detachedImageGroup: hasDetachedImageGroup, groupedImages: hasGroupedImageAttachments, compact: useHumanCompactDensity,
+          supportTyping: Boolean(msg.supportContactTyping), voicePadding: Boolean(hasVoice && !hasOnlyBorderlessMediaAttachments),
+          animateEntry: shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus), bubble,
+        })}
       >
       {messageSurfaceContent}
       </TranscriptMessageSurface>

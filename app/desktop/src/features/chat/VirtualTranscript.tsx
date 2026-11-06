@@ -12,7 +12,7 @@ import {
 } from 'react';
 import { TranscriptWindowRows } from './TranscriptItemContent';
 import { createTranscriptContentMeasure } from './transcriptContentMeasure';
-import { useTranscriptVirtualizerOptions, useMeasureTranscriptRows } from './useTranscriptVirtualizer';
+import { scrollTranscriptToTail, useTranscriptVirtualizerOptions, useMeasureTranscriptRows } from './useTranscriptVirtualizer';
 import { TRANSCRIPT_FOLLOW_TAIL_EVENT } from './transcriptNavigation';
 import { useTranscriptTailAlignment } from './useTranscriptTailAlignment';
 
@@ -430,11 +430,7 @@ export function VirtualTranscript<Item>({
       const tailIsMounted = virtualizer.getVirtualItems().some(item => item.index === items.length - 1);
       if (items.length > 0 && (!tailIsMounted
         || (revealFromIndex === undefined && !hasActiveTranscriptRowLift(tailLiftRowsRef.current)))) {
-        virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
-        // The virtualizer learns the new offset from the next scroll event, a frame
-        // later. On entry, deliver it now so the tail rows mount in this layout pass
-        // and a remembered layout can show in the first paint.
-        if (aligned?.sessionKey !== sessionKey) internalScrollRef.current?.dispatchEvent(new Event('scroll'));
+        scrollTranscriptToTail(virtualizer, internalScrollRef.current, items.length - 1, aligned?.sessionKey !== sessionKey);
       }
       scheduleTailAlignment(revealFromIndex);
     }

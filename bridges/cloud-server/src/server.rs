@@ -9,9 +9,7 @@ use sqlx_postgres::PgPool;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::attachments::S3Config;
-use crate::auth::rate_limit::{
-    CloudRateLimitConfig, CloudRateLimiter, RateLimiterError, TrustedNetworks,
-};
+use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, RateLimiterError};
 use crate::calls::{CallMediaConfig, CallMediaConfigError};
 use crate::events::{EventBus, EventBusError};
 use crate::notifications::{PushNotificationConfigError, PushNotificationService};
@@ -24,10 +22,9 @@ use crate::updates::store::{
 
 mod admission_state;
 mod logging;
+mod rate_limiter;
 mod readiness;
 mod workers;
-
-use logging::redact_url_credentials;
 
 pub struct ServerState {
     admission: crate::auth::admission::AdmissionPolicy,
@@ -354,25 +351,7 @@ pub async fn run(
             EventBus::noop()
         }
     };
-    let trusted_networks = TrustedNetworks::from_env().map_err(RunError::Configuration)?;
-    let rate_limiter = Arc::new(
-        match redis_url {
-            Some(url) => {
-                println!(
-                    "Kordi cloud server connecting to Redis at {}",
-                    redact_url_credentials(url)
-                );
-                CloudRateLimiter::redis(url, CloudRateLimitConfig::production())
-                    .await
-                    .map_err(RunError::RateLimiter)?
-            }
-            None => {
-                println!("Kordi cloud server starting without Redis (rate limiter is in-memory)");
-                CloudRateLimiter::memory(CloudRateLimitConfig::production())
-            }
-        }
-        .with_trusted_networks(trusted_networks),
-    );
+    let rate_limiter = Arc::new(rate_limiter::connect(redis_url).await?);
     let mut state = ServerState::new(pool, events)
         .with_connector_call_limiter(rate_limiter.clone())
         .with_admission(admission)

@@ -108,3 +108,18 @@ export function useMeasureTranscriptRows(
     });
   });
 }
+
+/**
+ * Scroll to the tail row. The virtualizer learns the new offset from the next scroll
+ * event, a frame later. On entry, deliver it now so the tail rows mount in this layout
+ * pass and a remembered layout can show in the first paint.
+ */
+export function scrollTranscriptToTail(
+  virtualizer: Virtualizer<HTMLDivElement, HTMLElement>,
+  viewport: HTMLDivElement | null,
+  tailIndex: number,
+  entering: boolean,
+) {
+  virtualizer.scrollToIndex(tailIndex, { align: 'end' });
+  if (entering) viewport?.dispatchEvent(new Event('scroll'));
+}
