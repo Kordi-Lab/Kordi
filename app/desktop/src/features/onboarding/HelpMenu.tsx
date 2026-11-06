@@ -1,6 +1,6 @@
 import { useId, useMemo, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, CircleHelp, Play, ShieldCheck, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleHelp, Download, Play, ShieldCheck, X } from 'lucide-react';
 import { AppDialog, AppDialogTitle, type AppDialogAnchor } from '@/components/ui/dialog';
 import { cloudApiBaseUrl, defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
@@ -30,11 +30,13 @@ export type HelpMenuProps = {
   onOpenSession: (id: string) => void;
   onDismiss: () => void;
   onStartTour: (id?: HelpTourId) => void;
+  /** Browser app in a Mac browser only: opens the Mac installer download. */
+  onMacDownload?: () => void;
   anchor: AppDialogAnchor | null;
   initialView?: 'home' | 'permissions';
 };
 
-export default function HelpMenu({ progressKey, settingsAvailable, supportAvailable, onAction, onOpenSession, onDismiss, onStartTour, anchor, updateAction, initialView = 'home' }: HelpMenuProps) {
+export default function HelpMenu({ progressKey, settingsAvailable, supportAvailable, onAction, onOpenSession, onDismiss, onStartTour, onMacDownload, anchor, updateAction, initialView = 'home' }: HelpMenuProps) {
   const titleId = useId();
   const [view, setView] = useState<'home' | 'permissions' | 'updates' | 'licenses'>(initialView);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +76,7 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
       <div className="help-menu-divider" />
       <button onClick={() => setView('permissions')}><ShieldCheck size={16} /><span>Permissions & access</span><ArrowRight size={14} /></button>
       <div className="help-menu-divider" />
+      {onMacDownload ? <button onClick={() => { onMacDownload(); onDismiss(); }}><Download size={16} /><span>Download for Mac</span></button> : null}
       <button onClick={() => setView('updates')}><span>What’s new</span></button>
       <button onClick={() => setView('licenses')}><span>Open-source licenses</span><ArrowRight size={14} /></button>
       {supportAvailable ? <button disabled={busy} onClick={() => void action({ kind: 'support' })}><span>Contact support</span></button> : null}
