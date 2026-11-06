@@ -52,7 +52,6 @@ export type GroupDetailsDialogProps = {
     input: CloudGroupInvitationCreateInput,
   ) => Promise<CloudGroupInvitation>;
   onListGroupInvitations?: (groupSpaceId: string) => Promise<CloudGroupInvitationSummary[]>;
-  onRevokeGroupInvitation?: (invitationId: string) => Promise<void>;
   onMessageContact?: (contact: Contact) => Promise<void> | void;
   onDissolveGroup?: (groupSpaceId: string, sessionIds: string[]) => Promise<void> | void;
   anchorRect?: GroupManagementPopoverAnchor | null;
@@ -173,7 +172,6 @@ export function GroupDetailsDialog({
   onAddContact,
   onCreateGroupInvitation,
   onListGroupInvitations,
-  onRevokeGroupInvitation,
   onMessageContact,
   onDissolveGroup,
   anchorRect = null,
@@ -879,7 +877,6 @@ export function GroupDetailsDialog({
                       pendingAction={pendingAction}
                       onCreateGroupInvitation={onCreateGroupInvitation}
                       onListGroupInvitations={onListGroupInvitations}
-                      onRevokeGroupInvitation={onRevokeGroupInvitation}
                       runAction={runAction}
                       onError={setActionError}
                     />

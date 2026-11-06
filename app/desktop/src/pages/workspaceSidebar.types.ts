@@ -190,7 +190,6 @@ export type WorkspaceSidebarAccount = {
     input: CloudGroupInvitationCreateInput,
   ) => Promise<CloudGroupInvitation>;
   onListGroupInvites?: (groupSpaceId: string) => Promise<CloudGroupInvitationSummary[]>;
-  onRevokeGroupInvite?: (invitationId: string) => Promise<void>;
 };
 
 export type WorkspaceSidebarProps = {

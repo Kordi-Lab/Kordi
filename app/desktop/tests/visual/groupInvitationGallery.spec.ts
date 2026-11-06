@@ -30,8 +30,7 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
   await page.getByRole('tab', { name: 'Invite with a link' }).click();
   await page.getByRole('button', { name: 'Create link' }).click();
   await expect(page.getByLabel('Group invitation link')).toHaveValue(`https://kordi.ai/g/${token}`);
-  await expect(page.getByRole('button', { name: 'New link' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Revoke' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reset link' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('group-invitation-admin-desktop.png') });
 
   await page.setViewportSize({ width: 430, height: 820 });
@@ -40,10 +39,11 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
   await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=active');
   await page.locator('.app-group-profile-actions').getByRole('button', { name: 'Add people' }).click();
   await page.getByRole('tab', { name: 'Invite with a link' }).click();
-  await expect(page.getByRole('button', { name: 'New link' })).toBeVisible();
-  await expect(page.getByText('Revoke it before creating another link')).toHaveCount(0);
+  await expect(page.getByLabel('Group invitation link')).toHaveValue(`https://kordi.ai/g/kordi_gi_${'b'.repeat(43)}`);
+  await expect(page.getByRole('button', { name: 'Create link' })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('group-invitation-active-narrow.png') });
-  await page.getByRole('button', { name: 'New link' }).click();
+  await page.getByRole('button', { name: 'Reset link' }).click();
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await expect(page.getByLabel('Group invitation link')).toHaveValue(`https://kordi.ai/g/${token}`);
 
   await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=nonadmin');

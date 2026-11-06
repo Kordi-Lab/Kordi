@@ -176,9 +176,9 @@ createRoot(document.querySelector('#root')!).render(
         })}
         onListGroupInvitations={mode === 'active' ? async () => ([{
           invitationId: 'groupinv_active_visual',
+          inviteUrl: `https://kordi.ai/g/kordi_gi_${'b'.repeat(43)}`,
           expiresAt: '2026-08-15T00:00:00Z',
         }]) : undefined}
-        onRevokeGroupInvitation={async () => undefined}
         onDissolveGroup={async () => { document.body.dataset.dissolved = 'true'; }}
       />
     ) : (

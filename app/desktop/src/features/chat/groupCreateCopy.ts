@@ -44,7 +44,7 @@ export function groupInvitationLinkErrorMessage(error: unknown, { asCreator = fa
   if (/enter a group name/.test(text)) return 'Name the group before sharing a link.';
   if (/cannot create a share link/.test(text)) return "This group can't share a link yet. Try again in a moment.";
   if (/member count|fewer than|at least/.test(text)) return 'Add someone to the group before sharing a link.';
-  if (/too many|rate limit|429/.test(text)) return 'Too many links right now. Try again later.';
+  if (/too many|rate limit|429/.test(text)) return 'Too many tries right now. Try again in a minute.';
   return "Couldn't create the link. Try again.";
 }
 
