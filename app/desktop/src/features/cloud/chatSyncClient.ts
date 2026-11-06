@@ -73,6 +73,10 @@ export class ChatSyncClient {
     return this.conversations.dissolveGroupChannel(token, groupSpaceId, channelSessionId);
   }
 
+  leaveGroup(token: string, groupSpaceId: string): Promise<void> {
+    return this.conversations.leaveGroup(token, groupSpaceId);
+  }
+
   drainOutbox(token: string, accountId: string): Promise<CloudMessage[]> {
     return this.conversations.drainChatOutbox(token, accountId);
   }

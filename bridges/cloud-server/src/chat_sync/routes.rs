@@ -9,7 +9,9 @@ use axum::{Extension, Json, Router};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, MESSAGE_SEND_LIMIT};
+use crate::auth::rate_limit::{
+    CloudRateLimiter, RateLimitDecision, GROUP_LEAVE_LIMIT, MESSAGE_SEND_LIMIT,
+};
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
 use crate::chat_sync::cursor::CursorCodec;
 use crate::chat_sync::models::{

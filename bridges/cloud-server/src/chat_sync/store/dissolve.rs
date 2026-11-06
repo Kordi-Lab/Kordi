@@ -25,14 +25,14 @@ pub struct DissolveOutcome {
 const GROUP_SPACE_SQL: &str = "COALESCE(group_space_id, \
      regexp_replace(COALESCE(legacy_session_id, conversation_id::text), '^(group:)+', ''))";
 
-fn normalized_space(group_space_id: &str) -> Option<&str> {
+pub(super) fn normalized_space(group_space_id: &str) -> Option<&str> {
     let space = group_space_id.trim().trim_start_matches("group:");
     (!space.is_empty()).then_some(space)
 }
 
 /// The group's channels in creation order, locked. The first one is the
 /// group's authority, as for channel creation.
-async fn group_channels(
+pub(super) async fn group_channels(
     transaction: &mut Transaction<'_, Postgres>,
     space: &str,
 ) -> Result<Vec<(Uuid, Option<String>)>, StoreError> {
