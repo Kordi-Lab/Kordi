@@ -451,4 +451,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "session revocation signals",
         "0175_session_revocation_signals.sql"
     ),
+    migration!(177, "nearby organization", "0177_nearby_organization.sql"),
 ];
