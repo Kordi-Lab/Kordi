@@ -7,19 +7,21 @@ import { toolActivityMetadata } from './toolActivityMetadata';
 import { MarkdownContent } from './markdown';
 import { ProgressBird } from './ProgressBird';
 import { ProgressDisclosure } from './ProgressDisclosure';
+import { useRememberedDisclosure } from './rememberedDisclosure';
 
-function ActivityGroup({ tools, unavailable = 0, label, renderTool, thinkingText }: {
-  tools: DesktopChatToolSnapshot[]; unavailable?: number; label: string;
+function ActivityGroup({ tools, unavailable = 0, label, renderTool, thinkingText, stateKey }: {
+  tools: DesktopChatToolSnapshot[]; unavailable?: number; label: string; stateKey: string;
   renderTool: (tool: DesktopChatToolSnapshot) => ReactNode; thinkingText?: string;
 }) {
-  const [expanded, setExpanded] = useState(tools.length === 1);
+  // Tool rows are single lines, so an opened turn lists them; reasoning text stays folded.
+  const [expanded, toggle] = useRememberedDisclosure(stateKey, tools.length > 0);
   const Icon = tools[0] ? toolActivityMetadata(tools[0]).Icon : thinkingText ? Brain : Wrench;
   const expandable = tools.length > 0 || unavailable > 0 || Boolean(thinkingText);
   if (tools.length === 1 && !unavailable && !thinkingText) return renderTool(tools[0]);
   return <section className={`app-turn-progress${thinkingText ? ' app-turn-reasoning' : ''}`} data-transcript-stable-disclosure-root="true" data-transcript-stable-disclosure-direction="down">
     <div className="app-turn-progress-line">
       <button type="button" className="app-turn-progress-summary" aria-label={label} aria-expanded={expandable ? expanded : undefined}
-        disabled={!expandable} data-transcript-stable-disclosure="true" onClick={() => setExpanded(value => !value)}>
+        disabled={!expandable} data-transcript-stable-disclosure="true" onClick={toggle}>
         <Icon size={14} aria-hidden="true" />
         <span>{label}</span>
         {expandable ? <ChevronRight aria-hidden="true" className={expanded ? 'rotate-90' : undefined} size={13} /> : null}
@@ -53,7 +55,7 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
   const hasActivity = groups.some(group => group.kind === 'tools') || groups.length > 1;
   const elapsed = elapsedLabel(turn, now);
   const standaloneReasoning = !hasActivity && turn.tools.length === 0;
-  const [trajectoryExpanded, setTrajectoryExpanded] = useState(false);
+  const [trajectoryExpanded, toggleTrajectory] = useRememberedDisclosure(`turn:${turn.id}`, false);
   const hasTrace = hasActivity || turn.tools.length > 0 || Boolean(turn.thinkingText);
   // A running reply with a Stop keeps its status line, so Stop never moves while text streams.
   const showHeader = Boolean(turn.agentExchangeStatus) || hasTrace || (live && (ordered || !legacyAnswer || Boolean(trailing)));
@@ -64,7 +66,7 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
     {showHeader ? <div className="app-turn-progress-line app-turn-header-line">
       <button type="button" className="app-turn-worked-header" aria-expanded={expandable ? trajectoryExpanded : undefined}
         aria-label={`${statusLabel}${elapsed ? ` ${elapsed}` : ''}`} disabled={!expandable}
-        data-transcript-stable-disclosure="true" onClick={() => setTrajectoryExpanded(value => !value)}>
+        data-transcript-stable-disclosure="true" onClick={toggleTrajectory}>
         {live ? <ProgressBird /> : null}
         <span role={live ? 'status' : undefined} className={live ? 'app-turn-status-label' : undefined} title={statusLabel}><span key={statusLabel} className="app-turn-status-text">{statusLabel}</span></span>{elapsed ? <span className="app-turn-progress-time" aria-hidden="true">{elapsed}</span> : null}
         {expandable ? <ChevronRight size={13} aria-hidden="true" className={trajectoryExpanded ? 'rotate-90' : undefined} /> : null}
@@ -75,11 +77,11 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
       ? <p className="app-turn-retry-reason">{turn.retryReason.trim()}</p> : null}
     <ProgressDisclosure expanded={showHeader && trajectoryExpanded}>
       {ordered && hasActivity ? <>
-        {turn.thinkingText ? <ActivityGroup tools={[]} label="Reasoning" thinkingText={turn.thinkingText} renderTool={renderTool} /> : null}
+        {turn.thinkingText ? <ActivityGroup tools={[]} label="Reasoning" thinkingText={turn.thinkingText} renderTool={renderTool} stateKey={`turn:${turn.id}:reasoning`} /> : null}
         <div className="app-turn-trajectory">
           {groups.filter(group => live || group !== last || group.kind !== 'text').map(group => <div key={group.id}>
             {group.kind === 'text' ? <div className="app-turn-commentary"><MarkdownContent text={group.text} /></div>
-              : <ActivityGroup tools={group.tools} unavailable={group.unavailable}
+              : <ActivityGroup tools={group.tools} unavailable={group.unavailable} stateKey={`turn:${turn.id}:${group.id}`}
                   label={live && group.tools.some(progressToolIsActive) ? `${group.tools.length + group.unavailable} ${group.tools.length + group.unavailable === 1 ? 'tool' : 'tools'}` : settledProgressLabel(group.tools, group.unavailable)}
                   renderTool={renderTool} />}
           </div>)}

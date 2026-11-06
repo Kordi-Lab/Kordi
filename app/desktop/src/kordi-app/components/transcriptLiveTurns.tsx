@@ -136,7 +136,7 @@ function LiveChatTurnCardView({
           {standaloneStop}
           {showsTurnProgress ? (
             <TurnProgress turn={visibleTurn}
-              renderTool={tool => <ToolActivityRow key={tool.id} tool={tool} onOpenFile={onOpenArtifact} />}
+              renderTool={tool => <ToolActivityRow key={tool.id} tool={tool} stateKey={`turn:${visibleTurn.id}:tool:${tool.id}`} onOpenFile={onOpenArtifact} />}
               trailing={stop}
               legacyAnswer={hasAssistant ? <FoldableAssistantAnswer text={assistantText} foldable={!plainAgentResponse}
                 tone={visibleTurn.status === 'cancelled' && !ending ? 'cancelled' : 'default'} /> : null}
