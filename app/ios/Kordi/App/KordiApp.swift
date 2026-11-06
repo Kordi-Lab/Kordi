@@ -419,6 +419,8 @@ private struct RootView: View {
             MemorySettingsPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-devices") {
             ActiveSessionsPreview()
+        } else if let safetyPreview = SafetyPreview.requested {
+            SafetyPreviewHost(kind: safetyPreview)
         } else if ProcessInfo.processInfo.arguments.contains("--preview-account") {
             AccountSheet()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-authentication") {
@@ -440,10 +442,8 @@ private struct RootView: View {
             || ProcessInfo.processInfo.arguments.contains("--preview-group-call")
             || ProcessInfo.processInfo.arguments.contains("--preview-media")
             || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
-            || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
-            || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
-            || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
-            || ProcessInfo.processInfo.arguments.contains("--preview-group-chat")
+            || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded") || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
+            || ProcessInfo.processInfo.arguments.contains("--preview-photo-send") || ProcessInfo.processInfo.arguments.contains("--preview-group-chat")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-detail")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-memory")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-invite")

@@ -92,8 +92,14 @@ pub(super) async fn directory(pool: &PgPool, parent: &Parent) -> RunResult<Vec<T
         member_go_between = crate::contact_permissions::agent_allowed_sql("a.account_id", "$3"),
         definition_go_between = crate::contact_permissions::agent_allowed_sql("d.owner_account_id", "$3"),
     )).bind(parent.conversation).bind(&parent.requester).bind(&parent.owner).fetch_all(pool).await?;
-    Ok(rows
+    // Agents whose owner blocked, or was blocked by, the requester or the
+    // parent agent's owner are not offered.
+    let blocked: Vec<(String,)> = query_as("SELECT m.account_id FROM cloud_chat_conversation_members m WHERE m.conversation_id=$1 AND (cloud_accounts_blocked_either_way($2,m.account_id) OR cloud_accounts_blocked_either_way($3,m.account_id))")
+        .bind(parent.conversation).bind(&parent.requester).bind(&parent.owner).fetch_all(pool).await?;
+    let rows = rows
         .into_iter()
+        .filter(|r| !blocked.iter().any(|(id,)| *id == r.1));
+    Ok(rows
         .filter(|r| r.0 != parent.agent && !crate::system_account::is_service_account(&r.1))
         .map(|(agent_id, owner_account_id, name, owner_name)| {
             let handle = format!("{name} {owner_name}")

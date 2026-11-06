@@ -119,6 +119,7 @@ use types::ErrorBody;
 use web_session_handlers::*;
 
 pub(crate) use contact_acceptance::{direct_person_session_id, open_direct_conversation};
+pub(crate) use contact_removal::delete_contact_pair;
 pub(crate) use contact_send::{send_request, ContactOutcome};
 pub(crate) use group_invitation_handlers::{
     audit_join, create_invitation_in_transaction, redeem_group_invitation_by_id, Redemption,
@@ -126,6 +127,7 @@ pub(crate) use group_invitation_handlers::{
 };
 pub use middleware::cloud_session_middleware;
 pub(crate) use session_forks::cloud_session_participants;
+pub(crate) use support::{err, write_audit};
 pub use types::*;
 pub use web_session_handlers::{web_csrf_token, WEB_CSRF_HEADER, WEB_SESSION_COOKIE};
 

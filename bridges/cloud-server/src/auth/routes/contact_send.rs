@@ -81,6 +81,10 @@ pub(crate) async fn send_request(
         Err(_) => return database_error(),
     };
 
+    if let Some(refusal) = block_refusal(pool, &session.account_id, &peer).await {
+        return ContactOutcome::Failed(refusal);
+    }
+
     let already_contact: Option<(i32,)> = match query_as(
         "SELECT 1 FROM cloud_contacts \
          WHERE account_id = $1 AND peer_account_id = $2",
@@ -164,6 +168,10 @@ pub(crate) async fn send_request(
     // Insert a fresh request.
     let request_id = format!("req_{}", uuid::Uuid::new_v4().simple());
     let now = Utc::now().to_rfc3339();
+    let mut tx = match begin_unblocked_pair(pool, &session.account_id, &peer).await {
+        Ok(tx) => tx,
+        Err(refusal) => return ContactOutcome::Failed(*refusal),
+    };
     if query(
         "INSERT INTO cloud_contact_requests \
          (request_id, from_account_id, to_account_id, status, message, created_at) \
@@ -174,9 +182,10 @@ pub(crate) async fn send_request(
     .bind(&peer)
     .bind(message.as_deref())
     .bind(&now)
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .is_err()
+        || tx.commit().await.is_err()
     {
         return ContactOutcome::Failed(err(
             "server_error",
@@ -230,4 +239,63 @@ pub(crate) async fn send_request(
             hello_message: None,
         }),
     )
+}
+
+/// Starts a transaction holding the pair lock a block takes, and refuses
+/// when either account blocked the other, so a request or contact row is
+/// never written after a concurrent block.
+pub(super) async fn begin_unblocked_pair(
+    pool: &PgPool,
+    caller: &str,
+    peer: &str,
+) -> Result<sqlx_core::transaction::Transaction<'static, sqlx_postgres::Postgres>, Box<Response>> {
+    let failed = || {
+        Box::new(err(
+            "server_error",
+            "Database error.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ))
+    };
+    let mut tx = pool.begin().await.map_err(|_| failed())?;
+    crate::safety::blocks::lock_pair(&mut tx, caller, peer)
+        .await
+        .map_err(|_| failed())?;
+    let blocks = crate::safety::blocks::blocks_between(&mut *tx, caller, peer)
+        .await
+        .map_err(|_| failed())?;
+    match refusal_for(blocks) {
+        Some(refusal) => Err(Box::new(refusal)),
+        None => Ok(tx),
+    }
+}
+
+/// Refuses a contact request or addition while either account blocks the
+/// other. A blocked caller sees a generic refusal; a caller who blocked the
+/// peer is told to unblock first.
+pub(super) async fn block_refusal(pool: &PgPool, caller: &str, peer: &str) -> Option<Response> {
+    match crate::safety::blocks::blocks_between(pool, caller, peer).await {
+        Ok(blocks) => refusal_for(blocks),
+        Err(_) => Some(err(
+            "server_error",
+            "Database error.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )),
+    }
+}
+
+/// The refusal for `(caller blocked peer, peer blocked caller)`.
+fn refusal_for(blocks: (bool, bool)) -> Option<Response> {
+    match blocks {
+        (_, true) => Some(err(
+            "contact_request_unavailable",
+            "You can't send a contact request to this account.",
+            StatusCode::FORBIDDEN,
+        )),
+        (true, false) => Some(err(
+            "blocked_account",
+            "You blocked this account. Unblock it before sending a contact request.",
+            StatusCode::CONFLICT,
+        )),
+        (false, false) => None,
+    }
 }

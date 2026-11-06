@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Ban, Check, Flag, LoaderCircle, MessageCircle, Share, Trash2, X } from 'lucide-react';
+import { Check, LoaderCircle, MessageCircle, Share, Trash2, X } from 'lucide-react';
 
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import { useContactSafetyMenuItems } from '@/features/safety/contactSafetyMenuItems';
 import { defaultAgentDisplayName } from '@/lib/identityLabels';
 import { formatDesktopContactRequestTimeLabel } from '@/lib/time';
 import { IdentityAvatar } from '../components/IdentityAvatar';
@@ -129,14 +130,14 @@ function ContactDetailBody({
   if (since) rows.push({ key: 'since', value: since, caption: 'Contact since' });
 
   const muted = contactMute?.isMuted(contact) ?? null;
+  const safetyItems = useContactSafetyMenuItems(kind === 'person' ? profile?.accountId ?? contactProfileHost?.accountIdFor(contact) : null, contact.name, onCloseOverlay);
   const deleteItem: TileMenuItem[] = canRemove
     ? [{ kind: 'item', key: 'delete', label: 'Delete contact', icon: <Trash2 className="h-4 w-4" aria-hidden="true" />, danger: true, onSelect: () => setIsConfirmOpen(true) }]
     : [];
   const menuItems: TileMenuItem[] = !rich ? deleteItem : kind === 'own-agent'
     ? [{ kind: 'item', key: 'share', label: 'Share', icon: <Share className="h-4 w-4" aria-hidden="true" />, disabled: true }]
     : [
-        { kind: 'item', key: 'block', label: 'Block', icon: <Ban className="h-4 w-4" aria-hidden="true" />, disabled: true },
-        { kind: 'item', key: 'report', label: 'Report', icon: <Flag className="h-4 w-4" aria-hidden="true" />, disabled: true },
+        ...safetyItems,
         ...(deleteItem.length ? [{ kind: 'separator' as const, key: 'sep' }, ...deleteItem] : []),
       ];
   const showMenu = menuItems.length > 0 && (rich ? kind !== 'system' : canRemove);

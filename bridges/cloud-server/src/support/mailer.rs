@@ -85,6 +85,23 @@ impl SupportMailer {
     }
 }
 
+impl SupportMailer {
+    /// Sends a plain-text notice to the support inbox.
+    pub async fn send_notice(&self, subject: &str, body: String) -> Result<(), String> {
+        let message = Message::builder()
+            .from(self.from.clone())
+            .to(self.inbox.clone())
+            .subject(subject)
+            .body(body)
+            .map_err(|error| error.to_string())?;
+        self.transport
+            .send(message)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+}
+
 fn env_value(key: &str) -> Option<String> {
     std::env::var(key)
         .ok()

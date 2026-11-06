@@ -277,6 +277,7 @@ pub(super) async fn build(
            AND account.ai_consent_status <> 'declined'
            AND message.conversation_sequence <= $2
            AND message.message_kind IN ('text', 'voice') AND {allowed}
+           AND NOT cloud_accounts_blocked_either_way($4, message.sender_account_id)
          ORDER BY message.conversation_sequence DESC
          LIMIT $3",
         allowed = crate::contact_permissions::agent_allowed_sql("$4", "message.sender_account_id"),

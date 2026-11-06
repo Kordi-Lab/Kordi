@@ -71,7 +71,7 @@ pub(super) fn shares_sql(profile: &str) -> String {
 /// `viewer` from seeing their card.
 pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
     format!(
-        "({allowed} AND (EXISTS (
+        "({allowed} AND NOT cloud_accounts_blocked_either_way({viewer}, {other}) AND (EXISTS (
              SELECT 1 FROM cloud_common_ground_pairings pairing
              WHERE pairing.account_a = LEAST({viewer}, {other})
                AND pairing.account_b = GREATEST({viewer}, {other})
@@ -168,6 +168,7 @@ fn links_sql(limit: &str, shared_only: bool) -> String {
              WHERE mine.account_id = $1 AND mine.left_at IS NULL
          ) links
          WHERE ($3::text IS NULL OR vp = $3) {shared}
+           AND NOT cloud_accounts_blocked_either_way($1, $2)
          GROUP BY vp, op ORDER BY max(at) DESC, vp, op {limit}"
     )
 }

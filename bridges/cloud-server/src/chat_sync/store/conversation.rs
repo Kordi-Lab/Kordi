@@ -316,6 +316,7 @@ pub(super) async fn create_conversation_with_options(
             return Err(StoreError::Forbidden);
         }
     }
+    crate::safety::blocks::refuse_blocked_peers(transaction, account_id, &peers).await?;
 
     let requested_organization = match request.kind {
         ConversationKind::Direct => None,

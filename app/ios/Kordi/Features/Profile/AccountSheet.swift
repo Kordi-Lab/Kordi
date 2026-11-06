@@ -4,6 +4,7 @@ import UIKit
 enum AccountSettingsRoute: String, Hashable {
     case profile
     case activeSessions = "active-sessions"
+    case blocked
     case authentication
     case notifications
     case connectors
@@ -40,7 +41,7 @@ struct AccountSheet: View {
         self.connectorsRequest = connectorsRequest
     }
 
-    fileprivate init(previewing route: AccountSettingsRoute) {
+    init(previewing route: AccountSettingsRoute) {
         _path = State(initialValue: [route])
         embeddedInNavigationStack = false
     }
@@ -141,6 +142,9 @@ struct AccountSheet: View {
                     }
                 }
                 .accessibilityIdentifier("settings-authentication")
+                settingsLink(.blocked) {
+                    CompactSettingsLabel(title: "Blocked", systemImage: "hand.raised")
+                }
                 SettingsDivider()
                 SettingsSectionTitle("About")
                 settingsLink(.licenses) {
@@ -157,14 +161,11 @@ struct AccountSheet: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: AccountSettingsRoute.self) { route in
             switch route {
-            case .profile:
-                ProfileSettingsView()
-            case .activeSessions:
-                DevicesSettingsView()
-            case .authentication:
-                ProviderAuthenticationView()
-            case .notifications:
-                NotificationSettingsView()
+            case .profile: ProfileSettingsView()
+            case .activeSessions: DevicesSettingsView()
+            case .blocked: BlockedAccountsView()
+            case .authentication: ProviderAuthenticationView()
+            case .notifications: NotificationSettingsView()
             case .connectors:
                 if let connectorsClient {
                     ConnectorsSettingsView(
@@ -173,14 +174,10 @@ struct AccountSheet: View {
                         request: connectorsRequest
                     )
                 }
-            case .memory:
-                MemorySettingsView(appModel: model)
-            case .usage:
-                UsageSettingsView(appModel: model)
-            case .appearance:
-                AppearanceSettingsView()
-            case .licenses:
-                OpenSourceLicensesView()
+            case .memory: MemorySettingsView(appModel: model)
+            case .usage: UsageSettingsView(appModel: model)
+            case .appearance: AppearanceSettingsView()
+            case .licenses: OpenSourceLicensesView()
             }
         }
         .task { await model.refreshMemoryCapabilities() }

@@ -28,7 +28,9 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Pending group invitations on the account and their join prompt add 2 kB.
 // Per-person permissions (the contact pane switches and their client) add 2 kB.
 // Applying them on the Mac (the restricted list, context filtering, the member popover switches) adds 2 kB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_726_000;
+// Blocking and abuse reports (block and report dialogs, the blocked list, the safety client) add 14 kB.
+// Collapsing blocked accounts' group messages and silencing their message alerts add 2 kB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_742_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;

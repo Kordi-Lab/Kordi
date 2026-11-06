@@ -161,6 +161,9 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-contact-model` | Session model selection in a contact chat |
 | `--preview-syncing` | Active message-sync indicator and motion state |
 | `--preview-account` | Account settings with the saved-account count |
+| `--preview-blocked` | Turns on preview data by itself and opens Settings › Blocked with two synthetic blocked people; Unblock changes local state only |
+| `--preview-report` | Turns on preview data by itself and opens the report sheet for the sample contact over Contacts; Send shows Report sent without a network request. With `--preview-data`, Block and Report in the contact profile's More menu, Report in the message menu of other people's messages, and a long press on an incoming contact request also stay local |
+| `--preview-blocked-message` | Turns on preview data by itself and opens the sample group with Ethan Park blocked; his messages show as Message from a blocked account, and tapping one shows it until you leave the conversation |
 | `--preview-connectors` | Debug-only: turns on preview data by itself and opens Settings on Connectors with the in-memory sample client (Services plus On this iPhone; Google Calendar and GitHub connected, Slack needing sign-in, Outlook coming later). Without it, and until the server reports `connectorsVersion`, the Connectors row is absent. Add `--preview-connector-detail=<providerId>` (for example `google_calendar`) to open that connector's detail screen directly |
 | `--preview-authentication` | Provider-authentication catalog from the bundled OMP catalog, with connected providers listed first |
 | `--preview-authentication-detail` | OpenAI detail with no inputs: Saved accounts (Work and Personal ChatGPT accounts) and an Add account row listing Device code, ChatGPT sign-in, and API key |

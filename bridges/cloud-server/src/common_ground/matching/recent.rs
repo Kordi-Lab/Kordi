@@ -62,6 +62,7 @@ pub(in crate::common_ground) async fn recent(
              LEFT JOIN cloud_common_ground_cards other_card
                ON other_card.profile_id = m.other_profile_id
              WHERE m.viewer_account_id = $1 AND m.opened_at IS NOT NULL
+               AND NOT cloud_accounts_blocked_either_way($1, m.other_account_id)
                AND {viewer_shares} AND {other_shares} AND {allowed}
              ORDER BY m.other_profile_id, m.opened_at DESC
          ) latest

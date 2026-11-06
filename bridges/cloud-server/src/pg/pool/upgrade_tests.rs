@@ -24,6 +24,7 @@ mod pin_stack_tests;
 mod proactive_tests;
 mod projection_tests;
 mod resource_pool_tests;
+mod safety_tests;
 mod signup_email_tests;
 mod title_tests;
 
