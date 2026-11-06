@@ -457,4 +457,6 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "pending group invitations",
         "0178_pending_group_invitations.sql"
     ),
+    migration!(179, "account deletion", "0179_account_deletion.sql"),
+    migration!(180, "AI consent", "0180_ai_consent.sql"),
 ];

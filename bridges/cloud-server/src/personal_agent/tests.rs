@@ -6,6 +6,7 @@
 
 mod batches_db;
 mod calendar_time_db;
+mod consent_db;
 mod delivery_db;
 mod desktop_db;
 mod fixture;

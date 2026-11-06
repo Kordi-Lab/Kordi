@@ -89,6 +89,9 @@ pub struct AccountResponse {
         skip_serializing_if = "Option::is_none"
     )]
     pub kordi_id_change_available_at: Option<Option<String>>,
+    /// Owner payloads from `/v1/cloud/auth/me` only: the AI consent decision.
+    #[serde(rename = "aiConsent", skip_serializing_if = "Option::is_none")]
+    pub ai_consent: Option<crate::ai_consent::AiConsent>,
 }
 
 #[derive(Debug, Serialize)]

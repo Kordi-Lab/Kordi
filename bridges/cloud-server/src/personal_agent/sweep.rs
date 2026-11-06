@@ -257,7 +257,9 @@ pub(super) async fn evaluate(
         .filter(|event| !event.stale)
         .rev()
         .collect();
-    if fresh.is_empty() {
+    // Background work needs an owner who allowed AI; otherwise the events
+    // are passed over, never read (`crate::ai_consent`).
+    if fresh.is_empty() || !crate::ai_consent::is_allowed(pool, &agent.owner_account_id).await? {
         advance(pool, candidate, &to).await?;
         return Ok(Outcome::Skipped);
     }

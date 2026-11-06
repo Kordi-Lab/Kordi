@@ -12,7 +12,7 @@ use uuid::Uuid;
 use super::super::StoreError;
 use super::{load_message, normalize_title, MessageSnapshot};
 
-const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
+use super::super::CLOUD_GROUP_PREFIX;
 
 type ParticipantProfile = (DateTime<Utc>, Option<String>, String);
 

@@ -84,7 +84,7 @@ async fn upgrade_from_140_adds_profile_fields() {
          UPDATE cloud_accounts SET about = 'kept' WHERE account_id = 'fixture-owner'",
     )
     .await;
-    let accounts = "SELECT to_jsonb(a) - ARRAY['location','time_zone','website','birthday','public_handle_changed_at'] \
+    let accounts = "SELECT to_jsonb(a) - ARRAY['location','time_zone','website','birthday','public_handle_changed_at','ai_consent_status','ai_consent_decided_at'] \
         FROM cloud_accounts a ORDER BY account_id";
     let before: Vec<(Value,)> = query_as(accounts).fetch_all(&pool).await.unwrap();
     let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));

@@ -397,6 +397,9 @@ pub async fn claim_due_scheduled_task_runs(
         "SELECT task_id, owner_account_id, created_by_account_id, target_runtime, prompt, tool_payload_json, schedule_json, next_run_at, next_run_at
            FROM scheduled_tool_tasks
           WHERE enabled = TRUE AND status = 'active' AND next_run_at IS NOT NULL AND next_run_at <= $1
+            AND NOT EXISTS (SELECT 1 FROM cloud_accounts consent
+                            WHERE consent.account_id IN (owner_account_id, created_by_account_id)
+                              AND consent.ai_consent_status <> 'allowed')
           ORDER BY next_run_at ASC, task_id ASC
           LIMIT $2"
     )

@@ -101,6 +101,9 @@ pub async fn lease(
              JOIN cloud_agent_fallback_runs run ON run.run_id = w.run_id
              WHERE w.pool_id = $1 AND run.cancel_requested_at IS NULL
                AND w.lease_count < $2
+               AND NOT EXISTS (SELECT 1 FROM cloud_accounts consent
+                               WHERE consent.account_id IN (run.owner_account_id, run.requester_account_id)
+                                 AND consent.ai_consent_status = 'declined')
                AND run.created_at::timestamptz > now() - make_interval(mins => $3)
                AND (run.status = 'queued'
                     OR (run.status IN ('leased', 'running')

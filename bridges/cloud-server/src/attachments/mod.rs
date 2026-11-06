@@ -28,8 +28,8 @@ pub mod routes;
 use std::time::{Duration, SystemTime};
 
 use rusty_s3::actions::{
-    AbortMultipartUpload, CompleteMultipartUpload, CreateMultipartUpload, GetObject, HeadObject,
-    PutObject, S3Action, UploadPart,
+    AbortMultipartUpload, CompleteMultipartUpload, CreateMultipartUpload, DeleteObject, GetObject,
+    HeadObject, PutObject, S3Action, UploadPart,
 };
 use rusty_s3::{Bucket, Credentials, UrlStyle};
 use url::Url;
@@ -114,6 +114,13 @@ pub fn presign_download_url(cfg: &S3Config, object_key: &str) -> Result<Url, Pre
     let creds = cfg.creds();
     let action = GetObject::new(&bucket, Some(&creds), object_key);
     Ok(action.sign(PRESIGNED_URL_TTL))
+}
+
+/// Sign a DELETE URL for `object_key` valid for [`PRESIGNED_URL_TTL`].
+pub fn presign_delete_url(cfg: &S3Config, object_key: &str) -> Result<Url, PresignError> {
+    let bucket = cfg.bucket().map_err(PresignError::Bucket)?;
+    let creds = cfg.creds();
+    Ok(DeleteObject::new(&bucket, Some(&creds), object_key).sign(PRESIGNED_URL_TTL))
 }
 
 pub fn presign_head_url(cfg: &S3Config, object_key: &str) -> Result<Url, PresignError> {
