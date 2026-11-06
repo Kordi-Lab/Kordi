@@ -2,7 +2,8 @@
 // destination tabs, detail page, and memory list with the preview memory
 // client. `?chat=group` opens the group chat whose id matches the sample group
 // memories: one this account saved and one another member saved, which shows
-// "Saved by Priya". It makes no network calls and needs no session.
+// "Saved by Priya". `?empty=1` previews a chat without memories. It makes no
+// network calls and needs no session.
 import './previewChatTheme';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -38,6 +39,7 @@ const conversation = isGroup
   ? { id: groupSessionId, canonicalSessionId: groupSessionId, participantSpaceId: `group:${groupSessionId}` }
   : { id: PREVIEW_CONVERSATION_MEMORY_SCOPE_ID, canonicalSessionId: PREVIEW_CONVERSATION_MEMORY_SCOPE_ID };
 const memoryClient = createPreviewMemoryClient();
+if (params.has('empty')) memoryClient.listLessons = async () => [];
 
 function Preview() {
   const [tab, setTab] = useState<'info' | 'artifacts' | 'tasks' | 'memory'>('memory');
@@ -58,7 +60,8 @@ function Preview() {
               />
             </div>
           </div>
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+          {/* The split workspace class supplies the page padding the app gives detail tabs. */}
+          <div className="app-chat-split-workspace min-h-0 min-w-0 flex-1 overflow-hidden">
             <RightDetailRail
               variant="page"
               detailTabs={CHAT_DETAIL_TABS}

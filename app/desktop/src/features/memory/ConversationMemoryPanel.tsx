@@ -59,7 +59,6 @@ export function ConversationMemoryPanel({
 
   return (
     <section aria-label="Memory" data-conversation-memory className="app-detail-section">
-      {sync?.accountLabel ? <p className="m-0 mb-1 app-inspector-subtext">{syncStatusLabel(sync)}</p> : null}
       {error ? (
         <p role="alert" className="app-error-text m-0 py-2 text-[12px] leading-5">{error}</p>
       ) : lessons === null || scopes === null ? (
@@ -69,7 +68,10 @@ export function ConversationMemoryPanel({
           client={client}
           lessons={chatLessons}
           onLessonsChange={(update) => setLessons((current) => update(current ?? []))}
-          emptyLabel="No memories yet."
+          emptyLabel="No memories yet"
+          emptyStyle="centered"
+          emptyClassName="min-h-[14rem]"
+          header={sync?.accountLabel ? <p className="m-0 app-inspector-subtext">{syncStatusLabel(sync)}</p> : null}
           onChanged={refreshSync}
           viewerAccountId={viewerAccountId}
           addTarget={memoryEnabled ? addTarget : null}
