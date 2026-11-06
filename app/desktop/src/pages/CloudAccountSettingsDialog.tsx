@@ -26,6 +26,7 @@ import { ConnectorsSettingsPanel } from '@/features/connectors/ConnectorsSetting
 import type { ConnectorsClient } from '@/features/connectors/connectorsClient';
 import { connectorsClientForAccount } from '@/features/connectors/connectorsClientSelection';
 import { useConnectorsLinkSelection } from '@/features/connectors/useConnectorsLinkSelection';
+import { AiConsentSettingsPanel } from '@/features/aiConsent/AiConsentSettingsPanel';
 import { MemorySettingsPanel } from '@/features/memory/MemorySettingsPanel';
 import { memoryClientForEnvironment, type MemoryClient } from '@/features/memory/memoryClient';
 import type { MemoryImporter } from '@/features/memory/memoryImport';
@@ -321,7 +322,7 @@ export function CloudAccountSettingsDialog({
           </div>
           <ScrollArea className="min-h-0 flex-1">
             <div className="px-8 pb-8 pt-2">
-              {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'connectors' ? connectorsPanel : visibleTab === 'memory' ? memoryPanel : visibleTab === 'usage' ? usagePanel : appearancePanel}
+              {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'privacy' ? <AiConsentSettingsPanel /> : visibleTab === 'connectors' ? connectorsPanel : visibleTab === 'memory' ? memoryPanel : visibleTab === 'usage' ? usagePanel : appearancePanel}
             </div>
           </ScrollArea>
         </div>

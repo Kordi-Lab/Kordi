@@ -43,6 +43,7 @@ import { WhatsNewLaunchWindow } from '@/features/updates/useWhatsNewWindow';
 import { CloudSignInGate } from '@/kordi-app/cloud/CloudSignInGate';
 import type { Conversation } from '@/kordi-app/types';
 import { GroupInvitationDialog } from '@/pages/GroupInvitationDialog';
+import { AiConsentHost } from '@/features/aiConsent/AiConsentHost';
 import { DocumentShareLinkHost } from '@/features/documents/DocumentShareLinkDialog';
 
 export { CloudStartingScreen } from '@/features/cloud/CloudStartingScreen';
@@ -52,7 +53,7 @@ const SHOW_DEBUG_AUTH_DIAGNOSTICS = cloudAuthCapabilityDiscoveryEnabled();
 type CloudSessionGateResult = Pick<
   UseCloudSessionResult,
   'status' | 'account' | 'signIn' | 'signUp' | 'signInWithProvider' | 'browserSignIn'
->;
+> & Partial<Pick<UseCloudSessionResult, 'oauthProviders'>>;
 
 export type KordiAppRootProps = {
   /**
@@ -162,6 +163,7 @@ function CloudEditionRoot({
               onSignUp={signUp}
               onRequestSignupCode={liveSession.requestSignupCode}
               onSocialSignIn={socialSignIn}
+              oauthProviders={session.oauthProviders}
               showDebugAuthDiagnostics={SHOW_DEBUG_AUTH_DIAGNOSTICS}
             />
           </div>
@@ -214,6 +216,7 @@ function KordiAppShell({
       </CloudCallProvider>
       {windowReady ? <WhatsNewLaunchWindow /> : null}
       {windowReady ? <DocumentShareLinkHost account={cloudSession?.account ?? null} /> : null}
+      {windowReady ? <AiConsentHost account={cloudSession?.account ?? null} /> : null}
       {windowReady && pendingGroupInvitation.token ? (
         <GroupInvitationDialog
           key={pendingGroupInvitation.token}

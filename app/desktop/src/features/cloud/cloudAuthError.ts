@@ -1,3 +1,5 @@
+import { signalAiConsentRequired } from '@/features/aiConsent/aiConsentSignal';
+
 export type CloudAuthErrorCode =
   | 'invalid_email'
   | 'email_verification_required'
@@ -54,6 +56,7 @@ export type CloudAuthErrorCode =
   | 'invalid_time_zone'
   | 'invalid_website'
   | 'invalid_birthday'
+  | 'ai_consent_required'
   // Browser sign-in (authorization code with PKCE).
   | 'access_denied'
   | 'sign_in_state_mismatch'
@@ -119,7 +122,7 @@ const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'memory_rejected', 'memory_disabled', 'memory_id_conflict', 'memory_not_found',
   'not_a_group_member', 'not_a_participant', 'device_review_required',
   'invalid_kordi_id', 'kordi_id_taken', 'kordi_id_change_locked', 'invalid_about', 'invalid_location',
-  'invalid_time_zone', 'invalid_website', 'invalid_birthday',
+  'invalid_time_zone', 'invalid_website', 'invalid_birthday', 'ai_consent_required',
 ]);
 
 function isErrorCode(value: unknown): value is CloudAuthErrorCode {
@@ -144,5 +147,7 @@ export function buildCloudAuthError(
   const message = typeof messageValue === 'string' && messageValue.length > 0
     ? messageValue
     : fallbackMessage;
+  // The account turned AI models off; the consent store shows the "AI models are off" prompt.
+  if (code === 'ai_consent_required') signalAiConsentRequired();
   return new CloudAuthError(code, message, status, parseRetryAfterSeconds(retryAfter));
 }

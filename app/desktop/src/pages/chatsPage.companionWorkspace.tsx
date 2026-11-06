@@ -1,3 +1,4 @@
+import { requireAiConsent } from '@/features/aiConsent/aiConsentStore';
 import { composerAgentRequestStop, sidePaneTurnStop } from '@/features/chat/agentRequestStop';
 import { useCompanionReadPresentation } from '@/pages/useCompanionReadPresentation';
 import { useCompanionHistorySession } from '@/pages/useCompanionHistorySession';
@@ -430,6 +431,8 @@ export function ChatCompanionWorkspace({
             onStopCollaborationAgentRequest: runtime.onStopCollaborationAgentRequest,
           })}
           onSend={(targetConversation, mentions) => {
+            // The companion pane is always an agent session.
+            if (!requireAiConsent()) return;
             if (!session.actions.sendDraft(targetConversation, companionAttachments, mentions)) return;
             updateCompanionAttachments(() => []);
             setAttachmentError(null);
