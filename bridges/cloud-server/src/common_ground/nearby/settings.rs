@@ -15,6 +15,7 @@ use sqlx_postgres::{PgPool, Postgres};
 use super::distance::valid_range;
 use super::{config, invalid_settings, invalidate_alerts, mark_dirty, participation, updated};
 use crate::common_ground::{card, db_error, err, profiles, sharing_off};
+use crate::organizations::requests::RequestOrganization;
 use crate::{auth::routes::CloudSession, server::ServerState};
 
 pub(super) const MIN_SCORES: [i64; 4] = [0, 50, 70, 85];
@@ -283,9 +284,11 @@ fn consent_required() -> Response {
 }
 
 /// `PUT /v1/cloud/common-ground/nearby`: writes only the fields in the body.
+/// Turning Nearby on records the request's organization for match alerts.
 pub(super) async fn update(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    organization: Option<Extension<RequestOrganization>>,
     Json(body): Json<Value>,
 ) -> Response {
     let Ok(body) = serde_json::from_value::<UpdateBody>(body) else {
@@ -293,9 +296,12 @@ pub(super) async fn update(
     };
     let pool = state.db_pool();
     let account = session.account_id.as_str();
+    let organization_id = organization
+        .as_ref()
+        .map(|Extension(organization)| organization.organization_id.as_str());
     let result = async {
         let mut tx = pool.begin().await?;
-        let outcome = write(&mut tx, account, &body).await?;
+        let outcome = write(&mut tx, account, organization_id, &body).await?;
         if outcome.is_none() {
             tx.commit().await?;
         }
@@ -310,10 +316,11 @@ pub(super) async fn update(
 }
 
 /// Writes the update; `Some` is the response to send instead, with nothing
-/// written.
+/// written. `organization_id` is kept only when this update turns Nearby on.
 async fn write(
     tx: &mut Transaction<'_, Postgres>,
     account: &str,
+    organization_id: Option<&str>,
     body: &UpdateBody,
 ) -> sqlx_core::Result<Option<Response>> {
     query("INSERT INTO cloud_common_ground_nearby (account_id) VALUES ($1) ON CONFLICT DO NOTHING")
@@ -376,7 +383,8 @@ async fn write(
         "UPDATE cloud_common_ground_nearby SET enabled = $2, profile_id = $3, paused_until = $4,
              consented_at = $5, open_to_json = $6, range_m = $7, min_score = $8,
              alert_requests = $9, alert_matches = $10, alert_match_min_score = $11,
-             alert_max_per_day = $12, updated_at = now()
+             alert_max_per_day = $12, updated_at = now(),
+             organization_id = CASE WHEN $13 THEN $14 ELSE organization_id END
          WHERE account_id = $1",
     )
     .bind(account)
@@ -391,6 +399,8 @@ async fn write(
     .bind(next.alert_matches)
     .bind(next.alert_match_min_score)
     .bind(next.alert_max_per_day)
+    .bind(enabling)
+    .bind(organization_id)
     .execute(&mut **tx)
     .await?;
     if !next.enabled || next.paused(now) {

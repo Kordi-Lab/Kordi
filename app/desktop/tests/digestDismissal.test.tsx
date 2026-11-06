@@ -83,6 +83,7 @@ test('Brief dismissal persists across remounts, restores entries, and retains en
     await act(async () => root.render(createElement(DigestPage, { accountId: 'viewer' })));
     assert.doesNotMatch(host.textContent ?? '', /Partial coverage|bounded selection/);
     assert.doesNotMatch(nextSteps().textContent ?? '', /Commitments|Agent already finished analysis|Review task/);
+    assert.equal(nextSteps().querySelector('h2'), null);
     await click('↗ Planning');
     const details = host.querySelector('dialog')!;
     assert.equal(details.querySelector('strong')?.textContent, 'Ready');

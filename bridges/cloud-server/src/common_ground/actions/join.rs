@@ -84,7 +84,7 @@ pub(in crate::common_ground) async fn join(
     .await;
     let response = match redeemed {
         Redemption::Done(response) => response,
-        Redemption::Failed(response) => return response,
+        Redemption::Failed(_, response) => return response,
     };
     let finished = async {
         query(

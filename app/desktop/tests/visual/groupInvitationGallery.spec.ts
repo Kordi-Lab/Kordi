@@ -49,12 +49,11 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
   await page.screenshot({ path: testInfo.outputPath('group-invitation-nonadmin-narrow.png') });
 
   await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=recipient');
-  await expect(page.getByRole('button', { name: 'Join group' })).toBeVisible();
-  await expect(page.getByText('will not add this person', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Join', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('group-invitation-recipient-narrow.png') });
 
   await page.goto('/tests/visual/groupInvitationGallery.html?theme=dark&mode=recipient');
-  await expect(page.getByRole('button', { name: 'Join group' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Join', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('group-invitation-recipient-dark.png') });
 });
 

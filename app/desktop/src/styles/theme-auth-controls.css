@@ -208,29 +208,10 @@
   background-color: rgba(180, 83, 9, 0.13) !important;
 }
 
-.kordi-app.theme-light .app-auth-notice,
 .kordi-app.theme-light .app-compression-card-active {
   border-color: rgba(180, 83, 9, 0.34);
   background: rgba(245, 158, 11, 0.18);
   color: rgb(85 47 12) !important;
-}
-
-.kordi-app.theme-light .app-auth-notice-title {
-  color: rgb(63 42 13) !important;
-}
-
-.kordi-app.theme-light .app-auth-notice-icon {
-  color: rgb(180 83 9) !important;
-}
-
-.kordi-app.theme-light .app-auth-notice-description {
-  color: rgb(103 63 18) !important;
-}
-
-.kordi-app.theme-light .app-auth-notice-action {
-  border-color: rgba(73, 62, 54, 0.24);
-  background: rgba(255, 255, 255, 0.62);
-  color: rgb(31 27 25) !important;
 }
 
 .kordi-app.theme-light .app-compression-card-success {
