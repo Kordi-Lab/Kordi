@@ -10,7 +10,8 @@ import { HelpReleaseNotes } from './HelpReleaseNotes';
 import { nativeMacPermissions } from './permissionAccess';
 import { readHelpProgress } from './helpProgress';
 import { publicAssetPath } from '@/lib/publicAsset';
-import type { HelpTourId } from './helpTourSteps';
+import { helpTourAvailable, type HelpTourId } from './helpTourSteps';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import type { HelpAction } from './helpContent';
 import '@/styles/help.css';
 
@@ -69,7 +70,7 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
       <button disabled={(capabilities.capabilities?.commonGroundVersion ?? 0) < 1} onClick={() => onStartTour('grounding')}><span>Meet people with Grounding</span><ArrowRight size={14} /></button>
       <button disabled={(capabilities.capabilities?.commonGroundVersion ?? 0) < 1} onClick={() => onStartTour('cards')}><span>Create and share cards</span><ArrowRight size={14} /></button>
       {(capabilities.capabilities?.commonGroundVersion ?? 0) < 1 ? <p className="help-menu-note">{capabilities.status === 'loading' ? 'Checking Grounding availability…' : capabilities.status === 'failed' ? 'Could not check Grounding availability. Close help and try again.' : 'Grounding and cards are not enabled in this workspace yet.'}</p> : null}
-      <button disabled={!settingsAvailable} onClick={() => onStartTour('imports')}><span>Import memory</span><ArrowRight size={14} /></button>
+      {helpTourAvailable('imports', isBrowserAppRuntime()) ? <button disabled={!settingsAvailable} onClick={() => onStartTour('imports')}><span>Import memory</span><ArrowRight size={14} /></button> : null}
       <div className="help-menu-divider" />
       <button onClick={() => setView('permissions')}><ShieldCheck size={16} /><span>Permissions & access</span><ArrowRight size={14} /></button>
       <div className="help-menu-divider" />

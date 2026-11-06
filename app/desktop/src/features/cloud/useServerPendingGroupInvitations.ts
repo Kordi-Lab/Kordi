@@ -25,6 +25,8 @@ export type LoadSessionToken = () => Promise<string | null>;
 export type ServerPendingGroupInvitations = {
   invitations: CloudPendingGroupInvitation[];
   newest: CloudPendingGroupInvitation | null;
+  /** False until the first check after mounting has finished, successful or not. */
+  settled: boolean;
   refresh: (options?: { force?: boolean }) => Promise<void>;
   accept: (invitation: CloudPendingGroupInvitation) => Promise<CloudPendingGroupInvitationAcceptance>;
   dismiss: (invitation: Pick<CloudPendingGroupInvitation, 'id' | 'invitationId'>) => void;
@@ -49,6 +51,7 @@ export function useServerPendingGroupInvitations({
   throttleMs?: number;
 }): ServerPendingGroupInvitations {
   const [invitations, setInvitations] = useState<CloudPendingGroupInvitation[]>([]);
+  const [settled, setSettled] = useState(false);
   const droppedRef = useRef(new Set<string>());
   const lastFetchAtRef = useRef<number | null>(null);
   const requestRef = useRef(0);
@@ -108,7 +111,7 @@ export function useServerPendingGroupInvitations({
 
   useEffect(() => {
     if (!enabled) return undefined;
-    void refresh({ force: true });
+    void refresh({ force: true }).finally(() => setSettled(true));
     if (typeof window === 'undefined') return undefined;
     const onFocus = () => { void refresh(); };
     const onVisibility = () => {
@@ -125,8 +128,9 @@ export function useServerPendingGroupInvitations({
   return useMemo(() => ({
     invitations,
     newest: invitations[0] ?? null,
+    settled,
     refresh,
     accept,
     dismiss,
-  }), [accept, dismiss, invitations, refresh]);
+  }), [accept, dismiss, invitations, refresh, settled]);
 }

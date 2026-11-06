@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, X } from 'lucide-react';
-import { helpTourEntry, helpTours, type HelpTourId, type HelpTourStep } from './helpTourSteps';
+import { helpTourEntry, helpTours, helpTourStepAvailable, helpTourStepBody, type HelpTourId, type HelpTourStep } from './helpTourSteps';
 import { readHelpProgress, saveHelpProgress } from './helpProgress';
 import { helpTourGeometry, type TourRect } from './helpTourGeometry';
 import { cloudApiBaseUrl, defaultCloudAuthClient } from '@/features/cloud/authClient';
@@ -9,6 +9,7 @@ import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabil
 import { commonGroundVersionFromCapabilities } from '@/features/cloud/commonGroundCapability';
 import { setHelpTourLocation } from './helpTourSession';
 import { trackHelpTourTarget } from './helpTourTarget';
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import '@/styles/help.css';
 
 type Props = {
@@ -29,7 +30,9 @@ export default function HelpTour({ progressKey, tourId = 'workspace', initialSec
   const [unavailable, setUnavailable] = useState<string[]>([]);
   const client = useMemo(() => defaultCloudAuthClient(), []);
   const { capabilities, status } = useCloudAuthCapabilitiesState(client, cloudApiBaseUrl());
+  const browserApp = isBrowserAppRuntime();
   const steps = helpTourSteps.filter((item) => !unavailable.includes(item.target)
+    && helpTourStepAvailable(item, browserApp)
     && (settingsAvailable || !item.settings || item.settings === 'auth')
     && ((!item.groundingScreen && item.target !== 'grounding') || status === 'loading' || commonGroundVersionFromCapabilities(capabilities) !== null));
   const [trackedTarget, setTrackedTarget] = useState<string | null>(null);
@@ -122,7 +125,7 @@ export default function HelpTour({ progressKey, tourId = 'workspace', initialSec
       <div className="help-tour-top">{sections.length > 1 ? <button className="help-tour-sections-toggle" aria-label="Tour sections" aria-expanded={sectionsOpen} onClick={() => setSectionsOpen(!sectionsOpen)}><span aria-live="polite">{step.section} · Step {sectionSteps.indexOf(step) + 1} of {sectionSteps.length}</span></button> : <span aria-live="polite">Step {visibleIndex + 1} of {steps.length}</span>}<button className="help-icon-button" aria-label="Close tour" onClick={() => onExit()}><X size={16} /></button></div>
       {sectionsOpen ? <nav aria-label="Tour sections" className="help-tour-sections">{sections.map((name) => <button key={name} aria-current={name === step.section ? 'step' : undefined} onClick={() => { const target = steps.find((item) => item.section === name)!; const destination = helpTourSteps.indexOf(target); remember(destination); setIndex(destination); setSectionsOpen(false); }}>{name}</button>)}</nav> : null}
       <h2 id={titleId}>{step.title}</h2>
-      <p id={bodyId}>{step.target === 'settings-auth' && !settingsAvailable ? 'Open your profile to sign in. Then open Authentication in settings to connect an AI provider.' : step.body}</p>
+      <p id={bodyId}>{step.target === 'settings-auth' && !settingsAvailable ? 'Open your profile to sign in. Then open Authentication in settings to connect an AI provider.' : helpTourStepBody(step, browserApp)}</p>
       {last && tourId === 'workspace' ? <button className="help-text-button" onClick={() => { remember(canonicalIndex, true); onExit(true); }}>Open Permissions & access</button> : null}
       {!saved ? <p role="status">Progress could not be saved on this device.</p> : null}
       <div className="help-tour-actions"><button className="help-text-button" onClick={() => onExit()}>Skip tour</button><div><button className="help-secondary" disabled={visibleIndex <= 0} onClick={previous} aria-label="Previous step"><ArrowLeft size={16} /></button><button className="help-primary" onClick={next}>{last ? 'Finish tour' : 'Next'}{!last ? <ArrowRight size={15} /> : null}</button></div></div>

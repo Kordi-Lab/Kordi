@@ -9,6 +9,7 @@ import {
   CLOUD_GROUP_INVITATION_ACCEPTED_EVENT,
   type CloudGroupInvitationAcceptedDetail,
 } from '@/features/cloud/groupInvitationDeepLink';
+import { isGroupInvitationPromptBusy } from '@/features/cloud/groupInvitationPromptPresence';
 import { GroupInvitationPromptHost } from '@/pages/GroupInvitationPromptHost';
 import { withJsdomRoot } from '../../../desktop/tests/helpers/mountWithJsdom';
 import { waitForReactCondition } from '../../../desktop/tests/helpers/waitForReactCondition';
@@ -134,5 +135,35 @@ test('Not now dismisses the invitation on the server with the CSRF header', asyn
     assert.equal(dismiss?.path, '/v1/cloud/invitations/groups/pending/p_design');
     assertCookieAuthenticated(dismiss!, true);
     assert.equal(host.querySelectorAll('[role="dialog"]').length, 0);
+  });
+});
+
+test('first-run help waits for the invitation check and for the prompt to be answered', async () => {
+  await withPromptDom(async (mount, root) => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { client } = browserClient(() => [pendingInvitation('p_tour', 'Tour group')]);
+    const list = client.listPendingGroupInvitations.bind(client);
+    client.listPendingGroupInvitations = async (token: string) => { await gate; return list(token); };
+    const host = await mount(createElement(GroupInvitationPromptHost, {
+      deepLink: noDeepLink, visible: true, client, loadToken,
+    }));
+    assert.equal(isGroupInvitationPromptBusy(), true, 'help waits while the first check runs');
+    release();
+    await waitForReactCondition(() => title(host) === 'Join Tour group?', 'the pending prompt should show');
+    assert.equal(isGroupInvitationPromptBusy(), true, 'help waits while the prompt shows');
+    await act(async () => { button(host, 'Not now')?.click(); });
+    await flush();
+    assert.equal(isGroupInvitationPromptBusy(), false, 'help may show once the prompt is answered');
+    await act(async () => { root.unmount(); });
+    assert.equal(isGroupInvitationPromptBusy(), false);
+  });
+});
+
+test('an account without invitations lets first-run help show after the check', async () => {
+  await withPromptDom(async (mount) => {
+    const { client } = browserClient(() => []);
+    await mount(createElement(GroupInvitationPromptHost, { deepLink: noDeepLink, visible: true, client, loadToken }));
+    await waitForReactCondition(() => !isGroupInvitationPromptBusy(), 'help should not wait without an invitation');
   });
 });
