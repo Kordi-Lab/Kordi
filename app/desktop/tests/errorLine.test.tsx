@@ -41,8 +41,10 @@ test('the error color token is defined for dark and light themes', () => {
 });
 
 test('error text and ErrorLine use the shared token', () => {
-  assert.match(css('base.css'), /:where\(\.app-error-text\)\s*\{\s*color:\s*var\(--app-error-text\);/);
+  assert.match(css('base.css'), /@layer components \{\s*\.app-error-text\s*\{\s*color:\s*var\(--app-error-text\);/);
   const line = css('error-line.css');
+  // Layered so utility classes can adjust a single placement.
+  assert.match(line, /@layer components \{\s*\.app-error-line \{/);
   assert.match(line, /\.app-error-line\s*\{[^}]*color:\s*var\(--app-error-text\);[^}]*font-size:\s*12px;/s);
   assert.doesNotMatch(line, /border:\s*1px|background:(?!\s*none)/);
 });

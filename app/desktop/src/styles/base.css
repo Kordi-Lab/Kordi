@@ -65,9 +65,11 @@
   user-select: none;
 }
 
-/* Zero specificity so a surface can still tone a status line differently. */
-:where(.app-error-text) {
-  color: var(--app-error-text);
+/* Layered so a utility class can still tone a status line differently. */
+@layer components {
+  .app-error-text {
+    color: var(--app-error-text);
+  }
 }
 
 :where(.app-error-text, [role="alert"]) {
