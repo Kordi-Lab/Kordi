@@ -6,19 +6,13 @@ import type { AiConsentClient, AiConsentStatus } from '../../src/features/aiCons
 import { AiConsentPromptDialog, AiModelsOffDialog } from '../../src/features/aiConsent/AiConsentDialogs';
 import { AiConsentSettingsPanel } from '../../src/features/aiConsent/AiConsentSettingsPanel';
 import { applyAiConsent } from '../../src/features/aiConsent/aiConsentStore';
-import { CloudGateShell } from '../../src/features/cloud/CloudGateShell';
-import type { BrowserSignInState } from '../../src/features/cloud/appSignIn/useBrowserSignIn';
-import { CloudBrowserSignInPage } from '../../src/kordi-app/cloud/CloudBrowserSignInPage';
-import { CloudLoginPage } from '../../src/kordi-app/cloud/CloudLoginPage';
 import '../../src/index.css';
 
-// App Review fixes on the Mac, with synthetic data and no network.
-// ?view=login|welcome|consent|off|settings  ?theme=light|dark  ?bare=1 hides the view picker.
-const VIEWS = ['login', 'welcome', 'consent', 'off', 'settings'] as const;
+// AI consent on the Mac, with synthetic data and no network.
+// ?view=consent|off|settings  ?theme=light|dark  ?bare=1 hides the view picker.
+const VIEWS = ['consent', 'off', 'settings'] as const;
 type View = typeof VIEWS[number];
 const VIEW_LABELS: Record<View, string> = {
-  login: 'Sign-in form',
-  welcome: 'Welcome',
   consent: 'Consent',
   off: 'AI models are off',
   settings: 'Settings › Privacy',
@@ -28,9 +22,8 @@ const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 const bare = params.get('bare') === '1';
 const requestedView = params.get('view');
-const initialView: View = (VIEWS as readonly string[]).includes(requestedView ?? '') ? requestedView as View : 'login';
+const initialView: View = (VIEWS as readonly string[]).includes(requestedView ?? '') ? requestedView as View : 'consent';
 localStorage.setItem('kordi.themeMode.v1', theme);
-localStorage.removeItem('kordi.cloud.loginMode');
 
 const ACCOUNT_ID = 'acct_review_preview';
 const pause = () => new Promise((resolve) => setTimeout(resolve, 300));
@@ -43,17 +36,6 @@ const previewConsentClient: AiConsentClient = {
 };
 applyAiConsent(ACCOUNT_ID, (params.get('consent') as AiConsentStatus | null) ?? 'allowed');
 
-const welcomeSignIn: BrowserSignInState = {
-  phase: 'welcome',
-  error: null,
-  codeError: null,
-  submittingCode: false,
-  start: async () => {},
-  reopenBrowser: () => {},
-  cancel: () => {},
-  submitCode: async () => {},
-};
-
 const noop = () => {};
 
 function DialogBackdrop({ children }: { children: ReactNode }) {
@@ -65,16 +47,6 @@ function DialogBackdrop({ children }: { children: ReactNode }) {
 }
 
 function ViewBody({ view }: { view: View }) {
-  if (view === 'login') {
-    return (
-      <CloudGateShell>
-        <CloudLoginPage onModeChange={noop} onSocialSignIn={async () => {}} oauthProviders={['google', 'github', 'apple']} />
-      </CloudGateShell>
-    );
-  }
-  if (view === 'welcome') {
-    return <CloudGateShell><CloudBrowserSignInPage signIn={welcomeSignIn} /></CloudGateShell>;
-  }
   if (view === 'consent') {
     return <DialogBackdrop><AiConsentPromptDialog saving={false} error={null} onAllow={noop} onDecline={noop} onDismiss={noop} /></DialogBackdrop>;
   }

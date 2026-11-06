@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { applyCloudLoginWindowSize, type CloudLoginMode } from '@/features/cloud/loginWindow';
 import { CLOUD_LOGIN_WINDOW_DRAG_STYLE } from '@/app/windowDrag';
 import { CloudAuthError, type CloudOAuthProvider, type CloudSignupCodeChallenge, type CloudSignupInput } from '@/features/cloud/authClient';
@@ -13,9 +13,7 @@ import {
   newCanonicalAvatarSeed,
 } from '@/features/cloud/canonicalAvatar';
 
-import { CloudLoginLegalLine } from './CloudLoginLegalLine';
-import { CloudLoginSocialRow } from './CloudLoginSocialRow';
-import { enabledSocialLoginProviders } from './cloudLoginSocialProviders';
+import { GitHubMark, GoogleMark } from './CloudLoginMarks';
 import { cloudLoginErrorMessage, loginHeading, loginSubtitle, PASSWORD_RULE_HINT, passwordMeetsSignupRule } from './cloudLoginMessages';
 import { CloudSignupAvatarPicker } from './CloudSignupAvatarPicker';
 import { CloudSignupVerificationFields } from './CloudSignupVerificationFields';
@@ -59,6 +57,15 @@ const INPUT_HINT_CLASS = [
   'focus:shadow-[0_0_0_3px_var(--app-cloud-login-hint-ring)]',
 ].join(' ');
 const SMALL_FOCUS_RING = 'focus-visible:ring-2 focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)]';
+
+type SocialProvider = { id: 'google' | 'github'; label: string; Mark: ComponentType };
+const SOCIAL_LOGIN_PROVIDERS: ReadonlyArray<SocialProvider> = [
+  { id: 'google', label: 'Google', Mark: GoogleMark },
+  { id: 'github', label: 'GitHub', Mark: GitHubMark },
+];
+const ALL_SOCIAL_PROVIDER_IDS: ReadonlyArray<CloudOAuthProvider> = SOCIAL_LOGIN_PROVIDERS.map(
+  (provider) => provider.id,
+);
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -136,8 +143,6 @@ export type CloudLoginPageProps = {
   onRequestSignupCode?: (email: string) => Promise<CloudSignupCodeChallenge>;
   onSignUp?: (input: CloudSignupInput) => Promise<void>;
   onSocialSignIn?: (provider: CloudOAuthProvider) => Promise<void>;
-  /** Providers the server offers; Apple shows only when listed. */
-  oauthProviders?: readonly CloudOAuthProvider[];
   showDebugAuthDiagnostics?: boolean;
 };
 
@@ -152,7 +157,6 @@ export function CloudLoginPage({
   onSignUp = noopSignUp,
   onRequestSignupCode,
   onSocialSignIn,
-  oauthProviders,
   showDebugAuthDiagnostics = false,
   onModeChange,
 }: CloudLoginPageProps = {}) {
@@ -170,7 +174,7 @@ export function CloudLoginPage({
   const isSignup = mode === 'signup';
   const isVerifying = isSignup && challenge !== null;
   const isBusy = submitting || socialProvider !== null;
-  const enabledSocialProviders = enabledSocialLoginProviders(Boolean(onSocialSignIn), oauthProviders);
+  const enabledSocialProviders = onSocialSignIn ? ALL_SOCIAL_PROVIDER_IDS : [];
   const generatedSignupAvatarUrl = generatedAvatarPreviewUrl(
     HUMAN_CANONICAL_AVATAR_STYLE,
     avatarSeed,
@@ -317,8 +321,39 @@ export function CloudLoginPage({
           </p>
         </div>
 
-        <CloudLoginSocialRow canSignIn={Boolean(onSocialSignIn)} oauthProviders={oauthProviders} busy={isBusy}
-          activeProvider={socialProvider} onSelect={(provider) => void handleSocialSignIn(provider)} />
+        <div className="mt-7 flex items-center justify-center gap-6">
+          {SOCIAL_LOGIN_PROVIDERS.map((provider) => {
+            const isAvailable = Boolean(
+              onSocialSignIn && enabledSocialProviders.includes(provider.id),
+            );
+            const accessibleLabel = isAvailable
+              ? `Continue with ${provider.label}`
+              : `${provider.label} sign-in unavailable; use email and password`;
+            return (
+              <button
+                key={provider.id}
+                type="button"
+                disabled={!isAvailable || isBusy}
+                title={accessibleLabel}
+                aria-label={accessibleLabel}
+                data-provider={provider.id}
+                data-provider-available={isAvailable ? 'true' : 'false'}
+                onClick={() => void handleSocialSignIn(provider.id)}
+                className={[
+                  'app-cloud-login-social-pill flex h-10 w-10 items-center justify-center rounded-full transition duration-150',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)]',
+                  isAvailable
+                    ? 'hover:scale-105 disabled:cursor-wait disabled:opacity-55'
+                    : 'cursor-not-allowed opacity-35 grayscale',
+                  INK,
+                ].join(' ')}
+              >
+                <provider.Mark />
+                {socialProvider === provider.id ? <span className="sr-only">Starting…</span> : null}
+              </button>
+            );
+          })}
+        </div>
 
         <div className={`mt-5 flex items-center gap-3 ${TYPE_DIVIDER} ${INK_SUBTLE}`}>
           <div className="h-px flex-1 bg-[var(--app-cloud-login-divider)]" />
@@ -457,7 +492,6 @@ export function CloudLoginPage({
             {submitLabel}
           </button>
         </form>
-        <CloudLoginLegalLine className={`app-cloud-login-legal mt-4 text-center ${TYPE_HINT} ${INK_SUBTLE}`} />
       </main>
     </div>
   );

@@ -53,7 +53,7 @@ const SHOW_DEBUG_AUTH_DIAGNOSTICS = cloudAuthCapabilityDiscoveryEnabled();
 type CloudSessionGateResult = Pick<
   UseCloudSessionResult,
   'status' | 'account' | 'signIn' | 'signUp' | 'signInWithProvider' | 'browserSignIn'
-> & Partial<Pick<UseCloudSessionResult, 'oauthProviders'>>;
+>;
 
 export type KordiAppRootProps = {
   /**
@@ -163,7 +163,6 @@ function CloudEditionRoot({
               onSignUp={signUp}
               onRequestSignupCode={liveSession.requestSignupCode}
               onSocialSignIn={socialSignIn}
-              oauthProviders={session.oauthProviders}
               showDebugAuthDiagnostics={SHOW_DEBUG_AUTH_DIAGNOSTICS}
             />
           </div>

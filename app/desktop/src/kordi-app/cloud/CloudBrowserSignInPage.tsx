@@ -4,7 +4,6 @@ import { APP_WINDOW_RESIZE_EDGE } from '@/app/windowDrag';
 import type { BrowserSignInState } from '@/features/cloud/appSignIn/useBrowserSignIn';
 import { KordiFlyingBird } from '@/features/cloud/KordiFlyingBird';
 
-import { CloudLoginLegalLine } from './CloudLoginLegalLine';
 import { loginHeading, loginSubtitle } from './cloudLoginMessages';
 
 // Signed-out screens for browser sign-in: the welcome screen, then a wait
@@ -87,7 +86,6 @@ function WelcomeScreen({ signIn }: { signIn: BrowserSignInState }) {
           Sign up
         </button>
       </div>
-      <CloudLoginLegalLine className="app-cloud-welcome-legal" />
     </main>
   );
 }

@@ -2,12 +2,11 @@ import { useEffect, useState } from 'react';
 
 import type { CloudAuthClient, CloudOAuthProvider } from './authClient';
 import { loadCloudAuthCapabilities } from './cloudAuthCapabilities';
-import { cloudAuthCapabilityDiscoveryEnabled, defaultCloudOAuthProviders, offeredCloudOAuthProviders } from './cloudAuthReleasePolicy';
+import { cloudAuthCapabilityDiscoveryEnabled, defaultCloudOAuthProviders } from './cloudAuthReleasePolicy';
 import { memoryVersionFromCapabilities } from './memoryCapability';
 
 /**
- * Server capabilities. Memory discovery runs in every build; packaged apps keep Google and GitHub
- * and add Apple only when the server offers it.
+ * Server capabilities. Memory discovery runs in every build; sign-in methods only where enabled.
  * `cacheKey` shares one fetch per API base URL with other capability readers.
  */
 export function useCloudCapabilities(
@@ -27,8 +26,10 @@ export function useCloudCapabilities(
       .then((capabilities) => {
         if (cancelled) return;
         setMemoryVersion(memoryVersionFromCapabilities(capabilities));
-        // Packaged apps still read the list, so Apple shows only where the server offers it.
-        setOAuthProviders(offeredCloudOAuthProviders(capabilities.oauthProviders ?? []));
+        if (!discoverSignInMethods) return;
+        setOAuthProviders(capabilities.oauthProviders.filter(
+          (provider): provider is CloudOAuthProvider => provider === 'google' || provider === 'github',
+        ));
       })
       .catch(() => {
         if (cancelled) return;

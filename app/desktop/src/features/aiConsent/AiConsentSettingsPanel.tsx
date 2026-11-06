@@ -1,7 +1,7 @@
 import { ArrowUpRight } from 'lucide-react';
 import { useMemo } from 'react';
 
-import { KORDI_PRIVACY_URL, KORDI_TERMS_URL } from '@/kordi-app/cloud/CloudLoginLegalLine';
+import { KORDI_PRIVACY_URL, KORDI_TERMS_URL } from './legalLinks';
 import { SettingsRow, SettingsSection, SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { openDesktopExternalUrl } from '@/lib/desktop';
 

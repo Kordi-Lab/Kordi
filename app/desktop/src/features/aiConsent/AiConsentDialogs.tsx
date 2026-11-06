@@ -2,7 +2,7 @@ import type { MouseEvent } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { AppDialog, AppDialogActions, AppDialogDescription, AppDialogTitle } from '@/components/ui/dialog';
-import { KORDI_PRIVACY_URL } from '@/kordi-app/cloud/CloudLoginLegalLine';
+import { KORDI_PRIVACY_URL } from './legalLinks';
 import { openDesktopExternalUrl } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 

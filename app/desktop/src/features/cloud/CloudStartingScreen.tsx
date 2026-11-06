@@ -1,12 +1,11 @@
 import type { ComponentType } from 'react';
-import { AppleMark, GitHubMark, GoogleMark } from '@/kordi-app/cloud/CloudLoginMarks';
+import { GitHubMark, GoogleMark } from '@/kordi-app/cloud/CloudLoginMarks';
 import type { CloudOAuthProvider } from './authClient';
 import { KordiFlyingBird } from './KordiFlyingBird';
 
 const SIGN_IN_PROVIDERS: Record<CloudOAuthProvider, { label: string; Mark: ComponentType }> = {
   google: { label: 'Google', Mark: GoogleMark },
   github: { label: 'GitHub', Mark: GitHubMark },
-  apple: { label: 'Apple', Mark: AppleMark },
 };
 
 export function CloudStartingScreen({

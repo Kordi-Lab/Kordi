@@ -239,25 +239,6 @@
   margin-top: 28px;
 }
 
-/* Legal footnote under the sign-in actions; links read as quiet underlined text. */
-.app-cloud-welcome-legal {
-  margin: 18px 0 0;
-  color: var(--app-cloud-signin-muted);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.4;
-}
-
-:is(.app-cloud-welcome-legal, .app-cloud-login-legal) a {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-:is(.app-cloud-welcome-legal, .app-cloud-login-legal) a:hover {
-  color: var(--utility-foreground);
-}
-
 /* The bird's wing gap is a hole in the body, so it shows the window behind.
  * The cutout bird stays still; its wing is already tilted in the path. */
 .app-kordi-flying-bird-cutout .app-kordi-flying-bird-body,
@@ -290,7 +271,6 @@
 .app-cloud-login-shell[data-frosted="true"] :is(
   .app-cloud-welcome-title,
   .app-cloud-welcome-subtitle,
-  .app-cloud-welcome-legal,
   .app-cloud-welcome-link,
   .app-cloud-browser-signin-title,
   .app-cloud-signin-action

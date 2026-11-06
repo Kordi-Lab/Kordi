@@ -1,10 +1,4 @@
-export type CloudOAuthProvider = 'google' | 'github' | 'apple';
-
-export const CLOUD_OAUTH_PROVIDERS: readonly CloudOAuthProvider[] = ['google', 'github', 'apple'];
-
-export function isCloudOAuthProvider(value: unknown): value is CloudOAuthProvider {
-  return typeof value === 'string' && (CLOUD_OAUTH_PROVIDERS as readonly string[]).includes(value);
-}
+export type CloudOAuthProvider = 'google' | 'github';
 
 export type CloudAuthCapabilities = {
   password: boolean;
