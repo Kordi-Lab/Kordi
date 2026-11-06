@@ -75,11 +75,16 @@ pub(crate) async fn bound(
 
 /// Returns the agent's personal session, made ready by
 /// [`activate_in_transaction`] unless the bound one is in use as it is.
+/// `NotFound` without a live connector granted to the agent: there is
+/// nothing to watch, so no session is made for it.
 pub(crate) async fn ensure(
     pool: &PgPool,
     owner_account_id: &str,
     agent_id: &str,
 ) -> Result<PersonalSession, StoreError> {
+    if !super::setting::has_live_grant(pool, owner_account_id, agent_id).await? {
+        return Err(StoreError::NotFound);
+    }
     if let Some(found) = bound(pool, owner_account_id, agent_id).await? {
         let (visible,): (bool,) = query_as(
             "SELECT NOT EXISTS(SELECT 1 FROM cloud_account_session_visibility

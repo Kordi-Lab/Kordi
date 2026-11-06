@@ -136,7 +136,6 @@ export function WorkspaceSidebar({
     cloudAccount,
     onCreateGroupInvite,
     onListGroupInvites,
-    onRevokeGroupInvite,
   } = account;
   const isBrowserOnline = useBrowserOnlineStatus();
   const chatModel = useWorkspaceChatSidebarModel(chats, {
@@ -457,7 +456,6 @@ export function WorkspaceSidebar({
         onAddContact={onAddContactByNodeId}
         onCreateGroupInvitation={onCreateGroupInvite}
         onListGroupInvitations={onListGroupInvites}
-        onRevokeGroupInvitation={onRevokeGroupInvite}
         onDissolveGroup={onDissolveChatGroup ? async (groupSpaceId, sessionIds) => {
           await onDissolveChatGroup(groupSpaceId, sessionIds);
           setIsGroupDetailsDialogOpen(false);

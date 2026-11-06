@@ -7,7 +7,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { __setSessionBackendForTests } from '../src/features/cloud/session';
 import type { ChatSyncConversation } from '../src/features/cloud/chatSyncTypes';
 import { buildParticipantSpaces, filterParticipantSpaces } from '../src/features/chat/participantSpaces';
-import { personalAgentSessionsFromSnapshots } from '../src/features/personalAgent/personalAgentClient';
+import { personalAgentSessionsFromSnapshots, type PersonalAgentStatus } from '../src/features/personalAgent/personalAgentClient';
+import { PersonalAgentPage } from '../src/features/personalAgent/PersonalAgentPage';
+import { __setDefaultPersonalAgentStatusForTests } from '../src/features/personalAgent/personalAgentStatus';
 import { useAgentBlueprintRequest, requestAgentBlueprint } from '../src/features/personalAgent/agentBlueprintRequest';
 import { setPersonalAgentEntries, getPersonalAgentEntries, type PersonalAgentEntry } from '../src/features/personalAgent/personalAgentStore';
 import { usePersonalAgentSync } from '../src/features/personalAgent/usePersonalAgentSync';
@@ -30,6 +32,12 @@ const entries: PersonalAgentEntry[] = [
   { agentId: 'cloud_agent_inbox', conversationId: 'conv-inbox', sessionId: INBOX_SESSION, proactive: false, name: 'Inbox helper', localAgentId: 'cloud-agent:cloud_agent_inbox', avatarSeed: 'kingfisher', profileImageUrl: null, isDefault: false },
 ];
 
+const watching: PersonalAgentStatus = {
+  proactive: true, connected: true, checkedAt: null,
+  sources: [{ connectorId: 'c-mail', provider: 'gmail', status: 'connected' }, { connectorId: 'c-cal', provider: 'google_calendar', status: 'connected' }],
+  recent: [{ at: '2026-11-06T14:40:00Z', text: 'Lab sync moved to 10 am Thursday.' }],
+};
+
 const participants = (agentName: string) => [
   { id: 'human:alex', name: 'Alex', kind: 'human' as const, role: 'self', source: 'local' },
   { id: `agent:${agentName}`, name: agentName, kind: 'agent' as const, role: 'delegate', source: 'local' },
@@ -45,12 +53,11 @@ function agentChat(id: string, name: string, text: string, overrides: Partial<Co
   });
 }
 
-function sidebarProps(overrides: Record<string, unknown> = {}) {
-  const chatConversations = [
-    agentChat(KORDI_SESSION, "Alex's Kordi", 'Lab sync moved to 10 am Thursday.', { unread: 2, metadata: { personalAgent: { agentId: `cloud-agent:${ACCOUNT}` } } }),
-    agentChat(RESEARCH_SESSION, 'Research agent', 'Two new papers cite your workshop draft.', { metadata: { personalAgent: { agentId: 'cloud_agent_research' } } }),
-    agentChat('session:direct-agent:figure', 'Figure script fix', 'Patched the loader to accept both.'),
-  ];
+function sidebarProps(overrides: Record<string, unknown> = {}, chatConversations = [
+  agentChat(KORDI_SESSION, "Alex's Kordi", 'Lab sync moved to 10 am Thursday.', { unread: 2, metadata: { personalAgent: { agentId: `cloud-agent:${ACCOUNT}` } } }),
+  agentChat(RESEARCH_SESSION, 'Research agent', 'Two new papers cite your workshop draft.', { metadata: { personalAgent: { agentId: 'cloud_agent_research' } } }),
+  agentChat('session:direct-agent:figure', 'Figure script fix', 'Patched the loader to accept both.'),
+]) {
   const spaces = buildParticipantSpaces(chatConversations);
   return baseSidebarProps({
     chatConversations, participantSpaces: spaces, contactParticipantSpaces: [],
@@ -60,68 +67,106 @@ function sidebarProps(overrides: Record<string, unknown> = {}) {
   });
 }
 
-test('Agent Chats lists the Personal agent section first with one row per agent', () => {
+test('Agent Chats shows the Personal agent entry under New, and personal chats with messages as ordinary rows', () => {
   setPersonalAgentEntries(entries);
+  __setDefaultPersonalAgentStatusForTests(watching);
   try {
     const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps() as never));
-    const personalHeading = markup.indexOf('>Personal agent<');
-    const recents = markup.indexOf('Recents');
-    assert.ok(personalHeading >= 0 && personalHeading < recents, 'Personal agent comes before Recents');
-    assert.doesNotMatch(markup, /PERSONAL AGENT/);
-    for (const entry of entries) assert.match(markup, new RegExp(`data-personal-agent-row="${entry.agentId}"`));
-    assert.ok(markup.indexOf('data-personal-agent-row="cloud-agent:acct_alex"') < markup.indexOf('data-personal-agent-row="cloud_agent_research"'));
-    assert.match(markup, /No messages yet/);
-    assert.match(markup, /Lab sync moved to 10 am Thursday\./);
-    assert.doesNotMatch(markup, /data-presence-status=/);
-    assert.match(markup, /data-unread-count="2"/);
-    // Personal sessions stay out of the other sections; ordinary chats remain.
-    assert.doesNotMatch(markup, new RegExp(`data-agent-session-row="${KORDI_SESSION}"`));
-    assert.doesNotMatch(markup, new RegExp(`data-agent-session-row="${RESEARCH_SESSION}"`));
+    const newRow = markup.indexOf('chat-sidebar-new-session"');
+    const entry = markup.indexOf('data-testid="personal-agent-entry"');
+    assert.ok(newRow >= 0 && entry > newRow, 'the entry follows New');
+    assert.match(markup, /Watching 2 sources/);
+    assert.doesNotMatch(markup, /No messages yet/);
+    assert.doesNotMatch(markup, /data-personal-agent-row=/);
+    assert.doesNotMatch(markup, /chat-project-section-toggle[^>]*>[^<]*<[^>]*>Personal agent/);
+    // Sessions with messages are listed with the other chats; Inbox helper has none here.
+    assert.match(markup, new RegExp(`data-agent-session-row="${KORDI_SESSION}"`));
+    assert.match(markup, new RegExp(`data-agent-session-row="${RESEARCH_SESSION}"`));
+    assert.doesNotMatch(markup, new RegExp(`data-agent-session-row="${INBOX_SESSION}"`));
     assert.match(markup, /data-agent-session-row="session:direct-agent:figure"/);
   } finally {
+    __setDefaultPersonalAgentStatusForTests(null);
     setPersonalAgentEntries([]);
   }
 });
 
-test('a personal row opens its session and its menu offers only read state, mute and Agent settings', async () => {
+test('an empty personal session is not a chat row', () => {
   setPersonalAgentEntries(entries);
+  __setDefaultPersonalAgentStatusForTests(watching);
+  try {
+    const props = sidebarProps({}, [
+      agentChat(KORDI_SESSION, "Alex's Kordi", '', { messages: [], subtitle: '', metadata: { personalAgent: { agentId: `cloud-agent:${ACCOUNT}` } } }),
+      agentChat('session:direct-agent:figure', 'Figure script fix', 'Patched the loader to accept both.'),
+    ]);
+    const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, props as never));
+    assert.doesNotMatch(markup, new RegExp(`data-agent-session-row="${KORDI_SESSION}"`));
+    assert.doesNotMatch(markup, /No messages yet/);
+  } finally {
+    __setDefaultPersonalAgentStatusForTests(null);
+    setPersonalAgentEntries([]);
+  }
+});
+
+test('the entry opens the Personal agent page over the chat pane; choosing a chat closes it', async () => {
+  setPersonalAgentEntries(entries);
+  __setDefaultPersonalAgentStatusForTests(watching);
   const selected: string[] = [];
-  const unread: Array<[string, boolean]> = [];
-  const muted: Array<[string, boolean]> = [];
-  const settings: string[] = [];
   try {
     await withJsdomRoot(async (mount) => {
-      const host = await mount(createElement(WorkspaceSidebar, sidebarProps({
-        onSelectChatSession: (id: string) => selected.push(id),
-        onSetChatSessionUnread: (id: string, value: boolean) => unread.push([id, value]),
-        onSetChatSessionMuted: (id: string, value: boolean) => muted.push([id, value]),
-        onOpenAgentSettings: (id: string) => settings.push(id),
-      }) as never));
-      const row = (agentId: string) => host.querySelector<HTMLButtonElement>(`[data-personal-agent-row="${agentId}"]`)!;
-      await act(async () => { row('cloud_agent_inbox').click(); });
-      assert.deepEqual(selected, [INBOX_SESSION]);
-      const openMenu = async (agentId: string) => {
-        await act(async () => {
-          row(agentId).dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 80 }));
-        });
-        return [...document.querySelectorAll('[data-session-context-action]')].map((item) => item.textContent?.trim());
-      };
-      assert.deepEqual(await openMenu(`cloud-agent:${ACCOUNT}`), ['Mark as read', 'Mute', 'Agent settings']);
-      assert.equal(document.body.textContent?.includes('Rename'), false);
-      assert.equal(document.body.textContent?.includes('Archive'), false);
-      assert.equal(document.body.textContent?.includes('Delete chat'), false);
-      await act(async () => { document.querySelector<HTMLButtonElement>('[data-session-context-action="read"]')!.click(); });
-      assert.deepEqual(unread, [[KORDI_SESSION, false]]);
-      await openMenu('cloud_agent_research');
-      await act(async () => { document.querySelector<HTMLButtonElement>('[data-session-context-action="mute"]')!.click(); });
-      assert.deepEqual(muted, [[RESEARCH_SESSION, true]]);
-      await openMenu('cloud_agent_research');
-      await act(async () => { document.querySelector<HTMLButtonElement>('[data-session-context-action="agent-settings"]')!.click(); });
-      assert.deepEqual(settings, ['cloud-agent:cloud_agent_research']);
-      assert.equal(document.querySelector('[data-session-context-action]'), null);
+      const props = (activeConvId: string) => sidebarProps({ activeConvId, onSelectChatSession: (id: string) => selected.push(id) }) as never;
+      let host = await mount(createElement(WorkspaceSidebar, props('session:direct-agent:figure')));
+      const entryButton = () => host.querySelector<HTMLButtonElement>('[data-testid="personal-agent-entry"]')!;
+      const active = () => host.querySelector('.app-session-row-active')?.getAttribute('data-agent-session-row') ?? null;
+      assert.ok(active(), 'the selected chat is highlighted');
+      await act(async () => { entryButton().click(); });
+      assert.equal(entryButton().getAttribute('aria-current'), 'page');
+      assert.equal(active(), null, 'no chat row is selected under the page');
+      // Clicking the chat that was selected closes the page.
+      await act(async () => { host.querySelector<HTMLButtonElement>('[data-agent-session-row="session:direct-agent:figure"]')!.click(); });
+      assert.equal(entryButton().getAttribute('aria-current'), null);
+      assert.deepEqual(selected, ['session:direct-agent:figure']);
+      // A selection made elsewhere closes it too.
+      await act(async () => { entryButton().click(); });
+      host = await mount(createElement(WorkspaceSidebar, props(KORDI_SESSION)));
+      assert.equal(entryButton().getAttribute('aria-current'), null);
     });
   } finally {
+    __setDefaultPersonalAgentStatusForTests(null);
     setPersonalAgentEntries([]);
+  }
+});
+
+test('the Personal agent page asks for a connector, then offers the switch and what it watches', async () => {
+  try {
+    __setDefaultPersonalAgentStatusForTests({ ...watching, connected: false, proactive: false, sources: [] });
+    let markup = renderToStaticMarkup(createElement(PersonalAgentPage, {}));
+    assert.match(markup, /Add a connector to turn it on\./);
+    assert.match(markup, />Connect</);
+    assert.match(markup, /role="switch"[^>]*aria-checked="false"[^>]*disabled=""/);
+    assert.doesNotMatch(markup, /Watching/);
+
+    __setDefaultPersonalAgentStatusForTests({ ...watching, proactive: false });
+    markup = renderToStaticMarkup(createElement(PersonalAgentPage, {}));
+    assert.match(markup, />Off</);
+    assert.doesNotMatch(markup, /disabled=""/);
+    assert.match(markup, /Gmail/);
+
+    __setDefaultPersonalAgentStatusForTests(watching);
+    markup = renderToStaticMarkup(createElement(PersonalAgentPage, {}));
+    assert.match(markup, /aria-checked="true"/);
+    assert.match(markup, /Watching 2 sources/);
+    assert.match(markup, /Lab sync moved to 10 am Thursday\./);
+    assert.match(markup, /Manage connectors/);
+    assert.doesNotMatch(markup, /PERSONAL AGENT|WATCHING|RECENT/);
+
+    // The switch turns it off.
+    await withJsdomRoot(async (mount) => {
+      const host = await mount(createElement(PersonalAgentPage, {}));
+      await act(async () => { host.querySelector<HTMLButtonElement>('[role="switch"]')!.click(); });
+      assert.equal(host.querySelector('[role="switch"]')!.getAttribute('aria-checked'), 'false');
+    });
+  } finally {
+    __setDefaultPersonalAgentStatusForTests(null);
   }
 });
 
@@ -246,55 +291,30 @@ test('Agent settings opens the Blueprint once the Agents page has the agent', as
   });
 });
 
-test('a personal session whose agent is not loaded stays out of Recents and keeps the restricted menu', async () => {
-  // The server lists Research agent, but this Mac's agent list does not hold it yet.
-  setPersonalAgentEntries(entries.map((entry) => entry.agentId === 'cloud_agent_research'
-    ? { ...entry, name: 'Agent', localAgentId: null, avatarSeed: 'cloud_agent_research' } : entry));
-  const settings: string[] = [];
-  try {
-    const props = sidebarProps({ onOpenAgentSettings: (id: string) => settings.push(id) });
-    const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, props as never));
-    assert.doesNotMatch(markup, new RegExp(`data-agent-session-row="${RESEARCH_SESSION}"`));
-    assert.match(markup, /data-personal-agent-row="cloud_agent_research"/);
-    // The session names the agent until the list holds it.
-    assert.match(markup, /title="Research agent"/);
-    await withJsdomRoot(async (mount) => {
-      const host = await mount(createElement(WorkspaceSidebar, props as never));
-      await act(async () => {
-        host.querySelector(`[data-personal-agent-row="cloud_agent_research"]`)!
-          .dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 80 }));
+test('a personal session in the list keeps the restricted menu, from the list or, before it loads, its marker', async () => {
+  for (const [listed, actions] of [[entries, ['Mark as read', 'Mute', 'Agent settings']], [[], ['Mark as read', 'Mute']]] as const) {
+    setPersonalAgentEntries(listed);
+    try {
+      await withJsdomRoot(async (mount) => {
+        const host = await mount(createElement(WorkspaceSidebar, sidebarProps({ onOpenAgentSettings: () => undefined }) as never));
+        await act(async () => {
+          host.querySelector(`[data-agent-session-row="${KORDI_SESSION}"]`)!
+            .dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 80 }));
+        });
+        assert.deepEqual([...document.querySelectorAll('[data-session-context-action]')].map((item) => item.textContent?.trim()), actions);
       });
-      assert.deepEqual([...document.querySelectorAll('[data-session-context-action]')].map((item) => item.textContent?.trim()), ['Mark as unread', 'Mute']);
-    });
-    assert.deepEqual(settings, []);
-  } finally {
-    setPersonalAgentEntries([]);
+    } finally {
+      setPersonalAgentEntries([]);
+    }
   }
 });
 
-test('a marked personal session the list does not name yet still gets the section and the restricted menu', async () => {
-  setPersonalAgentEntries([]);
-  await withJsdomRoot(async (mount) => {
-    const host = await mount(createElement(WorkspaceSidebar, sidebarProps() as never));
-    assert.equal(host.querySelector(`[data-agent-session-row="${KORDI_SESSION}"]`), null);
-    assert.ok(host.querySelector(`[data-personal-agent-row="cloud-agent:${ACCOUNT}"]`));
-    assert.ok(host.querySelector('[data-personal-agent-row="cloud_agent_research"]'));
-    await act(async () => {
-      host.querySelector(`[data-personal-agent-row="cloud_agent_research"]`)!
-        .dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 80 }));
-    });
-    const actions = [...document.querySelectorAll('[data-session-context-action]')].map((item) => item.textContent?.trim());
-    assert.deepEqual(actions, ['Mark as unread', 'Mute']);
-  });
-});
-
-test('an agent whose Proactive is off leaves the section; its old session is back in Recents with the normal menu', async () => {
+test('an agent whose Proactive is off is an ordinary chat with the normal menu', async () => {
   // The loaded list no longer has Research agent; its session still carries the marker for a moment.
   setPersonalAgentEntries(entries.filter((entry) => entry.agentId !== 'cloud_agent_research'), true);
   try {
     await withJsdomRoot(async (mount) => {
       const host = await mount(createElement(WorkspaceSidebar, sidebarProps() as never));
-      assert.equal(host.querySelector('[data-personal-agent-row="cloud_agent_research"]'), null);
       const row = host.querySelector<HTMLButtonElement>(`[data-agent-session-row="${RESEARCH_SESSION}"]`);
       assert.ok(row, 'the old session is listed with the other chats');
       await act(async () => {
@@ -303,39 +323,6 @@ test('an agent whose Proactive is off leaves the section; its old session is bac
       const menu = document.body.textContent ?? '';
       for (const action of ['Rename', 'Pin', 'Archive', 'Delete chat']) assert.ok(menu.includes(action), action);
       assert.equal(document.querySelector('[data-session-context-action="agent-settings"]'), null);
-    });
-  } finally {
-    setPersonalAgentEntries([], false);
-  }
-});
-
-test('the Personal agent heading folds and unfolds its rows, and a search shows matches while folded', async () => {
-  setPersonalAgentEntries(entries, true);
-  try {
-    await withJsdomRoot(async (mount) => {
-      let host = await mount(createElement(WorkspaceSidebar, sidebarProps() as never));
-      const toggle = () => [...host.querySelectorAll<HTMLButtonElement>('.chat-project-section-toggle')]
-        .find((button) => button.textContent?.includes('Personal agent'))!;
-      const personalRows = () => host.querySelectorAll('[data-personal-agent-row]').length;
-      assert.equal(toggle().getAttribute('aria-expanded'), 'true');
-      assert.equal(personalRows(), 3);
-
-      await act(async () => { toggle().click(); });
-      assert.equal(toggle().getAttribute('aria-expanded'), 'false');
-      assert.equal(personalRows(), 0);
-      // Other sections keep their rows.
-      assert.ok(host.querySelector('[data-agent-session-row="session:direct-agent:figure"]'));
-
-      // Searching while folded shows the matching personal agents.
-      host = await mount(createElement(WorkspaceSidebar, sidebarProps({ chatSearch: 'two new papers' }) as never));
-      assert.deepEqual([...host.querySelectorAll('[data-personal-agent-row]')].map((item) => item.getAttribute('data-personal-agent-row')), ['cloud_agent_research']);
-      assert.equal(toggle().getAttribute('aria-expanded'), 'true');
-
-      // The search ends: the section is still folded.
-      host = await mount(createElement(WorkspaceSidebar, sidebarProps() as never));
-      assert.equal(personalRows(), 0);
-      await act(async () => { toggle().click(); });
-      assert.equal(personalRows(), 3);
     });
   } finally {
     setPersonalAgentEntries([], false);

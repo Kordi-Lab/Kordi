@@ -109,3 +109,73 @@ fn unread_counts_cover_history_and_ignore_sync_controls() {
     assert_eq!(counts[0].last_read_sequence, 10);
     assert_eq!(counts[0].unread_count, 91);
 }
+
+fn group_body(message: serde_json::Value) -> String {
+    let envelope = json!({ "kind": "group-message", "message": message }).to_string();
+    format!("kordi-cloud-group:{}", URL_SAFE_NO_PAD.encode(envelope))
+}
+
+// Discussion replies have their own read cursor on the server, so the
+// conversation cursor must neither count them nor be needed to clear them.
+#[test]
+fn discussion_replies_do_not_count_against_the_conversation_cursor() {
+    let mut conn = super::test_support::test_connection();
+    let thread = json!({"schemaVersion":1,"kind":"thread","source":{"sourceSessionId":"session:group:one","sourceMessageId":"root-message"}});
+    let bodies = [
+        (
+            "root-message",
+            group_body(json!({"id":"root","senderKind":"human","text":"hahahha"})),
+            None,
+        ),
+        (
+            "thread-reply",
+            group_body(
+                json!({"id":"reply","senderKind":"human","text":"let s see","messageAction":thread}),
+            ),
+            None,
+        ),
+        (
+            "agent-in-thread",
+            group_body(
+                json!({"id":"agent","senderKind":"agent","text":"Done","deliveryState":"complete","replyToMessageId":"thread-reply"}),
+            ),
+            None,
+        ),
+        (
+            "quote-of-root",
+            group_body(
+                json!({"id":"quote","senderKind":"human","text":"main reply","replyToMessageId":"root-message"}),
+            ),
+            None,
+        ),
+        (
+            "plain-reply",
+            "Direct reply".to_string(),
+            Some("root-message"),
+        ),
+    ];
+    apply_on_connection(&mut conn, ChatSyncApplyRequest {
+        account_id: "acct_test".into(), bootstrap: true, cursor: None, last_stream_seq: Some(5),
+        conversations: vec![json!({"id":"conversation","kind":"group","legacy_session_id":"session:group:one","version":1,"latest_message_sequence":5,"members":[{"account_id":"acct_test","last_read_sequence":0}]})],
+        messages: bodies.iter().enumerate().map(|(index,(id,body,reply_to))| json!({
+            "id":id,"client_message_id":format!("client-{id}"),"conversation_id":"conversation","conversation_sequence":index+1,
+            "sender_account_id":"acct_peer","content":{"blocks":[{"text":body}]},"reply_to_message_id":reply_to,"deleted_at":null,"version":1
+        })).collect(),
+        events: vec![],
+    }).unwrap();
+    // The root, the main-transcript quote and the plain reply remain unread.
+    assert_eq!(
+        load_all_conversation_heads(&conn, "acct_test").unwrap()[0].unread_count,
+        3
+    );
+    apply_on_connection(&mut conn, ChatSyncApplyRequest {
+        account_id: "acct_test".into(), bootstrap: false, cursor: None, last_stream_seq: Some(6),
+        conversations: vec![json!({"id":"conversation","kind":"group","legacy_session_id":"session:group:one","version":2,"latest_message_sequence":5,"members":[{"account_id":"acct_test","last_read_sequence":1}]})],
+        messages: vec![], events: vec![],
+    }).unwrap();
+    // Reading the main transcript through the root leaves only main messages.
+    assert_eq!(
+        load_all_conversation_heads(&conn, "acct_test").unwrap()[0].unread_count,
+        2
+    );
+}

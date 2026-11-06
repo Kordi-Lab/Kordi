@@ -15,14 +15,19 @@ export type AgentInstructionFile = {
   modifiedAt: number;
 };
 
+/** Chosen files, and why any others were left out. */
+export type MemoryImportChoice = { files: AgentInstructionFile[]; notice?: string };
+
 /** Finds agent files, lets the person choose more, and reads one into the model's JSON reply. */
 export type MemoryImporter = {
   discover(): Promise<AgentInstructionFile[]>;
   /** Opens the file picker; the chosen `.md` files, in its folder's project. */
-  choose?(): Promise<AgentInstructionFile[]>;
+  choose?(): Promise<AgentInstructionFile[] | MemoryImportChoice>;
   extract(file: AgentInstructionFile, existingMemories: string[]): Promise<string>;
   /** Starts one import of several files; without it each file goes to `extract`. */
   start?(): Promise<{ extract: MemoryImporter['extract']; finish(ok: boolean): Promise<void> }>;
+  /** Reads files with Kordi's hosted model, so Import needs no provider on this device (the browser's upload importer). */
+  hostedModel?: boolean;
 };
 
 /** `files` with the chosen files added after them, each path once. */

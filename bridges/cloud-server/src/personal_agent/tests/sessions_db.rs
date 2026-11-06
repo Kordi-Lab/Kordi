@@ -14,6 +14,9 @@ use crate::chat_sync::store::{self, StoreError};
 #[tokio::test]
 async fn listing_creates_each_session_once_even_when_calls_race() {
     let Some(f) = fixture().await else { return };
+    let default_agent = format!("cloud-agent:{}", f.owner);
+    // The default agent is on without a row once it has a connector.
+    grant(&f.pool, &f.connector_id, &default_agent).await;
     let call = || f.send("GET", "/v1/cloud/personal-agents", &f.owner_token, None);
     let (a, b, c) = tokio::join!(call(), call(), call());
     for (status, body) in [&a, &b, &c] {
@@ -22,7 +25,6 @@ async fn listing_creates_each_session_once_even_when_calls_race() {
     assert_eq!(a.1, b.1);
     assert_eq!(a.1, c.1);
     let agents = a.1["agents"].as_array().unwrap();
-    let default_agent = format!("cloud-agent:{}", f.owner);
     assert_eq!(agents.len(), 1, "Scout is off by default: {agents:?}");
     assert_eq!(agents[0]["agentId"], default_agent.as_str());
     assert_eq!(agents[0]["proactive"], true);
@@ -225,6 +227,7 @@ async fn requests_without_a_target_go_to_the_session_agent() {
         .unwrap();
     assert_eq!(agent, f.agent_id);
     let default_agent = format!("cloud-agent:{}", f.owner);
+    super::fixture::grant(&f.pool, &f.connector_id, &default_agent).await;
     let (_, default_session) = f.personal_session(&default_agent).await;
     let input = claim(&default_session, &f.owner, "msg_none");
     let agent = crate::cloud_agent_runtime::runs::execution_agent_id(&f.pool, &input)
@@ -275,8 +278,8 @@ async fn archiving_a_definition_releases_its_session() {
         .await;
     assert_eq!(
         list["agents"].as_array().unwrap().len(),
-        1,
-        "only the default"
+        0,
+        "the default agent has no connector"
     );
     let uri = format!("/v1/cloud/sessions/{}/hidden", urlencode(&session_id));
     let (status, _) = f.send("PUT", &uri, &f.owner_token, None).await;

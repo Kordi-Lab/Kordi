@@ -137,7 +137,7 @@ test('composer stop targets running requests the viewer sent or runs of the view
   assert.equal(composerAgentRequestStop({ messages: [], liveTurnIsRunning: true, onStopCollaborationAgentRequest }), null);
 });
 
-test('the live reply header keeps Stop while text streams and drops it when the turn completes', async () => {
+test('the live reply status line keeps Stop while text streams and drops it when the turn completes', async () => {
   let stops = 0;
   await withJsdomRoot(async (mount) => {
     await act(async () => { setMessageLayout('threads'); });
@@ -146,16 +146,24 @@ test('the live reply header keeps Stop while text streams and drops it when the 
     const header = host.querySelector('.app-thread-message-header')?.parentElement;
     assert.ok(header);
     assert.match(host.textContent ?? '', /Once upon a time/);
-    const headerStop = header.querySelector<HTMLButtonElement>('[data-agent-request-stop="header"] button[aria-label="Stop agent request"]');
-    assert.ok(headerStop, 'stop sits in the header while text streams');
-    assert.equal(host.querySelectorAll('button[aria-label="Stop agent request"]').length, 1, 'the card does not repeat the stop');
-    await act(async () => { headerStop.click(); });
+    assert.equal(header.querySelector('button[aria-label="Stop agent request"]'), null, 'the name line carries no stop');
+    const statusLine = host.querySelector('.app-turn-header-line');
+    assert.ok(statusLine, 'a streaming reply keeps its status line');
+    const statusStop = statusLine.querySelector<HTMLButtonElement>('[data-agent-request-stop="status"] button[aria-label="Stop agent request"]');
+    assert.ok(statusStop, 'stop follows the elapsed time while text streams');
+    assert.equal(statusStop.textContent, 'Stop');
+    assert.equal(host.querySelectorAll('button[aria-label="Stop agent request"]').length, 1, 'the stop is not repeated');
+    await act(async () => { statusStop.click(); });
+    await settle();
     assert.equal(stops, 1);
+    const stopping = statusLine.querySelector<HTMLButtonElement>('[data-agent-request-stop="status"] button');
+    assert.equal(stopping?.textContent, 'Stopping…');
+    assert.equal(stopping?.disabled, true);
 
     const completed = streamingReply();
     completed.turn = { ...completed.turn!, status: 'complete', completed: true, succeeded: true };
     await mount(<MessageBubble msg={completed} onStopActiveTurn={onStopActiveTurn} />);
-    assert.equal(host.querySelector('button[aria-label="Stop agent request"]'), null);
+    assert.equal(host.querySelector('[data-agent-request-stop]'), null);
 
     const askedByPeer = streamingReply({ id: 'peer-request-reply' });
     askedByPeer.turn = { ...askedByPeer.turn!, sourceMessage: { messageId: 'request', senderLabel: 'Peer', senderIsSelf: false, text: 'hi' } };
@@ -167,5 +175,27 @@ test('the live reply header keeps Stop while text streams and drops it when the 
     await mount(<MessageBubble msg={peer} onStopActiveTurn={onStopActiveTurn} />);
     assert.equal(host.querySelector('button[aria-label="Stop agent request"]'), null, 'no stop on other people\'s requests to other people\'s agents');
     await act(async () => { setMessageLayout('chat'); });
+  });
+});
+
+test('Fork stays hidden while a reply streams and is offered once it finishes', async () => {
+  const forks: string[] = [];
+  await withJsdomRoot(async (mount) => {
+    const streaming = streamingReply({ entryId: 'entry-story' });
+    const host = await mount(<MessageBubble msg={streaming} onForkMessage={(entryId) => { forks.push(entryId); }} onStopActiveTurn={() => {}} />);
+    const fork = () => host.querySelector<HTMLButtonElement>('.app-message-fork-button');
+    assert.ok(fork(), 'the fork slot is reserved while streaming');
+    assert.equal(fork()!.disabled, true);
+    assert.equal(fork()!.getAttribute('aria-hidden'), 'true');
+    assert.ok(fork()!.classList.contains('invisible'));
+
+    const finished = streamingReply({ entryId: 'entry-story' });
+    finished.turn = { ...finished.turn!, status: 'complete', completed: true, succeeded: true };
+    await mount(<MessageBubble msg={finished} onForkMessage={(entryId) => { forks.push(entryId); }} onStopActiveTurn={() => {}} />);
+    assert.equal(fork()!.disabled, false);
+    assert.equal(fork()!.getAttribute('title'), 'Fork from here');
+    assert.equal(fork()!.closest('.app-turn-header-line'), null, 'Fork sits beside the name, not on the status line');
+    await act(async () => { fork()!.click(); });
+    assert.deepEqual(forks, ['entry-story']);
   });
 });

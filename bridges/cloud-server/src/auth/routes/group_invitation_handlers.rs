@@ -6,21 +6,24 @@ mod acceptance;
 mod creation;
 mod landing;
 mod landing_page;
+mod link;
 mod lookup;
 mod pending;
 
 pub(super) use acceptance::{accept_group_invitation, revoke_group_invitation};
 pub(crate) use acceptance::{audit_join, redeem_group_invitation_by_id, Redemption};
-pub(crate) use creation::create_invitation_in_transaction;
 pub(super) use creation::{
     create_group_invitation, get_group_invitation, list_active_group_invitations,
 };
 pub(super) use landing::{claim_group_invitation_from_page, group_invitation_landing};
+pub(crate) use link::{group_invitation_link_in_transaction, LinkOutcome, LinkRequest};
+use link::{renew_group_invitation, NewGroupInvitation};
 use lookup::*;
 pub(super) use pending::pending_routes;
 
 const GROUP_INVITE_TOKEN_PREFIX: &str = "kordi_gi_";
-const GROUP_INVITE_LIFETIME_DAYS: i64 = 7;
+/// A link lives this long after it was last shown to an admin or used to join.
+const GROUP_INVITE_LIFETIME_DAYS: i64 = 30;
 const GROUP_INVITE_MAX_MEMBERS: usize = 50;
 /// A group may invite while it has only its creator: the link is how the first
 /// other people join.

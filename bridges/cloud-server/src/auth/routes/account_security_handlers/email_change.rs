@@ -75,8 +75,6 @@ pub(super) async fn start_email_change(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
     Json(request): Json<StartEmailChangeRequest>,
 ) -> Response {
     let caller = Caller {
@@ -84,7 +82,7 @@ pub(super) async fn start_email_change(
         rate_limiter: &rate_limiter,
         session: &session,
     };
-    if let Err(response) = caller.charge_change(&headers, connect_info.as_ref()).await {
+    if let Err(response) = caller.charge_change().await {
         return *response;
     }
     let new_email = match validate_email(&request.new_email) {
@@ -167,8 +165,6 @@ pub(super) async fn verify_email_change(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
     Json(request): Json<VerifyEmailChangeRequest>,
 ) -> Response {
     let caller = Caller {
@@ -176,7 +172,7 @@ pub(super) async fn verify_email_change(
         rate_limiter: &rate_limiter,
         session: &session,
     };
-    if let Err(response) = caller.charge_change(&headers, connect_info.as_ref()).await {
+    if let Err(response) = caller.charge_change().await {
         return *response;
     }
     let Some(service) = state.signup_email() else {

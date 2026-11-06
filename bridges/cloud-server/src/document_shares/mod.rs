@@ -22,7 +22,7 @@ use sqlx_core::query::query;
 use sqlx_postgres::PgPool;
 
 use crate::auth::rate_limit::{
-    rate_limit_client_key, CloudRateLimiter, RateLimitDecision, DOCUMENT_PUBLIC_READ_LIMIT,
+    rate_limited_response, CloudRateLimiter, RateLimitDecision, DOCUMENT_PUBLIC_READ_LIMIT,
     DOCUMENT_PUBLIC_WRITE_LIMIT,
 };
 use crate::server::ServerState;
@@ -256,20 +256,10 @@ pub(crate) async fn observe_public_address(
         PublicAccess::Read => DOCUMENT_PUBLIC_READ_LIMIT,
         PublicAccess::Write => DOCUMENT_PUBLIC_WRITE_LIMIT,
     };
-    let key = rate_limit_client_key(client).to_string();
-    let limit = rate_limiter.address_limit(limit, client);
-    match rate_limiter.observe_account_limit(limit, &key).await {
+    match rate_limiter.observe_address_limit(limit, client).await {
         RateLimitDecision::Allowed => Ok(()),
         RateLimitDecision::Limited { retry_after } => {
-            let mut response = err(
-                "rate_limited",
-                "Too many attempts. Try again shortly.",
-                StatusCode::TOO_MANY_REQUESTS,
-            );
-            if let Ok(value) = retry_after.as_secs().max(1).to_string().parse() {
-                response.headers_mut().insert("Retry-After", value);
-            }
-            Err(Box::new(response))
+            Err(Box::new(rate_limited_response(retry_after)))
         }
     }
 }

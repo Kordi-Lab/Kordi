@@ -1,8 +1,21 @@
-import { FileText, Pencil, Search, TerminalSquare, Wrench } from 'lucide-react';
+import { FileText, Globe, Pencil, Search, TerminalSquare, Wrench } from 'lucide-react';
 import type { DesktopChatToolSnapshot } from '../types';
 import { normalizeSessionArtifactId } from '@/features/chat/artifacts';
 import { progressToolIsActive } from './turnProgressLabels';
 import { toolTimelineToolLabel } from './toolTimeline';
+
+function urlHost(url: string | undefined) {
+  if (!url) return undefined;
+  try { return new URL(url).hostname.replace(/^www\./, '') || url; } catch { return url; }
+}
+
+/** Runtime wrapper text addressed to the model, such as the untrusted-web notice, stays out of the UI. */
+export function toolActivityDisplayOutput(text: string) {
+  const shown = text
+    .replace(/^SECURITY NOTICE\b[^\n]*\n*/gm, '')
+    .replace(/\n*When summarizing this page, copy the citation line above exactly into the final Sources section\.\s*$/, '');
+  return shown === text ? text : shown.replace(/^\n+|\s+$/g, '');
+}
 
 export function toolActivityMetadata(tool: DesktopChatToolSnapshot) {
   let args: Record<string, unknown> = {};
@@ -22,7 +35,10 @@ export function toolActivityMetadata(tool: DesktopChatToolSnapshot) {
   const conversationLabel = name === 'search_sessions' ? active ? 'Searching conversations' : 'Searched conversations'
     : name === 'read_session' ? active ? 'Reading a conversation' : 'Read a conversation' : undefined;
   const label = conversationLabel ?? (command ? active ? 'Running' : 'Ran' : path ? editing ? active ? 'Editing' : 'Edited' : active ? 'Reading' : 'Read' : toolTimelineToolLabel(tool));
-  const query = name === 'search_sessions' ? string(['query']) : undefined;
-  const Icon = command ? TerminalSquare : path ? editing ? Pencil : FileText : searching ? Search : Wrench;
-  return { command, path, label, query, Icon };
+  const query = name === 'search_sessions' || /web_search|search_web/.test(name) ? string(['query', 'q'])
+    : searching && !path ? string(['query', 'pattern', 'q']) : undefined;
+  const target = /fetch|browse|navigate|open_url/.test(name) ? urlHost(string(['url', 'uri', 'href']))
+    : name === 'reach_out' ? string(['target']) : undefined;
+  const Icon = command ? TerminalSquare : path ? editing ? Pencil : FileText : target && name !== 'reach_out' ? Globe : searching ? Search : Wrench;
+  return { command, path, label, query, target, Icon };
 }

@@ -1,16 +1,18 @@
 use super::*;
+use crate::auth::rate_limit::GROUP_INVITATION_RESET_LIMIT;
 
+/// Answers with the group's live link, made the first time an admin asks.
+/// `reset` revokes the group's live links and makes a new one. Repeat requests
+/// return the same link. The route is charged against the caller's account
+/// budget rather than a per-address limit.
 pub(crate) async fn create_group_invitation(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
     Json(req): Json<CreateGroupInvitationRequest>,
 ) -> Response {
-    if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(&headers, connect_info.as_ref()))
-        .await
+    if let RateLimitDecision::Limited { retry_after } =
+        charge_group_link_budgets(&rate_limiter, &session.account_id, req.reset).await
     {
         return limited_response(retry_after);
     }
@@ -23,70 +25,60 @@ pub(crate) async fn create_group_invitation(
             StatusCode::BAD_REQUEST,
         );
     };
-    if group_id.is_empty()
-        || group_id.len() > 256
-        || group_space_id.is_empty()
-        || group_space_id.len() > 256
-        || group_id != group_space_id
-        || group_id.starts_with("session:direct-")
-    {
+    if !is_shareable_group_id(group_id) || group_id != group_space_id {
         return err(
             "invalid_group_invitation",
             "This group cannot create a share link.",
             StatusCode::BAD_REQUEST,
         );
     }
-
-    let failed = || {
-        err(
-            "server_error",
-            "Could not create invitation.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        )
+    let request = if req.reset {
+        LinkRequest::Reset
+    } else {
+        LinkRequest::CurrentOrNew
     };
-    let Ok(mut tx) = state.db_pool().begin().await else {
-        return failed();
-    };
-    let created = create_invitation_in_transaction(
-        &mut tx,
-        &session.account_id,
-        group_id,
-        group_space_id,
-        &group_title,
-        GROUP_INVITE_MIN_MEMBERS,
-    )
-    .await;
-    let invitation = match created {
-        Ok(Some(invitation)) => invitation,
-        Ok(None) => {
+    let outcome = group_link(&state, &session, group_id, &group_title, request).await;
+    let invitation = match outcome {
+        Ok(LinkOutcome::Link(invitation)) => invitation,
+        Ok(LinkOutcome::Forbidden | LinkOutcome::Missing) => {
             return err(
                 "group_invitation_permission_denied",
                 "Only a verified group admin can create this invitation link.",
                 StatusCode::FORBIDDEN,
             );
         }
-        Err(_) => return failed(),
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not create invitation.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
     };
-    if tx.commit().await.is_err() {
-        return failed();
-    }
     let NewGroupInvitation {
         invitation_id,
         token,
         expires_at,
+        created,
     } = invitation;
-
-    let _ = write_audit(
-        state.db_pool(),
-        Some(&session.account_id),
-        Some(&session.device_id),
-        "group.invitation.created",
-        serde_json::json!({
-            "invitation_id": invitation_id,
-            "group_space_id": group_space_id,
-        }),
-    )
-    .await;
+    let event = match (req.reset, created) {
+        (true, _) => Some("group.invitation.reset"),
+        (false, true) => Some("group.invitation.created"),
+        (false, false) => None,
+    };
+    if let Some(event) = event {
+        let _ = write_audit(
+            state.db_pool(),
+            Some(&session.account_id),
+            Some(&session.device_id),
+            event,
+            serde_json::json!({
+                "invitation_id": invitation_id,
+                "group_space_id": group_space_id,
+            }),
+        )
+        .await;
+    }
 
     Json(GroupInvitationResponse {
         invitation_id,
@@ -96,79 +88,48 @@ pub(crate) async fn create_group_invitation(
     .into_response()
 }
 
-/// A new invitation link: its id, its token (shown only to the route that
-/// asked for a shareable link) and when it expires.
-pub(crate) struct NewGroupInvitation {
-    pub(crate) invitation_id: String,
-    pub(crate) token: String,
-    pub(crate) expires_at: String,
+/// Every link request spends the account's link budget; a reset, which revokes
+/// the group's live link, also spends the smaller reset budget.
+pub(super) async fn charge_group_link_budgets(
+    rate_limiter: &CloudRateLimiter,
+    account_id: &str,
+    reset: bool,
+) -> RateLimitDecision {
+    let link = rate_limiter
+        .observe_account_limit(GROUP_INVITATION_CREATE_LIMIT, account_id)
+        .await;
+    if !reset || matches!(link, RateLimitDecision::Limited { .. }) {
+        return link;
+    }
+    rate_limiter
+        .observe_account_limit(GROUP_INVITATION_RESET_LIMIT, account_id)
+        .await
 }
 
-/// Creates an invitation link for a group `inviter` is an owner or admin of,
-/// revoking their earlier live links for it. `None` when the inviter may not
-/// invite or the group has fewer than `min_members` members.
-pub(crate) async fn create_invitation_in_transaction(
-    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
-    inviter: &str,
+fn is_shareable_group_id(group_id: &str) -> bool {
+    !group_id.is_empty() && group_id.len() <= 256 && !group_id.starts_with("session:direct-")
+}
+
+async fn group_link(
+    state: &Arc<ServerState>,
+    session: &CloudSession,
     group_id: &str,
-    group_space_id: &str,
     group_title: &str,
-    min_members: usize,
-) -> Result<Option<NewGroupInvitation>, sqlx_core::Error> {
-    query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-        .bind(group_space_id)
-        .execute(&mut **tx)
-        .await?;
-    let snapshot = authorized_group_invitation_snapshot_in_transaction(
-        tx,
-        inviter,
+    request: LinkRequest,
+) -> Result<LinkOutcome, sqlx_core::Error> {
+    let mut tx = state.db_pool().begin().await?;
+    let outcome = group_invitation_link_in_transaction(
+        &mut tx,
+        &session.account_id,
         group_id,
-        group_space_id,
+        group_id,
         group_title,
-        min_members,
+        GROUP_INVITE_MIN_MEMBERS,
+        request,
     )
     .await?;
-    let Some(snapshot) = snapshot else {
-        return Ok(None);
-    };
-    let snapshot_json = serde_json::to_value(&snapshot)
-        .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
-    let token = new_group_invite_token();
-    let invitation_id = format!("groupinv_{}", uuid::Uuid::new_v4().simple());
-    let created_at = Utc::now();
-    let expires_at = created_at + ChronoDuration::days(GROUP_INVITE_LIFETIME_DAYS);
-    let created_at_text = created_at.to_rfc3339();
-    query(
-        "UPDATE cloud_group_invitations SET revoked_at = $1 \
-         WHERE inviter_account_id = $2 AND group_space_id = $3 \
-           AND revoked_at IS NULL AND expires_at > $1",
-    )
-    .bind(&created_at_text)
-    .bind(inviter)
-    .bind(group_space_id)
-    .execute(&mut **tx)
-    .await?;
-    query(
-        "INSERT INTO cloud_group_invitations \
-         (invitation_id, inviter_account_id, token_hash, group_id, group_space_id, group_title, group_snapshot, created_at, expires_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-    )
-    .bind(&invitation_id)
-    .bind(inviter)
-    .bind(hash_group_invite_token(&token))
-    .bind(group_id)
-    .bind(group_space_id)
-    .bind(group_title)
-    .bind(snapshot_json)
-    .bind(&created_at_text)
-    .bind(expires_at.to_rfc3339())
-    .execute(&mut **tx)
-    .await?;
-    Ok(Some(NewGroupInvitation {
-        invitation_id,
-        token,
-        expires_at: expires_at.to_rfc3339(),
-    }))
+    tx.commit().await?;
+    Ok(outcome)
 }
 
 pub(crate) async fn get_group_invitation(
@@ -179,7 +140,10 @@ pub(crate) async fn get_group_invitation(
     axum::extract::Path(token): axum::extract::Path<String>,
 ) -> Response {
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(&headers, connect_info.as_ref()))
+        .observe_address_limit(
+            INVITATION_VIEW_ADDRESS_LIMIT,
+            client_ip(&headers, connect_info.as_ref()),
+        )
         .await
     {
         return limited_response(retry_after);
@@ -218,41 +182,39 @@ pub(crate) async fn get_group_invitation(
     }
 }
 
+/// The group's live link for one of its admins: a list of at most one, empty
+/// when the group has none yet or the viewer is not an admin.
 pub(crate) async fn list_active_group_invitations(
     State(state): State<Arc<ServerState>>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
     axum::extract::Path(group_space_id): axum::extract::Path<String>,
 ) -> Response {
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_account_limit(GROUP_INVITATION_CREATE_LIMIT, &session.account_id)
+        .await
+    {
+        return limited_response(retry_after);
+    }
     let group_space_id = group_space_id.trim();
-    if group_space_id.is_empty() || group_space_id.len() > 256 {
+    if !is_shareable_group_id(group_space_id) {
         return err(
             "invalid_group_invitation",
             "A valid group is required.",
             StatusCode::BAD_REQUEST,
         );
     }
-    let rows: Result<Vec<(String, String)>, _> = query_as(
-        "SELECT invitation_id, expires_at FROM cloud_group_invitations \
-         WHERE inviter_account_id = $1 AND group_space_id = $2 \
-           AND revoked_at IS NULL AND expires_at > $3 \
-         ORDER BY created_at DESC LIMIT 20",
-    )
-    .bind(&session.account_id)
-    .bind(group_space_id)
-    .bind(Utc::now().to_rfc3339())
-    .fetch_all(state.db_pool())
-    .await;
-    match rows {
-        Ok(rows) => Json(GroupInvitationListResponse {
-            invitations: rows
-                .into_iter()
-                .map(
-                    |(invitation_id, expires_at)| GroupInvitationSummaryResponse {
-                        invitation_id,
-                        expires_at,
-                    },
-                )
-                .collect(),
+    let outcome = group_link(&state, &session, group_space_id, "", LinkRequest::Current).await;
+    match outcome {
+        Ok(outcome) => Json(GroupInvitationListResponse {
+            invitations: match outcome {
+                LinkOutcome::Link(link) => vec![GroupInvitationSummaryResponse {
+                    invite_url: group_invite_url(&link.token),
+                    invitation_id: link.invitation_id,
+                    expires_at: link.expires_at,
+                }],
+                LinkOutcome::Forbidden | LinkOutcome::Missing => Vec::new(),
+            },
         })
         .into_response(),
         Err(_) => err(

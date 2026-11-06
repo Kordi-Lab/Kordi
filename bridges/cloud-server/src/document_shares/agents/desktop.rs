@@ -108,10 +108,11 @@ pub(crate) async fn claim(
     };
     if public_reader
         || requester != input.requester_account_id.trim()
-        || !crate::contact_permissions::agent_allowed(
+        || !crate::agent_access::agent_usable(
             pool,
             input.owner_account_id.trim(),
             &requester,
+            &agent_id,
         )
         .await?
     {
@@ -144,9 +145,10 @@ pub(crate) async fn claim(
              runtime_route_json = COALESCE($5, runtime_route_json) \
          WHERE run_id = $1 AND status = 'queued' AND cancel_requested_at IS NULL \
            AND {allowed}",
-        allowed = crate::contact_permissions::agent_allowed_sql(
+        allowed = crate::agent_access::agent_usable_sql(
             "owner_account_id",
-            "requester_account_id"
+            "requester_account_id",
+            "execution_agent_id"
         ),
     ))
     .bind(&run_id)

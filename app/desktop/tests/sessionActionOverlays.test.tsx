@@ -52,7 +52,9 @@ test('SessionContextMenu exposes unread, pin, mute, archive, and reversible dele
   assert.match(markup, />Mark as unread</);
   assert.match(markup, />Archive</);
   assert.match(markup, /Delete chat/);
-  assert.equal((markup.match(/items-center gap-2\.5 whitespace-nowrap/g) ?? []).length, 6);
+  // Help menu rows: every action is one dense row on the shared surface.
+  assert.match(markup, /app-transient-surface app-dense-menu/);
+  assert.equal((markup.match(/class="app-dense-menu-row[ "]/g) ?? []).length, 6);
 });
 
 test('GroupContextMenu exposes whole-group chat actions', () => {
@@ -122,11 +124,11 @@ test('SessionContextMenu keeps available actions flat and omits the removed proj
     ...menuActions,
   }));
 
-  assert.match(markup, /app-transient-flat-action[^>]*>[\s\S]*?Rename<\/button>/);
-  assert.match(markup, /app-transient-row app-transient-row-danger/);
+  assert.match(markup, /class="app-dense-menu-row"[^>]*>[\s\S]*?Rename<\/button>/);
+  assert.match(markup, /app-dense-menu-divider[\s\S]*app-dense-menu-row app-dense-menu-danger[^>]*>[\s\S]*?Delete chat/);
   assert.match(markup, /Delete chat/);
   assert.doesNotMatch(markup, /Move to project/);
-  assert.doesNotMatch(markup, /app-transient-row[^>]*>[\s\S]*?Rename<\/button>/);
+  assert.doesNotMatch(markup, /app-dense-menu-danger[^>]*>[\s\S]*?Rename<\/button>/);
 });
 
 test('SessionContextMenu hides rename for a non-admin group member', () => {

@@ -60,7 +60,7 @@ import {
   loadRemoteRecoveryMessages,
 } from './cloudSelfAgentRecoveryMessages';
 import { indexRemoteSelfAgentOperations } from './cloudSelfAgentRemoteIdentity';
-import { CLOUD_SELF_AGENT_RECONCILE_RETRY_MS, cloudSelfAgentReconcileBackoffHolds, pendingCloudSelfAgentForwardIds,
+import { cloudSelfAgentReconcileRetryMs, cloudSelfAgentReconcileBackoffHolds, pendingCloudSelfAgentForwardIds,
   type CloudSelfAgentReconcileFailure } from './cloudSelfAgentReconcileBackoff';
 
 /** A run that holds the single-flight lock longer is released and retried. */
@@ -200,10 +200,12 @@ export function useCloudSelfAgentForwardSync({
 
     let pendingMessageIds: ReadonlySet<string> = new Set();
     const recordFailure = (message: string, error: unknown) => {
-      reconciliationFailureRef.current = { accountId: account.accountId, failedAtMs: Date.now(), pendingMessageIds };
+      const previous = reconciliationFailureRef.current;
+      const consecutiveFailures = previous?.accountId === account.accountId ? (previous.consecutiveFailures ?? 1) + 1 : 1;
+      reconciliationFailureRef.current = { accountId: account.accountId, failedAtMs: Date.now(), pendingMessageIds, consecutiveFailures };
       reportWarning(message, error);
       if (reconcileRetryTimerRef.current) clearTimeout(reconcileRetryTimerRef.current);
-      reconcileRetryTimerRef.current = setTimeout(() => setReconcileRetryTick((tick) => tick + 1), CLOUD_SELF_AGENT_RECONCILE_RETRY_MS + 250);
+      reconcileRetryTimerRef.current = setTimeout(() => setReconcileRetryTick((tick) => tick + 1), cloudSelfAgentReconcileRetryMs(consecutiveFailures) + 250);
     };
     // An abandoned run stops at its next checkpoint instead of racing the retry.
     let abandoned = false;

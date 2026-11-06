@@ -1,7 +1,7 @@
 import { Bell, BellOff, CheckCircle2, Mail, Settings } from 'lucide-react';
 import type { SessionContextMenuTarget } from '@/pages/SessionActionOverlays';
 
-const ROW_CLASS = 'app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition';
+const ROW_CLASS = 'app-dense-menu-row';
 
 /**
  * The context menu of a personal session. It is never renamed, pinned,
@@ -26,7 +26,7 @@ export function PersonalAgentSessionMenu({
       <div
         role="menu"
         aria-label={`${target.sessionName} actions`}
-        className="app-transient-surface app-modal-panel absolute w-[220px] rounded-[18px] border p-1.5"
+        className="app-transient-surface app-dense-menu app-context-menu absolute"
         style={{
           left: Math.max(12, Math.min(target.x, window.innerWidth - 232)),
           top: Math.max(12, Math.min(target.y, window.innerHeight - 160)),
@@ -36,21 +36,21 @@ export function PersonalAgentSessionMenu({
         <button type="button" role="menuitem" data-session-context-action={target.unread ? 'read' : 'unread'} className={ROW_CLASS}
           onClick={() => run(() => onSetUnread(target.sessionId, !target.unread))}>
           {target.unread
-            ? <CheckCircle2 className="app-transient-action-icon" aria-hidden="true" />
-            : <Mail className="app-transient-action-icon" aria-hidden="true" />}
+            ? <CheckCircle2 aria-hidden="true" />
+            : <Mail aria-hidden="true" />}
           {target.unread ? 'Mark as read' : 'Mark as unread'}
         </button>
         <button type="button" role="menuitem" data-session-context-action="mute" className={ROW_CLASS}
           onClick={() => run(() => onSetMuted(target.sessionId, !target.muted))}>
           {target.muted
-            ? <Bell className="app-transient-action-icon" aria-hidden="true" />
-            : <BellOff className="app-transient-action-icon" aria-hidden="true" />}
+            ? <Bell aria-hidden="true" />
+            : <BellOff aria-hidden="true" />}
           {target.muted ? 'Unmute' : 'Mute'}
         </button>
         {onOpenAgentSettings && localAgentId ? (
           <button type="button" role="menuitem" data-session-context-action="agent-settings" className={ROW_CLASS}
             onClick={() => run(() => onOpenAgentSettings(localAgentId))}>
-            <Settings className="app-transient-action-icon" aria-hidden="true" />
+            <Settings aria-hidden="true" />
             Agent settings
           </button>
         ) : null}

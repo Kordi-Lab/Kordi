@@ -237,11 +237,17 @@ pub(crate) async fn candidates_for_account(
     Ok(candidates)
 }
 
-/// A public reader only reaches the document owner's default agent.
+/// A public reader only reaches the document owner's default agent, and
+/// not when its Access is "Only me".
 pub(crate) async fn candidates_for_reader(
     pool: &PgPool,
     owner_account_id: &str,
 ) -> Result<Vec<AgentCandidate>, sqlx_core::Error> {
+    if crate::agent_access::default_access(pool, owner_account_id).await?
+        == crate::agent_access::ACCESS_PRIVATE
+    {
+        return Ok(Vec::new());
+    }
     Ok(default_agent(pool, owner_account_id)
         .await?
         .into_iter()

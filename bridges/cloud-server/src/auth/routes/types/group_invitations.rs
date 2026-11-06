@@ -8,6 +8,10 @@ pub struct CreateGroupInvitationRequest {
     pub group_space_id: String,
     #[serde(rename = "groupTitle")]
     pub group_title: String,
+    /// Revoke the group's live links and make a new one, for an admin whose
+    /// link leaked.
+    #[serde(default)]
+    pub reset: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -24,6 +28,8 @@ pub struct GroupInvitationResponse {
 pub struct GroupInvitationSummaryResponse {
     #[serde(rename = "invitationId")]
     pub invitation_id: String,
+    #[serde(rename = "inviteUrl")]
+    pub invite_url: String,
     #[serde(rename = "expiresAt")]
     pub expires_at: String,
 }

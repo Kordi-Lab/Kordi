@@ -2,6 +2,7 @@ import type { CompanionToolbarProps } from './chatsPage.companionToolbar';
 import { PinnedMessageShelf } from './PinnedMessageShelf';
 import { ProviderConnectTray } from '@/components/ProviderConnectTray';
 import { ChatPaneLayout } from '@/pages/ChatPaneLayout';
+import { mainTranscriptUnread } from '@/app/viewModels/cloudConversationPresence';
 import {
   localOwnedAgentSenderLabel,
 } from '@/app/viewModels/helpers';
@@ -24,6 +25,8 @@ import { ContactInfoPopover } from '@/pages/ContactInfoPopover';
 import { MainComposer } from '@/pages/chatsPage.mainComposer';
 import { ToolApprovalPrompts } from '@/features/connectors/ToolApprovalPrompts';
 import { ProactiveOfferPrompt } from '@/features/proactive/ProactiveOfferPrompt';
+import { PersonalAgentPage } from '@/features/personalAgent/PersonalAgentPage';
+import { usePersonalAgentPageOpen } from '@/features/personalAgent/personalAgentPageState';
 import { MainChatHeader } from '@/pages/chatsPage.mainHeader';
 import {
   canonicalHistorySessionIdForConversation,
@@ -114,6 +117,7 @@ export function ChatMainWorkspace({
   threadShortcut,
 }: ChatMainWorkspaceProps) {
   const { activeConv } = session;
+  const personalAgentPageOpen = usePersonalAgentPageOpen();
   const openAuthentication =
     auth.onOpenAccountAuthentication ?? auth.onOpenAuthSettings;
   const activePaneKind = conversationPaneKind(activeConv);
@@ -189,6 +193,9 @@ export function ChatMainWorkspace({
     return sendResult;
   };
 
+  if (personalAgentPageOpen) {
+    return <div className="app-chat-main-workspace flex h-full min-h-0 min-w-0 overflow-hidden"><PersonalAgentPage account={session.cloudAccount} /></div>;
+  }
   return (
     <>
       <div className="app-chat-main-workspace flex h-full min-h-0 min-w-0 overflow-hidden">
@@ -316,7 +323,7 @@ export function ChatMainWorkspace({
                 sessionKey: activeConv.id,
                 messages: presentation.messages,
                 scrollRef: transcript.chatTranscriptScrollRef,
-                unreadCount: activeConv.unread,
+                unreadCount: mainTranscriptUnread(activeConv),
                 scrollClassName:
                   'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain',
                 hasOlderMessages: Boolean(

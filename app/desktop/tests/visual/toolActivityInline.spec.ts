@@ -15,7 +15,8 @@ async function expectConversationScrollingOnly(page: Page) {
     return element.getClientRects().length > 0 && (
       (/auto|scroll/.test(style.overflowY) && element.scrollHeight > element.clientHeight + 1)
       || element.scrollTop !== 0
-      || element.scrollWidth > element.clientWidth + 1
+      // A one-line tool summary truncates on purpose; everything else must wrap.
+      || (element.scrollWidth > element.clientWidth + 1 && style.textOverflow !== 'ellipsis')
     );
   }).map(element => element.className));
   expect(overflow).toEqual([]);
@@ -49,6 +50,10 @@ for (const zoom of [1, 1.5, 2]) {
     await expect(page.locator('.app-turn-progress-summary')).toHaveCount(0);
     await expect(page.locator('.app-tool-activity-label')).toContainText('Searched conversations');
     await expect(page.locator('.app-tool-activity-label')).toContainText('Project notes');
+    const row = page.locator('.app-tool-activity-toggle');
+    await expect(row).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByLabel('Tool output', { exact: true })).toHaveCount(0);
+    await toggleWithoutJump(page, row);
     await expect(page.getByLabel('Tool output', { exact: true })).toHaveText('No matching sessions found.');
     const input = page.locator('.app-tool-input-details > button');
     await toggleWithoutJump(page, input);
@@ -66,6 +71,7 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
     await page.goto('/tests/visual/processingTrajectory.html?count=50&phase=9&toolActivity=long');
     await page.locator('.app-turn-worked-header').click();
     await waitForDisclosureLayout(page);
+    await toggleWithoutJump(page, page.locator('.app-tool-activity-toggle'));
     const output = page.getByLabel('Tool output', { exact: true });
     await expect(output).not.toContainText('Synthetic result 60:');
     const more = page.getByRole('button', { name: 'Show all tool output', exact: true });
@@ -90,6 +96,8 @@ test('running and failed searches preserve their status in the inline row', asyn
   await page.goto('/tests/visual/processingTrajectory.html?count=2&phase=9&toolActivity=failed');
   await page.locator('.app-turn-worked-header').click();
   await expect(page.locator('.app-tool-activity-error')).toHaveText('Failed');
+  await expect(page.getByLabel('Tool output', { exact: true })).toHaveCount(0);
+  await page.locator('.app-tool-activity-toggle').click();
   await expect(page.getByLabel('Tool output', { exact: true })).toContainText('unavailable');
 });
 
@@ -100,6 +108,63 @@ test('a single inline tool stays visible when streaming adds a second tool to it
   await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(9));
   await expect(page.locator('.app-tool-activity')).toHaveCount(2);
   await expect(page.locator('.app-turn-progress-summary')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.app-tool-activity-toggle[aria-expanded="false"]')).toHaveCount(2);
+  await expect(page.getByText('Synthetic conversation context.', { exact: true })).toHaveCount(0);
+  await page.locator('.app-tool-activity-toggle').nth(1).click();
   await expect(page.getByText('Synthetic conversation context.', { exact: true })).toBeVisible();
   await expectConversationScrollingOnly(page);
+});
+
+const AFTER_SCREENSHOTS = process.env.KORDI_TURN_FOLD_SCREENSHOTS;
+
+test('a finished turn folds every work detail and hides the web security notice', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?count=2&phase=9&toolActivity=fetch');
+  const shot = (name: string) => page.screenshot({ path: AFTER_SCREENSHOTS ? `${AFTER_SCREENSHOTS}/${name}` : info.outputPath(name), fullPage: true });
+  const worked = page.locator('.app-turn-worked-header');
+  await expect(worked).toHaveAttribute('aria-label', 'Worked for 12s');
+  await expect(worked).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('.app-tool-activity:visible')).toHaveCount(0);
+  await expect(page.getByText(/SECURITY NOTICE|Fetching:/)).toHaveCount(0);
+  await shot('1-finished-turn-collapsed.png');
+
+  await toggleWithoutJump(page, worked);
+  const rows = page.locator('.app-tool-activity-toggle');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('Fetch web page · example.com');
+  await expect(rows.nth(1)).toContainText('ls src');
+  for (const row of await rows.all()) await expect(row).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByLabel(/^(Tool|Shell) output$/)).toHaveCount(0);
+  await expect(page.locator('.app-tool-input-details')).toHaveCount(0);
+  for (const row of await rows.all()) expect(await row.evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(30);
+  await shot('2-expanded-tool-rows-collapsed.png');
+
+  await toggleWithoutJump(page, rows.nth(0));
+  const output = page.getByLabel('Tool output', { exact: true });
+  await expect(output).toContainText('Source: Web Fetch');
+  await expect(output).not.toContainText('SECURITY NOTICE');
+  await toggleWithoutJump(page, page.getByRole('button', { name: 'Show all tool output', exact: true }));
+  await expect(output).toContainText('Synthetic page body.');
+  await expect(output).not.toContainText('SECURITY NOTICE');
+  await expect(output).not.toContainText('When summarizing this page');
+  await expect(page.getByLabel('Shell output', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.app-tool-input-details > button')).toHaveText('View input');
+  await expectConversationScrollingOnly(page);
+  await shot('3-fetch-row-expanded.png');
+
+  await worked.click();
+  await expect(worked).toHaveAttribute('aria-expanded', 'false');
+  await worked.click();
+  await expect(worked).toHaveAttribute('aria-expanded', 'true');
+  await expect(rows.nth(0)).toHaveAttribute('aria-expanded', 'true');
+  await expect(rows.nth(1)).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('a running turn with fetched output stays one line without raw output', async ({ page }) => {
+  await page.goto('/tests/visual/processingTrajectory.html?count=2&phase=6&toolActivity=fetch');
+  const worked = page.locator('.app-turn-worked-header');
+  await expect(worked).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByText(/SECURITY NOTICE|Fetching:|Synthetic page body/)).toHaveCount(0);
+  await worked.click();
+  await expect(page.locator('.app-tool-activity-toggle[aria-expanded="false"]')).toHaveCount(2);
+  await expect(page.getByText(/SECURITY NOTICE|Fetching:|Synthetic page body/)).toHaveCount(0);
 });

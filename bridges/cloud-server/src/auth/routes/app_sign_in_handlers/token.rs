@@ -9,7 +9,7 @@ use crate::auth::app_sign_in::tokens::{
     sign_in_for_token, start_sign_in,
 };
 use crate::auth::app_sign_in::{IssuedTokens, RefreshOutcome};
-use crate::auth::rate_limit::AccountActionLimit;
+use crate::auth::rate_limit::{AccountActionLimit, APP_TOKEN_ADDRESS_LIMIT};
 
 /// Placeholder device name for a browser sign-in without device details.
 /// It follows the `oauth-<method>-device` pattern so later metadata updates
@@ -32,7 +32,7 @@ const CLIENT_REDEMPTION_LIMIT: AccountActionLimit = AccountActionLimit {
 
 /// Refreshes and revocations from one app at one client address. Far above
 /// what any number of installations refreshing hourly need, and separate
-/// from the per-address sign-in limit.
+/// from [`APP_TOKEN_ADDRESS_LIMIT`].
 const APP_CLIENT_LIMIT: AccountActionLimit = AccountActionLimit {
     action: "app-sign-in-client-address",
     limit: 600,
@@ -45,14 +45,12 @@ async fn observe_app_client(
     client_id: Option<&str>,
     peer_ip: Option<IpAddr>,
 ) -> RateLimitDecision {
-    let address = crate::auth::rate_limit::rate_limit_client_key(peer_ip);
     // Unregistered client IDs share one key, so inventing IDs gains nothing.
     let client_id = client_id
         .and_then(|id| registry.client(id))
         .map_or("unregistered", |client| client.client_id.as_str());
-    let limit = rate_limiter.address_limit(APP_CLIENT_LIMIT, peer_ip);
     rate_limiter
-        .observe_account_limit(limit, &format!("{client_id}:{address}"))
+        .observe_qualified_address_limit(APP_CLIENT_LIMIT, peer_ip, Some(client_id))
         .await
 }
 
@@ -136,7 +134,11 @@ pub(in crate::auth::routes) async fn app_token(
             )
             .await
         }
-        _ => rate_limiter.observe_ip(peer_ip).await,
+        _ => {
+            rate_limiter
+                .observe_address_limit(APP_TOKEN_ADDRESS_LIMIT, peer_ip)
+                .await
+        }
     };
     if let RateLimitDecision::Limited { retry_after } = decision {
         return limited_response(retry_after);

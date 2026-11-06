@@ -459,11 +459,6 @@ export function ChatsPage({
                 onLoadMore={()=>void unreadThreads.load(activeThread.root.id,loadedThreadPage?.next??undefined)}
                 onNextUnread={()=>void unreadThreads.load()}
                 unreadThreadCount={activeConv.threadAttention?.thread_count??0}
-                replyCount={Math.max(
-                  activeThread.replies.length + Number(activeLiveTurnThreadRootId === activeThreadRootId),
-                  activeThreadQueuedMessages.length,
-                  openThreadState?.optimisticReplyCount ?? 0,
-                )}
                 liveTurn={activeLiveTurnThreadRootId === activeThreadRootId ? locatedLiveTurn : null}
                 liveTurnSender={localOwnedAgentSenderLabel(activeConv)}
                 onClose={closeThread}

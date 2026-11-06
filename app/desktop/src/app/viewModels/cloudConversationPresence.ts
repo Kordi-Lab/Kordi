@@ -72,14 +72,21 @@ export function decorateCloudConversations(conversations: Conversation[], cloudS
     return withCloudActivity.map(conversation => {
       const attention=threadAttention?.[conversation.canonicalSessionId??conversation.id];
       if (!attention) return conversation;
-      // Main-message counts already include local read/receive reconciliation.
-      // A periodic thread snapshot must not delay or reverse those updates.
-      if (attention.thread_count === 0 || attention.thread_unread_count === 0) {
-        return { ...conversation, threadAttention: attention };
-      }
-      // Unread discussions have independent read cursors; opening the main
-      // transcript must continue to surface that outstanding attention.
-      return {...conversation,unread:attention.unread_count,threadAttention:attention,
-        collaborationUnreadByParentSessionId:{[conversation.canonicalSessionId??conversation.id]:attention.unread_count}};
+      // The live count covers main-transcript messages only: local read and
+      // receive reconciliation already applied, and discussion replies are
+      // excluded from the conversation read cursor. Unread discussion replies
+      // come from their independent thread cursors on the server, so reading a
+      // reply in its Discussion panel clears it everywhere.
+      const transcriptUnread = Math.max(0, conversation.unread);
+      const threadUnread = Math.max(0, attention.thread_unread_count ?? 0);
+      if (threadUnread === 0) return { ...conversation, threadAttention: attention, transcriptUnread };
+      const unread = transcriptUnread + threadUnread;
+      return {...conversation,unread,transcriptUnread,threadAttention:attention,
+        collaborationUnreadByParentSessionId:{[conversation.canonicalSessionId??conversation.id]:unread}};
     });
+}
+
+/** Unread messages in the main transcript, without unread discussion replies. */
+export function mainTranscriptUnread(conversation: Pick<Conversation, 'unread' | 'transcriptUnread'>) {
+  return Math.max(0, conversation.transcriptUnread ?? conversation.unread);
 }

@@ -381,10 +381,10 @@ test('renders bridge agent stop control beside the first-response progress', () 
 
   assert.match(markup, /aria-label="Stop agent request"/);
   assert.match(markup, /title="Stop agent request"/);
-  assert.match(markup, /app-collaboration-agent-stop-button/);
-  assert.match(markup, /h-\[18px\] w-\[18px\]/);
-  assert.match(markup, /text-slate-400/);
-  assert.doesNotMatch(markup, /h-5\.5 w-5\.5/);
+  assert.match(markup, /data-agent-request-stop="status"/);
+  assert.match(markup, /app-turn-stop-button/);
+  assert.match(markup, />Stop<\/button>/);
+  assert.doesNotMatch(markup, /rounded-full/);
   assert.match(markup, /app-turn-progress-bird/);
   assert.doesNotMatch(markup, />Processing…</);
 });

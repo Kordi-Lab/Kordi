@@ -9,8 +9,6 @@ pub(super) async fn delete_account(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
     Json(request): Json<ProofRequest>,
 ) -> Response {
     let caller = Caller {
@@ -18,7 +16,7 @@ pub(super) async fn delete_account(
         rate_limiter: &rate_limiter,
         session: &session,
     };
-    if let Err(response) = caller.charge_change(&headers, connect_info.as_ref()).await {
+    if let Err(response) = caller.charge_change().await {
         return *response;
     }
     let account = match load_account(caller.pool(), &session.account_id).await {

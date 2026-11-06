@@ -9,7 +9,7 @@ import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import { GroupDetailsDialog } from '../src/pages/GroupDetailsDialog';
 import { conversation } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 
-test('a group admin can create and revoke a preview-first invitation link', async () => {
+test('a group admin sees the group link, copies it, and resets it behind a confirm', async () => {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     pretendToBeVisual: true,
     url: 'https://kordi.test/',
@@ -52,9 +52,10 @@ test('a group admin can create and revoke a preview-first invitation link', asyn
   })]);
   const host = dom.window.document.querySelector('#root') as HTMLElement;
   let root: Root | null = createRoot(host);
-  let createInput: CloudGroupInvitationCreateInput | null = null;
-  let revokedId = '';
-  let activeInvitation: { invitationId: string; expiresAt: string } | null = null;
+  const createInputs: CloudGroupInvitationCreateInput[] = [];
+  const firstUrl = 'https://kordi.ai/g/kordi_gi_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO12';
+  const resetUrl = 'https://kordi.ai/g/kordi_gi_resetresetresetresetresetresetresetrese';
+  let activeInvitation: { invitationId: string; inviteUrl: string; expiresAt: string } | null = null;
   let step = 'render';
   try {
     await act(async () => {
@@ -68,22 +69,13 @@ test('a group admin can create and revoke a preview-first invitation link', asyn
         onRemoveMember: () => {},
         onSetAdmin: () => {},
         onCreateGroupInvitation: async (input) => {
-          createInput = input;
-          activeInvitation = {
-            invitationId: 'groupinv_ui',
-            expiresAt: '2026-08-15T00:00:00Z',
-          };
-          return {
-            invitationId: 'groupinv_ui',
-            inviteUrl: 'https://kordi.ai/g/kordi_gi_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO12',
-            expiresAt: '2026-08-15T00:00:00Z',
-          };
+          createInputs.push(input);
+          activeInvitation = input.reset
+            ? { invitationId: 'groupinv_reset', inviteUrl: resetUrl, expiresAt: '2026-08-15T00:00:00Z' }
+            : activeInvitation ?? { invitationId: 'groupinv_ui', inviteUrl: firstUrl, expiresAt: '2026-08-15T00:00:00Z' };
+          return activeInvitation;
         },
         onListGroupInvitations: async () => activeInvitation ? [activeInvitation] : [],
-        onRevokeGroupInvitation: async (invitationId) => {
-          revokedId = invitationId;
-          activeInvitation = null;
-        },
       }));
     });
 
@@ -103,14 +95,14 @@ test('a group admin can create and revoke a preview-first invitation link', asyn
     assert.ok(button('Create link'));
     await act(async () => { button('Create link')?.click(); });
 
-    assert.deepEqual(createInput, {
+    assert.deepEqual(createInputs, [{
       groupId: 'session:group:invite-ui',
       groupSpaceId: 'session:group:invite-ui',
       groupTitle: 'Product Team',
-    });
+    }]);
     assert.equal(
       host.querySelector<HTMLInputElement>('input[aria-label="Group invitation link"]')?.value,
-      'https://kordi.ai/g/kordi_gi_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO12',
+      firstUrl,
     );
     step = 'copy link';
     let copiedText = '';
@@ -131,27 +123,32 @@ test('a group admin can create and revoke a preview-first invitation link', asyn
     assert.equal(copiedText, 'https://kordi.ai/g/kordi_gi_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO12');
     assert.ok(host.querySelector('button[aria-label="Link copied"]'), 'the copy icon turns into a check');
     assert.equal(dom.window.document.querySelector('.app-copy-toast[role="status"]')?.textContent, 'Link copied');
-    step = 'reopen active link';
+    step = 'reopen shows the same link';
     await act(async () => {
       host.querySelector<HTMLButtonElement>('button[aria-label="Back to group members"]')?.click();
     });
     await act(async () => { button('Add')?.click(); });
     await act(async () => { button('Invite with a link')?.click(); });
     await act(async () => { await Promise.resolve(); });
-    assert.doesNotMatch(host.textContent ?? '', /invitation link is already active/i);
-    assert.doesNotMatch(host.textContent ?? '', /revoke it before creating another link/i);
-    step = 'replace active link';
-    assert.ok(button('New link'));
-    await act(async () => { button('New link')?.click(); });
+    assert.equal(button('Create link'), undefined, 'an existing link opens straight away');
     assert.equal(
       host.querySelector<HTMLInputElement>('input[aria-label="Group invitation link"]')?.value,
-      'https://kordi.ai/g/kordi_gi_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO12',
+      firstUrl,
     );
-    step = 'revoke generated link';
-    assert.ok(button('Revoke'));
-    await act(async () => { button('Revoke')?.click(); });
-    assert.equal(revokedId, 'groupinv_ui');
-    assert.ok(button('Create link'));
+    assert.equal(createInputs.length, 1, 'opening the panel never makes a link');
+    step = 'reset asks first';
+    assert.ok(button('Reset link'));
+    await act(async () => { button('Reset link')?.click(); });
+    assert.match(host.textContent ?? '', /The current link will stop working/);
+    await act(async () => { button('Cancel')?.click(); });
+    assert.equal(createInputs.length, 1);
+    await act(async () => { button('Reset link')?.click(); });
+    await act(async () => { button('Reset')?.click(); });
+    assert.equal(createInputs.at(-1)?.reset, true);
+    assert.equal(
+      host.querySelector<HTMLInputElement>('input[aria-label="Group invitation link"]')?.value,
+      resetUrl,
+    );
   } catch (error) {
     const detail = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error);
     throw new Error(`${step}: ${detail}`);

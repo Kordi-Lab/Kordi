@@ -149,3 +149,50 @@ fn invitation_capacity_uses_the_canonical_member_snapshot() {
     };
     assert!(!group_invitation_has_capacity(&snapshot));
 }
+
+#[test]
+fn derived_group_invite_tokens_are_stable_per_invitation_and_secret() {
+    let secret = b"group-invite-unit-test-secret-0123456789";
+    let first = link::derived_group_invite_token(secret, "groupinv_a");
+    assert_eq!(
+        first,
+        link::derived_group_invite_token(secret, "groupinv_a")
+    );
+    assert_ne!(
+        first,
+        link::derived_group_invite_token(secret, "groupinv_b")
+    );
+    assert_ne!(
+        first,
+        link::derived_group_invite_token(b"another-secret-for-group-invite-tests", "groupinv_a")
+    );
+    assert!(first.starts_with(GROUP_INVITE_TOKEN_PREFIX));
+    assert_eq!(first.len(), GROUP_INVITE_TOKEN_PREFIX.len() + 43);
+    assert!(!first.contains("groupinv_a"));
+}
+
+#[tokio::test]
+async fn link_resets_spend_the_reset_budget_on_top_of_the_link_budget() {
+    use crate::auth::rate_limit::{CloudRateLimitConfig, GROUP_INVITATION_RESET_LIMIT};
+    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::production());
+    for _ in 0..GROUP_INVITATION_RESET_LIMIT.limit {
+        assert_eq!(
+            creation::charge_group_link_budgets(&limiter, "acct_admin", true).await,
+            RateLimitDecision::Allowed
+        );
+    }
+    assert!(matches!(
+        creation::charge_group_link_budgets(&limiter, "acct_admin", true).await,
+        RateLimitDecision::Limited { .. }
+    ));
+    // Showing the current link still works once resets are used up.
+    assert_eq!(
+        creation::charge_group_link_budgets(&limiter, "acct_admin", false).await,
+        RateLimitDecision::Allowed
+    );
+    // Another admin keeps their own reset budget.
+    assert_eq!(
+        creation::charge_group_link_budgets(&limiter, "acct_other", true).await,
+        RateLimitDecision::Allowed
+    );
+}

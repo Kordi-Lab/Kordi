@@ -164,20 +164,21 @@ test('the Blueprint control carries the Proactive row for Factory agents and new
     setPersonalProactiveDraft: (id, value) => calls.push([id, value]),
   });
   assert.equal(owned?.personal?.enabled, true);
+  assert.equal(owned?.personal?.agentId, 'cloud_agent_abc');
   owned?.personal?.onChange?.(false);
   const drafted = factoryProactiveControl({
     creating: false, creation, agent, config: { ...buildAgentStudioDraft(agent), personalProactive: false }, setProactiveDraft: () => undefined,
     setPersonalProactiveDraft: () => undefined,
   });
   assert.equal(drafted?.personal?.enabled, false);
+  // A new agent has no connector yet: its row is Not set up, with nothing to change.
   const created = factoryProactiveControl({ creating: true, creation, config: null, setProactiveDraft: () => undefined });
-  assert.equal(created?.personal?.enabled, true);
-  created?.personal?.onChange?.(false);
-  assert.deepEqual(calls, [[agent.id, false], ['creation', false]]);
+  assert.deepEqual(created?.personal, { enabled: false, agentId: null });
+  assert.deepEqual(calls, [[agent.id, false]]);
   assert.equal(personalAgentProactiveDescription(false), 'Waits for you to write first.');
 });
 
-test('a new agent keeps its Proactive choice apart from Cooperative', async () => {
+test('a new agent is never created with Proactive on, whatever an older draft stored', async () => {
   const seen: Array<ReturnType<typeof useCreationProactiveDraft>> = [];
   function Probe({ draftId }: { draftId: string }) {
     const draft = useCreationProactiveDraft(draftId);
@@ -189,7 +190,7 @@ test('a new agent keeps its Proactive choice apart from Cooperative', async () =
     await act(async () => { host.querySelector<HTMLButtonElement>('button')!.click(); });
     const latest = seen[seen.length - 1]!;
     assert.equal(latest.personalEnabled, true);
-    assert.deepEqual(latest.personalInput, { proactive: true });
+    assert.equal(latest.personalInput, undefined);
     assert.equal(latest.enabled, false);
     assert.equal(latest.input, undefined);
     assert.deepEqual(JSON.parse(window.localStorage.getItem(CREATION_PERSONAL_PROACTIVE_STORAGE_KEY) ?? '{}'), { 'draft-1': true });
@@ -207,8 +208,8 @@ test('the personal agent setting routes encode the default agent id', async () =
     return new Response(JSON.stringify({ proactive: init.method === 'PUT' }), { status: 200 });
   }) as typeof fetch;
   try {
-    assert.deepEqual(await getPersonalAgentSetting('tok', 'cloud-agent:acct_owner'), { proactive: false });
-    assert.deepEqual(await setPersonalAgentSetting('tok', 'cloud-agent:acct_owner', true), { proactive: true });
+    assert.equal((await getPersonalAgentSetting('tok', 'cloud-agent:acct_owner')).proactive, false);
+    assert.equal((await setPersonalAgentSetting('tok', 'cloud-agent:acct_owner', true)).proactive, true);
   } finally {
     globalThis.fetch = previous;
   }
@@ -216,4 +217,22 @@ test('the personal agent setting routes encode the default agent id', async () =
     ['GET', '/v1/cloud/agents/cloud-agent%3Aacct_owner/personal-agent', undefined],
     ['PUT', '/v1/cloud/agents/cloud-agent%3Aacct_owner/personal-agent', { proactive: true }],
   ]);
+});
+
+test('the Proactive row is Not set up without a connector, and Connect opens Connectors', async () => {
+  const opened: unknown[] = [];
+  await withJsdomRoot(async (mount) => {
+    window.addEventListener('kordi:open-connectors-settings', (event) => opened.push((event as CustomEvent).detail));
+    const host = await mount(view({ enabled: false, personal: { enabled: true, agentId: 'cloud_agent_abc', connected: false } }));
+    assert.deepEqual(rowText(host, 'Proactive'), { value: 'Not set up', detail: 'Add a connector to turn it on.' });
+    assert.equal(host.querySelector('button[aria-label="Edit proactive"]'), null);
+    await act(async () => { Array.from(host.querySelectorAll('button')).find((button) => button.textContent === 'Connect')!.click(); });
+    assert.deepEqual(opened, [{ tab: 'connectors', providerId: null }]);
+    // A new agent has none yet and nowhere to connect from.
+    await mount(view({ enabled: false, personal: { enabled: false, agentId: null } }));
+    assert.equal(rowText(host, 'Proactive')?.value, 'Not set up');
+    assert.equal(Array.from(host.querySelectorAll('button')).some((button) => button.textContent === 'Connect'), false);
+    await mount(view({ enabled: false, personal: { enabled: false, agentId: 'cloud_agent_abc', connected: true } }));
+    assert.equal(rowText(host, 'Proactive')?.value, 'Off');
+  });
 });

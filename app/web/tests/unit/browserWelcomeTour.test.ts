@@ -55,18 +55,19 @@ test('the welcome link marks the same first-run progress as a desktop sign-up', 
   }
 });
 
-test('the browser tour skips local file import and keeps every other step', () => {
-  const browserSteps = helpTourSteps.filter((step) => helpTourStepAvailable(step, true));
-  assert.deepEqual(helpTourSteps.filter((step) => !helpTourStepAvailable(step, true)).map((step) => step.target),
-    ['settings-memory', 'memory-import-files', 'memory-import-run', 'memory-review']);
-  assert.ok(browserSteps.every((step) => step.section !== 'Import memory'));
-  for (const target of ['settings-auth', 'grounding-cards', 'grounding-pair', 'nav-contacts', 'nav-chats', 'nav-agents', 'nav-digest', 'help']) {
-    assert.ok(browserSteps.some((step) => step.target === target), `${target} stays in the browser tour`);
-  }
+test('the browser tour keeps every step, with file import worded for the upload flow', () => {
+  assert.ok(helpTourSteps.every((step) => helpTourStepAvailable(step, true)), 'the browser tour shows every step');
   assert.ok(helpTourSteps.every((step) => helpTourStepAvailable(step, false)), 'the desktop tour is unchanged');
-  assert.equal(helpTourAvailable('imports', true), false);
-  for (const id of ['workspace', 'grounding', 'cards'] as const) assert.equal(helpTourAvailable(id, true), true);
-  assert.equal(helpTourAvailable('imports', false), true);
+  for (const id of ['workspace', 'grounding', 'cards', 'imports'] as const) {
+    assert.equal(helpTourAvailable(id, true), true);
+    assert.equal(helpTourAvailable(id, false), true);
+  }
+  const files = helpTours.imports.find((step) => step.target === 'memory-import-files')!;
+  assert.match(helpTourStepBody(files, true), /Choose files/);
+  assert.doesNotMatch(helpTourStepBody(files, true), /detected/);
+  assert.match(helpTourStepBody(files, false), /detected files/);
+  const run = helpTours.imports.find((step) => step.target === 'memory-import-run')!;
+  assert.equal(helpTourStepBody(run, true), run.body, 'the server model extracts memories as the Mac does');
 });
 
 test('the browser tour does not promise Mac-only calendar access', () => {

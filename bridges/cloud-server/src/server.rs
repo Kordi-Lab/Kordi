@@ -283,6 +283,7 @@ async fn health() -> axum::Json<serde_json::Value> {
 #[derive(Debug)]
 pub enum RunError {
     Configuration(&'static str),
+    InvalidBudgets(String),
     Pool(PgPoolError),
     Events(EventBusError),
     RateLimiter(RateLimiterError),
@@ -298,6 +299,7 @@ impl std::fmt::Display for RunError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Configuration(err) => write!(f, "{err}"),
+            Self::InvalidBudgets(err) => write!(f, "{err}"),
             Self::Pool(err) => write!(f, "{err}"),
             Self::Events(err) => write!(f, "{err}"),
             Self::RateLimiter(err) => write!(f, "{err}"),

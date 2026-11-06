@@ -10,7 +10,7 @@
 
 mod routes;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::collections::HashSet;
 

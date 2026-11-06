@@ -26,7 +26,7 @@ export function AttachmentContextMenu({ state, onClose }: { state: AttachmentCon
       <div
         ref={menuRef}
         data-attachment-image-context-menu="true"
-        className="app-transient-surface fixed z-[230] rounded-[14px] border p-1.5"
+        className="app-transient-surface app-dense-menu app-attachment-context-menu fixed z-[230]"
         style={{ left: state.x, top: state.y }}
         onContextMenu={(event) => event.preventDefault()}
       >

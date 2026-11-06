@@ -27,10 +27,7 @@ async fn harness() -> Harness {
         pool.clone(),
         crate::events::EventBus::noop(),
     ));
-    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig {
-        per_ip_limit: 10_000,
-        ..CloudRateLimitConfig::production()
-    });
+    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::production());
     let app = crate::server::router_with_rate_limiter(state, limiter);
     Harness { app, pool }
 }

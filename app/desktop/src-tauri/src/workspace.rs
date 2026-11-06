@@ -158,6 +158,7 @@ pub fn desktop_read_workspace_text_file(path: String) -> Result<String, String> 
     fs::read_to_string(&resolved).map_err(|err| err.to_string())
 }
 
+#[tauri::command]
 pub fn desktop_write_workspace_text_file(path: String, contents: String) -> Result<String, String> {
     let resolved = resolve_allowed_workspace_text_path(&path, true)?;
 

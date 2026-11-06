@@ -37,7 +37,7 @@ function stubFetch(server: ServerState) {
     if (String(url).includes('/personal-agent')) {
       if (server.personalStatus) return new Response(JSON.stringify({ errorCode: 'not_found' }), { status: server.personalStatus });
       if (method === 'PUT') server.personal = (body as { proactive: boolean }).proactive;
-      return new Response(JSON.stringify({ proactive: server.personal ?? false }), { status: 200 });
+      return new Response(JSON.stringify({ proactive: server.personal ?? false, connected: true }), { status: 200 });
     }
     if (method === 'PUT') server.value = (body as { enabled: boolean }).enabled;
     if (String(url).includes('/decision')) return new Response(JSON.stringify({ proposalId: 'pro_1', status: 'running' }), { status: 200 });

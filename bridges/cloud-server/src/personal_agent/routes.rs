@@ -72,14 +72,26 @@ async fn owner_only(pool: &PgPool, account: &str, agent_id: &str) -> Result<(), 
     }
 }
 
-async fn current(pool: &PgPool, agent_id: &str) -> Response {
-    match setting::stored(pool, agent_id).await {
-        Ok(setting) => Json(setting.to_value()).into_response(),
+async fn current(pool: &PgPool, owner: &str, agent_id: &str) -> Response {
+    match super::status::status(pool, owner, agent_id).await {
+        Ok(status) => Json(status).into_response(),
         Err(err) => server_error("read setting", err),
     }
 }
 
-/// `GET /v1/cloud/agents/{agent_id}/personal-agent`: `{"proactive": bool}`.
+/// `409 personal_agent_needs_connector`: the agent has no live connector
+/// granted to it, so there is nothing for Proactive to watch.
+fn needs_connector() -> Response {
+    error(
+        "personal_agent_needs_connector",
+        "Connect a service and grant it to this agent before turning Proactive on.",
+        StatusCode::CONFLICT,
+    )
+}
+
+/// `GET /v1/cloud/agents/{agent_id}/personal-agent`: the setting in effect
+/// (`proactive`), whether a live connector is granted (`connected`), the
+/// granted sources, the last check and the recent shares.
 pub(crate) async fn get_setting(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -89,11 +101,12 @@ pub(crate) async fn get_setting(
     if let Err(response) = owner_only(pool, &session.account_id, &agent_id).await {
         return *response;
     }
-    current(pool, &agent_id).await
+    current(pool, &session.account_id, &agent_id).await
 }
 
 /// `PUT /v1/cloud/agents/{agent_id}/personal-agent` with `{"proactive": bool}`.
-/// On starts at the newest event; off cancels queued evaluations.
+/// On starts at the newest event and needs a live grant; off cancels queued
+/// evaluations. Answers like `GET`.
 pub(crate) async fn put_setting(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -108,9 +121,16 @@ pub(crate) async fn put_setting(
         Ok(requested) => requested,
         Err(message) => return error("invalid_personal_agent", &message, StatusCode::BAD_REQUEST),
     };
+    if requested.proactive {
+        match setting::has_live_grant(pool, &session.account_id, &agent_id).await {
+            Ok(true) => {}
+            Ok(false) => return needs_connector(),
+            Err(err) => return server_error("grant check", err),
+        }
+    }
     if default_owner(&agent_id).is_some() {
         return match setting::set_default(pool, &session.account_id, requested).await {
-            Ok(()) => current(pool, &agent_id).await,
+            Ok(()) => current(pool, &session.account_id, &agent_id).await,
             Err(err) => server_error("store setting", err),
         };
     }
@@ -122,7 +142,7 @@ pub(crate) async fn put_setting(
     )
     .await;
     match stored {
-        Ok(Some(stored)) => Json(stored.to_value()).into_response(),
+        Ok(Some(_)) => current(pool, &session.account_id, &agent_id).await,
         Ok(None) => not_found(),
         Err(err) => server_error("store setting", err),
     }
@@ -151,6 +171,8 @@ pub(crate) async fn list(
                 "sessionId": personal.session_id,
                 "proactive": true,
             })),
+            // A grant removed since the list was read.
+            Err(crate::chat_sync::store::StoreError::NotFound) => {}
             // One agent's session must not hide the others.
             Err(err) => eprintln!("[personal_agent] personal session of {agent_id}: {err}"),
         }

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/src/index.css"><title>Background session rows fixture</title></head>
+<body class="kordi-app theme-light">
+<div id="root" style="padding:28px 32px;max-width:640px;color:var(--utility-foreground);background:var(--app-main-bg, var(--utility-background));min-height:100vh"></div>
+<script type="module">
+import '/tests/visual/previewChatTheme.ts';
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {RelatedAgentSessionLinks} from '/src/kordi-app/components/relatedAgentSessionLinks.tsx';
+import {__setSessionBackendForTests} from '/src/features/cloud/session.ts';
+if (new URLSearchParams(location.search).get('theme') === 'dark') document.body.className = 'kordi-app theme-dark';
+__setSessionBackendForTests({load:async()=>null,save:async()=>{},clear:async()=>{}});
+window.__TAURI_INTERNALS__={invoke:async(command)=>{
+  if(command==='desktop_chat_session_active_turn') return null;
+  throw Error('Unexpected fixture command');
+}};
+const el=React.createElement;
+const statuses=new Map([['run','running'],['done','done'],['stop','stopped'],['fail','failed'],['run2','running'],['done2','done'],['stop2','stopped'],['fail2','failed']]);
+const five=(prefix)=>['running','done','stopped','failed','running'].map((status,index)=>{statuses.set(`${prefix}${index}`,status);return {sessionId:`${prefix}${index}`,title:['Investigate Only me group access','Read the recent group transcript and screenshots for the reported reply','Trace agent run authorization','Compare access scope with server rules','Draft the fix and its tests'][index],status};});
+const foldedFive=five('folded-');
+const openFive=five('open-');
+// This page shows the five-row group both ways; the second starts unfolded.
+try { sessionStorage.setItem('kordi.backgroundSessionGroups.folded', JSON.stringify({[openFive.map(s=>s.sessionId).join('|')]:false})); } catch {}
+const message=(id,text,sessions)=>el('section',{'data-fixture-message':id,style:{marginBottom:22}},
+  el('div',{style:{fontSize:12,fontWeight:600,marginBottom:3}},'Atlas'),
+  el('div',{style:{fontSize:13,lineHeight:1.5}},text),
+  el(RelatedAgentSessionLinks,{sessions,statusBySessionId:statuses,onOpen:()=>{}}));
+createRoot(document.getElementById('root')).render(el(React.Fragment,null,
+  message('single-running','I will look into this access question in a background session and report back here.',[{sessionId:'run',title:'Investigate Only me group access',status:'running'}]),
+  message('single-done','Started a background session.',[{sessionId:'done',title:'Check group mention dispatch for agents set to Only me',status:'done'}]),
+  message('single-stopped','Started a background session.',[{sessionId:'stop',title:'Trace agent run authorization',status:'stopped'}]),
+  message('single-failed','Started a background session.',[{sessionId:'fail',title:'Compare access scope with server rules',status:'failed'}]),
+  message('several','I split this into four background sessions.',[
+    {sessionId:'run2',title:'Investigate Only me group access',status:'running'},
+    {sessionId:'done2',title:'Read the recent group transcript and screenshots for the reported reply',status:'done'},
+    {sessionId:'stop2',title:'Trace agent run authorization',status:'stopped'},
+    {sessionId:'fail2',title:'Compare access scope with server rules',status:'failed'}]),
+  message('five-folded','Five background sessions start folded.',foldedFive),
+  message('five-open','The same five, unfolded.',openFive),
+));
+</script>
+</body>
+</html>

@@ -238,8 +238,9 @@ where
 }
 
 /// Removes the credential, the agent grants, and the stored events, queues
-/// derived-copy removal, marks the connector revoked, and writes the audit
-/// row, in one transaction. Returns how many events were deleted.
+/// derived-copy removal, marks the connector revoked, turns off Proactive for
+/// agents left without a live connector, and writes the audit row, in one
+/// transaction. Returns how many events were deleted.
 ///
 /// The connector row is locked first, so an event being recorded meanwhile
 /// either commits before the deletion (and is deleted) or waits and then
@@ -254,10 +255,12 @@ pub async fn disconnect(pool: &PgPool, record: &ConnectorRecord) -> StoreResult<
         .bind(&record.connector_id)
         .execute(&mut *tx)
         .await?;
-    query("DELETE FROM cloud_connector_agent_grants WHERE connector_id = $1")
-        .bind(&record.connector_id)
-        .execute(&mut *tx)
-        .await?;
+    let removed: Vec<(String,)> = query_as(
+        "DELETE FROM cloud_connector_agent_grants WHERE connector_id = $1 RETURNING agent_id",
+    )
+    .bind(&record.connector_id)
+    .fetch_all(&mut *tx)
+    .await?;
     let deleted_events = query("DELETE FROM cloud_connector_events WHERE connector_id = $1")
         .bind(&record.connector_id)
         .execute(&mut *tx)
@@ -278,6 +281,15 @@ pub async fn disconnect(pool: &PgPool, record: &ConnectorRecord) -> StoreResult<
     )
     .bind(&record.connector_id)
     .execute(&mut *tx)
+    .await?;
+    // An agent left with no live connector has nothing to watch.
+    super::personal_agent_grants_removed(
+        &mut tx,
+        removed
+            .into_iter()
+            .map(|(agent_id,)| (record.account_id.clone(), agent_id))
+            .collect(),
+    )
     .await?;
     let summary = format!(
         "Disconnected; deleted {deleted_events} stored events and queued removal of derived copies."

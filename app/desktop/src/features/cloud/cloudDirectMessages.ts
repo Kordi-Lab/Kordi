@@ -1,4 +1,5 @@
 import { normalizedMessageMentions } from '@/features/chat/messageMentions';
+import { decodeBase64UrlUtf8, encodeBase64UrlUtf8 } from './cloudBase64Url';
 import { cloudAgentId } from './cloudAgentIdentity';
 import type { MessageActionMetadata, MessageMention } from '../../kordi-app/types/message';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
@@ -28,22 +29,6 @@ export type CloudDirectMessageEnvelope = {
   contextMessages?: DesktopChatContextMessage[];
 };
 
-function encodeBase64Url(value: string) {
-  const bytes = new TextEncoder().encode(value);
-  let binary = '';
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function decodeBase64Url(value: string) {
-  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
-  const binary = atob(padded);
-  return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
-}
-
 function isCloudDirectMessageEnvelope(value: unknown): value is CloudDirectMessageEnvelope {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
@@ -53,13 +38,13 @@ function isCloudDirectMessageEnvelope(value: unknown): value is CloudDirectMessa
 }
 
 export function encodeCloudDirectMessageEnvelope(input: CloudDirectMessageEnvelope): string {
-  return `${CLOUD_DIRECT_MESSAGE_PREFIX}${encodeBase64Url(JSON.stringify(input))}`;
+  return `${CLOUD_DIRECT_MESSAGE_PREFIX}${encodeBase64UrlUtf8(JSON.stringify(input))}`;
 }
 
 export function parseCloudDirectMessageEnvelope(body: string): CloudDirectMessageEnvelope | null {
   if (!body.startsWith(CLOUD_DIRECT_MESSAGE_PREFIX)) return null;
   try {
-    const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_DIRECT_MESSAGE_PREFIX.length)));
+    const parsed = JSON.parse(decodeBase64UrlUtf8(body.slice(CLOUD_DIRECT_MESSAGE_PREFIX.length)));
     if (!isCloudDirectMessageEnvelope(parsed)) return null;
     const { mentions: rawMentions, ...envelope } = parsed;
     const mentions = normalizedMessageMentions(rawMentions);

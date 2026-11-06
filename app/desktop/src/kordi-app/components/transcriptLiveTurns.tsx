@@ -20,8 +20,9 @@ import { SourceMessageQuoteRow } from './transcriptReplyAttribution';
 import { MarkdownContent } from './markdown';
 import { FoldableAssistantAnswer } from './transcriptAssistantAnswer';
 import { InlineChangedFiles } from './transcriptChangedFiles';
-import type { DesktopChatTurnSnapshot, MessageSourceReference } from '../types';
-import { AgentRequestHeaderStop, CollaborationAgentStopButton, TurnStopButton, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptTurnStopControls';
+import type { DesktopChatTurnSnapshot, Message, MessageSourceReference } from '../types';
+import { AgentRequestStop, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptTurnStopControls';
+import { replyAgentRequestStop } from '@/features/chat/agentRequestStop';
 
 function LiveChatTurnCardView({
   turn,
@@ -29,7 +30,7 @@ function LiveChatTurnCardView({
   hideSourceQuote = false,
   showReasoning = false,
   plainAgentResponse = false,
-  stopInHeader = false,
+  stopMessage,
   onStopCollaborationAgentRequest,
   onStopActiveTurn,
   onNavigateToMessage,
@@ -41,8 +42,8 @@ function LiveChatTurnCardView({
   hideSourceQuote?: boolean;
   showReasoning?: boolean;
   plainAgentResponse?: boolean;
-  /** The row header renders the stop control, so the card does not repeat it. */
-  stopInHeader?: boolean;
+  /** The reply's message, which decides whether the viewer may stop it. */
+  stopMessage?: Pick<Message, 'role' | 'senderOwnerName'>;
   onStopCollaborationAgentRequest?: StopCollaborationAgentRequestHandler;
   onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
@@ -75,11 +76,10 @@ function LiveChatTurnCardView({
   const hasOrderedContent = visibleTurn.segments?.some(segment => segment.kind === 'tool' || segment.text.trim()) ?? false;
   const hasThinking = visibleTurn.thinkingText.trim().length > 0;
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
-  const pendingCollaborationAgentRequest = visibleTurn.pendingCollaborationAgentRequest ?? null;
   const turnIsRunning = !historical && !visibleTurn.completed;
-  const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingCollaborationAgentRequest && !visibleTurn.id.startsWith('collaboration-live-turn:');
-  const cardStopAvailable = activeStopAvailable && !stopInHeader;
-  const cardCollaborationStop = stopInHeader ? null : pendingCollaborationAgentRequest;
+  // Stop sits at the end of the status line from admission until the terminal state.
+  const stopAction = replyAgentRequestStop({ turn, message: stopMessage, historical, onStopActiveTurn, onStopCollaborationAgentRequest });
+  const stop = stopAction ? <AgentRequestStop action={stopAction} /> : null;
   const showLiveProgress = turnIsRunning && !isCompressionStatus;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
   const changedFileRows = changedFileRowsFromTurn(visibleTurn);
@@ -99,7 +99,13 @@ function LiveChatTurnCardView({
   );
   const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
   const showOpenAuthAction = Boolean(onOpenAuthSettings && visibleTurn.error && cloudAgentProviderFailureNeedsAuthentication(visibleTurn.error));
-  if (!canDisplayAgentTurn(visibleTurn)) return null;
+  const showsTurnProgress = showResponsePanel && (showLiveProgress || hasOrderedContent || hasTimelineActivity || hasAssistant);
+  // Without a live status line (not yet started, or compressing), Stop keeps a line of its own.
+  const standaloneStop = stop && !(showsTurnProgress && !visibleTurn.completed)
+    ? <div className="app-turn-progress-line app-turn-header-line">{stop}</div> : null;
+  if (!canDisplayAgentTurn(visibleTurn)) {
+    return standaloneStop ? <div data-live-turn-status={visibleTurn.status} className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5">{standaloneStop}</div> : null;
+  }
   return (
     <div data-live-turn-status={visibleTurn.status} className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
@@ -127,12 +133,11 @@ function LiveChatTurnCardView({
         </div>
       ) : null}
 
-          {showLiveProgress || hasOrderedContent || hasTimelineActivity || hasAssistant ? (
+          {standaloneStop}
+          {showsTurnProgress ? (
             <TurnProgress turn={visibleTurn}
-              renderTool={tool => <ToolActivityRow key={tool.id} tool={tool} onOpenFile={onOpenArtifact} />}
-              trailing={cardCollaborationStop && onStopCollaborationAgentRequest ? (
-                <CollaborationAgentStopButton request={cardCollaborationStop} onStop={onStopCollaborationAgentRequest} />
-              ) : cardStopAvailable ? <TurnStopButton onStop={onStopActiveTurn} /> : null}
+              renderTool={tool => <ToolActivityRow key={tool.id} tool={tool} stateKey={`turn:${visibleTurn.id}:tool:${tool.id}`} onOpenFile={onOpenArtifact} />}
+              trailing={stop}
               legacyAnswer={hasAssistant ? <FoldableAssistantAnswer text={assistantText} foldable={!plainAgentResponse}
                 tone={visibleTurn.status === 'cancelled' && !ending ? 'cancelled' : 'default'} /> : null}
             />
@@ -182,7 +187,8 @@ export const LiveChatTurnCard = memo(
     && previous.hideSourceQuote === next.hideSourceQuote
     && previous.showReasoning === next.showReasoning
     && previous.plainAgentResponse === next.plainAgentResponse
-    && previous.stopInHeader === next.stopInHeader
+    && previous.stopMessage?.role === next.stopMessage?.role
+    && previous.stopMessage?.senderOwnerName === next.stopMessage?.senderOwnerName
     && previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
     && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
@@ -217,7 +223,6 @@ function LiveChatTurnMessageView({
       hideSourceQuote={threadLayout}
       showReasoning
       plainAgentResponse={plainAgentResponse}
-      stopInHeader
       onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
       onStopActiveTurn={onStopActiveTurn}
       onNavigateToMessage={onNavigateToMessage}
@@ -225,14 +230,7 @@ function LiveChatTurnMessageView({
       onOpenAuthSettings={onOpenAuthSettings}
     />
   );
-  const headerStop = (
-    <AgentRequestHeaderStop
-      turn={turn}
-      onStopActiveTurn={onStopActiveTurn}
-      onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
-    />
-  );
-  return <LiveTurnMessageFrame turn={turn} sender={sender} showSourceQuote={!plainAgentResponse} onNavigateToMessage={onNavigateToMessage} headerAccessory={headerStop}>{card}</LiveTurnMessageFrame>;
+  return <LiveTurnMessageFrame turn={turn} sender={sender} showSourceQuote={!plainAgentResponse} onNavigateToMessage={onNavigateToMessage}>{card}</LiveTurnMessageFrame>;
 }
 export const LiveChatTurnMessage = memo(
   LiveChatTurnMessageView,

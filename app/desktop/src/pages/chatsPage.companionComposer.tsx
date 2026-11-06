@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { BlobEmojiComposerInput, type BlobEmojiComposerInputHandle } from '@/features/emoji/BlobEmojiComposerInput';
-import { subsessionMentions } from '@/features/cloud/subsessionConversation';
+import { backgroundSessionModelOptions, subsessionMentions } from '@/features/cloud/subsessionConversation';
+import { companionComposerProviderOptions } from '@/features/chat/useCompanionComposerRuntime';
+import type { DesktopBackgroundSessionRoute } from '@/lib/desktopBackgroundSessions';
 import { ComposerMentionMenu } from '@/kordi-app/components/composerMentionMenu';
 import { ComposerStopButton, type ComposerStopControl } from '@/pages/chatsPage.voiceControls';
 import { currentMentionQuery, orderedComposerMentionOptions } from '@/kordi-app/components/composerMentionOptions';
@@ -80,7 +82,14 @@ type CompanionComposerUi = {
 export type CompanionComposerProps = {
   isPreparing?: boolean;
   conversation: Conversation;
-  subsession?: { mentionOptions: ComposerMentionOption[]; sending: boolean; sendError: string | null; disabled: boolean };
+  subsession?: {
+    mentionOptions: ComposerMentionOption[]; sending: boolean; sendError: string | null; disabled: boolean;
+    /** The viewer owns the agent: a message asks it to continue. */
+    ownAgent?: boolean;
+    /** The model and account this Mac runs the background session on. */
+    route?: DesktopBackgroundSessionRoute | null;
+    selectRoute?: (model: string, thinking: string | null) => Promise<boolean>;
+  };
   paneKind: 'human' | 'agent';
   draftText: string;
   attachmentError: string | null;
@@ -141,6 +150,15 @@ export function CompanionComposer({
     toggleSelector,
   } = ui;
   const selectedAgent = collaborationRouting.selectedAgent;
+  // The owner's background session keeps the account it was started with;
+  // only its models are offered.
+  const backgroundRoute = subsession?.ownAgent ? subsession.route ?? null : null;
+  const backgroundProviderOptions = backgroundRoute
+    ? companionComposerProviderOptions(composerProviderOptions, {
+      model: backgroundRoute.model ?? null, authProvider: backgroundRoute.authProvider ?? null,
+      authChoice: backgroundRoute.authChoice ?? null, thinking: backgroundRoute.thinking ?? null,
+    }).filter(option => option.active)
+    : [];
   const editor = useRef<BlobEmojiComposerInputHandle>(null);
   const mentionCaret = useRef<number | null>(null);
   const selectedMentions = useRef<ComposerMentionOption[]>([]);
@@ -249,7 +267,7 @@ export function CompanionComposer({
                 }
               }}
               className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              placeholder={subsession ? 'Send a message; @mention the agent for a reply' : paneKind === 'agent' ? 'Ask the agent…' : `Message ${conversation.name}`}
+              placeholder={subsession && !subsession.ownAgent ? 'Send a message; @mention the agent for a reply' : paneKind === 'agent' || subsession ? 'Ask the agent…' : `Message ${conversation.name}`}
             />
           </div>
         </div>
@@ -264,7 +282,31 @@ export function CompanionComposer({
             /> : null}
           </div>
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-visible">
-            {localRouting.enabled && localRouting.selection && localRouting.configTarget ? (
+            {backgroundRoute?.model ? (
+              <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible" data-companion-model-controls="true" data-background-session-model-controls="true">
+                <div className="min-w-0 max-w-full overflow-visible">
+                  <ComposerModelControls
+                    scope="chat"
+                    selection={{ mode: '', model: backgroundRoute.model, thinking: backgroundRoute.thinking ?? 'off',
+                      authProvider: backgroundRoute.authProvider, authChoice: backgroundRoute.authChoice }}
+                    openSelector={openSelector}
+                    onToggleSelector={toggleSelector}
+                    onSelectValue={() => false}
+                    authLabel=""
+                    authOptions={[]}
+                    onSelectAuthChoice={() => undefined}
+                    onSelectProviderChoice={() => false}
+                    onSelectRoute={(_scope, route) => {
+                      setOpenSelector(null);
+                      return subsession?.selectRoute?.(route.model, route.thinking || null) ?? false;
+                    }}
+                    providerOptions={backgroundProviderOptions}
+                    modelOptions={backgroundSessionModelOptions(chatModelOptions ?? [], backgroundRoute)}
+                    compact={true}
+                  />
+                </div>
+              </div>
+            ) : localRouting.enabled && localRouting.selection && localRouting.configTarget ? (
               <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible" data-companion-model-controls="true">
                 {isNativeShell || localRouting.runtimeContextStatus ? (
                   <ComposerRuntimeStatus

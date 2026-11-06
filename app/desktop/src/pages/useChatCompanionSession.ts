@@ -5,7 +5,8 @@ import { type CompanionSessionState,type ComposerSelector,emptyState,normalizeSt
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { CloudAuthClient } from '@/features/cloud/authClient';
 import { CLOUD_SESSION_CHANGED_EVENT,loadSession } from '@/features/cloud/session';
-import { subsessionConversation,subsessionMentionOptions } from '@/features/cloud/subsessionConversation';
+import { ownerMessageToAgent,subsessionConversation,subsessionMentionOptions } from '@/features/cloud/subsessionConversation';
+import { useBackgroundSessionRoute } from '@/features/chat/useBackgroundSessionRoute';
 import { useAgentSubsession } from '@/features/cloud/useAgentSubsession';
 import type { Conversation,MessageMention } from '@/kordi-app/types';
 import { scheduleTranscriptScrollToBottom } from '@/pages/chatsPage.header';
@@ -117,10 +118,14 @@ export function useChatCompanionSession({
     () => state.subsessionId ? subsessionConversation(state.subsessionId, subsession.snapshot, subsession.accountId) : null,
     [state.subsessionId, subsession.snapshot, subsession.accountId],
   );
+  const ownsSubsession = Boolean(subsession.snapshot && subsession.snapshot.ownerAccountId === subsession.accountId);
+  // The owner's background session that runs on this Mac: a normal agent
+  // session, with its model picker and a composer that asks the agent.
+  const subsessionRoute = useBackgroundSessionRoute(state.subsessionId, ownsSubsession);
   const [subsessionSending, setSubsessionSending] = useState(false);
   const sendingRef = useRef(false);
   const [subsessionSendError, setSubsessionSendError] = useState<{ id: string; message: string } | null>(null);
-  const sendAttempts = useRef(new Map<string, { id: string; text: string; mentions: MessageMention[] }>());
+  const sendAttempts = useRef(new Map<string, { id: string; text: string; sentText: string; mentions: MessageMention[] }>());
   useEffect(() => {
     const reset = () => { navigationGeneration.current += 1; createFlight.current = null; setIsCreating(false); setStoredState(emptyState(activeConversation.id)); sendAttempts.current.clear(); setSubsessionSendError(null); setCreationError(null); };
     window.addEventListener(CLOUD_SESSION_CHANGED_EVENT, reset);
@@ -257,8 +262,11 @@ export function useChatCompanionSession({
     const draft = state.drafts[targetConversation.id] ?? '';
     if (!draft.trim() && attachments.length === 0) return false;
     if (isCreating || state.createdConversation?.id === targetConversation.id) return false;
-    const requestsOwnAgent = targetConversation.agentSubsessionId
-      ? subsession.snapshot?.ownerAccountId === subsession.accountId && mentions.some(mention => mention.targetKind === 'agent' && mention.agentId === subsession.snapshot?.agentId)
+    const addressed = targetConversation.agentSubsessionId
+      ? ownerMessageToAgent(draft.trim(), mentions, subsession.snapshot, subsession.accountId)
+      : null;
+    const requestsOwnAgent = addressed
+      ? subsession.snapshot?.ownerAccountId === subsession.accountId && addressed.mentions.some(mention => mention.targetKind === 'agent' && mention.agentId === subsession.snapshot?.agentId)
       : isPrivateOwnedAgentConversation(targetConversation);
     if (requestsOwnAgent && canRunOwnAgent && !canRunOwnAgent()) return false;
     if (targetConversation.agentSubsessionId) {
@@ -267,14 +275,14 @@ export function useChatCompanionSession({
       const id = targetConversation.agentSubsessionId;
       const text = draft.trim();
       const previous = sendAttempts.current.get(id);
-      const attempt = previous?.text === text ? previous : { id: crypto.randomUUID(), text, mentions };
+      const attempt = previous?.text === text ? previous : { id: crypto.randomUUID(), text, mentions: addressed?.mentions ?? mentions, sentText: addressed?.text ?? text };
       sendAttempts.current.set(id, attempt);
       sendingRef.current = true; setSubsessionSending(true); setSubsessionSendError(null);
       void (async () => {
         try {
           const account = await loadSession();
           if (!account || account.accountId !== subsession.accountId) throw Error('Account changed');
-          await new CloudAuthClient().sendAgentSubsessionMessage(account.token, id, attempt.id, text, attempt.mentions);
+          await new CloudAuthClient().sendAgentSubsessionMessage(account.token, id, attempt.id, attempt.sentText, attempt.mentions);
           if ((await loadSession())?.accountId !== account.accountId) return;
           sendAttempts.current.delete(id);
           setStoredState(current => ({
@@ -329,8 +337,11 @@ export function useChatCompanionSession({
     subsession: state.subsessionId ? {
       mentionOptions: subsession.snapshot ? subsessionMentionOptions(subsession.snapshot, subsession.accountId) : [],
       sending: subsessionSending,
-      sendError: subsessionSendError?.id === state.subsessionId ? subsessionSendError.message : null,
+      sendError: subsessionSendError?.id === state.subsessionId ? subsessionSendError.message : (subsessionRoute.error ?? null),
       disabled: !subsession.snapshot || Boolean(subsession.error),
+      ownAgent: ownsSubsession,
+      route: subsessionRoute.route,
+      selectRoute: subsessionRoute.select,
     } : undefined,
     canOpen: Boolean(suggested || onCreateAgentSession),
     transcript: {

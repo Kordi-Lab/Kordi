@@ -43,6 +43,7 @@ import { showCallWindow } from './callWindow';
 import type { Conversation } from '@/kordi-app/types';
 
 const ACTIVE_CALL_REFRESH_MS = 15_000;
+const CONVERSATION_SET_REFRESH_MIN_MS = 5_000;
 
 export function useCloudCalls({
   account,
@@ -311,20 +312,32 @@ export function useCloudCalls({
     return () => { disposed = true; };
   }, [disconnectedOperation, refreshActiveCalls]);
 
+  // The poll belongs to the account. Re-renders that rebuild the refresh
+  // callback must not restart it or send another request.
+  const refreshActiveCallsRef = useRef(refreshActiveCalls);
+  useEffect(() => { refreshActiveCallsRef.current = refreshActiveCalls; }, [refreshActiveCalls]);
+  const accountId = account?.accountId ?? null;
+  const conversationSetRefreshRef = useRef({ accountId: null as string | null, atMs: Number.NEGATIVE_INFINITY });
   useEffect(() => {
-    if (!account || typeof window === 'undefined') return undefined;
-    const initialRefresh = window.setTimeout(() => { void refreshActiveCalls(); }, 0);
+    if (!accountId || typeof window === 'undefined') return undefined;
+    const last = conversationSetRefreshRef.current;
+    if (last.accountId === accountId && Date.now() - last.atMs < CONVERSATION_SET_REFRESH_MIN_MS) return undefined;
+    conversationSetRefreshRef.current = { accountId, atMs: Date.now() };
+    const refresh = window.setTimeout(() => { void refreshActiveCallsRef.current(); }, 0);
+    return () => window.clearTimeout(refresh);
+  }, [accountId, knownSessionIdsKey]);
+  useEffect(() => {
+    if (!accountId || typeof window === 'undefined') return undefined;
     const interval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refreshActiveCalls();
+      if (document.visibilityState === 'visible') void refreshActiveCallsRef.current();
     }, ACTIVE_CALL_REFRESH_MS);
-    const handleFocus = () => { void refreshActiveCalls(); };
+    const handleFocus = () => { void refreshActiveCallsRef.current(); };
     window.addEventListener('focus', handleFocus);
     return () => {
-      window.clearTimeout(initialRefresh);
       window.clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [account, refreshActiveCalls]);
+  }, [accountId]);
 
   useEffect(() => {
     if (!account || typeof window === 'undefined') return undefined;

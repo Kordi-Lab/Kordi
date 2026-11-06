@@ -254,12 +254,10 @@ test('message context menu content lists read receipts when available', () => {
   assert.match(markup, /title="Seen by Alice, Bob"/);
   assert.doesNotMatch(markup, /Readers/);
   assert.doesNotMatch(markup, /data-message-read-receipts-context-content/);
-  assert.match(markup, /text-\[10px\]/);
-  assert.match(markup, /font-normal/);
-  assert.match(markup, /leading-\[1\.45\]/);
-  assert.match(markup, /style="font-size:10px;font-weight:400;line-height:1\.45"/);
+  // Rows and the seen line take their type from the shared dense menu, not inline sizes.
+  assert.match(markup, /app-message-context-menu-seen app-dense-menu-label/);
+  assert.doesNotMatch(markup, /style="font-size/);
   assert.doesNotMatch(markup, /h-6 w-6/);
-  assert.match(markup, /py-1\.5/);
   assert.doesNotMatch(markup, /text-\[9\.5px\]/);
   assert.doesNotMatch(markup, /text-\[11px\]/);
   assert.doesNotMatch(markup, /text-\[12\.5px\]/);
@@ -288,18 +286,18 @@ test('message context menu actions stay flat at rest and retain interaction feed
     onSelectMessage: () => undefined,
     onRequestPinMessage: () => undefined,
   }));
-  const css = readFileSync(new URL('../src/styles/transient-surfaces.css', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/styles/dense-menu.css', import.meta.url), 'utf8');
   const actionClasses = [...markup.matchAll(/data-message-context-menu-action="[^"]+" class="([^"]+)"/g)]
     .map((match) => match[1]);
 
   assert.equal(actionClasses.length, 5);
   for (const className of actionClasses) {
-    assert.match(className, /(?:^|\s)app-transient-flat-action(?:\s|$)/);
+    assert.match(className, /(?:^|\s)app-dense-menu-row(?:\s|$)/);
     assert.doesNotMatch(className, /(?:^|\s)app-transient-row(?:\s|$)/);
   }
-  assert.match(markup, /app-transient-surface/);
-  assert.match(css, /\.app-transient-surface \.app-transient-flat-action \{[\s\S]*?background:\s*transparent;/);
-  assert.match(css, /\.app-transient-surface \.app-transient-flat-action:hover,[\s\S]*?\.app-transient-surface \.app-transient-flat-action:focus-visible \{[\s\S]*?background:\s*var\(--app-transient-hover-bg\);/);
+  assert.match(markup, /app-transient-surface app-dense-menu/);
+  assert.match(css, /\.app-dense-menu-row\) \{[^}]*background:\s*transparent;/);
+  assert.match(css, /\.app-dense-menu-row\):hover:not\(:disabled\)[^{]*\{\s*background:\s*var\(--app-transient-hover-bg\);/);
 });
 
 test('message context menu shows Blob Emoji reactions for synced messages', () => {

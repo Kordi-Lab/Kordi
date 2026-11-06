@@ -1,4 +1,5 @@
 import { agentExchangeStatus, type AgentExchangeStatus } from './agentExchangePresentation';
+import { decodeBase64UrlUtf8, encodeBase64UrlUtf8 } from './cloudBase64Url';
 import { cloudAgentReplyEnding, type CloudAgentReplyEnding } from './cloudAgentReplyEnding';
 export { cloudAgentReplyEnding, type CloudAgentReplyEnding } from './cloudAgentReplyEnding';
 import { voiceAgentText } from '@/features/chat/voiceTranscription';
@@ -159,20 +160,6 @@ export type CloudAgentCancelEnvelope = {
   requestId: string;
 };
 
-function encodeBase64Url(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = '';
-  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function decodeBase64Url(value: string): string {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
-  const binary = atob(padded);
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
-
 export function encodeCloudAgentResponse(input: {
   requestId: string;
   text: string;
@@ -200,13 +187,13 @@ export function encodeCloudAgentResponse(input: {
       ? { executionClaimId: input.executionClaimId }
       : {}),
   };
-  return `${CLOUD_AGENT_RESPONSE_PREFIX}${encodeBase64Url(JSON.stringify(envelope))}`;
+  return `${CLOUD_AGENT_RESPONSE_PREFIX}${encodeBase64UrlUtf8(JSON.stringify(envelope))}`;
 }
 
 export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelope | null {
   if (!body.startsWith(CLOUD_AGENT_RESPONSE_PREFIX)) return null;
   try {
-    const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_AGENT_RESPONSE_PREFIX.length))) as Partial<CloudAgentResponseEnvelope>;
+    const parsed = JSON.parse(decodeBase64UrlUtf8(body.slice(CLOUD_AGENT_RESPONSE_PREFIX.length))) as Partial<CloudAgentResponseEnvelope>;
     if (parsed.kind !== 'agent-response') return null;
     if (typeof parsed.requestId !== 'string' || typeof parsed.text !== 'string') return null;
     const deliveryState = parsed.deliveryState === 'processing'
@@ -264,13 +251,13 @@ export function encodeCloudAgentCancel(input: { requestId: string }): string {
     kind: 'agent-cancel',
     requestId: input.requestId,
   };
-  return `${CLOUD_AGENT_CANCEL_PREFIX}${encodeBase64Url(JSON.stringify(envelope))}`;
+  return `${CLOUD_AGENT_CANCEL_PREFIX}${encodeBase64UrlUtf8(JSON.stringify(envelope))}`;
 }
 
 export function parseCloudAgentCancel(body: string): CloudAgentCancelEnvelope | null {
   if (!body.startsWith(CLOUD_AGENT_CANCEL_PREFIX)) return null;
   try {
-    const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_AGENT_CANCEL_PREFIX.length))) as Partial<CloudAgentCancelEnvelope>;
+    const parsed = JSON.parse(decodeBase64UrlUtf8(body.slice(CLOUD_AGENT_CANCEL_PREFIX.length))) as Partial<CloudAgentCancelEnvelope>;
     if (parsed.kind !== 'agent-cancel') return null;
     if (typeof parsed.requestId !== 'string') return null;
     return {

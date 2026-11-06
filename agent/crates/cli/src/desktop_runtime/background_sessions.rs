@@ -171,7 +171,6 @@ pub(super) fn save_runtime_profile(
     setup: &super::SessionRuntimeSetup,
     profile: &super::DesktopRuntimeProfile,
 ) -> Result<()> {
-    use kordi_core::types::{EntryBase, EntryId, SessionEntry};
     let Some(row) = kordi_session::store::get_session(&setup.conn, &setup.session_id)? else {
         return Ok(());
     };
@@ -180,10 +179,20 @@ pub(super) fn save_runtime_profile(
     {
         return Ok(());
     }
+    append_runtime_profile(&setup.conn, &setup.session_id, row.leaf_id, profile)
+}
+
+fn append_runtime_profile(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    leaf_id: Option<String>,
+    profile: &super::DesktopRuntimeProfile,
+) -> Result<()> {
+    use kordi_core::types::{EntryBase, EntryId, SessionEntry};
     let entry = SessionEntry::Custom {
         base: EntryBase {
             id: EntryId::generate(),
-            parent_id: row.leaf_id.map(EntryId),
+            parent_id: leaf_id.map(EntryId),
             timestamp: chrono::Utc::now(),
         },
         custom_type: "subsession_runtime_profile".into(),
@@ -191,8 +200,100 @@ pub(super) fn save_runtime_profile(
             serde_json::json!({"profile":profile,"executionPolicy":profile.execution_policy.map(|policy|policy.as_str())}),
         ),
     };
-    kordi_session::store::append_entry(&setup.conn, &setup.session_id, &entry)?;
+    kordi_session::store::append_entry(conn, session_id, &entry)?;
     Ok(())
+}
+
+/// The route a background session runs a turn with when the turn names none:
+/// the parent turn's route by default, or the model the owner picked later.
+/// A session saved before routes were remembered falls back to its profile's
+/// model, which runs on this Mac's own sign-in for that provider.
+pub fn background_session_turn_route(
+    session_id: &str,
+) -> Result<Option<super::DesktopRuntimeTurnRoute>> {
+    let conn = open_sessions_db()?;
+    background_turn_route_from_store(&conn, session_id)
+}
+
+fn background_turn_route_from_store(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+) -> Result<Option<super::DesktopRuntimeTurnRoute>> {
+    let Some(row) = kordi_session::store::get_session(conn, session_id)? else {
+        return Ok(None);
+    };
+    if row.session_scope != "runtime" {
+        return Ok(None);
+    }
+    let Some(profile) = saved_runtime_profile_from_store(conn, session_id)? else {
+        return Ok(None);
+    };
+    if let Some(route) = profile.turn_route {
+        return Ok(Some(route));
+    }
+    Ok(profile.model.map(|model| super::DesktopRuntimeTurnRoute {
+        model: Some(match profile.provider.as_deref() {
+            Some(provider) if !model.contains('/') => format!("{provider}/{model}"),
+            _ => model,
+        }),
+        auth_provider: None,
+        auth_choice: None,
+        thinking: profile.thinking,
+    }))
+}
+
+/// Records the model the owner picked for a background session. The account
+/// the session was started with stays: a hosted account's credential is
+/// issued for the route the parent request ran with.
+pub fn set_background_session_turn_route(
+    session_id: &str,
+    route: super::DesktopRuntimeTurnRoute,
+) -> Result<super::DesktopRuntimeTurnRoute> {
+    let conn = open_sessions_db()?;
+    set_background_turn_route_in_store(&conn, session_id, route)
+}
+
+fn set_background_turn_route_in_store(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    route: super::DesktopRuntimeTurnRoute,
+) -> Result<super::DesktopRuntimeTurnRoute> {
+    let row = kordi_session::store::get_session(conn, session_id)?
+        .ok_or_else(|| anyhow!("Background session not found"))?;
+    if row.session_scope != "runtime" {
+        bail!("Session is not a background session");
+    }
+    let mut profile = saved_runtime_profile_from_store(conn, session_id)?
+        .ok_or_else(|| anyhow!("The background session runtime profile is unavailable on this Mac"))?;
+    let model = route
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .ok_or_else(|| anyhow!("Choose a model"))?
+        .to_string();
+    let current = background_turn_route_from_store(conn, session_id)?.unwrap_or_default();
+    let next = super::DesktopRuntimeTurnRoute {
+        model: Some(model),
+        auth_provider: current.auth_provider,
+        auth_choice: current.auth_choice,
+        thinking: route
+            .thinking
+            .map(|thinking| thinking.trim().to_string())
+            .filter(|thinking| !thinking.is_empty())
+            .or(current.thinking),
+    };
+    if let (Some(auth_provider), Some(next_model)) = (&next.auth_provider, &next.model) {
+        let model_provider = next_model.split_once('/').map(|(provider, _)| provider);
+        if !model_provider.is_some_and(|provider| {
+            crate::login::provider_names_match(provider, auth_provider)
+        }) {
+            bail!("This background session can only switch between models of its account");
+        }
+    }
+    profile.turn_route = Some(next.clone());
+    append_runtime_profile(conn, session_id, row.leaf_id, &profile)?;
+    Ok(next)
 }
 
 #[cfg(test)]

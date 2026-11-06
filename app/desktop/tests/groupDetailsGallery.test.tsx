@@ -64,7 +64,9 @@ test('GroupDetailsDialog renders a searchable member gallery with progressive co
   assert.doesNotMatch(markup, />Admin<\/span>|>Member<\/span>|>People<\/span>/);
   assert.match(markup, /aria-label="Add people"/);
   assert.doesNotMatch(markup, /No additional approved contacts available/);
-  assert.match(markup, /Group name/);
+  assert.match(markup, /aria-label="Rename Design crew"/);
+  assert.doesNotMatch(markup, /Group settings|Dissolve group|Leave group/);
+  assert.doesNotMatch(markup, />Manage</, 'Manage needs a dissolve action to offer');
   assert.doesNotMatch(markup, /Group notice|Mute notifications|Sticky|Local alias|Search chat history/);
   assert.doesNotMatch(markup, /Make group admin/);
   assert.doesNotMatch(markup, /Remove from group/);

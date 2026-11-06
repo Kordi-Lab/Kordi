@@ -77,12 +77,16 @@ export type CloudGroupInvitationCreateInput = {
   groupId: string;
   groupSpaceId: string;
   groupTitle: string;
+  /** Revoke the group's live link and make a new one. */
+  reset?: boolean;
 };
 
 export type CloudGroupInvitation = CloudAppInvitation;
 
 export type CloudGroupInvitationSummary = {
   invitationId: string;
+  /** Older servers leave it out. */
+  inviteUrl?: string;
   expiresAt: string;
 };
 
