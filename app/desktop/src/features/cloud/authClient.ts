@@ -52,12 +52,8 @@ import {
   installationDeviceRegistration,
   type CloudDeviceRegistration,
 } from './deviceIdentity';
-import {
-  acceptCloudGroupInvitation,
-  createCloudGroupInvitation,
-  resolveCloudGroupInvitation,
-  revokeCloudGroupInvitation,
-} from './groupInvitationClient';
+import { acceptCloudGroupInvitation, acceptCloudPendingGroupInvitation, claimCloudGroupInvitation, createCloudGroupInvitation,
+  dismissCloudPendingGroupInvitation, listCloudPendingGroupInvitations, resolveCloudGroupInvitation, revokeCloudGroupInvitation } from './groupInvitationClient';
 import type { CloudPresenceAccount,CloudPresenceContactsResponse } from './presence';
 export { chatSyncSessionTitle,cloudMessageFromChatSync,cloudOperationUuid } from './chatSyncMapping';
 export type {
@@ -93,7 +89,8 @@ export type {
   CloudAppInvitation,
   CloudGroupInvitation,
   CloudGroupInvitationAcceptance,
-  CloudGroupInvitationCreateInput,CloudGroupInvitationPreview,CloudGroupInvitationSummary,CloudPublicProfile
+  CloudGroupInvitationClaim,CloudGroupInvitationCreateInput,CloudGroupInvitationPreview,CloudGroupInvitationSummary,
+  CloudPendingGroupInvitation,CloudPendingGroupInvitationAcceptance,CloudPublicProfile
 } from './cloudIdentityTypes';
 export { parseCloudOAuthHashResult } from './cloudOAuthResult';
 export type { CloudSessionVisibility } from './cloudSessionListClient';
@@ -481,20 +478,13 @@ export class CloudAuthClient {
     return response.invitations;
   }
 
-  async resolveGroupInvitation(invitationToken: string) {
-    return resolveCloudGroupInvitation(this, invitationToken);
-  }
-
-  async acceptGroupInvitation(
-    token: string,
-    invitationToken: string,
-  ) {
-    return acceptCloudGroupInvitation(this, token, invitationToken);
-  }
-
-  async revokeGroupInvitation(token: string, invitationId: string): Promise<void> {
-    await revokeCloudGroupInvitation(this, token, invitationId);
-  }
+  async resolveGroupInvitation(invitationToken: string) { return resolveCloudGroupInvitation(this, invitationToken); }
+  async acceptGroupInvitation(token: string, invitationToken: string) { return acceptCloudGroupInvitation(this, token, invitationToken); }
+  async revokeGroupInvitation(token: string, invitationId: string): Promise<void> { await revokeCloudGroupInvitation(this, token, invitationId); }
+  async claimGroupInvitation(token: string, invitationToken: string) { return claimCloudGroupInvitation(this, token, invitationToken); }
+  async listPendingGroupInvitations(token: string) { return listCloudPendingGroupInvitations(this, token); }
+  async acceptPendingGroupInvitation(token: string, pendingId: string) { return acceptCloudPendingGroupInvitation(this, token, pendingId); }
+  async dismissPendingGroupInvitation(token: string, pendingId: string): Promise<void> { await dismissCloudPendingGroupInvitation(this, token, pendingId); }
 
   async addContact(token: string, peerAccountId: string): Promise<void> {
     await this.send<void>(
