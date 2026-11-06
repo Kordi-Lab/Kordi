@@ -165,7 +165,7 @@ test('profile rows use borderless accent values with per-row errors', () => {
   assert.doesNotMatch(panel, /Your name and avatar are shown to your contacts/);
   // Email ends the table: the Save row sits outside the divided section, after a 24px gap.
   assert.match(panel, /<\/SettingsSection>\s*\{\/\*[^*]*\*\/\}\s*<div className="app-cloud-profile-save pt-6">\s*<SettingsRow/);
-  assert.match(row, /app-error-text app-cloud-profile-row-error/);
+  assert.match(row, /<ErrorLine id=\{errorId\}[^>]*>\{error\}<\/ErrorLine>/);
   assert.match(profileCss, /\.app-cloud-profile-input\s*\{[^}]*border:\s*0;[^}]*color:\s*var\(--app-palette-accent\);/s);
   assert.match(profileCss, /\.app-cloud-profile-input\[aria-invalid='true'\]\s*\{[^}]*var\(--app-transient-danger-text\)/s);
   assert.match(profileCss, /\.app-cloud-profile-input:disabled,\s*\.app-cloud-account-profile input\.app-cloud-profile-input\[readonly\]\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*cursor:\s*default;/s);

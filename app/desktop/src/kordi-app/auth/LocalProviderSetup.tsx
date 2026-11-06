@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { openDesktopExternalUrl, setDesktopLocalProviderPort } from '@/lib/desktop';
 import type { DesktopAuthProvider } from '@/kordi-app/types';
 import type { AuthDisplayProvider } from './model';
@@ -225,7 +226,7 @@ export function LocalProviderSetup({
         detail={
           <div className="space-y-1">
             <div>Kordi will connect to this local provider at <span className="font-mono text-slate-300">http://localhost:{localPortDraft || localServer.port}/v1</span>.</div>
-            {localPortError ? <div className="app-error-text text-rose-200">{localPortError}</div> : null}
+            {localPortError ? <ErrorLine className="mt-0">{localPortError}</ErrorLine> : null}
           </div>
         }
         trailing={
@@ -235,6 +236,7 @@ export function LocalProviderSetup({
               inputMode="numeric"
               pattern="[0-9]*"
               aria-label={`${provider.label} local server port`}
+              aria-invalid={localPortError ? true : undefined}
               onChange={(event) => setLocalPortDraft(event.target.value.replace(/\D/g, '').slice(0, 5))}
               className="app-input-shell h-8.5 w-24 rounded-full px-3 text-right text-[12px] text-white outline-none"
               style={nonDragStyle}

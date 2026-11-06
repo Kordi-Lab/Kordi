@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, ExternalLink, LoaderCircle, LogIn, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { broadcastDesktopAuthUpdated, type DesktopAuthUpdateReason } from '@/features/auth/desktopAuthSync';
 import { AuthFlowSteps, type AuthFlowStep } from '@/kordi-app/auth/AuthFlowSteps';
 import type { DesktopAuthAttemptSnapshot, DesktopAuthProvider, DesktopAuthState } from '@/kordi-app/types';
@@ -369,20 +370,12 @@ export default function AuthPopup({
             Loading auth state…
           </div>
         ) : !provider ? (
-          <div className="app-error-text rounded-[24px] border border-rose-400/30 bg-rose-500/10 px-4 py-4 text-sm text-rose-100">
-            Unknown provider.
-          </div>
+          <ErrorLine role="status" className="mt-0">Unknown provider.</ErrorLine>
         ) : (
           <div className="space-y-3.5">
             {authAttempt?.succeeded && (
               <div className="rounded-[20px] border border-emerald-400/25 bg-emerald-500/10 px-3.5 py-2.5 text-[13px] leading-5 text-emerald-100">
                 <strong className="font-semibold text-emerald-50">Signed in.</strong> This account is connected and ready to use.
-              </div>
-            )}
-
-            {visibleError && (
-              <div className="app-error-text rounded-[20px] border border-rose-400/30 bg-rose-500/10 px-3.5 py-2.5 text-[13px] leading-5 text-rose-100">
-                {visibleError}
               </div>
             )}
 
@@ -530,6 +523,8 @@ export default function AuthPopup({
                 </div>
               </>
             )}
+
+            {visibleError ? <ErrorLine align="end" className="mt-0">{visibleError}</ErrorLine> : null}
           </div>
         )}
         </div>

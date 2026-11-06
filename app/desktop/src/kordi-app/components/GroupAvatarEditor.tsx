@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Camera, LoaderCircle } from 'lucide-react';
 import type { ParticipantSpaceAvatar } from '@/kordi-app/types';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 import { isNativeDesktopShell } from '@/lib/desktop';
 import { fileToAvatarDataUrl } from './avatarOverrides';
@@ -130,7 +131,7 @@ export function GroupAvatarEditor({ avatars, imageUrl, name, disabled, avatarCla
           ) : null}
         </div>
       ) : null}
-      {error ? <div role="alert" className="app-error-text mt-2 max-w-60 text-[11px]">{error}</div> : null}
+      {error ? <ErrorLine className="mt-2 max-w-60">{error}</ErrorLine> : null}
       {busy ? <span className="sr-only" aria-live="polite">Updating group avatar.</span> : null}
     </div>
   );

@@ -67,3 +67,10 @@ export function loginSubtitle(signup: boolean): string {
   return (signup ? page?.signupSubtitle : page?.subtitle) ?? (signup
     ? 'Sign up for Next-generation Supercollaboration' : 'Building Next-generation Supercollaboration');
 }
+
+/** The field a refused sign-in or sign-up names, so its border shows the error too. */
+export function submitErrorField(error: CloudAuthError): 'email' | 'password' | null {
+  if (error.code === 'invalid_email' || error.code === 'email_in_use') return 'email';
+  if (error.code === 'invalid_credentials' || error.code === 'weak_password') return 'password';
+  return null;
+}

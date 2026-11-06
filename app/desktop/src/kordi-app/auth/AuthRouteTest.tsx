@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { CloudProviderRouteTestInput, CloudProviderRouteTestResult } from '@/features/cloud/cloudAgentRuntimeTypes';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { SettingsSection, SettingsSelect } from '@/kordi-app/components/settingsLayout';
 import { AuthActionButton, authButtonPrimaryClass } from './AuthDetailPrimitives';
 import type { AuthDisplayProvider } from './model';
@@ -144,7 +145,7 @@ export function AuthRouteTest({ provider, onTestRoute, disabledReason = null }: 
           <div className="mt-0.5 text-[12px] leading-5 text-slate-400">{routeResult.response}</div>
         </div>
       ) : null}
-      {routeError && routeError !== disabledReason ? <div className="app-error-text py-3.5 text-[12px] text-rose-200" role="alert">{routeError}</div> : null}
+      {routeError && routeError !== disabledReason ? <ErrorLine align="end" className="mt-0 pb-3.5">{routeError}</ErrorLine> : null}
     </SettingsSection>
   );
 }

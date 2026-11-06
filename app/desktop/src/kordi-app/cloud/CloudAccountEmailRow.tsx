@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { CloudAuthError } from '@/features/cloud/cloudAuthError';
 import type {
   CloudAccountEmailVerificationInput,
@@ -114,7 +115,7 @@ export function CloudAccountEmailRow({
     : <span className="text-[12px] font-medium text-amber-200">Not verified</span>;
 
   const description = error
-    ? <span id={errorId} className="app-error-text text-rose-200" aria-live="polite">{error}</span>
+    ? <ErrorLine id={errorId} className="mt-0">{error}</ErrorLine>
     : notice
       ? <span role="status">{notice}</span>
       : undefined;

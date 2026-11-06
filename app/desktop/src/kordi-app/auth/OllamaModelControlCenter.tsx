@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { CheckCircle2, ChevronDown, ChevronRight, Circle, Download, ExternalLink, PlayCircle, RefreshCw, Search, Server, Square, Terminal, Trash2 } from 'lucide-react';
 
 import {
@@ -642,15 +643,11 @@ export function OllamaModelControlCenter({
         </div>
       </div>
 
-      {(actionError || actionMessage) ? (
-        <div className={cn(
-          'app-error-text rounded-[18px] border px-4 py-3 text-[12px] leading-5',
-          actionError
-            ? 'border-rose-300/20 bg-rose-300/[0.075] text-rose-50'
-            : 'border-emerald-300/18 bg-emerald-300/[0.075] text-emerald-50',
-        )}
-        >
-          {actionError ?? actionMessage}
+      {actionError ? (
+        <ErrorLine className="mt-0">{actionError}</ErrorLine>
+      ) : actionMessage ? (
+        <div className="rounded-[18px] border border-emerald-300/18 bg-emerald-300/[0.075] px-4 py-3 text-[12px] leading-5 text-emerald-50">
+          {actionMessage}
         </div>
       ) : null}
 
@@ -693,11 +690,11 @@ export function OllamaModelControlCenter({
           </div>
         ) : null}
 
-        {(setupError || serverStatusError || environment?.notes.length) ? (
-          <div className="app-error-text mt-3 rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
-            {setupError ? <div>{setupError}</div> : null}
-            {serverStatusError ? <div>{serverStatusError}</div> : null}
-            {environment?.notes.map((note) => <div key={note}>{note}</div>)}
+        {setupError ? <ErrorLine className="mt-3">{setupError}</ErrorLine> : null}
+        {serverStatusError ? <ErrorLine className="mt-3">{serverStatusError}</ErrorLine> : null}
+        {environment?.notes.length ? (
+          <div className="mt-3 rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
+            {environment.notes.map((note) => <div key={note}>{note}</div>)}
           </div>
         ) : null}
       </div>
@@ -722,9 +719,7 @@ export function OllamaModelControlCenter({
         </div>
 
         {isInstalledSectionExpanded && installedError ? (
-          <div className="app-error-text mt-3 rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
-            {installedError}
-          </div>
+          <ErrorLine className="mt-3">{installedError}</ErrorLine>
         ) : null}
 
         {isInstalledSectionExpanded ? (
@@ -843,11 +838,7 @@ export function OllamaModelControlCenter({
               </AuthActionButton>
             </div>
 
-            {catalogError ? (
-              <div className="app-error-text rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
-                {catalogError}
-              </div>
-            ) : null}
+            {catalogError ? <ErrorLine className="mt-0">{catalogError}</ErrorLine> : null}
 
             {catalogModels.length === 0 && activeAction !== 'catalog' ? (
               <div className="rounded-[18px] border border-white/8 bg-black/10 px-4 py-4 text-[12px] leading-5 text-slate-400">

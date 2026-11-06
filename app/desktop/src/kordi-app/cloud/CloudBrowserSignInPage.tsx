@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
 import { APP_WINDOW_RESIZE_EDGE } from '@/app/windowDrag';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { BrowserSignInState } from '@/features/cloud/appSignIn/useBrowserSignIn';
 import { KordiFlyingBird } from '@/features/cloud/KordiFlyingBird';
 
@@ -65,11 +66,6 @@ function WelcomeScreen({ signIn }: { signIn: BrowserSignInState }) {
       <KordiFlyingBird className="app-cloud-welcome-bird" cutout />
       <h1 className="app-cloud-welcome-title">{loginHeading(false)}</h1>
       <p className="app-cloud-welcome-subtitle">{loginSubtitle(false)}</p>
-      {signIn.error ? (
-        <p role="alert" className="app-cloud-welcome-error">
-          {signIn.error}
-        </p>
-      ) : null}
       <div className="app-cloud-welcome-actions">
         <button
           type="button"
@@ -86,6 +82,7 @@ function WelcomeScreen({ signIn }: { signIn: BrowserSignInState }) {
           Sign up
         </button>
       </div>
+      {signIn.error ? <ErrorLine align="center" className="mt-3">{signIn.error}</ErrorLine> : null}
     </main>
   );
 }
@@ -118,7 +115,7 @@ function PasteCodeForm({ signIn }: { signIn: BrowserSignInState }) {
           Continue
         </button>
       </div>
-      {signIn.codeError ? <p id={errorId} role="alert" className="app-cloud-browser-signin-paste-error">{signIn.codeError}</p> : null}
+      {signIn.codeError ? <ErrorLine id={errorId} className="mt-0">{signIn.codeError}</ErrorLine> : null}
     </form>
   );
 }

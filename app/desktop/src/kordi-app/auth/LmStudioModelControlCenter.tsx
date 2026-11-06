@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ErrorLine, type ErrorLineAction } from '@/components/ui/ErrorLine';
 import { CheckCircle2, ChevronDown, ChevronRight, Circle, Download, ExternalLink, PlayCircle, RefreshCw, Search, Server, Square, Terminal } from 'lucide-react';
 
 import {
@@ -643,6 +644,10 @@ export function LmStudioModelControlCenter({
   const setupActions = lmStudioSetupActions({ hasInvalidPasskeyError: setupNeedsInstallRefresh, isConfirmingRefreshInstall: confirmRefreshInstall });
   const hasRuntimeAction = (id: LmStudioRuntimeActionId) => runtimeActions.some((action) => action.id === id);
   const setupAction = (id: LmStudioSetupActionId) => setupActions.find((action) => action.id === id);
+  const repairInstallLabel = activeAction === 'refresh-install' ? 'Repairing…' : (setupAction('refresh-install')?.label ?? 'Repair lms install');
+  const repairInstallAction: ErrorLineAction | null = setupNeedsInstallRefresh
+    ? { label: repairInstallLabel, onClick: () => { void refreshLmStudioInstall(); }, disabled: activeAction === 'refresh-install' }
+    : null;
   const readinessSteps = [
     {
       label: 'App + CLI',
@@ -759,19 +764,15 @@ export function LmStudioModelControlCenter({
             <div className="mt-3 rounded-[16px] border border-white/8 bg-white/[0.04] px-3 py-2 text-[11px] leading-5 text-slate-300">
               <span className="font-medium text-slate-100">Next:</span> {primaryActionDetail}
             </div>
-            {(actionMessage || actionError) ? (
-              <div className={cn(
-                'app-error-text mt-2 rounded-[16px] border px-3 py-2 text-[11px] leading-5',
-                actionError
-                  ? 'border-rose-300/20 bg-rose-400/[0.08] text-rose-100'
-                  : 'border-white/10 bg-white/[0.045] text-slate-200',
-              )}
-              >
-                <div>{actionError ?? actionMessage}</div>
+            {actionError ? (
+              <ErrorLine className="mt-2" action={repairInstallAction}>{actionError}</ErrorLine>
+            ) : actionMessage ? (
+              <div className="mt-2 rounded-[16px] border border-white/10 bg-white/[0.045] px-3 py-2 text-[11px] leading-5 text-slate-200">
+                <div>{actionMessage}</div>
                 {setupNeedsInstallRefresh ? (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     <AuthActionButton className={modelControlStopClass} onClick={refreshLmStudioInstall} disabled={activeAction === 'refresh-install'}>
-                      <Download className="h-3.5 w-3.5" /> {activeAction === 'refresh-install' ? 'Repairing…' : (setupAction('refresh-install')?.label ?? 'Repair lms install')}
+                      <Download className="h-3.5 w-3.5" /> {repairInstallLabel}
                     </AuthActionButton>
                   </div>
                 ) : null}
@@ -932,14 +933,16 @@ export function LmStudioModelControlCenter({
         ) : null}
 
         {setupNeedsInstallRefresh ? (
-          <div className="app-error-text mt-3 rounded-[16px] border border-rose-300/20 bg-rose-400/[0.08] px-3 py-2 text-[11px] leading-5 text-rose-50/90">
-            Invalid lms passkey detected. Use Repair lms install to quit LM Studio, clean only stale CLI passkey files, reinstall/update the official helper, and reopen LM Studio. Downloaded models are preserved.
-          </div>
+          <ErrorLine className="mt-3" action={repairInstallAction}>
+            The lms passkey is invalid. Repair keeps downloaded models.
+          </ErrorLine>
         ) : null}
 
-        {(setupError || environment?.notes.length) ? (
-          <div className="app-error-text mt-3 rounded-[16px] border border-amber-300/18 bg-amber-300/[0.07] px-3 py-2 text-[11px] leading-5 text-amber-50/90">
-            {setupError ?? environment?.notes.join(' ')}
+        {setupError ? (
+          <ErrorLine className="mt-3">{setupError}</ErrorLine>
+        ) : environment?.notes.length ? (
+          <div className="mt-3 rounded-[16px] border border-amber-300/18 bg-amber-300/[0.07] px-3 py-2 text-[11px] leading-5 text-amber-50/90">
+            {environment.notes.join(' ')}
           </div>
         ) : null}
       </div>
@@ -976,16 +979,7 @@ export function LmStudioModelControlCenter({
         </div>
 
         {isInstalledSectionExpanded && installedError ? (
-          <div className="app-error-text mt-3 rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
-            <div>{installedError}</div>
-            {setupNeedsInstallRefresh ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <AuthActionButton className={modelControlStopClass} onClick={refreshLmStudioInstall} disabled={activeAction === 'refresh-install'}>
-                  <Download className="h-3.5 w-3.5" /> {activeAction === 'refresh-install' ? 'Repairing…' : (setupAction('refresh-install')?.label ?? 'Repair lms install')}
-                </AuthActionButton>
-              </div>
-            ) : null}
-          </div>
+          <ErrorLine className="mt-3" action={repairInstallAction}>{installedError}</ErrorLine>
         ) : null}
 
         {isInstalledSectionExpanded ? (
@@ -1080,11 +1074,7 @@ export function LmStudioModelControlCenter({
           />
         </div>
 
-        {catalogError ? (
-          <div className="app-error-text mt-3 rounded-[18px] border border-rose-300/20 bg-rose-400/[0.08] px-4 py-3 text-[12px] leading-5 text-rose-100">
-            {catalogError}
-          </div>
-        ) : null}
+        {catalogError ? <ErrorLine className="mt-3">{catalogError}</ErrorLine> : null}
 
         <div className="mt-3 grid gap-2.5">
           {visibleModels.length > 0 ? visibleModels.map((model, index) => {
