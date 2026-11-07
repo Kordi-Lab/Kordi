@@ -11,6 +11,7 @@ export function useChatThreadSelection({
   isNativeShell,
   routeReplyMessage,
   clearReply,
+  onOpen,
 }: {
   conversationId: string;
   sessionId: string;
@@ -18,6 +19,8 @@ export function useChatThreadSelection({
   isNativeShell: boolean;
   routeReplyMessage?: (message: Message, destination: MessageReplyDestination) => void;
   clearReply?: () => void;
+  /** Shows the opened discussion, such as selecting its side panel tab. */
+  onOpen?: () => void;
 }) {
   const [openThreadState, setOpenThreadState] = useState<{
     conversationId: string;
@@ -31,7 +34,8 @@ export function useChatThreadSelection({
     const source = threadRootSource(message, sessionId);
     if (!source) return;
     setOpenThreadState({ conversationId, rootId: source.sourceMessageId });
-  }, [conversationId, sessionId]);
+    onOpen?.();
+  }, [conversationId, onOpen, sessionId]);
   const replyToMessage = useCallback((message: Message, destination: MessageReplyDestination) => {
     if (destination === 'thread') openThread(message);
     else {

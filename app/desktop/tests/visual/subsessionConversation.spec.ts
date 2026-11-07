@@ -82,7 +82,9 @@ for (const context of ['group', 'contact']) {
         {text:'Continue this discussion',quote:{action:'thread',source:expect.objectContaining({sourceMessageId:'10000000-0000-4000-8000-000000000001'})}},
       ]);
       await expect(thread.getByRole('button',{name:/Open thread with/})).toHaveCount(0);
-      await thread.getByRole('button',{name:'Close discussion',exact:true}).click();
+      // The side panel's Discussion tab owns the close control.
+      await expect(page.getByRole('tab',{name:'Discussion',exact:true})).toHaveAttribute('aria-selected','true');
+      await page.getByRole('button',{name:'Close Discussion',exact:true}).click();
       await expect(thread).toHaveCount(0);
       await expect(entry).toBeVisible();
       expect(await page.evaluate(() => (window as unknown as {unexpectedParentSends:number}).unexpectedParentSends)).toBe(0);

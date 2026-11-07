@@ -1,13 +1,13 @@
 import type { CompanionView } from './chatsPage.companionToolbar';
 import {useUnreadThreadNavigation} from './useUnreadThreadNavigation';
 import {ThreadShortcut} from '@/features/chat/ThreadShortcut';
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
-import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
+import { suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import type { Conversation, Message } from '@/kordi-app/types';
 import { relatedAgentSessionStatusById } from '@/features/chat/relatedAgentSessions';
-import { projectQueuedThreadMessages, threadRootSource } from '@/features/chat/messageThreads';
+import { projectQueuedThreadMessages } from '@/features/chat/messageThreads';
 import { useThreadMessageSummaries, useThreadTranscript, useActiveThread } from './useThreadMessageSummaries';
 import {useThreadReadStatus} from '@/features/cloud/useThreadReadStatus';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
@@ -17,7 +17,7 @@ import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import type { ChatsPageProps } from '@/pages/chatsPage.types';
 import { ChatCompanionWorkspace } from '@/pages/chatsPage.companionWorkspace';
 import { ChatMainWorkspace } from '@/pages/chatsPage.mainWorkspace';
-import { ChatThreadPanel } from '@/pages/ChatThreadPanel';
+import { chatDiscussionPane } from '@/pages/chatsPage.discussionPane';
 import { useChatThreadSelection } from '@/pages/useChatThreadSelection';
 import { useChatCollaborationRouting } from '@/pages/useChatCollaborationRouting';
 import { useChatCompanionLayout } from '@/pages/useChatCompanionLayout';
@@ -36,7 +36,7 @@ import {
 
 import { ChatCompanionLayout } from './chatsPage.companionLayout';
 import { useCompanionPaneContent } from './useCompanionPaneContent';
-import { useCompanionPaneTabs } from './useCompanionPaneTabs';
+import { companionToolbarView, useCompanionPaneTabs } from './useCompanionPaneTabs';
 import { useCompanionDocument, useCompanionDocumentRequests } from '@/features/documents/useCompanionDocument';
 
 export * from '@/pages/chatsPage.reexports';
@@ -165,22 +165,6 @@ export function ChatsPage({
     },
     companionConversationId: companionConversation?.id ?? null,
   });
-  const companionDocument = useCompanionDocument(activeConv.id);
-  const paneTabs = useCompanionPaneTabs(activeConv.id, companionDocument, companionConversation);
-  const { view: companionView, setView: setCompanionView } = paneTabs;
-  const companionLayout = useChatCompanionLayout({
-    pageConversationId: activeConv.id,
-    hasOverview: companionView !== 'chat',
-    onHide: companionSession.actions.cancelCreation,
-    activePaneKind,
-    companionConversation,
-  });
-  useCompanionDocumentRequests((document) => { companionDocument.open(document); setCompanionView('document'); companionLayout.placeCompanion('right'); companionLayout.setFolded(false); });
-  const {
-    containerRef: splitContainerRef,
-    side: companionSide,
-    isVisible: showCompanionPane,
-  } = companionLayout;
   const canOpenSideAgentPanel = companionSession.canOpen;
   const companionPaneKind = companionConversation ? conversationPaneKind(companionConversation) : null;
   const companionConversationUsesCollaborationTransport = companionConversation?.collaborationSources.some((source) => source.trim().toLowerCase() !== 'local') ?? false;
@@ -226,6 +210,9 @@ export function ChatsPage({
       setOpenSelector: setCompanionOpenComposerSelector,
     },
   });
+  // Opening a discussion selects its side panel tab; the layout is created below.
+  const revealDiscussionRef = useRef(() => {});
+  const revealDiscussion = useCallback(() => revealDiscussionRef.current(), []);
   const {
     activeThreadRootId,
     closeThread,
@@ -240,8 +227,9 @@ export function ChatsPage({
     isNativeShell,
     routeReplyMessage,
     clearReply: onClearChatQuote,
+    onOpen: revealDiscussion,
   });
-  const openUnreadRoot=useCallback((rootId:string)=>setOpenThreadState({conversationId:activeConv.id,rootId}),[activeConv.id,setOpenThreadState]);
+  const openUnreadRoot=useCallback((rootId:string)=>{setOpenThreadState({conversationId:activeConv.id,rootId});revealDiscussion();},[activeConv.id,revealDiscussion,setOpenThreadState]);
   const unreadThreads=useUnreadThreadNavigation(activeConv,cloudAccount?.accountId,openUnreadRoot,activeThreadRootId);
   // A stable ref keeps the shortcut's onClick identity fixed even though
   // `unreadThreads` is a fresh object every render, so the memoized element
@@ -276,7 +264,6 @@ export function ChatsPage({
   const attributedTranscriptMessages = useThreadMessageSummaries(
     threadProjection, threadReadStatus.reads, activeConv.id, activeLiveTurnThreadRootId, openThreadState,
   );
-  const [threadPanelWidth, setThreadPanelWidth] = useState(384);
   const localActiveThread=useActiveThread(activeThreadRootId,threadProjection,attributedTranscriptMessages);
   const remoteThread=loadedThreadPage?.isThread?loadedThreadPage.thread:undefined;
   const activeThread=unreadThreads.merge(localActiveThread) ?? (remoteThread?.root.id===activeThreadRootId?remoteThread:null);
@@ -286,6 +273,24 @@ export function ChatsPage({
   );
   const mainQueuedMessages = queuedThreadProjection.mainMessages;
   const activeThreadQueuedMessages = queuedThreadProjection.activeThreadMessages;
+  const companionDocument = useCompanionDocument(activeConv.id);
+  const paneTabs = useCompanionPaneTabs(activeConv.id, companionDocument, companionConversation, Boolean(activeThread));
+  const { view: companionView, setView: setCompanionView } = paneTabs;
+  const companionLayout = useChatCompanionLayout({
+    pageConversationId: activeConv.id,
+    hasOverview: companionView !== 'chat',
+    onHide: companionSession.actions.cancelCreation,
+    activePaneKind,
+    companionConversation,
+  });
+  useCompanionDocumentRequests((document) => { companionDocument.open(document); setCompanionView('document'); companionLayout.placeCompanion('right'); companionLayout.setFolded(false); });
+  const {
+    containerRef: splitContainerRef,
+    side: companionSide,
+    isVisible: showCompanionPane,
+  } = companionLayout;
+  const showDiscussionTab = () => { setCompanionView('discussion'); companionLayout.placeCompanion('right'); companionLayout.setFolded(false); };
+  useLayoutEffect(() => { revealDiscussionRef.current = showDiscussionTab; });
   const chatForkModel = useChatForkModel({
     conversation: activeConv,
     messages: attributedTranscriptMessages,
@@ -381,7 +386,9 @@ export function ChatsPage({
       runtime={runtime}
     />
   ) : null;
-  const selectCompanionView = (view: CompanionView) => {
+  const selectCompanionView = (requested: CompanionView) => {
+    const view = companionToolbarView(requested, Boolean(activeThread));
+    if (view === 'discussion') return showDiscussionTab();
     if (view === 'chat' && (!companionConversation || companionConversation.agentSubsessionId)) {
       if (!companionSession.actions.openExisting()) {
         void openSideAgentPanel();
@@ -393,7 +400,7 @@ export function ChatsPage({
     companionLayout.placeCompanion('right');
     companionLayout.setFolded(false);
   };
-  const paneContent = useCompanionPaneContent({ documents: companionDocument, tabs: paneTabs, layout: companionLayout, onSelect: selectCompanionView,
+  const paneContent = useCompanionPaneContent({ documents: companionDocument, tabs: paneTabs, layout: companionLayout, onSelect: selectCompanionView, onCloseDiscussion: closeThread,
     host: { account: cloudAccount, conversation: activeConv, contacts: senderProfiles.contacts, isNativeShell, startChatWithPerson: onMessageContact, forwardMessage: composer.onForwardMessage } });
   return (
     <AgentSubsessionNavigationContext.Provider value={(id) => openRelatedAgentSession(id, true)}>
@@ -401,7 +408,10 @@ export function ChatsPage({
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <ChatCompanionLayout containerRef={splitContainerRef} layout={companionLayout} view={companionView}
           accountId={cloudAccount?.accountId} companionPane={companionPane} openedViews={paneTabs.opened}
-          tabBar={paneContent.tabBar} documentPane={paneContent.documentPane}>
+          tabBar={paneContent.tabBar} documentPane={paneContent.documentPane} discussionPane={chatDiscussionPane({ activeConv, activeSessionId, activeThread,
+            activeThreadRootId, activeLiveTurnThreadRootId, locatedLiveTurn, activeThreadQueuedMessages, activePaneKind, unreadThreads, setOpenThreadState,
+            threadReadStatus, routing: collaborationRouting.main, pins: chatPins, runtime, composer, transcript, isNativeShell, accountId: cloudAccount?.accountId,
+            openAuthentication, navigateToMessage: transcriptNavigation.main.navigate, openSenderProfile: senderProfiles.openActive, openRelatedAgentSession, handleReplyMessage })}>
           <ChatMainWorkspace
             layout={layout}
             session={session}
@@ -441,6 +451,7 @@ export function ChatsPage({
                 hasChat: Boolean(companionConversation),
                 hasDocument: Boolean(companionDocument.document),
                 hasTabs: paneTabs.hasTabs,
+                hasDiscussion: Boolean(activeThread),
                 onToggle: paneContent.toggle,
                 onSelect: selectCompanionView,
                 onHide: () => companionLayout.setFolded(true),
@@ -449,86 +460,6 @@ export function ChatsPage({
               openSession: openRelatedAgentSession,
             }}
             threadShortcut={threadShortcutElement}
-            threadPanel={activeThread ? (
-              <ChatThreadPanel
-                conversation={activeConv}
-                thread={activeThread}
-                navigationMessageId={loadedThreadPage?.target}
-                firstUnreadMessageId={loadedThreadPage?.first}
-                nextAfterSequence={loadedThreadPage?.next}
-                onLoadMore={()=>void unreadThreads.load(activeThread.root.id,loadedThreadPage?.next??undefined)}
-                onNextUnread={()=>void unreadThreads.load()}
-                unreadThreadCount={activeConv.threadAttention?.thread_count??0}
-                liveTurn={activeLiveTurnThreadRootId === activeThreadRootId ? locatedLiveTurn : null}
-                liveTurnSender={localOwnedAgentSenderLabel(activeConv)}
-                onClose={closeThread}
-                onSendStart={() => setOpenThreadState((current) => current ? ({
-                  ...current,
-                  optimisticReplyCount: Math.max(
-                    current.optimisticReplyCount ?? 0,
-                    activeThread.replies.length + activeThreadQueuedMessages.length + 1,
-                  ),
-                }) : current)}
-                onSendSettled={() => setOpenThreadState((current) => current ? ({
-                  ...current,
-                  optimisticReplyCount: undefined,
-                }) : current)}
-                onSend={(text, attachments) => {
-                  const source = threadRootSource(activeThread.root, activeSessionId);
-                  if (!source) return;
-                  return runtime.onSendChatMessage(
-                    text,
-                    undefined,
-                    undefined,
-                    attachments,
-                    { action: 'thread', source },
-                  );
-                }}
-                saveAttachments={composer.saveDesktopAttachments}
-                saveAttachmentPaths={composer.saveDesktopAttachmentPaths}
-                removeStagedAttachment={composer.removeChatComposerAttachment}
-                isNativeShell={isNativeShell}
-                accountId={cloudAccount?.accountId}
-                readCursors={threadReadStatus.reads}
-                onMarkRead={threadReadStatus.markRead}
-                queuedMessages={activeThreadQueuedMessages}
-                onCancelQueuedMessage={transcript.onCancelQueuedMessage}
-                width={threadPanelWidth}
-                onWidthChange={setThreadPanelWidth}
-                compactModelMenu={{
-                  selection: collaborationRouting.main.enabled && collaborationRouting.main.selectedAgent
-                    ? collaborationRouting.main.selection ?? composerSelection
-                    : composerSelection,
-                  providerOptions: composerProviderOptions,
-                  modelOptions: chatModelOptions && chatModelOptions.length > 0
-                    ? chatModelOptions
-                    : undefined,
-                  onSave: collaborationRouting.main.saveCompactRoute, sharedRoute: activePaneKind !== 'agent',
-                }}
-                chatMentionTargetsForText={composer.chatMentionTargetsForText}
-                actions={{
-                  onOpenSource: transcript.onOpenSource,
-                  onOpenArtifact: transcript.onOpenArtifact,
-                  onOpenAuthSettings: openAuthentication,
-                  onNavigateToMessage: transcriptNavigation.main.navigate,
-                  onOpenMessageDetail: composer.onSelectMessage,
-                  onStopCollaborationAgentRequest: runtime.onStopCollaborationAgentRequest,
-                  onStopActiveTurn: runtime.onStopDesktopChatTurn,
-                  onRequestCollaborationContact: runtime.onRequestCollaborationContact,
-                  onOpenSenderProfile: senderProfiles.openActive,
-                  onOpenForkSession: openRelatedAgentSession,
-                  onReplyMessage: handleReplyMessage,
-                  onForwardMessage: composer.onForwardMessage,
-                  onEditMessage: composer.onEditMessage,
-                  onDeleteMessage: composer.onDeleteMessage,
-                  onReactMessage: composer.onReactMessage,
-                  onRetryMessage: runtime.onRetryChatMessage,
-                  onSelectMessage: composer.onSelectMessage,
-                  onRequestPinMessage: chatPins.requestPin,
-                  onRequestUnpinMessage: chatPins.requestUnpin,
-                }}
-              />
-            ) : null}
           />
         </ChatCompanionLayout>
       </div>

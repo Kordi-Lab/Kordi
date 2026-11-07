@@ -99,7 +99,6 @@ type ChatMainWorkspaceProps = {
     open: (initialPrompt?: string) => Promise<boolean>;
     openSession: (sessionId: string, isSubsession?: boolean) => void;
   };
-  threadPanel?: ReactNode;
   threadShortcut?: ReactNode;
 };
 
@@ -113,7 +112,6 @@ export function ChatMainWorkspace({
   models,
   presentation,
   companion,
-  threadPanel,
   threadShortcut,
 }: ChatMainWorkspaceProps) {
   const { activeConv } = session;
@@ -438,7 +436,6 @@ export function ChatMainWorkspace({
           </div>
         )}
       </ChatPaneLayout>
-      {threadPanel}
       </div>
 
       {models.senderProfiles.target ? (
