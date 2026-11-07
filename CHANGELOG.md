@@ -4,9 +4,67 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
 
+## [0.0.2-beta.7] - 2026-11-06
+
+### Added
+
+- Added the Kordi web app: sign in at kordi.ai in a browser to chat, use
+  Grounding, and import memories without installing the Mac app ([#2361],
+  [#2369], [#2380]).
+- Added browser sign-in for the Mac and iPhone apps, Sign in with Apple on the
+  web sign-in page, and stronger password requirements for new accounts
+  ([#2245], [#2255], [#2279], [#2352]).
+- Added organizations: every account has a personal organization, new content
+  goes to the selected organization, and people can find and join theirs
+  ([#2241], [#2287], [#2313]).
+- Added memory import from chosen files on Mac, iPhone, and the web, with a
+  report of saved, duplicate, and failed entries ([#2220], [#2380]).
+- Added group invitation links, one-person groups, pending invitations kept on
+  the account, and announcements when a group is created ([#2342], [#2371],
+  [#2374]).
+- Added account deletion, AI consent and Privacy settings on Mac and iPhone,
+  blocking and abuse reports, and per-person controls for agent and card
+  access ([#2350], [#2351], [#2353], [#2354], [#2355], [#2367], [#2368]).
+- Added usage and limit information instead of silent caps for hosted model
+  work ([#2296]).
+
 ### Changed
 
 - Licensed Kordi first-party code and future contributions under MIT ([#2172]).
+- Showed Personal agent as its own entry with clear connector status, kept its
+  rows in sync with the chat, and enforced agent Access for every agent,
+  including the default agent ([#2208], [#2221], [#2380]).
+- Kept background sessions in the parent conversation, let owners resume them,
+  and folded long groups of background session rows ([#2380]).
+- Redesigned group Info with inline rename and a Manage level, reused one live
+  invitation link per group, and let members leave groups and admins dissolve
+  groups and channels on Mac and iPhone ([#2374], [#2380]).
+- Used one consistent error line and color across chats, settings, sign-in,
+  and calls, and asked for microphone and camera access instead of showing an
+  error ([#2380]).
+- Showed tool activity inline with one conversation scrollbar, folded finished
+  turn details by default, and moved Stop to the status line ([#2215], [#2380]).
+- Showed completed agent work as Done in Tasks and offered a full rebuild when
+  Digest output is rejected ([#2218], [#2219]).
+- Refined the compact Mac layout, companion tabs, pop-up menus, the Help menu,
+  and the onboarding tour, and removed blue focus rings ([#2233], [#2237],
+  [#2316], [#2320], [#2348], [#2380]).
+
+### Fixed
+
+- Fixed Grounding refresh, withdrawn cards, room-code paste, group channel
+  access, source dates, narrow web layouts, and opening an unbuilt card
+  ([#2225], [#2228], [#2302], [#2309], [#2380]).
+- Fixed document edits lost when folding or switching companion tabs, forwarded
+  content, quote names, and image preview gestures on Mac ([#2224], [#2227],
+  [#2263]).
+- Fixed call, Calendar, search, and agent failure states found in Mac testing,
+  and made desktop turns fall back or fail visibly without hosted credentials
+  ([#2229], [#2370]).
+- Fixed discussion replies staying unread after reading them in their thread,
+  and a flashing unread badge after browser sign-in ([#2380]).
+- Reduced idle CPU use from polling loops on Mac ([#2380]).
+- Fixed the sign-in window's white flash and dark theme ([#2301], [#2314]).
 
 ## [0.0.2-beta.6] - 2026-10-26
 
@@ -801,7 +859,8 @@ which were built but never released.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-AI/Kordi/compare/V0.0.2.beta6...HEAD
+[Unreleased]: https://github.com/Kordi-AI/Kordi/compare/V0.0.2.beta7...HEAD
+[0.0.2-beta.7]: https://github.com/Kordi-AI/Kordi/compare/V0.0.2.beta6...V0.0.2.beta7
 [0.0.2-beta.6]: https://github.com/Kordi-AI/Kordi/compare/V0.0.2.beta5.2...V0.0.2.beta6
 [0.0.2-beta.5.2]: https://github.com/Kordi-AI/Kordi/compare/V0.0.2.beta3...V0.0.2.beta5.2
 [0.0.2-beta.3]: https://github.com/Kordi-AI/Kordi/compare/V0.0.2.beta2...V0.0.2.beta3
@@ -1159,3 +1218,46 @@ This release is the comparison baseline for beta.8. See the
 [#2150]: https://github.com/Kordi-AI/Kordi/pull/2150
 [#2153]: https://github.com/Kordi-AI/Kordi/pull/2153
 [#2151]: https://github.com/Kordi-AI/Kordi/pull/2151
+[#2208]: https://github.com/Kordi-AI/Kordi/pull/2208
+[#2215]: https://github.com/Kordi-AI/Kordi/pull/2215
+[#2218]: https://github.com/Kordi-AI/Kordi/pull/2218
+[#2219]: https://github.com/Kordi-AI/Kordi/pull/2219
+[#2220]: https://github.com/Kordi-AI/Kordi/pull/2220
+[#2221]: https://github.com/Kordi-AI/Kordi/pull/2221
+[#2224]: https://github.com/Kordi-AI/Kordi/pull/2224
+[#2225]: https://github.com/Kordi-AI/Kordi/pull/2225
+[#2227]: https://github.com/Kordi-AI/Kordi/pull/2227
+[#2228]: https://github.com/Kordi-AI/Kordi/pull/2228
+[#2229]: https://github.com/Kordi-AI/Kordi/pull/2229
+[#2233]: https://github.com/Kordi-AI/Kordi/pull/2233
+[#2237]: https://github.com/Kordi-AI/Kordi/pull/2237
+[#2241]: https://github.com/Kordi-AI/Kordi/pull/2241
+[#2245]: https://github.com/Kordi-AI/Kordi/pull/2245
+[#2255]: https://github.com/Kordi-AI/Kordi/pull/2255
+[#2263]: https://github.com/Kordi-AI/Kordi/pull/2263
+[#2279]: https://github.com/Kordi-AI/Kordi/pull/2279
+[#2287]: https://github.com/Kordi-AI/Kordi/pull/2287
+[#2296]: https://github.com/Kordi-AI/Kordi/pull/2296
+[#2301]: https://github.com/Kordi-AI/Kordi/pull/2301
+[#2302]: https://github.com/Kordi-AI/Kordi/pull/2302
+[#2309]: https://github.com/Kordi-AI/Kordi/pull/2309
+[#2313]: https://github.com/Kordi-AI/Kordi/pull/2313
+[#2314]: https://github.com/Kordi-AI/Kordi/pull/2314
+[#2316]: https://github.com/Kordi-AI/Kordi/pull/2316
+[#2320]: https://github.com/Kordi-AI/Kordi/pull/2320
+[#2342]: https://github.com/Kordi-AI/Kordi/pull/2342
+[#2348]: https://github.com/Kordi-AI/Kordi/pull/2348
+[#2350]: https://github.com/Kordi-AI/Kordi/pull/2350
+[#2351]: https://github.com/Kordi-AI/Kordi/pull/2351
+[#2352]: https://github.com/Kordi-AI/Kordi/pull/2352
+[#2353]: https://github.com/Kordi-AI/Kordi/pull/2353
+[#2354]: https://github.com/Kordi-AI/Kordi/pull/2354
+[#2355]: https://github.com/Kordi-AI/Kordi/pull/2355
+[#2361]: https://github.com/Kordi-AI/Kordi/pull/2361
+[#2367]: https://github.com/Kordi-AI/Kordi/pull/2367
+[#2368]: https://github.com/Kordi-AI/Kordi/pull/2368
+[#2369]: https://github.com/Kordi-AI/Kordi/pull/2369
+[#2370]: https://github.com/Kordi-AI/Kordi/pull/2370
+[#2371]: https://github.com/Kordi-AI/Kordi/pull/2371
+[#2374]: https://github.com/Kordi-AI/Kordi/pull/2374
+[#2380]: https://github.com/Kordi-AI/Kordi/pull/2380
