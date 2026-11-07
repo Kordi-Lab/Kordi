@@ -106,6 +106,26 @@ const [space] = buildParticipantSpaces([conversation({
   ],
 })]);
 
+// Presence for Group Info: Maya online (accent name), Ethan seen recently; two people to add.
+const presenceContact = (key: string, name: string, handle: string, presenceStatus: string, minutesAgo: number | null) => contact({
+  id: `cloud:acct_${key}`,
+  name,
+  sourceParticipantId: `acct_${key}`,
+  sourceHumanId: `acct_${key}`,
+  subtitle: handle,
+  detail: handle,
+  contactStatus: 'accepted',
+  avatarSeed: key,
+  presenceStatus,
+  presenceLastSeenAt: minutesAgo === null ? null : new Date(Date.now() - minutesAgo * 60_000).toISOString(),
+});
+const groupContacts = [
+  presenceContact('maya', 'Maya Chen', '@482731906', 'online', null),
+  presenceContact('ethan', 'Ethan Park', '@ethanpark', 'offline', 9),
+  presenceContact('hana', 'Hana Mori', '@hanamori', 'online', null),
+  presenceContact('jonah', 'Jonah Weiss', '@609114372', 'offline', 25),
+];
+
 document.body.classList.add(`theme-${theme}`);
 document.documentElement.style.colorScheme = theme;
 
@@ -162,7 +182,7 @@ createRoot(document.querySelector('#root')!).render(
       <GroupDetailsDialog
         isOpen
         space={space}
-        contacts={[]}
+        contacts={groupContacts}
         onClose={() => undefined}
         onRename={() => undefined}
         onAddMembers={() => undefined}

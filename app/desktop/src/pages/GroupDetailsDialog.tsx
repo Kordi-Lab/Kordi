@@ -20,6 +20,7 @@ import {
 } from '@/features/chat/chatCreateFlows';
 import type { Contact, ConversationParticipant, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+import { formatPresenceLine } from '@/kordi-app/contactPresenceLine';
 import { groupNameIsValid } from '@/features/chat/groupCreateCopy';
 import { GroupManagePage } from '@/pages/GroupManagePage';
 import { GroupNameInline } from '@/pages/GroupNameInline';
@@ -481,6 +482,8 @@ export function GroupDetailsDialog({
                     const showIdentityLabel = hasDuplicateName(member.name, duplicateNames)
                       && identityLabel
                       && identityLabel !== member.name;
+                    // Online people's names take the accent; the description keeps it from being colour-only.
+                    const showsOnline = !isSelfMember(member) && memberPresence(member) === 'online';
                     return (
                       <button
                         key={member.id}
@@ -488,6 +491,8 @@ export function GroupDetailsDialog({
                         data-group-member-grid-item
                         data-member-role={admin ? 'admin' : 'member'}
                         aria-label={`${member.name}, ${admin ? 'admin' : 'member'}${showIdentityLabel ? `, ${identityLabel}` : ''}`}
+                        aria-description={showsOnline ? 'online' : undefined}
+                        data-member-presence={showsOnline ? 'online' : undefined}
                         aria-expanded={selected}
                         aria-controls={selected ? `${memberSearchId}-member-actions` : undefined}
                         tabIndex={resolvedGridFocusId === member.id ? 0 : -1}
@@ -517,7 +522,7 @@ export function GroupDetailsDialog({
                             </span>
                           ) : null}
                         </span>
-                        <span className="mt-1.5 block truncate text-[10.5px] font-medium leading-4" title={member.name}>
+                        <span className={cn('mt-1.5 block truncate text-[10.5px] font-medium leading-4', showsOnline && 'app-contacts-presence-online')} title={member.name}>
                           {member.name}
                         </span>
                         {showIdentityLabel ? (
@@ -752,6 +757,9 @@ export function GroupDetailsDialog({
                           const showIdentityLabel = hasDuplicateName(option.label, duplicateNames)
                             && identityLabel
                             && identityLabel !== option.label;
+                          // As in Contacts rows, a known presence line takes the handle's place.
+                          const presenceLine = formatPresenceLine(option.contact.presenceStatus, option.contact.presenceLastSeenAt);
+                          const secondaryText = showIdentityLabel ? identityLabel : presenceLine ?? detail;
                           return (
                             <button
                               key={option.id}
@@ -771,9 +779,9 @@ export function GroupDetailsDialog({
                               />
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate font-medium">{option.label}</span>
-                                {showIdentityLabel || detail ? (
-                                  <span className="block truncate text-[9.5px] text-[color:var(--utility-muted-text)]">
-                                    {showIdentityLabel ? identityLabel : detail}
+                                {secondaryText ? (
+                                  <span className={cn('block truncate text-[9.5px]', !showIdentityLabel && presenceLine === 'online' ? 'app-contacts-presence-online' : 'text-[color:var(--utility-muted-text)]')}>
+                                    {secondaryText}
                                   </span>
                                 ) : null}
                               </span>
