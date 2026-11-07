@@ -263,8 +263,9 @@ fn set_background_turn_route_in_store(
     if row.session_scope != "runtime" {
         bail!("Session is not a background session");
     }
-    let mut profile = saved_runtime_profile_from_store(conn, session_id)?
-        .ok_or_else(|| anyhow!("The background session runtime profile is unavailable on this Mac"))?;
+    let mut profile = saved_runtime_profile_from_store(conn, session_id)?.ok_or_else(|| {
+        anyhow!("The background session runtime profile is unavailable on this Mac")
+    })?;
     let model = route
         .model
         .as_deref()
@@ -285,9 +286,9 @@ fn set_background_turn_route_in_store(
     };
     if let (Some(auth_provider), Some(next_model)) = (&next.auth_provider, &next.model) {
         let model_provider = next_model.split_once('/').map(|(provider, _)| provider);
-        if !model_provider.is_some_and(|provider| {
-            crate::login::provider_names_match(provider, auth_provider)
-        }) {
+        if !model_provider
+            .is_some_and(|provider| crate::login::provider_names_match(provider, auth_provider))
+        {
             bail!("This background session can only switch between models of its account");
         }
     }

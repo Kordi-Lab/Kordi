@@ -69,7 +69,10 @@ pub(super) fn profile_bootstrap_options(
     }
 }
 
-pub(super) fn apply_runtime_profile(setup: &mut SessionRuntimeSetup, profile: &DesktopRuntimeProfile) {
+pub(super) fn apply_runtime_profile(
+    setup: &mut SessionRuntimeSetup,
+    profile: &DesktopRuntimeProfile,
+) {
     if let Some(execution_policy) = profile.execution_policy {
         setup.tool_ctx.execution_policy = execution_policy;
     }

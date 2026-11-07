@@ -307,7 +307,10 @@ pub(crate) async fn after_access_saved(
     if let Err(error) =
         crate::agent_access::stop_others_for_definition(pool, owner, &agent.agent_id).await
     {
-        eprintln!("[agent-access] stop requests to {}: {error}", agent.agent_id);
+        eprintln!(
+            "[agent-access] stop requests to {}: {error}",
+            agent.agent_id
+        );
     }
 }
 
