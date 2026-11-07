@@ -19,11 +19,6 @@
   background: color-mix(in oklab, currentColor 7%, transparent);
 }
 
-.app-message-link-preview:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--app-sidebar-accent) 76%, transparent);
-  outline-offset: 2px;
-}
-
 .app-message-link-preview-copy {
   display: flex;
   min-width: 0;

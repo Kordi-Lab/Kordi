@@ -69,11 +69,6 @@
   }
 }
 
-.app-auth-settings-page .app-auth-provider-row:focus-visible {
-  outline: 2px solid var(--app-quiet-control-focus-ring);
-  outline-offset: -2px;
-}
-
 .app-auth-settings-page .app-auth-provider-row::before {
   position: absolute;
   top: 50%;
@@ -136,11 +131,6 @@
   }
 }
 
-.app-settings-nav-item:focus-visible {
-  outline: 2px solid var(--app-quiet-control-focus-ring);
-  outline-offset: -2px;
-}
-
 /* The active item is a soft filled pill, matching native settings windows. */
 .app-settings-nav-item-active,
 .app-settings-nav-item-active:hover {
@@ -174,11 +164,6 @@
   .app-settings-row-button:hover {
     background: var(--app-quiet-control-hover-bg);
   }
-}
-
-.app-settings-row-button:focus-visible {
-  outline: 2px solid var(--app-quiet-control-focus-ring);
-  outline-offset: -2px;
 }
 
 .app-settings-select option {

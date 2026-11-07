@@ -171,11 +171,6 @@
   background: color-mix(in oklab, var(--app-control-hover) 72%, transparent);
 }
 
-.app-agent-studio-icon-button.is-inline-edit:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--agent-studio-accent) 32%, transparent);
-  outline-offset: 2px;
-}
-
 .app-agent-studio-blueprint-value {
   overflow: hidden;
   font-size: var(--agent-studio-type-body);

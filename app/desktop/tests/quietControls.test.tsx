@@ -28,7 +28,8 @@ test('quiet controls are borderless at rest and define complete interaction stat
   assert.match(quietBase, /--app-quiet-control-duration/);
   assert.match(shellCss, /@media \(hover: hover\) and \(pointer: fine\)/);
   assert.match(shellCss, /\.app-button-quiet:active:not\(:disabled\)/);
-  assert.match(shellCss, /\.app-button-quiet:focus-visible[\s\S]*outline:\s*2px solid var\(--app-quiet-control-focus-ring\)/);
+  // Keyboard focus is the shared fill from focus.css, never an outline ring.
+  assert.doesNotMatch(shellCss, /\.app-button-quiet:focus-visible[^{]*\{[^}]*outline:\s*\d/);
   assert.match(shellCss, /\.app-button-quiet:is\(\[aria-pressed='true'\], \[aria-expanded='true'\],[\s\S]*\[data-state='open'\]/);
   assert.match(shellCss, /\.app-button-quiet:disabled[\s\S]*color:\s*var\(--app-quiet-control-disabled-text\)/);
   assert.match(shellCss, /@media \(pointer: coarse\)[\s\S]*min-height:\s*44px/);

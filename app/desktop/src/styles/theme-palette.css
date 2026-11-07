@@ -159,7 +159,7 @@ body[data-kordi-chat-theme] .kordi-app:is(.theme-light, .theme-dark),
   --app-nav-rail-active-hover-bg: var(--app-palette-hover);
   --app-nav-rail-active-pressed-bg: var(--app-palette-selected);
   --app-nav-rail-active-text: var(--app-palette-accent);
-  --app-nav-rail-focus-ring: var(--app-palette-accent);
+  --app-nav-rail-focus-ring: var(--app-focus-border);
   --app-nav-rail-glass-bg: var(--app-palette-title-glass);
   --app-nav-rail-glass-fallback: var(--app-palette-title-glass);
   --app-nav-rail-glass-border: var(--app-palette-border);
@@ -173,7 +173,7 @@ body[data-kordi-chat-theme] .kordi-app:is(.theme-light, .theme-dark),
   --app-quiet-control-hover-bg: var(--app-palette-hover);
   --app-quiet-control-selected-bg: var(--app-palette-selected);
   --app-quiet-control-pressed-bg: var(--app-palette-selected);
-  --app-quiet-control-focus-ring: var(--app-palette-accent);
+  --app-quiet-control-focus-ring: var(--app-focus-border);
   --app-button-primary-bg: var(--app-palette-accent);
   --app-button-primary-text: var(--app-palette-accent-ink);
   --app-button-primary-hover: color-mix(in oklab, var(--app-palette-accent) 90%, var(--app-palette-ink));
@@ -191,7 +191,7 @@ body[data-kordi-chat-theme] .kordi-app:is(.theme-light, .theme-dark),
   --app-transient-muted-text: var(--app-palette-muted);
   --app-transient-subtle-text: var(--app-palette-meta);
   --app-transient-icon-bg: var(--app-palette-control);
-  --app-transient-focus-ring: var(--app-palette-accent);
+  --app-transient-focus-ring: var(--app-focus-border);
   --app-transient-shadow: var(--app-palette-popup-shadow);
   --app-chat-accent: var(--app-palette-accent);
   --app-chat-accent-text: var(--app-palette-accent-ink);

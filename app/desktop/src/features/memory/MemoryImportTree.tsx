@@ -59,7 +59,7 @@ function TreeRow({ level, label, name, meta, status, selection, disabled, onChec
       tabIndex={branch ? 0 : -1}
       data-memory-import-row={level === 1 ? 'app' : level === 2 && branch ? 'project' : 'file'}
       onKeyDown={onKeyDown}
-      className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-quiet-control-focus-ring)]"
+      className="rounded-md outline-none"
     >
       <div className={cn('flex items-center gap-2 rounded-md pr-1 hover:bg-[color:var(--app-quiet-control-hover-bg)]', branch ? 'h-8' : 'h-7', INDENT[level])}>
         {branch ? (

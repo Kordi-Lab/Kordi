@@ -67,12 +67,6 @@
   background: var(--app-transient-hover-bg);
 }
 
-.app-contact-profile-summary-trigger:focus-visible,
-.app-contact-profile-group-row:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--app-transient-focus-ring) 72%, transparent);
-  outline-offset: -2px;
-}
-
 .app-contact-profile-summary-row + .app-contact-profile-summary-row::before {
   position: absolute;
   top: 0;

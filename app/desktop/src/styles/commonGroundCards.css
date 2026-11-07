@@ -95,7 +95,6 @@
   box-shadow: 0 -1px 3px rgb(0 0 0 / 0.1), 0 6px 14px -8px rgb(0 0 0 / 0.4), inset 0 0 0 0.5px var(--edge);
   transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1), height 260ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 200ms ease-out, filter 200ms ease-out;
 }
-.cg-card.is-tile:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 3px; }
 .cg-card.is-tile:not(.is-on):hover { filter: brightness(1.06); }
 .cg-card.is-tile.is-on {
   box-shadow: 0 0 0 2.5px var(--cg-rail-bg), 0 0 0 4.5px color-mix(in srgb, var(--app-accent) 45%, transparent), 0 14px 24px -12px rgb(0 0 0 / 0.55), inset 0 0 0 0.5px var(--edge);

@@ -113,7 +113,7 @@ export function SettingsSelect({ label, options, className, ...props }: Settings
       <select
         {...props}
         aria-label={label}
-        className="app-settings-select h-8 w-full min-w-0 cursor-pointer appearance-none truncate rounded-lg border-0 bg-transparent py-1 pl-2.5 pr-8 text-right text-[13px] font-medium text-white outline-none hover:bg-[color:var(--app-quiet-control-hover-bg)] focus-visible:ring-2 focus-visible:ring-[var(--app-quiet-control-focus-ring)] disabled:cursor-default disabled:opacity-50"
+        className="app-settings-select h-8 w-full min-w-0 cursor-pointer appearance-none truncate rounded-lg border-0 bg-transparent py-1 pl-2.5 pr-8 text-right text-[13px] font-medium text-white outline-none hover:bg-[color:var(--app-quiet-control-hover-bg)] disabled:cursor-default disabled:opacity-50"
       >
         {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
@@ -137,7 +137,7 @@ export function SettingsSwitch({ enabled, label, onChange, disabled }: {
       disabled={disabled}
       onClick={() => onChange(!enabled)}
       className={cn(
-        'app-settings-switch relative h-6 w-10 shrink-0 rounded-full border outline-none transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-[var(--app-quiet-control-focus-ring)] focus-visible:ring-offset-2 disabled:opacity-50',
+        'app-settings-switch relative h-6 w-10 shrink-0 rounded-full border outline-none transition-colors motion-reduce:transition-none disabled:opacity-50',
         enabled
           ? 'border-[color:var(--app-sidebar-accent)] bg-[color:var(--app-sidebar-accent)]'
           : 'border-[color:var(--app-control-border)] bg-[color:var(--app-control-bg)] hover:bg-[color:var(--app-control-hover)]',

@@ -5,7 +5,6 @@
 .forward-content svg { width: 18px; height: 18px; flex-shrink: 0; }
 .forward-content button { cursor: pointer; }
 .forward-content button:disabled, .forward-content textarea:disabled { cursor: not-allowed; opacity: .5; }
-.forward-content :is(button, textarea):focus-visible { outline: 2px solid var(--forward-accent); outline-offset: 2px; }
 .forward-content button:active:not(:disabled) { transform: translateY(1px); }
 .forward-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; flex-shrink: 0; }
 .forward-header h2, .forward-success h2 { font-size: 17px; line-height: 1.3; font-weight: 650; letter-spacing: -.35px; margin: 0; }

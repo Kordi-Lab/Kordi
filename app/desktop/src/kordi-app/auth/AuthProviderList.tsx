@@ -91,7 +91,7 @@ export function AuthProviderList({
               placeholder={`Search ${providers.length} providers`}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="h-10 w-full rounded-xl border-0 bg-white/[0.045] pl-10 pr-3 text-[13px] text-white outline-none placeholder:text-slate-500 focus-visible:ring-2 focus-visible:ring-white/35"
+              className="h-10 w-full rounded-xl border border-transparent bg-white/[0.045] pl-10 pr-3 text-[13px] text-white outline-none placeholder:text-slate-500"
             />
           </label>
           {variant === 'settings' ? (
@@ -129,7 +129,7 @@ export function AuthProviderList({
             <button
               key={letter}
               type="button"
-              className="h-5 w-5 rounded text-[10px] font-medium text-slate-500 hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/40"
+              className="h-5 w-5 rounded text-[10px] font-medium text-slate-500 hover:bg-white/10 hover:text-white"
               onClick={() => document.getElementById(`provider-index-${variant}-${letter}`)?.scrollIntoView({ block: 'start' })}
               aria-label={`Jump to ${letter} providers`}
             >

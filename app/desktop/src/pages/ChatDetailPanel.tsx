@@ -276,7 +276,7 @@ function ChatDetailPanelView({
                       <button
                         type="button"
                         data-info-participant-profile="true"
-                        className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--app-sidebar-accent)]"
+                        className="shrink-0 rounded-full"
                         aria-label={`Open ${displayName} profile`}
                         onClick={(event) => {
                           event.preventDefault();

@@ -289,11 +289,9 @@ html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app[data-native-backdr
 
 .app-input-shell:focus,
 .app-input-shell:focus-within {
-  border-color: color-mix(in oklab, var(--app-control-border) 72%, var(--utility-foreground));
+  border-color: var(--app-focus-border);
   background: color-mix(in oklab, var(--app-control-hover) 88%, transparent);
-  box-shadow:
-    0 0 0 2px color-mix(in oklab, var(--app-control-border) 42%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .app-input-shell::placeholder,
@@ -323,7 +321,7 @@ html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app[data-native-backdr
 .app-input-shell.app-flat-input:focus,
 .app-input-shell.app-flat-input:focus-visible,
 .app-input-shell.app-flat-input:focus-within {
-  border-color: color-mix(in oklab, var(--app-quiet-control-focus-ring) 62%, var(--app-control-border));
+  border-color: var(--app-focus-border);
   background: transparent;
   box-shadow: none;
   outline: none;
@@ -370,13 +368,6 @@ html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app[data-native-backdr
   background: var(--app-quiet-control-pressed-bg);
   color: var(--app-quiet-control-hover-text);
   transform: translateY(0);
-}
-
-.app-button-quiet:focus-visible,
-.app-icon-button:focus-visible,
-.app-utility-button:focus-visible {
-  outline: 2px solid var(--app-quiet-control-focus-ring);
-  outline-offset: 2px;
 }
 
 .app-button-quiet:is([aria-pressed='true'], [aria-expanded='true'], [data-state='open'], [data-state='active'], .is-active),

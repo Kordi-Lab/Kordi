@@ -96,10 +96,6 @@
 }
 
 /* The Chats header keeps page-local actions on one quiet geometry. */
-.kordi-app .app-chat-sidebar-actions .app-icon-button:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--app-sidebar-accent) 72%, transparent);
-  outline-offset: 2px;
-}
 
 .kordi-app.theme-light .app-input-shell {
   border-color: rgba(73, 62, 54, 0.2);
@@ -117,7 +113,6 @@
   border-color: rgba(73, 62, 54, 0.32);
   background: rgba(255, 255, 255, 0.76);
   box-shadow:
-    0 0 0 2px rgba(73, 62, 54, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.68),
     inset 0 -1px 0 rgba(73, 62, 54, 0.07);
 }
@@ -138,7 +133,7 @@
 .kordi-app.theme-light .app-input-shell.app-flat-input:focus,
 .kordi-app.theme-light .app-input-shell.app-flat-input:focus-visible,
 .kordi-app.theme-light .app-input-shell.app-flat-input:focus-within {
-  border-color: color-mix(in oklab, var(--app-quiet-control-focus-ring) 62%, var(--app-control-border));
+  border-color: var(--app-focus-border);
   background: transparent;
   box-shadow: none;
   outline: none;
@@ -176,11 +171,10 @@
 }
 
 .kordi-app.theme-light .app-composer-shell:focus-within {
-  border-color: rgba(37, 99, 235, 0.22);
+  border-color: var(--app-focus-border);
   background: var(--app-main-raised-bg);
   box-shadow:
-    0 0 0 2px rgba(37, 99, 235, 0.075),
-    0 12px 26px rgba(37, 99, 235, 0.06),
+    0 12px 26px rgba(73, 62, 54, 0.06),
     0 -2px 7px rgba(255, 255, 255, 0.52),
     inset 0 1px 0 rgba(255, 255, 255, 0.66);
 }

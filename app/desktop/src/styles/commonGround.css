@@ -123,7 +123,7 @@
 }
 .cg-textarea { display: block; width: 100%; min-height: 72px; padding: 10px 12px; border: 0; background: transparent; resize: vertical; }
 :is(.cg-input, .cg-textarea)::placeholder { color: var(--utility-muted-text); }
-.cg-input:focus { border-color: var(--app-quiet-control-focus-ring); }
+.cg-input:focus { border-color: var(--app-focus-border); }
 
 .cg-tags { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px; }
 .cg-tags.is-flat { padding: 0; }
@@ -199,7 +199,7 @@ button.cg-member:hover { background: var(--cg-fill); }
 }
 .cg-meet-input { padding: 8px 10px; outline: none; }
 .cg-meet-input::placeholder { color: var(--utility-muted-text); }
-.cg-meet-input:focus { border-color: var(--app-quiet-control-focus-ring); }
+.cg-meet-input:focus { border-color: var(--app-focus-border); }
 .cg-meet-anchor { position: relative; }
 .cg-meet-stepper { display: flex; align-items: stretch; }
 .cg-meet-step { display: grid; place-items: center; width: 30px; flex: none; border: 0; border-radius: 6px; background: none; color: var(--utility-muted-text); cursor: pointer; }

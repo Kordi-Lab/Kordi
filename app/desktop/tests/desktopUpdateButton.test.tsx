@@ -231,7 +231,7 @@ test('desktop update popover uses a quiet theme-aware surface in dark mode', () 
   assert.doesNotMatch(updateSurface, /inset 0 1px 0/);
   assert.match(css, /\.kordi-app\.theme-light \.app-popover\.app-update-popover/);
   assert.match(css, /\.app-update-popover-status-danger/);
-  assert.match(css, /\.app-update-popover-action:focus-visible/);
+  assert.doesNotMatch(css, /\.app-update-popover-action:focus-visible\s*[,{][^}]*outline:\s*\d/);
 });
 
 test('desktop update button is wired through the signed updater controller', () => {

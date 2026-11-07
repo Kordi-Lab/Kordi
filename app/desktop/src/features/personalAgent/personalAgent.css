@@ -14,7 +14,6 @@
 }
 .app-personal-agent-entry:hover { background: var(--app-control-hover); }
 .app-personal-agent-entry.is-active { border-color: transparent; background: var(--app-sidebar-selected-bg); }
-.app-personal-agent-entry:focus-visible { outline: 2px solid var(--app-sidebar-title-text); outline-offset: -2px; }
 .app-personal-agent-entry-icon {
   display: grid;
   flex: none;
@@ -89,7 +88,6 @@
   font-size: 13px;
   font-weight: 500;
 }
-.app-personal-agent-page-connect:focus-visible { outline: 2px solid var(--app-sidebar-title-text); outline-offset: 2px; }
 
 .app-personal-agent-header { gap: 10px; }
 .app-personal-agent-header h2 {

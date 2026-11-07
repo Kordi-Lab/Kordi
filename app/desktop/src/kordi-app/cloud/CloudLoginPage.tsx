@@ -43,7 +43,6 @@ const PAPER_SUNK = 'bg-[var(--app-cloud-login-sunk-bg)]';
 const PAPER_INPUT = 'bg-[var(--app-cloud-login-input-bg)]';
 const BORDER_SOFT = 'border-[var(--app-cloud-login-border)]';
 const BORDER_INNER = 'border-[var(--app-cloud-login-inner-border)]';
-const FOCUS_RING = 'focus:border-[var(--app-cloud-login-focus-border)] focus:shadow-[0_0_0_3px_var(--app-cloud-login-focus-ring)]';
 const INPUT_BASE_CLASS = [
   'app-cloud-login-input h-12 rounded-full border px-5 outline-none transition',
   'focus:bg-[var(--app-cloud-login-input-focus-bg)]',
@@ -51,13 +50,10 @@ const INPUT_BASE_CLASS = [
 const INPUT_ERROR_CLASS = [
   'border-[var(--app-cloud-login-danger-border)]',
   'focus:border-[var(--app-cloud-login-danger-border-strong)]',
-  'focus:shadow-[0_0_0_3px_var(--app-cloud-login-danger-ring)]',
 ].join(' ');
 const INPUT_HINT_CLASS = [
   'focus:border-[var(--app-cloud-login-hint-border)]',
-  'focus:shadow-[0_0_0_3px_var(--app-cloud-login-hint-ring)]',
 ].join(' ');
-const SMALL_FOCUS_RING = 'focus-visible:ring-2 focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)]';
 
 type SocialProvider = { id: 'google' | 'github'; label: string; Mark: ComponentType };
 const SOCIAL_LOGIN_PROVIDERS: ReadonlyArray<SocialProvider> = [
@@ -105,7 +101,7 @@ function CloudField({
       ? INPUT_ERROR_CLASS
       : validation === 'hint'
       ? `${BORDER_SOFT} ${INPUT_HINT_CLASS}`
-      : `${BORDER_SOFT} ${FOCUS_RING}`;
+      : BORDER_SOFT;
   return (
     <label className={`grid gap-1.5 ${TYPE_LABEL} ${INK_MUTED}`}>
       {label ? <span>{label}</span> : null}
@@ -348,7 +344,7 @@ export function CloudLoginPage({
                 onClick={() => void handleSocialSignIn(provider.id)}
                 className={[
                   'app-cloud-login-social-pill flex h-10 w-10 items-center justify-center rounded-full transition duration-150',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)]',
+                  'focus-visible:outline-none',
                   isAvailable
                     ? 'hover:scale-105 disabled:cursor-wait disabled:opacity-55'
                     : 'cursor-not-allowed opacity-35 grayscale',

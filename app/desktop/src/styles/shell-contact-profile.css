@@ -50,11 +50,6 @@
   background: color-mix(in oklab, var(--utility-foreground) 5%, transparent);
 }
 
-.app-contacts-card-button:focus-visible {
-  outline: 2px solid var(--app-accent);
-  outline-offset: -2px;
-}
-
 .app-contacts-card > .app-contacts-card-row:first-child,
 .app-contacts-card > .app-contacts-card-row:first-child > .app-contacts-card-button {
   border-top-left-radius: 12px;
@@ -162,11 +157,6 @@
 .app-contacts-match-disclosure:hover,
 .app-contacts-match-disclosure:focus-visible {
   color: var(--utility-foreground);
-}
-
-.app-contacts-match-disclosure:focus-visible {
-  outline: 2px solid var(--app-accent);
-  outline-offset: 1px;
 }
 
 .app-contacts-match-divider {

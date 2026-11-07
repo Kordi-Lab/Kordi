@@ -6,7 +6,6 @@
 .app-document-source-toolbar button { display: flex; align-items: center; gap: 6px; padding: 4px 7px; border-radius: 5px; font-size: 11px; cursor: pointer; }
 .app-document-source-toolbar button:hover { background: var(--app-control-hover); }
 .app-document-source-toolbar button[aria-pressed='true'] { color: var(--utility-foreground); background: color-mix(in srgb, var(--utility-foreground) 8%, transparent); }
-.app-document-source-toolbar button:focus-visible { outline: 2px solid var(--app-nav-rail-focus-ring); outline-offset: 1px; }
 .app-companion-source { overflow: auto; min-height: 0; flex: 1; padding: 18px 0 28px; background: var(--app-transcript-bg); color: var(--utility-foreground); }
 .app-companion-source pre { margin: 0; font-size: 12px; line-height: 1.85; min-width: 100%; width: max-content; }
 .app-companion-source-line { display: flex; gap: 16px; padding: 0 24px 0 18px; }

@@ -77,7 +77,7 @@ export function EditableIdentityAvatar({
       .finally(() => setIsSaving(false));
   };
 
-  const topButtonClassName = 'grid min-h-6 flex-1 place-items-center border-b border-[var(--app-cloud-login-inner-border)] transition hover:bg-[var(--app-cloud-login-sunk-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)] disabled:opacity-50';
+  const topButtonClassName = 'grid min-h-6 flex-1 place-items-center border-b border-[var(--app-cloud-login-inner-border)] transition hover:bg-[var(--app-cloud-login-sunk-bg)] focus-visible:outline-none disabled:opacity-50';
 
   return (
     <div className="grid gap-1.5">
@@ -119,7 +119,7 @@ export function EditableIdentityAvatar({
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="grid min-h-6 flex-1 place-items-center transition hover:bg-[var(--app-cloud-login-sunk-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)] disabled:opacity-50"
+            className="grid min-h-6 flex-1 place-items-center transition hover:bg-[var(--app-cloud-login-sunk-bg)] focus-visible:outline-none disabled:opacity-50"
             disabled={isSaving}
             aria-label={`Upload ${label.toLowerCase()}`}
             title={`Upload ${label.toLowerCase()}`}

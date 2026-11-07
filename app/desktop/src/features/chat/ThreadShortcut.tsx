@@ -5,7 +5,7 @@ export function ThreadShortcut({count,busy,onClick,error}:{count:number;busy?:bo
   return <div className="flex items-center gap-2">
     {error?<ErrorLine align="end" className="mt-0 max-w-64" action={{label:'Try again',onClick}}>{withoutTryAgain(error)}</ErrorLine>:null}
     <button type="button" aria-label="Jump to next unread discussion" title="Jump to next unread discussion" disabled={busy} onClick={onClick}
-      className="relative grid h-11 w-11 place-items-center rounded-full border border-[color:var(--app-divider)] bg-[color:var(--app-native-main-bg)] text-[color:var(--app-sidebar-accent)] shadow-md transition hover:brightness-110 disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--app-sidebar-accent)]">
+      className="relative grid h-11 w-11 place-items-center rounded-full border border-[color:var(--app-divider)] bg-[color:var(--app-native-main-bg)] text-[color:var(--app-sidebar-accent)] shadow-md transition hover:brightness-110 disabled:opacity-60">
       {busy?<LoaderCircle className="h-5 w-5 animate-spin motion-reduce:animate-none"/>:<MessagesSquare className="h-5 w-5" aria-hidden="true"/>}
       {count>0?<span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-[color:var(--app-sidebar-accent)] px-1 text-[10px] font-semibold text-[color:var(--app-sidebar-accent-text)]">{count>99?'99+':count}</span>:null}
     </button>

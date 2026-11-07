@@ -113,13 +113,6 @@
   color: var(--shared-fg);
 }
 
-.app-contact-shared-back:focus-visible,
-.app-contact-shared-row:focus-visible,
-.app-contact-shared-tile:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--app-accent) 72%, transparent);
-  outline-offset: -2px;
-}
-
 .app-contact-shared-back-icon {
   width: 16px;
   height: 16px;

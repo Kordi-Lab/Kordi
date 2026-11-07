@@ -1,7 +1,7 @@
 /* A finished or running tool reads as one line until its row is opened. */
 .app-tool-activity-toggle { border: 0; background: transparent; color: inherit; text-align: left; line-height: 1.5; align-items: center; cursor: pointer; }
 .app-tool-activity-toggle:hover { color: var(--utility-foreground); }
-.app-tool-activity-toggle:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: 3px; border-radius: 3px; }
+.app-tool-activity-toggle:focus-visible { border-radius: 3px; }
 .app-tool-activity-label > .app-tool-activity-summary { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; }
 .app-tool-activity-toggle > svg { flex-shrink: 0; margin-top: 0; }
 .app-tool-activity-toggle > svg:last-child { transition: transform var(--app-motion-fast) var(--app-motion-ease); }

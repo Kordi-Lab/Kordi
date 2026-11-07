@@ -9,7 +9,6 @@
 .chat-project-trigger svg, .chat-project-option svg { flex-shrink: 0; }
 .chat-project-trigger:hover, .chat-project-option:hover, .chat-project-option:focus-visible { background: var(--app-control-active-bg); color: var(--utility-foreground); }
 .chat-project-trigger:disabled { opacity: .5; cursor: default; }
-.chat-project-trigger:focus-visible, .chat-project-option:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: -2px; }
 .chat-project-menu {
   --utility-foreground: var(--app-transient-text);
   --utility-muted-text: var(--app-transient-muted-text);
@@ -20,7 +19,6 @@
   position: fixed; z-index: var(--app-z-project-popover); width: min(240px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow-y: auto;
   color: var(--utility-foreground); font-size: 12px;
 }
-.chat-project-menu .chat-project-option:focus-visible { outline-color: var(--app-transient-focus-ring); }
 .chat-project-search { display: flex; align-items: center; gap: 6px; padding: 7px 9px; color: var(--utility-muted-text); }
 .chat-project-search input { min-width: 0; width: 100%; background: transparent; border: 0; outline: none; color: var(--utility-foreground); }
 .chat-project-search input::placeholder { color: var(--utility-muted-text); }
@@ -57,7 +55,6 @@
 .chat-workspace-git input { width: 12px; height: 12px; accent-color: var(--app-accent); }
 .chat-workspace-git svg { flex-shrink: 0; }
 .chat-workspace-add:hover, .chat-workspace-locate:not(:disabled):hover, .chat-workspace-git > button:hover { background: var(--app-control-active-bg); color: var(--utility-foreground); }
-.chat-workspace-add:focus-visible, .chat-workspace-locate:focus-visible, .chat-workspace-git > button:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: -2px; }
 .chat-workspace-selector-row button:disabled { opacity: .5; cursor: default; }
 .chat-workspace-selector-row-cloud { opacity: .5; cursor: default; user-select: none; }
 .chat-workspace-menu { width: min(280px, calc(100vw - 16px)); max-height: min(340px, calc(100dvh - 16px)); }

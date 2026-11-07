@@ -264,7 +264,7 @@ export function ProjectsPage({
                     }}
                     autoFocus
                     data-kordi-window-drag="false"
-                    className="min-w-[220px] max-w-full rounded-lg bg-transparent px-1 py-0.5 text-left text-[17px] font-semibold text-white outline-none ring-1 ring-white/10 placeholder:text-slate-500 focus:ring-white/20"
+                    className="min-w-[220px] max-w-full rounded-lg bg-transparent px-1 py-0.5 text-left text-[17px] font-semibold text-white outline-none border border-white/10 placeholder:text-slate-500"
                     placeholder="Session name"
                   />
                 ) : (

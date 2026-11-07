@@ -259,10 +259,6 @@
   color: var(--utility-foreground);
 }
 .app-voice-recording-rail .app-voice-control:disabled { opacity: 0.35; cursor: default; }
-.app-voice-recording-rail button:focus-visible {
-  outline: 2px solid var(--app-sidebar-accent);
-  outline-offset: 2px;
-}
 .app-voice-recording-rail .app-voice-scrubber { height: 1.25rem; margin: 0 0.5rem; }
 .app-voice-recording-rail .app-voice-waveform { height: 1.25rem; justify-content: space-between; gap: 3px; }
 .app-voice-recording-rail[data-phase='recording'] .app-voice-waveform { justify-content: center; }

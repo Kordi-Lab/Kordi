@@ -95,7 +95,7 @@ function SupportCheckbox({
           disabled={disabled}
         />
         <span
-          className="grid h-4 w-4 place-items-center rounded-[5px] border border-[color:var(--app-transient-border)] bg-transparent text-transparent transition-colors peer-checked:border-[color:var(--app-sidebar-accent)] peer-checked:bg-[color:var(--app-sidebar-accent)] peer-checked:text-[color:var(--app-sidebar-accent-text)] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[color:var(--app-transient-focus-ring)]"
+          className="grid h-4 w-4 place-items-center rounded-[5px] border border-[color:var(--app-transient-border)] bg-transparent text-transparent transition-colors peer-checked:border-[color:var(--app-sidebar-accent)] peer-checked:bg-[color:var(--app-sidebar-accent)] peer-checked:text-[color:var(--app-sidebar-accent-text)] peer-focus-visible:border-[color:var(--app-focus-border)]"
           aria-hidden="true"
         >
           <Check className="h-3 w-3" strokeWidth={2.5} />
@@ -241,7 +241,7 @@ export function SupportReportDialog({
                       const category = event.currentTarget.value as SupportReportDraft['category'];
                       setDraft((current) => ({ ...current, category }));
                     }}
-                    className="h-9 w-full rounded-[9px] border border-[color:var(--app-transient-border)] bg-transparent px-3 text-[12px] outline-none focus:border-[color:var(--app-transient-focus-ring)]"
+                    className="h-9 w-full rounded-[9px] border border-[color:var(--app-transient-border)] bg-transparent px-3 text-[12px] outline-none"
                   >
                     <option value="issue">Issue</option>
                     <option value="question">Question</option>
@@ -261,7 +261,7 @@ export function SupportReportDialog({
                     }}
                     maxLength={160}
                     placeholder="Brief summary"
-                    className="h-9 w-full rounded-[9px] border border-[color:var(--app-transient-border)] bg-transparent px-3 text-[12px] outline-none placeholder:text-[color:var(--app-transient-disabled-text)] focus:border-[color:var(--app-transient-focus-ring)]"
+                    className="h-9 w-full rounded-[9px] border border-[color:var(--app-transient-border)] bg-transparent px-3 text-[12px] outline-none placeholder:text-[color:var(--app-transient-disabled-text)]"
                   />
                 </label>
 
@@ -277,7 +277,7 @@ export function SupportReportDialog({
                     maxLength={12_000}
                     rows={5}
                     placeholder="What happened, what did you expect, and how can we reproduce it?"
-                    className="min-h-24 w-full resize-y rounded-[9px] border border-[color:var(--app-transient-border)] bg-transparent px-3 py-2 text-[12px] leading-[1.45] outline-none placeholder:text-[color:var(--app-transient-disabled-text)] focus:border-[color:var(--app-transient-focus-ring)]"
+                    className="min-h-24 w-full resize-y rounded-[9px] border border-[color:var(--app-transient-border)] bg-transparent px-3 py-2 text-[12px] leading-[1.45] outline-none placeholder:text-[color:var(--app-transient-disabled-text)]"
                   />
                 </label>
 

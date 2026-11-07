@@ -22,13 +22,12 @@
 }
 
 .app-composer-shell:focus-within {
-  border-color: color-mix(in oklab, var(--app-accent-ring) 72%, var(--utility-muted-text));
+  border-color: var(--app-focus-border);
   background:
     linear-gradient(180deg,
       color-mix(in oklab, var(--app-control-bg) 96%, transparent) 0%,
       color-mix(in oklab, var(--app-main-bg) 88%, rgb(0 0 0 / 0.08)) 100%);
   box-shadow:
-    0 0 0 2px color-mix(in oklab, var(--app-accent-ring) 72%, transparent),
     0 18px 38px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 color-mix(in oklab, var(--utility-foreground) 7%, transparent);
 }
@@ -86,11 +85,6 @@
 
 .app-composer-provider-tray-action:focus {
   outline: none;
-}
-
-.app-composer-provider-tray-action:focus-visible {
-  outline: 2px solid var(--app-transient-focus-ring);
-  outline-offset: 1px;
 }
 
 .app-composer-image-editor::backdrop {

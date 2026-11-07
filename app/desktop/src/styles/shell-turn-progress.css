@@ -48,7 +48,7 @@
 .app-tool-input-content pre, .app-tool-output-code pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .app-tool-detail-toggle { display: block; border: 0; background: transparent; padding: 5px 0; color: var(--utility-muted-text); font-size: 12px; text-align: left; text-decoration: underline; text-decoration-color: var(--app-control-border); text-underline-offset: 3px; }
 .app-tool-detail-toggle:hover { color: var(--utility-foreground); text-decoration-color: currentColor; }
-.app-turn-progress-summary:focus-visible, .app-turn-worked-header:focus-visible, .app-tool-detail-toggle:focus-visible, .app-tool-file-link:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: 3px; border-radius: 3px; }
+.app-turn-progress-summary:focus-visible, .app-turn-worked-header:focus-visible, .app-tool-detail-toggle:focus-visible, .app-tool-file-link:focus-visible { border-radius: 3px; }
 @media (pointer: coarse) { .app-tool-detail-toggle, .app-tool-file-link, .app-turn-worked-header { min-height: 44px; } }
 
 

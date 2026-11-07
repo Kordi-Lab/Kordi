@@ -215,7 +215,7 @@ export function ChatThreadPanel({
           onWidthChange(Math.min(640, Math.max(304, width + (event.key === 'ArrowLeft' ? 16 : -16))));
         }}
       >
-        <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[color:var(--app-divider)] transition group-hover:bg-[color:var(--app-sidebar-accent)] group-focus-visible:bg-[color:var(--app-sidebar-accent)]" aria-hidden="true" />
+        <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[color:var(--app-divider)] transition group-hover:bg-[color:var(--app-sidebar-accent)] group-focus-visible:bg-[color:var(--app-focus-border)]" aria-hidden="true" />
       </div>
       <header className="app-page-header app-chat-pane-header app-thread-panel-header relative shrink-0" data-native-titlebar={nativeTitlebar ? true : undefined}>
         <div className="app-thread-panel-header-row">
