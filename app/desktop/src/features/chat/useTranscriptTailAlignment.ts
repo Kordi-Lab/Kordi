@@ -1,5 +1,7 @@
+import type { Virtualizer } from '@tanstack/react-virtual';
 import { useCallback, useLayoutEffect, useRef, type MutableRefObject } from 'react';
 import { transcriptLayoutMaxScrollTop } from './virtualTranscriptLayout';
+import { releasePendingTranscriptTailScroll } from './useTranscriptVirtualizer';
 import { alignAndRevealMeasuredTranscriptRows, cancelTranscriptRowLift, captureTranscriptRowLayoutTops } from './virtualTranscriptMotion';
 
 type TailAlignmentOptions = {
@@ -9,7 +11,7 @@ type TailAlignmentOptions = {
   tailAlignmentTargetRef: MutableRefObject<number | null>;
   tailLiftRowsRef: MutableRefObject<HTMLElement[]>;
   sizeContainerRef: MutableRefObject<HTMLDivElement | null>;
-  virtualizer: Parameters<typeof alignAndRevealMeasuredTranscriptRows>[0]['virtualizer'];
+  virtualizer: Virtualizer<HTMLDivElement, HTMLElement>;
   gap: number;
   animateTailResize?: boolean;
   hasItems?: boolean;
@@ -40,6 +42,12 @@ export function useTranscriptTailAlignment({
       tailAlignmentFrameRef.current = null;
     }
   }, [cancelTailLiftAnimation, tailAlignmentActiveRef, tailAlignmentTargetRef]);
+
+  // The reader scrolled away from the latest message.
+  const leaveTail = useCallback(() => {
+    releasePendingTranscriptTailScroll(virtualizer);
+    cancelTailAlignment();
+  }, [cancelTailAlignment, virtualizer]);
 
   const alignViewportToTail = useCallback(() => {
     const element = internalScrollRef.current;
@@ -119,5 +127,5 @@ export function useTranscriptTailAlignment({
     return () => observer.disconnect();
   }, [alignViewportToTail, animateTailResize, hasItems, scheduleTailAlignment, sizeContainerRef, suspendTailResize, tailAlignmentActiveRef, viewportWasAtTailRef]);
 
-  return { cancelTailLiftAnimation, cancelTailAlignment, handleUserWheel, scheduleTailAlignment };
+  return { cancelTailLiftAnimation, cancelTailAlignment, handleUserWheel, leaveTail, scheduleTailAlignment };
 }

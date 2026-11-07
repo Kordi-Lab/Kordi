@@ -12,9 +12,8 @@ import {
 } from 'react';
 import { TranscriptWindowRows } from './TranscriptItemContent';
 import { createTranscriptContentMeasure } from './transcriptContentMeasure';
-import { scrollTranscriptToTail, useTranscriptVirtualizerOptions, useMeasureTranscriptRows } from './useTranscriptVirtualizer';
+import { scrollTranscriptToIndex, scrollTranscriptToTail, useTranscriptVirtualizerOptions, useMeasureTranscriptRows } from './useTranscriptVirtualizer';
 import { TRANSCRIPT_FOLLOW_TAIL_EVENT } from './transcriptNavigation';
-import { releaseTranscriptScrollTarget } from './transcriptScrollOrigin';
 import { useTranscriptTailAlignment } from './useTranscriptTailAlignment';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -88,8 +87,6 @@ export function VirtualTranscript<Item>({
   const viewportWasAtTailRef = useRef(true);
   const tailAlignmentActiveRef = useRef(false);
   const tailAlignmentTargetRef = useRef<number | null>(null);
-  // The virtualizer may still be reconciling a scrollToIndex request for the tail.
-  const tailScrollTargetPendingRef = useRef(false);
   const tailLiftRowsRef = useRef<HTMLElement[]>([]);
   const sizeContainerRef = useRef<HTMLDivElement | null>(null);
   const stableDisclosureAnchorRef = useRef<StableDisclosureAnchor | null>(null);
@@ -143,7 +140,7 @@ export function VirtualTranscript<Item>({
     if (node) node.style.height = `${totalSize}px`;
   }, [totalSize, virtualizer]);
 
-  const { cancelTailLiftAnimation, cancelTailAlignment, handleUserWheel, scheduleTailAlignment } = useTranscriptTailAlignment({
+  const { cancelTailLiftAnimation, cancelTailAlignment, handleUserWheel, leaveTail, scheduleTailAlignment } = useTranscriptTailAlignment({
     internalScrollRef, viewportWasAtTailRef, tailAlignmentActiveRef, tailAlignmentTargetRef,
     tailLiftRowsRef, sizeContainerRef, virtualizer, gap, setIsAtTail, onTailChange, animateTailResize: animateTailResize && !stableDisclosureActive,
     hasItems: items.length > 0, suspendTailResize: stableDisclosureActive || passiveViewport.preserving,
@@ -258,19 +255,12 @@ export function VirtualTranscript<Item>({
     } else if (!matchesAlignmentTarget) {
       viewportWasAtTailRef.current = false;
       setIsAtTail(false);
-      cancelTailAlignment();
-      // A reader who leaves by keyboard or scrollbar (the wheel path releases
-      // it itself) must not be pulled back when a later row measurement moves
-      // the tail target the virtualizer is still reconciling.
-      if (tailScrollTargetPendingRef.current) {
-        tailScrollTargetPendingRef.current = false;
-        releaseTranscriptScrollTarget(virtualizer);
-      }
+      leaveTail();
     }
     onScroll?.(event);
     if (isAtTail || tailAlignmentActiveRef.current || !shouldPrefetchTranscriptHistory(element.scrollTop, element.clientHeight)) return;
     void requestOlder(`scroll:${sessionKey}:${items.length}:${oldestItemKey}`);
-  }, [cancelTailAlignment, gap, items.length, oldestItemKey, onScroll, requestOlder, scrollOrigin, sessionKey, virtualizer]);
+  }, [gap, items.length, leaveTail, oldestItemKey, onScroll, requestOlder, scrollOrigin, sessionKey, virtualizer]);
 
   const handleWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     handleUserWheel(event);
@@ -440,7 +430,6 @@ export function VirtualTranscript<Item>({
       const tailIsMounted = virtualizer.getVirtualItems().some(item => item.index === items.length - 1);
       if (items.length > 0 && (!tailIsMounted
         || (revealFromIndex === undefined && !hasActiveTranscriptRowLift(tailLiftRowsRef.current)))) {
-        tailScrollTargetPendingRef.current = true;
         scrollTranscriptToTail(virtualizer, internalScrollRef.current, items.length - 1, aligned?.sessionKey !== sessionKey);
       }
       scheduleTailAlignment(revealFromIndex);
@@ -460,10 +449,7 @@ export function VirtualTranscript<Item>({
     passiveViewport.release();
     viewportWasAtTailRef.current = true;
     setIsAtTail(true);
-    if (items.length > 0) {
-      tailScrollTargetPendingRef.current = true;
-      virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
-    }
+    if (items.length > 0) scrollTranscriptToTail(virtualizer, null, items.length - 1, false);
     scheduleTailAlignment();
   }, [passiveViewport, items.length, scheduleTailAlignment, scrollOrigin, virtualizer]);
 
@@ -490,8 +476,7 @@ export function VirtualTranscript<Item>({
   const scrollToNavigationIndex = useCallback((index: number) => {
     scrollOrigin.settle();
     passiveViewport.release();
-    tailScrollTargetPendingRef.current = false;
-    virtualizer.scrollToIndex(index, { align: 'center' });
+    scrollTranscriptToIndex(virtualizer, index);
   }, [passiveViewport, scrollOrigin, virtualizer]);
   const {
     navigationTargetIndex,
