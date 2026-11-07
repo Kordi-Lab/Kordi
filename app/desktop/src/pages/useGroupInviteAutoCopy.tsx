@@ -67,4 +67,3 @@ export function useGroupInviteAutoCopy(createInvitation: CreateInvitation | unde
     : null;
   return { begin, notice: element };
 }
-
