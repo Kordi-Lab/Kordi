@@ -111,5 +111,12 @@
   pointer-events: none;
   animation: app-copy-toast-in 140ms ease-out;
 }
+/* Start group: "Invite link copied" with Share…; unlike a plain toast it takes clicks. */
+.app-copy-toast.app-invite-toast { display: flex; align-items: center; gap: 2px; padding: 3px 3px 3px 12px; pointer-events: auto; transition: opacity 180ms ease-in; }
+.app-copy-toast.app-invite-toast-action-first { padding-left: 3px; }
+.app-invite-toast[data-leaving] { opacity: 0; }
+.app-invite-toast-divider { width: 1px; height: 14px; margin-inline: 6px 2px; background: var(--app-transient-border); }
+.app-toast-action { padding: 2px 8px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.app-toast-action:hover { background: var(--app-transient-hover-bg); }
 @keyframes app-copy-toast-in { from { opacity: 0; transform: translate(-50%, 4px); } }
-@media (prefers-reduced-motion: reduce) { .app-copy-toast { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .app-copy-toast { animation: none; } .app-copy-toast.app-invite-toast { transition: none; } }

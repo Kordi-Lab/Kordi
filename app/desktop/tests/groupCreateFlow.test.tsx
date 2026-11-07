@@ -17,6 +17,7 @@ import { CloudAuthError } from '../src/features/cloud/cloudAuthError';
 import type { CreateChatGroupRequest } from '../src/app/kordiShellSlots.types';
 import type { CanonicalSessionMessage, CanonicalSessionState, Contact } from '../src/kordi-app/types';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
+import { GROUP_INVITE_NOTICE_MS } from '../src/pages/useGroupInviteAutoCopy';
 import { dissolvableChannelTarget } from '../src/pages/workspaceSidebar.chatHelpers';
 import { flushReactUpdates, installDom } from './helpers/transcriptAttachmentDom';
 
@@ -95,21 +96,20 @@ async function renderGroupForm({
   };
 }
 
-test('a group needs a name: both actions stay off until one is typed, and the name field has focus', async () => {
+test('a group needs a name: Create group stays off until one is typed, the name field has focus, and there is no invite row', async () => {
   const view = await renderGroupForm({ onCreateGroup: async () => 'session:group:new' });
   try {
     assert.equal(view.input().placeholder, 'Group name');
     assert.equal(document.activeElement, view.input(), 'the name field is focused on open');
     assert.equal(view.button('Create group')?.disabled, true);
-    assert.equal(view.host.querySelector('[role="group"] > button')?.textContent?.trim(), 'Invite with a link');
-    assert.equal((view.host.querySelector('[role="group"] > button') as HTMLButtonElement).disabled, true);
+    assert.deepEqual([...view.host.querySelectorAll('[role="group"] > button')].map((row) => row.textContent?.trim()), ['Alice']);
+    assert.doesNotMatch(view.host.textContent ?? '', /Invite with a link/);
 
     await view.type('   ');
     assert.equal(view.button('Create group')?.disabled, true, 'blank names do not count');
 
     await view.type('Launch QA');
     assert.equal(view.button('Create group')?.disabled, false);
-    assert.equal((view.host.querySelector('[role="group"] > button') as HTMLButtonElement).disabled, false);
   } finally {
     await view.unmount();
     view.restore();
@@ -151,80 +151,144 @@ test('a failed create shows short copy, never the server text, and keeps the pan
   }
 });
 
-test('Invite with a link shows one link with Copy, a toast and a check after copying, and closes on Done', async () => {
-  const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
+type ClipboardStub = { copied: string[]; refuse: boolean };
+
+/** Replaces the clipboard and share sheet for one test; returns a restore function. */
+function stubNavigator(clipboard: ClipboardStub, share?: (data: ShareData) => Promise<void>) {
+  const saved = ['clipboard', 'share'].map((key) => [key, Object.getOwnPropertyDescriptor(globalThis.navigator, key)] as const);
+  Object.defineProperty(globalThis.navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: async (text: string) => { if (clipboard.refuse) throw new Error('Write permission denied.'); clipboard.copied.push(text); } },
+  });
+  Object.defineProperty(globalThis.navigator, 'share', { configurable: true, value: share });
+  return () => saved.forEach(([key, descriptor]) => {
+    if (descriptor) Object.defineProperty(globalThis.navigator, key, descriptor);
+    else delete (globalThis.navigator as unknown as Record<string, unknown>)[key];
+  });
+}
+
+const inviteNotice = () => document.querySelector<HTMLElement>('.app-invite-toast[role="status"]');
+const noticeButton = (label: string) => [...(inviteNotice()?.querySelectorAll('button') ?? [])].find((button) => button.textContent === label);
+
+test('Create group makes the link, copies it and offers Share… in a short notice that fades', async () => {
   const invitations: CloudGroupInvitationCreateInput[] = [];
+  const clipboard: ClipboardStub = { copied: [], refuse: false };
+  const shared: ShareData[] = [];
   const view = await renderGroupForm({
     onCreateGroup: async () => 'session:group:linked',
     onCreateGroupInvitation: async (input) => {
       invitations.push(input);
-      return { invitationId: 'groupinv_1', inviteUrl: 'https://kordi.example/g/kordi_gi_synthetic', expiresAt };
+      return { invitationId: 'groupinv_1', inviteUrl: 'https://kordi.example/g/kordi_gi_synthetic', expiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString() };
     },
   });
-  const clipboard = Object.getOwnPropertyDescriptor(globalThis.navigator, 'clipboard');
-  let copied = '';
-  Object.defineProperty(globalThis.navigator, 'clipboard', {
-    configurable: true,
-    value: { writeText: async (text: string) => { copied = text; } },
-  });
+  const restoreNavigator = stubNavigator(clipboard, async (data) => { shared.push(data); });
   try {
     await view.type('Launch QA');
-    await act(async () => { (view.host.querySelector('[role="group"] > button') as HTMLButtonElement).click(); });
+    await act(async () => { view.button('Create group')?.click(); });
     await flushReactUpdates();
-    assert.equal(view.requests[0].name, 'Launch QA');
-    assert.equal(view.requests[0].inviteLink, true);
+    assert.equal(view.requests.length, 1);
+    assert.equal(view.closes(), 1, 'the panel closes and the new group opens');
     assert.deepEqual(invitations, [{ groupId: 'session:group:linked', groupSpaceId: 'session:group:linked', groupTitle: 'Launch QA' }]);
-    assert.equal(view.host.querySelector<HTMLInputElement>('input[aria-label="Group invitation link"]')?.value, 'https://kordi.example/g/kordi_gi_synthetic');
-    assert.match(view.host.textContent ?? '', /Expires in 7 days/);
-    assert.equal(view.closes(), 0, 'the link step keeps the panel open');
+    assert.deepEqual(clipboard.copied, ['https://kordi.example/g/kordi_gi_synthetic']);
+    assert.equal(inviteNotice()?.firstElementChild?.textContent, 'Invite link copied');
+    assert.equal(view.host.querySelector('.app-error-line'), null);
 
-    await act(async () => {
-      view.host.querySelector<HTMLButtonElement>('button[aria-label="Copy link"]')!.click();
-      await Promise.resolve();
-    });
-    assert.equal(copied, 'https://kordi.example/g/kordi_gi_synthetic');
-    assert.ok(view.host.querySelector('button[aria-label="Link copied"]'), 'the copy icon becomes a check');
-    assert.equal(document.querySelector('.app-copy-toast[role="status"]')?.textContent, 'Link copied');
+    await act(async () => { noticeButton('Share…')!.click(); });
+    assert.deepEqual(shared, [{ url: 'https://kordi.example/g/kordi_gi_synthetic' }]);
 
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1_600)); });
-    assert.ok(view.host.querySelector('button[aria-label="Copy link"]'), 'the check returns to a copy icon');
-    assert.equal(document.querySelector('.app-copy-toast'), null, 'the toast goes away');
-
-    await act(async () => { view.button('Done')?.click(); });
-    assert.equal(view.closes(), 1);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, GROUP_INVITE_NOTICE_MS + 50)); });
+    assert.equal(inviteNotice()?.dataset.leaving, 'true', 'the notice fades after a few seconds');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
+    assert.equal(inviteNotice(), null);
   } finally {
-    if (clipboard) Object.defineProperty(globalThis.navigator, 'clipboard', clipboard);
-    else delete (globalThis.navigator as { clipboard?: unknown }).clipboard;
+    restoreNavigator();
     await view.unmount();
     view.restore();
   }
 });
 
-test('a link that fails after the group exists shows short copy and retries without a second group', async () => {
-  let attempts = 0;
-  const view = await renderGroupForm({
-    onCreateGroup: async () => 'session:group:retry',
-    onCreateGroupInvitation: async () => {
-      attempts += 1;
-      if (attempts === 1) throw new Error('Only a verified group admin can create this invitation link.');
-      return { invitationId: 'groupinv_2', inviteUrl: 'https://kordi.example/g/kordi_gi_retry', expiresAt: new Date(Date.now() + 86_400_000).toISOString() };
-    },
-  });
+test('Share… shows only where the system share sheet exists', async () => {
+  const view = await renderGroupForm({ onCreateGroup: async () => 'session:group:noshare' });
+  const restoreNavigator = stubNavigator({ copied: [], refuse: false });
   try {
     await view.type('Launch QA');
-    const invite = () => view.host.querySelector('[role="group"] > button') as HTMLButtonElement;
-    await act(async () => { invite().click(); });
+    await act(async () => { view.button('Create group')?.click(); });
     await flushReactUpdates();
-    const alert = view.host.querySelector('.app-error-line[role="alert"]');
-    assert.equal(alert?.firstElementChild?.textContent, "Couldn't create the link.");
-    assert.doesNotMatch(view.host.textContent ?? '', /verified group admin/);
-    const retry = alert?.querySelector<HTMLButtonElement>('.app-error-line-action');
-    assert.equal(retry?.textContent, 'Try again');
-    await act(async () => { retry!.click(); });
-    await flushReactUpdates();
-    assert.equal(view.requests.length, 1, 'the retry reuses the group');
-    assert.match(view.host.textContent ?? '', /Expires in 1 day/);
+    assert.equal(inviteNotice()?.textContent, 'Invite link copied');
+    assert.equal(noticeButton('Share…'), undefined);
   } finally {
+    restoreNavigator();
+    await view.unmount();
+    view.restore();
+  }
+});
+
+test('a refused copy offers Copy invite link in the same notice, without an error', async () => {
+  const clipboard: ClipboardStub = { copied: [], refuse: true };
+  const view = await renderGroupForm({ onCreateGroup: async () => 'session:group:refused' });
+  const restoreNavigator = stubNavigator(clipboard);
+  try {
+    await view.type('Launch QA');
+    await act(async () => { view.button('Create group')?.click(); });
+    await flushReactUpdates();
+    assert.equal(view.closes(), 1);
+    assert.equal(document.querySelector('[role="alert"]'), null);
+    const copy = noticeButton('Copy invite link');
+    assert.ok(copy, 'the notice offers the copy again');
+    clipboard.refuse = false;
+    await act(async () => { copy!.click(); });
+    await flushReactUpdates();
+    assert.deepEqual(clipboard.copied, ['https://kordi.example/g/kordi_gi_0']);
+    assert.equal(inviteNotice()?.textContent, 'Invite link copied');
+  } finally {
+    restoreNavigator();
+    await view.unmount();
+    view.restore();
+  }
+});
+
+test('a link that fails stays quiet: the group still opens and nothing is copied', async () => {
+  const clipboard: ClipboardStub = { copied: [], refuse: false };
+  const view = await renderGroupForm({
+    onCreateGroup: async () => 'session:group:nolink',
+    onCreateGroupInvitation: async () => { throw new Error('Only a verified group admin can create this invitation link.'); },
+  });
+  const restoreNavigator = stubNavigator(clipboard);
+  try {
+    await view.type('Launch QA');
+    await act(async () => { view.button('Create group')?.click(); });
+    await flushReactUpdates();
+    assert.equal(view.requests.length, 1);
+    assert.equal(view.closes(), 1, 'the group still opens');
+    assert.deepEqual(clipboard.copied, []);
+    assert.equal(inviteNotice(), null);
+    assert.equal(document.querySelector('[role="alert"]'), null);
+    assert.doesNotMatch(document.body.textContent ?? '', /verified group admin|Couldn't create the link/);
+  } finally {
+    restoreNavigator();
+    await view.unmount();
+    view.restore();
+  }
+});
+
+test('a failed create asks for no link and copies nothing', async () => {
+  const clipboard: ClipboardStub = { copied: [], refuse: false };
+  let invitations = 0;
+  const view = await renderGroupForm({
+    onCreateGroup: async () => { throw new Error('group member count is invalid'); },
+    onCreateGroupInvitation: async () => { invitations += 1; return { invitationId: 'groupinv_x', inviteUrl: 'https://kordi.example/g/kordi_gi_x', expiresAt: '2026-12-06T00:00:00Z' }; },
+  });
+  const restoreNavigator = stubNavigator(clipboard);
+  try {
+    await view.type('Launch QA');
+    await act(async () => { view.button('Create group')?.click(); });
+    await flushReactUpdates();
+    assert.equal(invitations, 0);
+    assert.deepEqual(clipboard.copied, []);
+    assert.equal(inviteNotice(), null);
+    assert.equal(view.closes(), 0);
+  } finally {
+    restoreNavigator();
     await view.unmount();
     view.restore();
   }

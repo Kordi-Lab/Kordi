@@ -76,7 +76,6 @@ export function useKordiGroupCreation({
     avatarDataUrl?: string | null;
     name?: string | null;
     contactIds: string[];
-    inviteLink?: boolean;
   }): Promise<string | undefined> => {
     if (!isNativeShell) return undefined;
     const groupDisplayName = request.name?.trim() ?? '';

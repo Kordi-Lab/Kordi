@@ -1,6 +1,7 @@
 import type { ChatCreatePopoverAnchor } from './chatCreateGeometry';
 import { ChatCreateHeader, ChatCreateMenuHeader, ChatCreateMenuRow, ChatCreatePopover } from './chatCreatePopover';
 import { ChatCreateGroupForm } from './chatCreateGroupForm';
+import { useGroupInviteAutoCopy } from './useGroupInviteAutoCopy';
 export type { ChatCreatePopoverAnchor } from './chatCreateGeometry';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { Bot, MessageSquare, UserPlus, Users } from 'lucide-react';
@@ -69,8 +70,8 @@ export function ChatCreateDialog({
 }: ChatCreateDialogProps) {
   const [mode, setMode] = useState<CreateMode>(initialMode);
   const titleId = useId();
-  // The new group's name once its invitation link is showing.
-  const [groupLinkTitle, setGroupLinkTitle] = useState<string | null>(null);
+  // Outlives the panel: the new group's link is copied after it closes.
+  const groupInvite = useGroupInviteAutoCopy(onCreateGroupInvitation);
   const [contactNodeId, setContactNodeId] = useState('');
   const [addContactState, setAddContactState] = useState<'idle' | 'saving' | 'sent' | 'pending' | 'error'>('idle');
   const [addContactError, setAddContactError] = useState('');
@@ -92,7 +93,6 @@ export function ChatCreateDialog({
     // on every open and close, and made an exit animation impossible -- see
     // WorkspaceSidebar.tsx).
     setMode(initialMode);
-    setGroupLinkTitle(null);
     setContactNodeId('');
     setAddContactState('idle');
     setAddContactError('');
@@ -106,11 +106,10 @@ export function ChatCreateDialog({
   const addContactSubtitle = 'Send an approval request by Kordi ID.';
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
 
-  if (!isOpen) return null;
+  if (!isOpen) return groupInvite.notice;
 
   const close = () => {
     setMode(initialMode);
-    setGroupLinkTitle(null);
     setContactNodeId('');
     setAddContactState('idle');
     setAddContactError('');
@@ -193,6 +192,8 @@ export function ChatCreateDialog({
 
   return (
     <ChatCreatePopover onClose={close} anchorRect={anchorRect} dense={mode === 'menu'} titleId={titleId} focusKey={mode}>
+      {/* A portal: the new group's link notice outlives this panel. */}
+      {groupInvite.notice}
       {mode === 'menu' ? (
         <>
           <ChatCreateMenuHeader title="Start a chat" titleId={titleId} />
@@ -205,7 +206,7 @@ export function ChatCreateDialog({
         </>
       ) : (
         <ChatCreateHeader
-          title={mode === 'person' ? 'Chat with contact' : mode === 'agent' ? 'Chat with agent' : mode === 'add-contact' ? 'Add contact' : groupLinkTitle ?? 'Start group'}
+          title={mode === 'person' ? 'Chat with contact' : mode === 'agent' ? 'Chat with agent' : mode === 'add-contact' ? 'Add contact' : 'Start group'}
           titleId={titleId}
           subtitle={mode === 'add-contact' ? addContactSubtitle : undefined}
         />
@@ -427,10 +428,9 @@ export function ChatCreateDialog({
         <ChatCreateGroupForm
           contacts={contacts}
           onCreateGroup={onCreateGroup}
-          onCreateGroupInvitation={onCreateGroupInvitation}
+          onStartInvite={groupInvite.begin}
           onBack={() => setMode('menu')}
           onDone={close}
-          onLinkShown={setGroupLinkTitle}
         />
       ) : null}
     </ChatCreatePopover>

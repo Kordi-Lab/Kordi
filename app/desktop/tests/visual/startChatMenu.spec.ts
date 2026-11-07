@@ -107,7 +107,7 @@ async function stubClipboard(page: Page) {
 }
 
 for (const theme of ['light', 'dark'] as const) {
-  test(`Start group needs a name, uses dense people rows and invites with a link (${theme})`, async ({ page }) => {
+  test(`Start group needs a name, uses dense people rows and copies the new group's link (${theme})`, async ({ page }) => {
     await stubClipboard(page);
     await page.goto(`${preview}?theme=${theme}&mode=group&show=create`);
     const dialog = page.getByRole('dialog', { name: 'Start group', exact: true });
@@ -123,19 +123,18 @@ for (const theme of ['light', 'dark'] as const) {
     expect(box.height).toBeLessThanOrEqual(32);
     await expect(maya).toHaveCSS('font-size', '12px');
 
-    // The name comes first: it has focus, and both actions wait for it.
+    // The name comes first: it has focus, and Create group waits for it.
     const name = dialog.getByRole('textbox', { name: 'Group name' });
     await expect(name).toBeFocused();
     await expect(name).toHaveAttribute('placeholder', 'Group name');
-    const invite = people.getByRole('button', { name: /Invite with a link/ });
+    // The link is made with the group, so there is no separate invite row.
+    await expect(people.getByRole('button', { name: /Invite with a link/ })).toHaveCount(0);
     const create = dialog.getByRole('button', { name: 'Create group', exact: true });
-    await expect(invite).toBeDisabled();
     await expect(create).toBeDisabled();
     await page.screenshot({ path: test.info().outputPath(`start-group-empty-${theme}.png`) });
     await name.fill('   ');
     await expect(create).toBeDisabled();
     await name.fill('Launch QA');
-    await expect(invite).toBeEnabled();
     await expect(create).toBeEnabled();
 
     await maya.focus();
@@ -144,30 +143,19 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(name).toHaveValue('Launch QA');
     await settle(page);
     await page.screenshot({ path: test.info().outputPath(`start-group-named-${theme}.png`) });
-    await page.keyboard.press('Space');
-    await expect(maya).toHaveAttribute('aria-pressed', 'false');
 
-    await invite.click();
-    await expect(page.getByTestId('started')).toHaveText('group:0:link:Launch QA');
-    const shared = page.getByRole('dialog', { name: 'Launch QA', exact: true });
-    await expect(shared.getByRole('textbox', { name: 'Group invitation link' })).toHaveValue(/\/g\/kordi_gi_/);
-    await expect(shared.getByText('Expires in 7 days')).toBeVisible();
-    const copy = shared.getByRole('button', { name: 'Copy link', exact: true });
-    const [sharedBox, copyBox] = [await rowBox(shared), await rowBox(copy)];
-    expect(copyBox.x + copyBox.width).toBeLessThanOrEqual(sharedBox.x + sharedBox.width - 8);
-    await copy.focus();
-    await page.keyboard.press('Enter');
-    await expect(shared.getByRole('button', { name: 'Link copied', exact: true })).toBeVisible();
-    const toast = page.getByRole('status').filter({ hasText: 'Link copied' });
-    await expect(toast).toBeVisible();
-    await expect(toast).toHaveCSS('opacity', '1');
+    await create.click();
+    await expect(page.getByTestId('started')).toHaveText('group:1:Launch QA');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const notice = page.getByRole('status').filter({ hasText: 'Invite link copied' });
+    await expect(notice).toBeVisible();
     expect(await page.evaluate(() => (window as unknown as { copied?: string }).copied)).toMatch(/\/g\/kordi_gi_/);
+    const noticeBox = await rowBox(notice);
+    expect(noticeBox.height).toBeLessThanOrEqual(32);
+    await expect(notice).toHaveCSS('font-size', '12px');
     await settle(page);
     await page.screenshot({ path: test.info().outputPath(`start-group-link-copied-${theme}.png`) });
-    await expect(page.getByRole('status').filter({ hasText: 'Link copied' })).toHaveCount(0, { timeout: 3_000 });
-    await expect(shared.getByRole('button', { name: 'Copy link', exact: true })).toBeVisible();
-    await shared.getByRole('button', { name: 'Done', exact: true }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(notice).toHaveCount(0, { timeout: 6_000 });
   });
 }
 
