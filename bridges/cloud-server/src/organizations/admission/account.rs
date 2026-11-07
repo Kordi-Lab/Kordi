@@ -217,15 +217,16 @@ fn email_code_organization<'a>(
     Ok(org)
 }
 
-/// Charges the account's email verification budget. Authenticated, so it
-/// counts per account and never per address.
-async fn charge(limiter: &CloudRateLimiter, session: &CloudSession) -> Result<(), Response> {
+/// Charges the account's email verification budget and returns the refusal
+/// when it is spent. Authenticated, so it counts per account and never per
+/// address.
+async fn charge(limiter: &CloudRateLimiter, session: &CloudSession) -> Option<Response> {
     match limiter
         .observe_account_limit(EMAIL_VERIFICATION_LIMIT, &session.account_id)
         .await
     {
-        RateLimitDecision::Allowed => Ok(()),
-        RateLimitDecision::Limited { retry_after } => Err(rate_limited_response(retry_after)),
+        RateLimitDecision::Allowed => None,
+        RateLimitDecision::Limited { retry_after } => Some(rate_limited_response(retry_after)),
     }
 }
 
@@ -286,7 +287,7 @@ pub(super) async fn send_email_code(
     let Some(service) = state.signup_email() else {
         return email_unavailable().into_response();
     };
-    if let Err(response) = charge(&limiter, &session).await {
+    if let Some(response) = charge(&limiter, &session).await {
         return response;
     }
     match request_organization_email_code(state.db_pool(), service, &session.account_id, &email)
@@ -330,7 +331,7 @@ pub(super) async fn verify_email_code(
     let Some(service) = state.signup_email() else {
         return email_unavailable().into_response();
     };
-    if let Err(response) = charge(&limiter, &session).await {
+    if let Some(response) = charge(&limiter, &session).await {
         return response;
     }
     let pool = state.db_pool();
