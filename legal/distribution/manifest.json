@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "eb7eab0177b2543b4e8795c0cefd174768041762b3e7601a92cfa29455dfae13",
+  "catalogSha256": "efe22af9da6fa96be9fbbd42621f451189e55807bfd93dd9f33a130ede7a7a7c",
   "inputs": {
-    "Cargo.lock": "a7e7fb8fd5e429d68f5d4fb2069814499d1670d250dc6cd7ec15ed8a7f1b1f13",
+    "Cargo.lock": "cbf5a029d1f2ac0ccea997cae1102c2393035c01561a0582f942e1d9d5ea696b",
     "pnpm-lock.yaml": "538ab03d007684ded90b4f672a8eda6e9758c69d6abccd7d9807484e693e4e08",
     "shared/omp-runtime/bun.lock": "ceb1c45ea56f52fa440e8c3aa23377c484b8acb5ef512d0de8ab6cfc218ef43a",
     "bridges/cloud-temporal-bridge/go.mod": "c09969e162406833ad4a1c85524a1fbe4196fd84aea2ded9ef4c8b251da72c51",
@@ -12,8 +12,8 @@
     "legal/runtime-sources.json": "19b23dc48c6e5f1ae535454bc46350f7530d1a653ae12b00bddb7d07b688c11e",
     "legal/native/archive-evidence.json": "90f8c673a36c1557adda2b118c3b2b5c29200c252c35d01a7b3ce4610ce99598",
     "legal/public-contact-hashes.json": "241ddd7846876dcb475628fb6b57a7797a438cee0e2a669a9bfa2871c54a8ae1",
-    "app/desktop/package.json": "d81963e7ae6d748ed6a325706cd9434b71832721d309e80794f96f197ece648e",
-    "app/web/package.json": "59a476b40e1b1992ca0e10bc3397968abbd68114add9d314c5df86d87f7befcf",
+    "app/desktop/package.json": "e3007e973af2e8912704b1d6e193032721d5c6d8968bf8fd5a7ca84e90cfa718",
+    "app/web/package.json": "419090321f2bda656b55bf92f88d2e90b6b2a23ab176f625bc449f2f3f258d71",
     "legal/runtime-relink-verification.json": "f69b0ab7976cdf30cc076e243ed6180b2c7cc4fc7e3289c06e37957ae7eeafdb",
     "legal/runtime-bundle-review.json": "c026d9b9ad1fe8ada7f29d2a86e7b9178ef8616bb6bffef5125fe970320dbb5c",
     "deploy/minio/Dockerfile.server": "fe4e8d79b1bcd1663bddc367d48870f924c4a26f9784068ed99deb28153a5b00",
@@ -33,9 +33,9 @@
   "files": {
     "LICENSE": "0d699f2763ad95c6b648b27536bf176e2b517e06bf204643629ada1623ac1196",
     "NOTICE": "8fc419687eab6772d2f483c7008369bc87feb896c215b8e4b0cfa6da6eca60eb",
-    "SOURCES.md": "b021f41b86bb08cadd4e04f3efd1a0294ea2f325416bfa74aeb49bcd1754ab8c",
-    "THIRD-PARTY-NOTICES.txt": "cf91bd958fcaf0028787a054699c02702a30dc95b5a4de5830758b3a22514096",
-    "index.html": "90933177b864b53a852717d8b5ae2f9916820f9854c928ed8b05afb5b33f5f1a",
+    "SOURCES.md": "765c82ac1f9af33193368d5ef400608dbae722dcf973f4d76ab2fda027644321",
+    "THIRD-PARTY-NOTICES.txt": "008467c81d47d54db96ca01a93e57bcf388264e7958003eeb8fe201aa1c1fb79",
+    "index.html": "061b7d42c1c22f7434cf78254ff5388af04920e6af95547203438bcb06771d4c",
     "inventory.json": "eb776fb0036ef2549e74983fa58817d51f3fc79e159e39bdd7a628730b6a3f87"
   }
 }

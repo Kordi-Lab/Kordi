@@ -3,6 +3,23 @@ import type { Virtualizer } from '@tanstack/react-virtual';
 type TranscriptVirtualizer = Virtualizer<HTMLDivElement, HTMLElement>;
 export const TRANSCRIPT_SCROLL_SETTLE_MS = 250;
 
+/**
+ * Replace an unfinished scrollToIndex target with the reader's current offset.
+ * The virtualizer keeps reconciling that target for several seconds and would
+ * otherwise pull the reader back once a row measurement moves it. Updating the
+ * target must not issue a DOM scroll that would interrupt a native gesture.
+ */
+export function releaseTranscriptScrollTarget(instance: TranscriptVirtualizer) {
+  const scrollTo = instance.options.scrollToFn;
+  instance.options.scrollToFn = () => undefined;
+  try {
+    instance.scrollToOffset(instance.scrollElement?.scrollTop ?? instance.scrollOffset ?? 0,
+      { align: 'start', behavior: 'instant' });
+  } finally {
+    instance.options.scrollToFn = scrollTo;
+  }
+}
+
 /** Keep native wheel/momentum scrolling independent of above-viewport resizes. */
 export function createTranscriptScrollOrigin() {
   let active = false;
@@ -30,19 +47,9 @@ export function createTranscriptScrollOrigin() {
       instance.scrollToOffset(top, { align: 'start', behavior: 'instant' });
     },
     wheel(instance: TranscriptVirtualizer) {
-      if (!active) {
-        // Replace unfinished item navigation before an older-page prepend can
-        // move its target. Updating the target must not issue a DOM scroll that
-        // would interrupt the browser's native wheel or momentum gesture.
-        const scrollTo = instance.options.scrollToFn;
-        instance.options.scrollToFn = () => undefined;
-        try {
-          instance.scrollToOffset(instance.scrollElement?.scrollTop ?? instance.scrollOffset ?? 0,
-            { align: 'start', behavior: 'instant' });
-        } finally {
-          instance.options.scrollToFn = scrollTo;
-        }
-      }
+      // Replace unfinished item navigation before an older-page prepend can
+      // move its target.
+      if (!active) releaseTranscriptScrollTarget(instance);
       current = instance;
       active = true;
       clearTimeout(timer);

@@ -1,4 +1,4 @@
-fn env_lock() -> &'static Mutex<()> {
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     crate::login::auth_test_env_lock()
 }
 

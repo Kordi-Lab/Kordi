@@ -5,7 +5,7 @@ use kordi_session::store;
 use kordi_tools::{ExecutionPolicy, ToolContext, ToolExecutionMode};
 use kordi_tui::tui::TuiCommand;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::extensions::{ExtensionBootstrap, ExtensionCommandRegistry};
@@ -13,7 +13,7 @@ use crate::session_bootstrap::{SessionRuntimeSetup, SessionUiOptions};
 use crate::tui::controller::TuiController;
 use crate::tui::{LOGIN_AUTH_OPTION_MENU_ID, LOGIN_METHOD_MENU_ID};
 
-fn env_lock() -> &'static Mutex<()> {
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     crate::login::auth_test_env_lock()
 }
 
@@ -146,7 +146,7 @@ fn drain_commands(rx: &mut mpsc::UnboundedReceiver<TuiCommand>) -> Vec<TuiComman
 
 #[test]
 fn openai_login_method_detail_reports_multiple_saved_options() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let tempdir = tempfile::tempdir().expect("tempdir");
     let _home = EnvVarGuard::set_path("HOME", tempdir.path());
     let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "openai-env-key");
@@ -199,7 +199,7 @@ fn openai_login_method_detail_reports_multiple_saved_options() {
 
 #[test]
 fn openai_login_method_opens_auth_option_menu_when_options_exist() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let tempdir = tempfile::tempdir().expect("tempdir");
     let _home = EnvVarGuard::set_path("HOME", tempdir.path());
     let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "openai-env-key");
@@ -250,7 +250,7 @@ fn openai_login_method_opens_auth_option_menu_when_options_exist() {
 
 #[test]
 fn login_auth_option_menu_distinguishes_multiple_saved_api_keys() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let tempdir = tempfile::tempdir().expect("tempdir");
     let _home = EnvVarGuard::set_path("HOME", tempdir.path());
 

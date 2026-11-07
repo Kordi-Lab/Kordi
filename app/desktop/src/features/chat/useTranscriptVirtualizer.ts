@@ -1,7 +1,7 @@
 import type { Virtualizer } from '@tanstack/react-virtual';
 import { useCallback, useLayoutEffect, useMemo, useState, type RefObject } from 'react';
 import type { createTranscriptContentMeasure } from './transcriptContentMeasure';
-import { createTranscriptScrollOrigin } from './transcriptScrollOrigin';
+import { createTranscriptScrollOrigin, releaseTranscriptScrollTarget } from './transcriptScrollOrigin';
 import { rememberTranscriptRowSize, settledTranscriptRowSize, transcriptRowSizeClock } from './transcriptRowSizeMemory';
 import { TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT, TRANSCRIPT_WINDOW_OVERSCAN } from './transcriptWindowing';
 import type { VirtualTranscriptProps } from './virtualTranscriptTypes';
@@ -119,12 +119,31 @@ export function useMeasureTranscriptRows(
  * event, a frame later. On entry, deliver it now so the tail rows mount in this layout
  * pass and a remembered layout can show in the first paint.
  */
+// Virtualizers still reconciling a scrollToIndex request for the latest row.
+const pendingTailScrolls = new WeakSet<Virtualizer<HTMLDivElement, HTMLElement>>();
+
 export function scrollTranscriptToTail(
   virtualizer: Virtualizer<HTMLDivElement, HTMLElement>,
   viewport: HTMLDivElement | null,
   tailIndex: number,
   entering: boolean,
 ) {
+  pendingTailScrolls.add(virtualizer);
   virtualizer.scrollToIndex(tailIndex, { align: 'end' });
   if (entering) viewport?.dispatchEvent(new Event('scroll'));
+}
+
+/** Navigate to a row; any pending tail target is superseded by this one. */
+export function scrollTranscriptToIndex(virtualizer: Virtualizer<HTMLDivElement, HTMLElement>, index: number) {
+  pendingTailScrolls.delete(virtualizer);
+  virtualizer.scrollToIndex(index, { align: 'center' });
+}
+
+/**
+ * The reader left the tail by keyboard, scrollbar or script (the wheel path
+ * releases it itself). Drop a pending tail target so a later row measurement
+ * that moves it cannot pull the reader back to the latest message.
+ */
+export function releasePendingTranscriptTailScroll(virtualizer: Virtualizer<HTMLDivElement, HTMLElement>) {
+  if (pendingTailScrolls.delete(virtualizer)) releaseTranscriptScrollTarget(virtualizer);
 }

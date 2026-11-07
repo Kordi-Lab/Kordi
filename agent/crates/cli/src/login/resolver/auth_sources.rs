@@ -384,9 +384,8 @@ mod tests {
     use crate::login::ProviderAuthMethod;
     use kordi_core::settings::{ProviderOverride, Settings};
     use serde_json::json;
-    use std::sync::Mutex;
 
-    fn env_lock() -> &'static Mutex<()> {
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         crate::login::auth_test_env_lock()
     }
 
@@ -417,7 +416,7 @@ mod tests {
 
     #[test]
     fn anthropic_environment_options_report_oauth_precedence_and_both_methods() {
-        let _lock = env_lock().lock().unwrap();
+        let _lock = env_lock();
         let home = tempfile::tempdir().expect("home tempdir");
         let _home = EnvVarGuard::set_path("HOME", home.path());
         let _auth_path = EnvVarGuard::unset("KORDI_AUTH_PATH");
@@ -455,7 +454,7 @@ mod tests {
 
     #[test]
     fn provider_model_selection_detail_lists_env_and_saved_profiles() {
-        let _lock = env_lock().lock().unwrap();
+        let _lock = env_lock();
         let home = tempfile::tempdir().expect("home tempdir");
         let _home = EnvVarGuard::set_path("HOME", home.path());
         let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "openai-env-key");
@@ -519,7 +518,7 @@ mod tests {
 
     #[test]
     fn provider_auth_option_summaries_report_saved_profile_metadata() {
-        let _lock = env_lock().lock().unwrap();
+        let _lock = env_lock();
         let home = tempfile::tempdir().expect("home tempdir");
         let _home = EnvVarGuard::set_path("HOME", home.path());
 
@@ -549,7 +548,7 @@ mod tests {
 
     #[test]
     fn provider_auth_status_summary_keeps_compact_method_summary() {
-        let _lock = env_lock().lock().unwrap();
+        let _lock = env_lock();
         let home = tempfile::tempdir().expect("home tempdir");
         let _home = EnvVarGuard::set_path("HOME", home.path());
         let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "openai-env-key");
@@ -573,7 +572,7 @@ mod tests {
 
     #[test]
     fn auth_source_prefers_saved_store_over_environment() {
-        let _lock = env_lock().lock().unwrap();
+        let _lock = env_lock();
         let home = tempfile::tempdir().expect("home tempdir");
         let _home = EnvVarGuard::set_path("HOME", home.path());
         let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "openai-env-key");
@@ -584,7 +583,7 @@ mod tests {
 
     #[test]
     fn provider_auth_option_summaries_distinguish_multiple_saved_api_keys() {
-        let _lock = env_lock().lock().unwrap();
+        let _lock = env_lock();
         let home = tempfile::tempdir().expect("home tempdir");
         let _home = EnvVarGuard::set_path("HOME", home.path());
 

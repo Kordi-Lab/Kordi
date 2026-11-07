@@ -60,3 +60,36 @@ test('a partially visible row inside the pane padding stays anchored when it gro
     - element.closest('[data-virtual-transcript-scroll]')!.getBoundingClientRect().top)).toBeGreaterThan(0);
   await expectStableDuring(row, () => page.getByRole('button', { name: 'Expand first message' }).click());
 });
+
+test('leaving the tail without the wheel cancels a pending tail scroll', async ({ page }) => {
+  await page.goto('/tests/visual/transcriptHistoryBoundary.html');
+  await expect(page.locator('[data-virtual-transcript-session-ready="true"]')).toBeVisible();
+  const viewport = page.locator('[data-virtual-transcript-scroll]');
+  await viewport.dispatchEvent('wheel', { deltaY: -1 });
+  await viewport.evaluate(element => { element.scrollTop = 0; });
+  const body = page.getByText('Synthetic message 100', { exact: true });
+  await expect(body).toBeVisible();
+  // Return to the latest message, then leave again by keyboard or scrollbar
+  // before the virtualizer has confirmed that it reached the tail.
+  await page.getByRole('button', { name: 'Go to latest message' }).evaluate(async button => {
+    const transcript = button.closest('[data-virtual-transcript-shell]')!
+      .querySelector<HTMLElement>('[data-virtual-transcript-scroll]')!;
+    (button as HTMLButtonElement).click();
+    // Let React commit the click, but stay ahead of the next frame.
+    for (let step = 0; step < 10; step += 1) await Promise.resolve();
+    transcript.scrollTop = 0;
+  });
+  await expect(body).toBeVisible();
+  // Growing a row moves the tail offset. The reader must stay in history.
+  await page.getByRole('button', { name: 'Expand first message' }).click();
+  const distancesFromTail = await viewport.evaluate(async element => {
+    const distances: number[] = [];
+    for (let frame = 0; frame < 30; frame += 1) {
+      await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      distances.push(element.scrollHeight - element.clientHeight - element.scrollTop);
+    }
+    return distances;
+  });
+  expect(Math.min(...distancesFromTail)).toBeGreaterThan(1000);
+  await expect(page.getByText('Synthetic message 101', { exact: true })).toBeVisible();
+});

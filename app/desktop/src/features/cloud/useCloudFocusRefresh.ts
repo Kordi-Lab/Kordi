@@ -38,8 +38,11 @@ export function useCloudFocusRefresh({
           lastRefreshAtRef.current,
         )
       ) return;
+      // A focus refresh is opportunistic: the realtime socket and repair
+      // polling retry a failed sync, so a failure must not escape as an
+      // unhandled rejection.
       lastRefreshAtRef.current = now;
-      void syncCloudCollaborationDiff();
+      void syncCloudCollaborationDiff().catch(() => undefined);
     };
     const refresh = () => {
       if (refreshTimerRef.current !== null) {

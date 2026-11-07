@@ -7,9 +7,8 @@ use super::{
 use crate::login::ProviderAuthMethod;
 use crate::login::store::{AuthEntry, AuthProfile, AuthStore, save_auth};
 use std::collections::HashMap;
-use std::sync::Mutex;
 
-fn env_lock() -> &'static Mutex<()> {
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     crate::login::auth_test_env_lock()
 }
 
@@ -40,7 +39,7 @@ impl EnvVarGuard {
 
 #[test]
 fn anthropic_environment_defaults_to_oauth_and_allows_explicit_api_key_choice() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set("HOME", home.path());
     let _auth_path = EnvVarGuard::unset("KORDI_AUTH_PATH");
@@ -65,7 +64,7 @@ fn anthropic_environment_defaults_to_oauth_and_allows_explicit_api_key_choice() 
 
 #[test]
 fn explicit_anthropic_environment_choice_persists_across_auth_store_reload() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set("HOME", home.path());
     let _auth_path = EnvVarGuard::unset("KORDI_AUTH_PATH");
@@ -94,7 +93,7 @@ fn explicit_anthropic_environment_choice_persists_across_auth_store_reload() {
 
 #[test]
 fn explicit_saved_anthropic_profiles_win_over_both_environment_credentials() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set("HOME", home.path());
     let _auth_path = EnvVarGuard::unset("KORDI_AUTH_PATH");
@@ -178,7 +177,7 @@ impl Drop for EnvVarGuard {
 
 #[test]
 fn resolves_openai_provider_to_codex_oauth_when_only_oauth_is_configured() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set("HOME", home.path());
 
@@ -217,7 +216,7 @@ fn resolves_openai_provider_to_codex_oauth_when_only_oauth_is_configured() {
 
 #[test]
 fn resolve_provider_auth_choice_can_pick_environment_api_key_over_saved_oauth() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set("HOME", home.path());
     unsafe { std::env::set_var("OPENAI_API_KEY", "env-openai-key") };
@@ -249,7 +248,7 @@ fn resolve_provider_auth_choice_can_pick_environment_api_key_over_saved_oauth() 
 
 #[test]
 fn runtime_cloud_alias_resolves_matching_local_oauth_without_becoming_a_global_choice() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set("HOME", home.path());
     let _auth_path = EnvVarGuard::unset("KORDI_AUTH_PATH");
@@ -287,7 +286,7 @@ fn runtime_cloud_alias_resolves_matching_local_oauth_without_becoming_a_global_c
 
 #[test]
 fn expired_oauth_without_refresh_is_not_used() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set("HOME", home.path());
 
@@ -322,7 +321,7 @@ fn expired_oauth_without_refresh_is_not_used() {
 
 #[test]
 fn explicit_expired_oauth_profile_does_not_fall_back_to_api_key() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set("HOME", home.path());
 
@@ -368,7 +367,7 @@ fn explicit_expired_oauth_profile_does_not_fall_back_to_api_key() {
 
 #[test]
 fn resolves_anthropic_to_active_api_key_when_both_methods_are_saved() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set("HOME", home.path());
 

@@ -40,6 +40,32 @@ export type WhatsNewRuntime = {
 };
 
 const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighlight[]>> = {
+  '0.0.2-beta.7': [
+    {
+      category: 'Web',
+      title: 'Use Kordi in your browser',
+      detail: 'Sign in at kordi.ai to chat, use Grounding, and import memories.',
+      kind: 'sign-in',
+    },
+    {
+      category: 'Agents',
+      title: 'See your Personal agent at a glance',
+      detail: 'Resume background sessions right in the chat.',
+      kind: 'general',
+    },
+    {
+      category: 'Groups',
+      title: 'Start groups and invite with a link',
+      detail: 'Rename in place, leave, or close groups and channels.',
+      kind: 'collaboration',
+    },
+    {
+      category: 'Polish',
+      title: 'Clearer errors and smoother Grounding',
+      detail: 'One error style everywhere, and memory imports from files.',
+      kind: 'general',
+    },
+  ],
   '0.0.2-beta.6': [
     {
       category: 'Grounding',

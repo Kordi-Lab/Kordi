@@ -80,10 +80,17 @@ pub fn set_active_auth_choice(provider: &str, choice: &str) -> Result<bool> {
     Ok(true)
 }
 
+/// Serializes tests that change process-wide auth state such as `HOME`.
+///
+/// A poisoned lock is recovered: a test that panics while holding it restores
+/// its environment through drop guards, so one failure must not also fail
+/// every later test that shares the lock.
 #[cfg(test)]
-pub(crate) fn auth_test_env_lock() -> &'static std::sync::Mutex<()> {
-    use std::sync::{Mutex, OnceLock};
+pub(crate) fn auth_test_env_lock() -> std::sync::MutexGuard<'static, ()> {
+    use std::sync::{Mutex, OnceLock, PoisonError};
 
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
 }

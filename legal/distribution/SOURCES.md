@@ -90,4 +90,4 @@ retains its Apache-2.0 copyright and license notices. DiceBear Lorelei artwork i
 CC0; other styles in dicebear-styles have their own terms. Provider names and
 logos identify their owners and do not imply endorsement.
 
-Source download manifest for this release: https://kordi.ai/updates/releases/0.0.2-beta.6/sources/manifest.json
+Source download manifest for this release: https://kordi.ai/updates/releases/0.0.2-beta.7/sources/manifest.json

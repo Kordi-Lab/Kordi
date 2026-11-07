@@ -140,21 +140,25 @@ mod tests {
 
     #[test]
     fn output_envelope_is_normalized() {
+        // Compare parsed JSON: serialized key order depends on whether the
+        // build unifies serde_json's `preserve_order` feature.
+        let normalized =
+            |text: &str| serde_json::from_str::<Value>(&normalize_output(text)).unwrap();
         assert_eq!(
-            normalize_output("{\"message\":\"Card is up.\"}"),
-            "{\"hooksHandled\":[],\"message\":\"Card is up.\"}"
+            normalized("{\"message\":\"Card is up.\"}"),
+            json!({"hooksHandled": [], "message": "Card is up."})
         );
         assert_eq!(
-            normalize_output("```json\n{\"message\":null,\"hooksHandled\":[\"t_minus_24h\"]}\n```"),
-            "{\"hooksHandled\":[\"t_minus_24h\"],\"message\":null}"
+            normalized("```json\n{\"message\":null,\"hooksHandled\":[\"t_minus_24h\"]}\n```"),
+            json!({"hooksHandled": ["t_minus_24h"], "message": null})
         );
         assert_eq!(
-            normalize_output("Still on for tomorrow?"),
-            "{\"hooksHandled\":[],\"message\":\"Still on for tomorrow?\"}"
+            normalized("Still on for tomorrow?"),
+            json!({"hooksHandled": [], "message": "Still on for tomorrow?"})
         );
         assert_eq!(
-            normalize_output("  "),
-            "{\"hooksHandled\":[],\"message\":null}"
+            normalized("  "),
+            json!({"hooksHandled": [], "message": null})
         );
     }
 

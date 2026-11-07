@@ -339,7 +339,10 @@ mod tests {
                 ["removedItemIds"],
             json!([])
         );
-        assert_eq!(completed_output("{}".into(), false).unwrap(), EMPTY_OUTPUT);
+        assert_eq!(
+            serde_json::from_str::<Value>(&completed_output("{}".into(), false).unwrap()).unwrap(),
+            empty_output()
+        );
         assert_eq!(
             completed_output("not a digest".into(), false).unwrap(),
             "not a digest"
@@ -351,8 +354,11 @@ mod tests {
         assert!(model_context(&large).unwrap().to_string().len() < 2_000);
     }
 
-    const EMPTY_OUTPUT: &str =
-        r#"{"calendarCandidates":[],"claims":[],"commitments":[],"suggestions":[]}"#;
+    /// Compared as parsed JSON: serialized key order depends on whether the
+    /// build unifies serde_json's `preserve_order` feature.
+    fn empty_output() -> Value {
+        json!({"calendarCandidates": [], "claims": [], "commitments": [], "suggestions": []})
+    }
 
     #[tokio::test]
     async fn first_model_call_includes_sources_from_every_session() {
@@ -391,9 +397,10 @@ mod tests {
             auth_choice: "default".into(),
             payload: json!({"apiKey":"test-key","model":"test-model"}),
         };
+        let output = super::run_legacy(&Provider, &run, material).await.unwrap();
         assert_eq!(
-            super::run_legacy(&Provider, &run, material).await.unwrap(),
-            EMPTY_OUTPUT
+            serde_json::from_str::<Value>(&output).unwrap(),
+            empty_output()
         );
     }
 

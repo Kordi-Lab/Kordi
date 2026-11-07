@@ -44,7 +44,7 @@ fn assert_no_ambient_context(prompt: &str, home: &std::path::Path) {
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn proactive_run_prompts_load_no_instruction_files_memories_or_home_folder() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir()?;
     let root = tempfile::tempdir()?;
     let _home = EnvVarGuard::set_path("HOME", home.path());

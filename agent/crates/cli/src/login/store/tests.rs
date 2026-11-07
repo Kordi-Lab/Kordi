@@ -8,9 +8,8 @@ use crate::login::ProviderAuthMethod;
 use crate::oauth::OAuthCredentials;
 use serde_json::json;
 use std::collections::HashMap;
-use std::sync::Mutex;
 
-fn env_lock() -> &'static Mutex<()> {
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     crate::login::auth_test_env_lock()
 }
 
@@ -130,7 +129,7 @@ fn auth_store_debug_lists_provider_names_without_values() {
 
 #[test]
 fn auth_store_validation_rejects_malformed_persisted_credentials() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
     let path = super::auth_path();
@@ -142,7 +141,7 @@ fn auth_store_validation_rejects_malformed_persisted_credentials() {
 
 #[test]
 fn saved_api_key_is_hydrated_from_disk_after_store_reload() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
 
@@ -212,7 +211,7 @@ fn stored_auth_methods_distinguish_anthropic_api_key_and_oauth() {
 
 #[test]
 fn save_oauth_state_keeps_distinct_openai_accounts_with_timestamps() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
 
@@ -251,7 +250,7 @@ fn save_oauth_state_keeps_distinct_openai_accounts_with_timestamps() {
 
 #[test]
 fn save_api_key_reuses_existing_matching_profile_and_updates_timestamp() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
 
@@ -269,7 +268,7 @@ fn save_api_key_reuses_existing_matching_profile_and_updates_timestamp() {
 
 #[test]
 fn save_api_key_keeps_distinct_profiles_for_distinct_keys() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
 
@@ -286,7 +285,7 @@ fn save_api_key_keeps_distinct_profiles_for_distinct_keys() {
 
 #[test]
 fn legacy_flat_auth_store_migrates_to_profiles() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
 
@@ -327,7 +326,7 @@ fn legacy_flat_auth_store_migrates_to_profiles() {
 
 #[test]
 fn only_the_access_token_expiry_of_an_oauth_profile_is_exposed() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let dir = tempfile::tempdir().expect("auth tempdir");
     let _auth_path = EnvVarGuard::set_path("KORDI_AUTH_PATH", &dir.path().join("auth.json"));
     let mut store = AuthStore::default();

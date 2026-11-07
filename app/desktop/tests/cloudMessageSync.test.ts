@@ -130,7 +130,7 @@ test('normal Cloud events request diff sync instead of full snapshots', () => {
   );
   assert.match(
     focusSource,
-    /lastRefreshAtRef\.current = now;\s*void syncCloudCollaborationDiff\(\)/,
+    /lastRefreshAtRef\.current = now;\s*void syncCloudCollaborationDiff\(\)\.catch\(/, // A failed focus refresh is not an unhandled rejection.
   );
   assert.match(
     readSource,

@@ -18,6 +18,9 @@ export const account = {
   nodeId: null, passwordSet: true, defaultAgent: null,
 };
 
+const emptySessionVisibility = { hiddenSessionIds: [], deletedSessionIds: [], unreadSessionIds: [], pinnedSessionIds: [],
+  mutedSessionIds: [], pinnedGroupSpaceIds: [] };
+
 export async function installApiFixture(page: Page, baseURL: string, signedIn: boolean | (() => boolean)) {
   const requests: { path: string; headers: Record<string, string> }[] = [];
   await page.route('**/*', async route => {
@@ -35,7 +38,9 @@ export async function installApiFixture(page: Page, baseURL: string, signedIn: b
       case '/v1/cloud/auth/me': body = account; break;
       case '/v1/cloud/auth/capabilities': body = { password: true, oauthProviders: ['google', 'github'] }; break;
       case '/v1/cloud/organizations': body = { organizations: [{ organizationId: 'browser-test-org', name: 'Test workspace', kind: 'personal', role: 'owner', memberCount: 1 }] }; break;
-      case '/v2/chat/sync/bootstrap': body = { protocol_version: 2, conversations: [], latest_messages: [], next_cursor: 'fixture-cursor', last_stream_seq: 0, server_time: '2026-11-05T12:00:00Z' }; break;
+      // The server always includes the account's visibility snapshot; without it
+      // the client falls back to an unstubbed endpoint and every chat sync fails.
+      case '/v2/chat/sync/bootstrap': body = { protocol_version: 2, conversations: [], latest_messages: [], session_visibility: emptySessionVisibility, next_cursor: 'fixture-cursor', last_stream_seq: 0, server_time: '2026-11-05T12:00:00Z' }; break;
       case '/v2/chat/sync': body = { protocol_version: 2, events: [], next_cursor: 'fixture-cursor', last_stream_seq: 0, has_more: false, server_time: '2026-11-05T12:00:00Z' }; break;
       case '/v1/cloud/contacts': body = { contacts: [], requests: [] }; break;
       case '/v1/cloud/contacts/requests': body = { requests: [] }; break;
