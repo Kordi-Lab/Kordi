@@ -62,7 +62,8 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // Slower idle polling, the base64 cache and self-agent reconcile backoff add 0.7 kB, so it moves to 5.826 MB.
 // Refreshing Grounding Recent and the narrow-pane wallet layout add 0.7 kB.
 // Keeping a read session's explicit zero unread count adds 0.5 kB, so it moves to 5.827 MB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_827_000;
+// Presence text in group Info, Add people and the Chat Info participants adds 0.9 kB, so it moves to 5.828 MB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_828_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.
@@ -78,7 +79,8 @@ const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIS
 // Idle polling, the base64 cache and idempotent browser canonical writes add 1.5 kB there, so it moves to 5.84 MB.
 // Refreshing Grounding Recent and the narrow-pane wallet layout add 0.7 kB there.
 // Unread counts from browser chat sync without a badge flash add 2.5 kB there, so it moves to 5.843 MB.
-const MAX_WEB_APP_DIST_BYTES = 5_843_000;
+// Presence text in group Info, Add people and the Chat Info participants adds 0.9 kB there, so it moves to 5.844 MB.
+const MAX_WEB_APP_DIST_BYTES = 5_844_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;

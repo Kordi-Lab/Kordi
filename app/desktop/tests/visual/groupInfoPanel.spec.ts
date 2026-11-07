@@ -20,7 +20,19 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(info.getByRole('button', { name: 'Dissolve group' })).toHaveCount(0);
     await expect(info.getByRole('button', { name: 'Leave group' })).toHaveCount(0);
     await expect(info.getByRole('button', { name: 'Video chat', exact: true })).toBeVisible();
+
+    // Presence: an online person's name takes the accent, described for assistive tech; others stay plain.
+    const maya = info.getByRole('button', { name: /^Maya Chen, / });
+    await expect(maya).toHaveAttribute('aria-description', 'online');
+    await expect(maya.locator('[title="Maya Chen"]')).toHaveClass(/app-contacts-presence-online/);
+    await expect(info.getByRole('button', { name: /^Ethan Park, / })).not.toHaveAttribute('aria-description', 'online');
+    await expect(info.getByRole('button', { name: /^Me, / })).not.toHaveAttribute('aria-description', 'online');
+
     await info.locator('.app-group-profile-actions').getByRole('button', { name: 'Add people' }).click();
+    // Add people rows carry the Contacts presence line in place of the handle.
+    const addRows = info.getByLabel('Contacts available to add');
+    await expect(addRows.getByRole('button', { name: /Hana Mori/ }).getByText('online', { exact: true })).toBeVisible();
+    await expect(addRows.getByRole('button', { name: /Jonah Weiss/ }).getByText('last seen 25 minutes ago')).toBeVisible();
     await settle(page);
     await info.screenshot({ path: testInfo.outputPath(`group-info-main-admin-${theme}.png`) });
 
