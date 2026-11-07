@@ -1,11 +1,18 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import { Camera, LoaderCircle } from 'lucide-react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Camera, ImagePlus, LoaderCircle, Trash2 } from 'lucide-react';
 import type { ParticipantSpaceAvatar } from '@/kordi-app/types';
 import { ErrorLine } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 import { isNativeDesktopShell } from '@/lib/desktop';
 import { fileToAvatarDataUrl } from './avatarOverrides';
 import { GroupAvatar } from './GroupAvatar';
+import { groupAvatarMenuBounds, groupAvatarMenuPlacement, type MenuPlacement } from './groupAvatarMenuPlacement';
+
+/** The menu is portaled to the body, so it counts as part of the editor too. */
+function withinEditor(target: EventTarget | null, ...parts: (HTMLElement | null)[]) {
+  return target instanceof Node && parts.some((part) => part?.contains(target));
+}
 
 export function GroupAvatarEditor({ avatars, imageUrl, name, disabled, avatarClassName = 'h-14 w-14', onUpload, onRemove }: {
   avatars: readonly ParticipantSpaceAvatar[];
@@ -24,12 +31,32 @@ export function GroupAvatarEditor({ avatars, imageUrl, name, disabled, avatarCla
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [placement, setPlacement] = useState<MenuPlacement | null>(null);
+
+  // The menu renders in a portal so a dialog's overflow cannot clip it,
+  // placed against the avatar and kept inside the dialog and the window.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const anchor = trigger.current;
+      const surface = menu.current;
+      if (!anchor || !surface) return;
+      setPlacement(groupAvatarMenuPlacement(anchor.getBoundingClientRect(), { width: surface.offsetWidth, height: surface.offsetHeight }, groupAvatarMenuBounds(anchor)));
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open, imageUrl]);
 
   useEffect(() => {
     if (!open) return;
     menu.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
     const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false);
+      if (!withinEditor(event.target, root.current, menu.current)) setOpen(false);
     };
     document.addEventListener('pointerdown', dismiss);
     return () => document.removeEventListener('pointerdown', dismiss);
@@ -52,7 +79,7 @@ export function GroupAvatarEditor({ avatars, imageUrl, name, disabled, avatarCla
     <div ref={root} className="relative inline-flex max-w-full flex-col items-center" onBlur={(event) => {
       // macOS WebKit can blur a button to no element on pointer down.
       // Keep the menu mounted until that pointer's click reaches its action.
-      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      if (event.relatedTarget && !withinEditor(event.relatedTarget, root.current, menu.current)) setOpen(false);
     }}>
       <button
         ref={trigger}
@@ -63,7 +90,7 @@ export function GroupAvatarEditor({ avatars, imageUrl, name, disabled, avatarCla
         aria-controls={open ? menuId : undefined}
         aria-busy={busy}
         title="Edit group avatar"
-        className={cn('app-group-avatar-edit relative inline-flex shrink-0 rounded-[17%] outline-offset-4 disabled:cursor-wait disabled:opacity-60', avatarClassName)}
+        className={cn('app-group-avatar-edit relative inline-flex shrink-0 rounded-[17%] disabled:cursor-wait disabled:opacity-60', avatarClassName)}
         disabled={disabled || busy}
         onClick={() => setOpen(!open)}
         onKeyDown={(event) => {
@@ -85,14 +112,16 @@ export function GroupAvatarEditor({ avatars, imageUrl, name, disabled, avatarCla
           await onUpload(await fileToAvatarDataUrl(file));
         });
       }} />
-      {open ? (
+      {open && typeof document !== 'undefined' ? createPortal(
         <div
           ref={menu}
           id={menuId}
           role="menu"
           aria-label="Group avatar"
           data-group-avatar-menu="true"
-          className="app-transient-surface app-frosted-popover absolute left-1/2 top-full z-[70] mt-2 w-40 -translate-x-1/2 rounded-[12px] p-1 text-left"
+          data-menu-side={placement?.side}
+          className="app-transient-surface app-dense-menu app-group-avatar-menu fixed z-[70]"
+          style={{ left: placement?.left ?? 0, top: placement?.top ?? 0, opacity: placement ? undefined : 0 }}
           onPointerDown={(event) => {
             // WebKit otherwise focuses the parent dialog on mouse down,
             // dismissing this menu before mouse up can click its action.
@@ -114,7 +143,7 @@ export function GroupAvatarEditor({ avatars, imageUrl, name, disabled, avatarCla
             items[next]?.focus();
           }}
         >
-          <button type="button" role="menuitem" className="app-transient-flat-action app-transient-action-row w-full rounded-[9px] px-3 py-2 text-left text-[12px]" onClick={() => {
+          <button type="button" role="menuitem" className="app-dense-menu-row" onClick={() => {
             if (isNativeDesktopShell() && /Mac/i.test(window.navigator.platform)) {
               void run(async () => {
                 const { pickNativeAvatarFile } = await import('@/lib/nativeAvatarPicker');
@@ -125,11 +154,12 @@ export function GroupAvatarEditor({ avatars, imageUrl, name, disabled, avatarCla
               closeMenu();
               input.current?.click();
             }
-          }}>Upload photo</button>
+          }}><ImagePlus aria-hidden="true" />Upload photo</button>
           {imageUrl ? (
-            <button type="button" role="menuitem" className="app-transient-row app-transient-row-danger app-transient-action-row w-full rounded-[9px] px-3 py-2 text-left text-[12px]" onClick={() => void run(onRemove)}>Remove image</button>
+            <button type="button" role="menuitem" className="app-dense-menu-row app-dense-menu-danger" onClick={() => void run(onRemove)}><Trash2 aria-hidden="true" />Remove image</button>
           ) : null}
-        </div>
+        </div>,
+        document.body,
       ) : null}
       {error ? <ErrorLine className="mt-2 max-w-60">{error}</ErrorLine> : null}
       {busy ? <span className="sr-only" aria-live="polite">Updating group avatar.</span> : null}

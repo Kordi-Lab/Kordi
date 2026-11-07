@@ -183,3 +183,46 @@ test('Start group creates a named group with only its creator on Enter and close
   await expect(page.getByTestId('started')).toHaveText('group:0:Launch QA');
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`Start group photo menu opens whole under the avatar, inside the popover (${theme})`, async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 560 });
+    await page.goto(`${preview}?theme=${theme}&show=create&mode=group`);
+    const popover = page.locator('[data-create-surface="side-popover"]');
+    await expect(popover).toHaveAccessibleName('Start group');
+    await settle(page);
+    const avatar = popover.getByRole('button', { name: 'Edit group avatar' });
+    await avatar.click();
+    const menu = page.getByRole('menu', { name: 'Group avatar' });
+    const upload = menu.getByRole('menuitem', { name: 'Upload photo' });
+    await expect(upload).toBeVisible();
+    await settle(page);
+
+    const [menuBox, popoverBox, avatarBox, uploadBox] = await Promise.all([menu, popover, avatar, upload].map(rowBox));
+    expect(menuBox.x).toBeCloseTo(avatarBox.x, 0);
+    expect(menuBox.y).toBeGreaterThan(avatarBox.y + avatarBox.height);
+    expect(menuBox.x).toBeGreaterThanOrEqual(popoverBox.x);
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(popoverBox.x + popoverBox.width);
+    // The whole label shows: nothing in the row is cut off.
+    const clipped = await upload.evaluate((row) => row.scrollWidth > row.clientWidth
+      || document.elementFromPoint(row.getBoundingClientRect().left + 4, row.getBoundingClientRect().top + 4)?.closest('[role="menu"]') === null);
+    expect(clipped).toBe(false);
+    expect(uploadBox.height).toBeCloseTo(28, 0);
+    await expect(upload).toHaveCSS('font-size', '12px');
+    const surfaces = await page.evaluate(() => {
+      const read = (element: Element | null) => {
+        const style = getComputedStyle(element!);
+        return { radius: style.borderRadius, padding: style.padding, background: style.backgroundColor, border: style.borderColor };
+      };
+      return { menu: read(document.querySelector('[data-group-avatar-menu]')), popover: read(document.querySelector('[data-create-surface]')) };
+    });
+    // The Help menu surface; the menu keeps the dense 5px inset of the action list.
+    expect({ ...surfaces.menu, padding: surfaces.popover.padding }).toEqual(surfaces.popover);
+    expect(surfaces.menu.padding).toBe('5px');
+
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(avatar).toBeFocused();
+    await expect(popover).toBeVisible();
+  });
+}
