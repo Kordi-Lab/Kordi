@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import {
   useCallback,
   type Dispatch,
@@ -52,7 +53,7 @@ export function useKordiGroupRename({
     sessionIds: string[],
     name: string,
   ) => {
-    if (!isNativeShell) return;
+    if (!isNativeShell && !isBrowserAppRuntime()) return;
     const requestedSessionIds = uniqueStrings(sessionIds);
     if (requestedSessionIds.length === 0) return;
     const title = name.trim();

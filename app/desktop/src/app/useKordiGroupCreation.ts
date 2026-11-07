@@ -1,3 +1,4 @@
+import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import {
   useCallback,
   type Dispatch,
@@ -77,7 +78,7 @@ export function useKordiGroupCreation({
     name?: string | null;
     contactIds: string[];
   }): Promise<string | undefined> => {
-    if (!isNativeShell) return undefined;
+    if (!isNativeShell && !isBrowserAppRuntime()) return undefined;
     const groupDisplayName = request.name?.trim() ?? '';
     if (!groupDisplayName) throw new Error('Enter a group name.');
     setDesktopError(null);
