@@ -1462,21 +1462,65 @@ struct MessageBubbleAccessoryRow: View {
     }
 }
 
+/// More background sessions than this start folded into one summary line.
+let foldedBackgroundSessionRows = 3
+
+/// The folded line: "5 background sessions · 2 running · 1 failed".
+func backgroundSessionGroupSummary(_ states: [BackgroundAgentSession.State]) -> String {
+    let running = states.filter { $0 == .running }.count
+    let failed = states.filter { $0 == .failed }.count
+    var parts = ["\(states.count) background \(states.count == 1 ? "session" : "sessions")"]
+    if running > 0 { parts.append("\(running) running") }
+    if failed > 0 { parts.append("\(failed) failed") }
+    return parts.joined(separator: " · ")
+}
+
 private struct BackgroundAgentSessionList: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var userFolded: Bool?
     let sessions: [BackgroundAgentSessionPresentation]
     let agentName: String
     let isEnabled: Bool
     let onOpen: (BackgroundAgentSession) -> Void
 
+    private var foldable: Bool { sessions.count > foldedBackgroundSessionRows }
+    private var folded: Bool { foldable && (userFolded ?? !Self.previewUnfolds) }
+
+    private static var previewUnfolds: Bool {
+        ProcessInfo.processInfo.arguments.contains("--preview-background-unfolded")
+    }
+
     var body: some View {
-        VStack(spacing: 2) {
-            ForEach(sessions) { presentation in
-                BackgroundAgentSessionRow(
-                    presentation: presentation,
-                    agentName: agentName,
-                    isEnabled: isEnabled,
-                    onOpen: onOpen
-                )
+        VStack(alignment: .leading, spacing: 2) {
+            if foldable {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { userFolded = !folded }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(backgroundSessionGroupSummary(sessions.map { model.subsessions[$0.id]?.state ?? $0.state }))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Image(systemName: folded ? "chevron.right" : "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(minHeight: 28, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(folded ? "Folded" : "Expanded")
+                .accessibilityIdentifier("background-sessions-summary")
+            }
+            if !folded {
+                ForEach(sessions) { presentation in
+                    BackgroundAgentSessionRow(
+                        presentation: presentation,
+                        agentName: agentName,
+                        isEnabled: isEnabled,
+                        onOpen: onOpen
+                    )
+                }
             }
         }
         .padding(.leading, 16)

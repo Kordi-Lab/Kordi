@@ -302,14 +302,23 @@ enum PreviewData {
                     textPreview: "What should I focus on today?",
                     attachmentCount: 0
                 )),
-                backgroundAgentSessions: [
-                    BackgroundAgentSession(wire: .init(
-                        sessionId: "session:self-agent:cloud_agent_research",
-                        turnId: "turn-preview-research",
-                        title: "Review the TestFlight checklist",
-                        status: "running"
-                    ))!
-                ]
+                backgroundAgentSessions: ProcessInfo.processInfo.arguments.contains("--preview-background-fold")
+                    // Five sessions start folded into one summary line.
+                    ? [
+                        ("session:self-agent:cloud_agent_research", "Review the TestFlight checklist", "running"),
+                        ("session:preview-bg-2", "Compare crash reports", "running"),
+                        ("session:preview-bg-3", "Draft release notes", "done"),
+                        ("session:preview-bg-4", "Check App Store screenshots", "failed"),
+                        ("session:preview-bg-5", "Summarize tester feedback", "done"),
+                    ].compactMap { BackgroundAgentSession(wire: .init(sessionId: $0.0, turnId: nil, title: $0.1, status: $0.2)) }
+                    : [
+                        BackgroundAgentSession(wire: .init(
+                            sessionId: "session:self-agent:cloud_agent_research",
+                            turnId: "turn-preview-research",
+                            title: "Review the TestFlight checklist",
+                            status: "running"
+                        ))!
+                    ]
             )
         ])
         return messages

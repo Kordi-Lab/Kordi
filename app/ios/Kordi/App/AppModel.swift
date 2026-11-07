@@ -2234,9 +2234,15 @@ final class AppModel: ObservableObject {
         if let id = conversation.subsessionId {
             guard outgoingAttachments.isEmpty else { errorMessage = "This session supports text messages."; return }
             let messageId = retryMessage?.clientMessageId ?? UUID().uuidString.lowercased()
-            let mentions = retryMessage?.mentions ?? ComposerMentionTargetCatalog.mentions(in: text, selectedTarget: mentionTarget, targets: mentionTargets(for: conversation))
+            let typedMentions = retryMessage?.mentions ?? ComposerMentionTargetCatalog.mentions(in: text, selectedTarget: mentionTarget, targets: mentionTargets(for: conversation))
+            // The owner's plain message reaches their own agent, as on the Mac.
+            let addressed = retryMessage == nil
+                ? subsessions[id]?.ownerMessageToAgent(text: text, mentions: typedMentions, accountId: account.accountId)
+                : nil
+            let sentText = addressed?.text ?? text
+            let mentions = addressed?.mentions ?? typedMentions
             let optimistic = ChatMessage(id: messageId, clientMessageId: messageId, conversationId: conversation.id,
-                author: .me, authorName: "You", text: text, createdAt: retryMessage?.createdAt ?? Date(),
+                author: .me, authorName: "You", text: sentText, createdAt: retryMessage?.createdAt ?? Date(),
                 deliveryState: .sending, errorMessage: nil, requestMessageId: nil, mentions: mentions)
             messagesByConversation[conversation.id, default: []].removeAll { $0.id == retryMessage?.id }
             messagesByConversation[conversation.id, default: []].append(optimistic)
@@ -2246,7 +2252,7 @@ final class AppModel: ObservableObject {
             defer { conversationSendQueue.release(conversation.id) }
             guard self.account?.accountId == account.accountId else { return }
             do {
-                let result = try await api.sendSubsessionMessage(token: token, id: id, clientMessageId: messageId, text: text, mentions: mentions)
+                let result = try await api.sendSubsessionMessage(token: token, id: id, clientMessageId: messageId, text: sentText, mentions: mentions)
                 guard self.account?.accountId == account.accountId else { return }
                 if (subsessions[id]?.version ?? -1) <= result.version { subsessions[id] = result }
                 messagesByConversation[conversation.id]?.removeAll { $0.id == messageId }
