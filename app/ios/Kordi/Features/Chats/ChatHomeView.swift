@@ -34,6 +34,7 @@ struct ChatHomeView: View {
     @State private var deleteTarget: ConversationSummary?
     @State private var showingArchivedChats = false
     @State private var groupManagementPresentation: GroupManagementPresentation?
+    @State private var channelDissolveTarget: ChannelDissolveTarget?
     /// Previews open the sheet at full height so every section shows.
     @State private var groupManagementDetent: PresentationDetent =
         ProcessInfo.processInfo.arguments.contains("--preview-group-management") ? .large : .medium
@@ -273,6 +274,31 @@ struct ChatHomeView: View {
             Button("Cancel", role: .cancel) { deleteTarget = nil }
         } message: {
             Text("This does not delete it for other participants. It will return only when a new visible message arrives.")
+        }
+        .alert(
+            channelDissolveTarget.map { "Dissolve \($0.conversation.displayName)?" } ?? "",
+            isPresented: Binding(
+                get: { channelDissolveTarget != nil },
+                set: { if !$0 { channelDissolveTarget = nil } }
+            ),
+            presenting: channelDissolveTarget
+        ) { target in
+            Button("Dissolve", role: .destructive) {
+                channelDissolveTarget = nil
+                Task { _ = await model.dissolveGroupChannel(target.conversation, in: target.space) }
+            }
+            Button("Cancel", role: .cancel) { channelDissolveTarget = nil }
+        } message: { _ in
+            Text("Its messages are deleted for everyone in the group.")
+        }
+        .task {
+            // `--preview-channel-dissolve`: the confirmation for the sample group's second channel.
+            guard ProcessInfo.processInfo.arguments.contains("--preview-channel-dissolve") else { return }
+            try? await Task.sleep(for: .milliseconds(900))
+            if let channel = model.conversations.first(where: { $0.sessionId == "session:group:mobile-release" }),
+               let space = dissolvableSpace(for: channel) {
+                channelDissolveTarget = ChannelDissolveTarget(conversation: channel, space: space)
+            }
         }
         .overlay(alignment: .bottom) {
             if let error = model.errorMessage {
@@ -888,6 +914,23 @@ struct ChatHomeView: View {
         } label: {
             Label("Delete", systemImage: "trash")
         }
+        if let space = dissolvableSpace(for: conversation) {
+            Button(role: .destructive) {
+                channelDissolveTarget = ChannelDissolveTarget(conversation: conversation, space: space)
+            } label: {
+                Label("Dissolve channel", systemImage: "circle.slash")
+            }
+        }
+    }
+
+    /// The group whose admin may dissolve this channel; never its first channel.
+    private func dissolvableSpace(for conversation: ConversationSummary) -> GroupSpaceSummary? {
+        guard conversation.kind == .group else { return nil }
+        return GroupSpaceCatalog.build(conversations: model.conversations, ownAccountId: model.account?.accountId ?? "")
+            .first { space in
+                space.sessions.contains { $0.sessionId == conversation.sessionId }
+                    && model.canDissolveChannel(conversation, in: space)
+            }
     }
 
     private func togglePinned(_ conversation: ConversationSummary) {
@@ -1717,4 +1760,11 @@ private struct ErrorBanner: View {
     NavigationStack { ChatHomeView(channel: .contact) }
         .environmentObject(AppModel(previewMode: true))
         .tint(KordiChatTheme.classic.accent)
+}
+
+/// A channel an admin asked to dissolve, with its group.
+struct ChannelDissolveTarget: Identifiable {
+    let conversation: ConversationSummary
+    let space: GroupSpaceSummary
+    var id: String { conversation.sessionId }
 }

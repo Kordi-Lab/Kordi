@@ -181,6 +181,18 @@ extension CloudAPIClient {
         return response.invitations.first { $0.inviteUrl?.nonEmpty != nil }
     }
 
+    /// `DELETE /v2/chat/group-spaces/{groupSpaceId}/members/me`: the caller
+    /// leaves every channel of the group. 409 `last_group_admin` or
+    /// `last_group_member` explain why they cannot.
+    func leaveGroupSpace(token: String, groupSpaceId: String) async throws {
+        try await sendWithoutResponse(
+            path: "/v2/chat/group-spaces/\(Self.groupInvitePathSegment(groupSpaceId))/members/me",
+            method: "DELETE",
+            token: token,
+            fallback: "Could not leave the group."
+        )
+    }
+
     /// `DELETE /v2/chat/group-spaces/{groupSpaceId}`: removes every member and
     /// every channel. Group owners and admins only.
     func dissolveGroupSpace(token: String, groupSpaceId: String) async throws {

@@ -25,6 +25,9 @@ struct GroupManagementSheet: View {
     @State private var selectedContactIDs = Set<String>()
     @State private var isSaving = false
     @State private var showsManagePage = false
+    @State private var confirmsLeave = false
+    @State private var isLeaving = false
+    @State private var leaveError: String?
 
     private let inviteSectionID = "group-invite-section"
 
@@ -105,6 +108,10 @@ struct GroupManagementSheet: View {
                             .groupInfoRow()
                             .accessibilityIdentifier("group-manage-row")
                         }
+                    } else {
+                        Section {
+                            GroupLeaveRow(isLeaving: isLeaving) { confirmsLeave = true }
+                        }
                     }
                 }
                 .listSectionSpacing(.compact)
@@ -112,6 +119,12 @@ struct GroupManagementSheet: View {
                 .onAppear {
                     if ProcessInfo.processInfo.arguments.contains("--preview-group-manage-page"), canManage {
                         showsManagePage = true
+                    }
+                    if ProcessInfo.processInfo.arguments.contains("--preview-group-leave"), !canManage {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(700))
+                            confirmsLeave = true
+                        }
                     }
                     guard presentation.startsInInviteMode else { return }
                     Task { @MainActor in
@@ -127,6 +140,12 @@ struct GroupManagementSheet: View {
             }
             .navigationTitle("Group Info")
             .navigationBarTitleDisplayMode(.inline)
+            .groupLeaveConfirmation(
+                name: space.displayName,
+                isPresented: $confirmsLeave,
+                error: $leaveError,
+                onLeave: leaveGroup
+            )
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -322,6 +341,15 @@ struct GroupManagementSheet: View {
         }
     }
 
+    private func leaveGroup() {
+        isLeaving = true
+        Task {
+            let failure = await model.leaveGroupSpace(space)
+            isLeaving = false
+            if let failure { leaveError = failure } else { dismiss() }
+        }
+    }
+
     private func inviteSelectedContacts() {
         let contacts = availableContacts.filter { selectedContactIDs.contains($0.accountId) }
         guard !contacts.isEmpty else { return }
@@ -489,6 +517,9 @@ private struct GroupManagePage: View {
 
     @State private var confirmsDissolve = false
     @State private var isDissolving = false
+    @State private var confirmsLeave = false
+    @State private var isLeaving = false
+    @State private var leaveError: String?
 
     var body: some View {
         List {
@@ -511,7 +542,18 @@ private struct GroupManagePage: View {
             } footer: {
                 Text("Removes everyone and deletes every channel.")
             }
+            Section {
+                GroupLeaveRow(isLeaving: isLeaving) { confirmsLeave = true }
+            } footer: {
+                Text("Another admin has to stay in the group.")
+            }
         }
+        .groupLeaveConfirmation(
+            name: space.displayName,
+            isPresented: $confirmsLeave,
+            error: $leaveError,
+            onLeave: leave
+        )
         .listSectionSpacing(.compact)
         .environment(\.defaultMinListRowHeight, GroupInfoMetrics.rowMinHeight)
         .navigationTitle("Manage")
@@ -532,12 +574,66 @@ private struct GroupManagePage: View {
         }
     }
 
+    private func leave() {
+        isLeaving = true
+        Task {
+            let failure = await model.leaveGroupSpace(space)
+            isLeaving = false
+            if let failure { leaveError = failure } else { onDissolved() }
+        }
+    }
+
     private func dissolve() {
         isDissolving = true
         Task {
             let didDissolve = await model.dissolveGroupSpace(space)
             isDissolving = false
             if didDissolve { onDissolved() }
+        }
+    }
+}
+
+/// "Leave group": the caller leaves every channel of the group.
+private struct GroupLeaveRow: View {
+    let isLeaving: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(role: .destructive, action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                    .frame(width: GroupInfoMetrics.avatarSize)
+                Text("Leave group")
+                Spacer()
+                if isLeaving { ProgressView() }
+            }
+            .contentShape(Rectangle())
+        }
+        .disabled(isLeaving)
+        .groupInfoRow()
+        .accessibilityIdentifier("group-leave-row")
+    }
+}
+
+private extension View {
+    func groupLeaveConfirmation(
+        name: String,
+        isPresented: Binding<Bool>,
+        error: Binding<String?>,
+        onLeave: @escaping () -> Void
+    ) -> some View {
+        confirmationDialog("Leave \(name)?", isPresented: isPresented, titleVisibility: .visible) {
+            Button("Leave group", role: .destructive, action: onLeave)
+        } message: {
+            Text("You'll stop getting its messages.")
+        }
+        .alert(
+            "Could not leave",
+            isPresented: Binding(get: { error.wrappedValue != nil }, set: { if !$0 { error.wrappedValue = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(error.wrappedValue ?? "")
         }
     }
 }

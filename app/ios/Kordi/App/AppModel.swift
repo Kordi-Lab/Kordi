@@ -4958,6 +4958,61 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    /// Leaves every channel of the group. Returns nil when it worked, else
+    /// the message to show, such as the server's "Make someone else an admin
+    /// before leaving."
+    func leaveGroupSpace(_ space: GroupSpaceSummary) async -> String? {
+        if !previewMode {
+            guard let token else { return "Sign in to leave this group." }
+            do {
+                try await api.leaveGroupSpace(token: token, groupSpaceId: space.preferenceId)
+            } catch let error as CloudAPIError {
+                return error.message.nonEmpty ?? "Could not leave the group."
+            } catch {
+                return userFacing(error, fallback: "Could not leave the group.")
+            }
+        }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        pinnedGroupSpaceIds.remove(space.preferenceId)
+        for conversation in space.membershipSessions + space.sessions {
+            removeConversationLocally(conversation)
+        }
+        cacheCurrentConversations()
+        return nil
+    }
+
+    /// Whether this account may dissolve `conversation`: a group admin, and
+    /// never the group's first channel, which is the group itself.
+    func canDissolveChannel(_ conversation: ConversationSummary, in space: GroupSpaceSummary) -> Bool {
+        guard conversation.kind == .group, space.sessions.count > 1,
+              conversation.canManageGroup(accountId: account?.accountId),
+              space.sessions.contains(where: { normalizedGroupSpaceId($0.sessionId) == space.preferenceId })
+        else { return false }
+        return normalizedGroupSpaceId(conversation.sessionId) != space.preferenceId
+    }
+
+    func dissolveGroupChannel(_ conversation: ConversationSummary, in space: GroupSpaceSummary) async -> Bool {
+        guard canDissolveChannel(conversation, in: space) else {
+            errorMessage = "Only a group admin can dissolve this channel."
+            return false
+        }
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await api.dissolveGroupChannel(token: token, groupSpaceId: space.preferenceId, sessionId: conversation.sessionId)
+            } catch {
+                errorMessage = userFacing(error, fallback: "Could not dissolve the channel.")
+                return false
+            }
+        }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        removeConversationLocally(conversation)
+        cacheCurrentConversations()
+        return true
+    }
+
     /// The group's live invitation link, or nil when it has none yet.
     func activeGroupInviteLink(_ space: GroupSpaceSummary) async -> GroupInviteLinkInfo? {
         if previewMode { return nil }
