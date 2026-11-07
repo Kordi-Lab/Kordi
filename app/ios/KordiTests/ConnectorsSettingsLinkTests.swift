@@ -39,6 +39,14 @@ final class ConnectorsSettingsLinkTests: XCTestCase {
         XCTAssertNil(ConnectorsSettingsRequest(link: list).providerId)
     }
 
+    func testAnAuthenticationLinkOpensProviderAccounts() throws {
+        let link = try XCTUnwrap(ConnectorsSettingsLink.parse(XCTUnwrap(URL(string: "kordi://settings/authentication"))))
+        XCTAssertTrue(link.opensAuthentication)
+        let request = ConnectorsSettingsRequest(link: link)
+        XCTAssertEqual(request.path, [.authentication])
+        XCTAssertNil(request.providerId)
+    }
+
     func testEachOpeningIsANewRequest() {
         let link = ConnectorsSettingsLink(providerID: "slack")
         XCTAssertNotEqual(ConnectorsSettingsRequest(link: link), ConnectorsSettingsRequest(link: link))

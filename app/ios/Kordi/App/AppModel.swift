@@ -6510,7 +6510,7 @@ final class AppModel: ObservableObject {
             author: author,
             authorName: author == .me ? "You" : KordiSystemIdentity.directAuthorName(
                 messageKind: messageKind, fromAccountId: message.fromAccountId, fallback: conversation.displayName),
-            text: CloudMessageCodec.displayText(message.body),
+            text: CloudMessageCodec.viewerText(message.body, viewerOwnsAgent: message.fromAccountId == ownAccountId, agentName: nil),
             createdAt: parseCloudDate(message.createdAt),
             editedAt: message.editedAt.map(parseCloudDate),
             cloudMessageVersion: message.version,
@@ -6687,7 +6687,15 @@ final class AppModel: ObservableObject {
                     ? "You"
                     : author == .agent ? agentName : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
                 senderOwnerName: author == .agent ? (payload.senderAccountId == ownAccountId ? "You" : ownerName) : nil,
-                text: payload.text,
+                // Only the agent's owner reads why a reply failed.
+                text: author == .agent && payload.deliveryState == "failed"
+                    ? AgentFailurePresentation.text(
+                        stored: payload.text,
+                        failureCode: payload.failureCode,
+                        viewerOwnsAgent: payload.senderAccountId == ownAccountId,
+                        agentName: agentName
+                    )
+                    : payload.text,
                 createdAt: Date(
                     timeIntervalSince1970: (
                         payload.requestId.flatMap { createdAtByMessageId[$0] }

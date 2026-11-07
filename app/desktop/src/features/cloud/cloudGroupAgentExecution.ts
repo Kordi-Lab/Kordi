@@ -1,5 +1,4 @@
 import { agentExchangeTurnIsWaiting } from './agentExchangeOutcome';
-import { withoutProviderResponse } from './providerFailureText';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
 import { mergeDesktopTurnSnapshot } from '@/features/chat/desktopLiveTurns';
@@ -25,7 +24,8 @@ import { publishModelSubsessions } from './agentSubsessionSync';
 import { cloudGroupBackgroundFollowUpRoute } from './cloudGroupBackgroundFollowUp';
 import { cloudAgentPublicBackgroundToolsFromTurn } from './cloudAgentBackgroundSessions';
 import { promptTextForCloudAgentMention } from './cloudAgentMessages';
-import { cloudAgentSharedReplyFailureNotice } from './cloudAgentFailureNotices';
+import { cloudAgentSharedFailure } from './cloudAgentFailureNotices';
+import { cloudAgentLocalFailureMessage } from './cloudAgentLocalExecution';
 import {
   cloudGroupAgentRequestRuntimeSessionId,
 } from './cloudAgentRuntime';
@@ -345,12 +345,10 @@ export async function respondToCloudGroupAgentMention(
 
   const responseText = cloudAgentTurnReplyText(finalTurn);
   const succeeded = responseText.length > 0;
-  const failureMessage = succeeded
-    ? null
-    : cloudAgentSharedReplyFailureNotice(withoutProviderResponse(finalTurn.error) || finalTurn.message, presentation.displayName)
-      ?? (withoutProviderResponse(finalTurn.error)?.trim()
-        || finalTurn.message?.trim()
-        || 'Cloud agent returned no text response');
+  const failureSource = finalTurn.error?.trim() || finalTurn.message?.trim() || 'Cloud agent returned no text response';
+  // This Mac's row keeps the reason for the owner; every member reads only that the agent could not reply.
+  const failureMessage = succeeded ? null : cloudAgentLocalFailureMessage(failureSource);
+  const sharedFailure = succeeded ? null : cloudAgentSharedFailure(failureSource, presentation.displayName);
   const responseDeliveryState: 'complete' | 'failed' = succeeded
     ? 'complete'
     : 'failed';
@@ -375,7 +373,7 @@ export async function respondToCloudGroupAgentMention(
       ...(finalTurn.segments?.length ? { segments: finalTurn.segments } : {}),
       startedAtMs: finalTurn.startedAtMs,
       completedAtMs: finalTurn.completedAtMs,
-      ...(failureMessage ? { error: failureMessage } : {}),
+      ...(failureMessage ? { error: failureMessage, failureCode: sharedFailure?.failureCode } : {}),
     },
     createdAtMs: responseCreatedAtMs,
     status: responseDeliveryState,
@@ -452,10 +450,9 @@ export async function respondToCloudGroupAgentMention(
     targetAccountIds,
     responseMessageId,
     responseCreatedAtMs,
-    responseText: succeeded
-      ? responseText
-      : (failureMessage ?? ''),
+    responseText: sharedFailure?.text ?? responseText,
     responseDeliveryState,
+    failureCode: sharedFailure?.failureCode,
     responseTools: cloudAgentPublicBackgroundToolsFromTurn(finalTurn),
     agentId: presentation.agentId,
     agentDisplayName: presentation.displayName,

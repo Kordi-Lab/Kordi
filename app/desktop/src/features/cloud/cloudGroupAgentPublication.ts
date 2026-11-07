@@ -17,6 +17,7 @@ import type {
 import type { CloudGroupAgentHandoff } from './cloudGroupMentions';
 import type { CloudGroupAgentPolicy } from './cloudGroupAgentControl.types';
 import type { CloudAgentExecutionTool } from './cloudAgentMessages';
+import type { CloudAgentFailureCode } from './cloudAgentFailureCode';
 import type { CloudAuthClient } from './authClient';
 import { cloudOperationUuid } from './chatSyncMapping';
 import { parseCloudGroupControl } from './cloudGroupMessages';
@@ -31,6 +32,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   responseCreatedAtMs,
   responseText,
   responseDeliveryState,
+  failureCode,
   responseTools,
   responseTiming,
   requestId,
@@ -49,6 +51,8 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   responseCreatedAtMs: number;
   responseText: string;
   responseDeliveryState: 'complete' | 'failed';
+  /** A failed reply's category; its text is the neutral line every member reads. */
+  failureCode?: CloudAgentFailureCode;
   responseTools: CloudAgentExecutionTool[];
   /** The turn's own timing, so a follow-up reply shows how long it worked. */
   responseTiming?: { startedAtMs?: number | null; completedAtMs?: number | null };
@@ -120,6 +124,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
           senderKind: 'agent',
           senderDisplayName: agentDisplayName,
           deliveryState: responseDeliveryState,
+          ...(responseDeliveryState === 'failed' && failureCode ? { failureCode } : {}),
           replyToMessageId: message.id,
           requestId: requestId ?? message.id,
           ...(message.messageAction?.kind === 'thread' ? { messageAction: message.messageAction } : {}),

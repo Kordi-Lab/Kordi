@@ -1,6 +1,7 @@
 import { cloudVoiceDraftMetadataOnly } from './cloudVoiceMessage';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { MessageVoiceDraft } from '@/kordi-app/types/message';
+import { cloudAgentFailureCodeField, type CloudAgentFailureCode } from './cloudAgentFailureCode';
 
 export { cloudVoiceAttachmentReference } from './cloudVoiceMessage';
 
@@ -30,11 +31,14 @@ export function cloudGroupMessageRuntimeFields(candidate: Record<string, unknown
   voiceMessage?: (MessageVoiceDraft & { mediaId?: string | null }) | null;
   structuredContent?: Record<string, unknown> | null;
   forkSnapshot?: boolean;
+  /** Why a failed agent reply failed; only the agent's owner renders the reason. */
+  failureCode?: CloudAgentFailureCode;
 } {
   const structuredContent = candidate.structuredContent;
   const voiceMessage = cloudVoiceDraftMetadataOnly(candidate.voiceMessage);
   return {
     ...(candidate.forkSnapshot === true ? { forkSnapshot: true } : {}),
+    ...(candidate.deliveryState === 'failed' ? cloudAgentFailureCodeField(candidate.failureCode) : {}),
     agentRuntimeRoute: runtimeRoute(candidate.agentRuntimeRoute),
     messageKind: cleanText(candidate.messageKind) || null,
     voiceMessage,

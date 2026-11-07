@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { useVisibleLiveTurn } from '@/features/chat/useVisibleLiveTurn';
-import { cloudAgentProviderFailureNeedsAuthentication, cloudAgentProviderFailureNotice } from '@/features/cloud/cloudAgentFailureNotices';
+import { cloudAgentProviderFailureActionLabel, cloudAgentProviderFailureNotice } from '@/features/cloud/cloudAgentFailureNotices';
 import { ErrorLine } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 import { SourceMessageQuoteRow } from './transcriptReplyAttribution';
@@ -98,7 +98,8 @@ function LiveChatTurnCardView({
       || changedFileRows.length > 0,
   );
   const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
-  const showOpenAuthAction = Boolean(onOpenAuthSettings && visibleTurn.error && cloudAgentProviderFailureNeedsAuthentication(visibleTurn.error));
+  // The owner's link to the provider settings under Authentication.
+  const openAuthActionLabel = onOpenAuthSettings && visibleTurn.error ? cloudAgentProviderFailureActionLabel(visibleTurn.error) : null;
   const showsTurnProgress = showResponsePanel && (showLiveProgress || hasOrderedContent || hasTimelineActivity || hasAssistant);
   // Without a live status line (not yet started, or compressing), Stop keeps a line of its own.
   const standaloneStop = stop && !(showsTurnProgress && !visibleTurn.completed)
@@ -158,7 +159,7 @@ function LiveChatTurnCardView({
             <ErrorLine
               className="app-live-turn-error mt-0 px-0.5"
               role={historical ? 'status' : 'alert'}
-              action={showOpenAuthAction && onOpenAuthSettings ? { label: 'Sign in', onClick: onOpenAuthSettings } : null}
+              action={openAuthActionLabel && onOpenAuthSettings ? { label: openAuthActionLabel, onClick: onOpenAuthSettings } : null}
             >
               {displayedError}
             </ErrorLine>

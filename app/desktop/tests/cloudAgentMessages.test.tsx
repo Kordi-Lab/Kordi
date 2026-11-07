@@ -24,6 +24,7 @@ import {
   promptTextForCloudAgentMention,
 } from '../src/features/cloud/cloudAgentMessages';
 import {
+  cloudAgentProviderFailureActionLabel,
   cloudAgentProviderFailureNeedsAuthentication,
   cloudAgentProviderFailureNotice,
 } from '../src/features/cloud/cloudAgentFailureNotices';
@@ -75,7 +76,7 @@ test('cloud fallback errors map backend codes to concise user-facing copy', () =
   );
   assert.equal(
     cloudAgentFallbackErrorNotice({ code: 'provider_auth_rejected' }),
-    'Sign in again to use this account.',
+    'Your AI provider connection expired.',
   );
   assert.equal(
     cloudAgentFallbackErrorNotice({ code: 'model_provider_error' }),
@@ -380,17 +381,21 @@ test('an unknown model is a model failure, not a missing provider', () => {
   assert.equal(isCloudAgentStoredNoProviderFailure(error), true, 'history stored by older builds keeps its failed state');
 });
 
-test('an unusable saved sign-in asks to sign in again and opens authentication', () => {
-  for (const error of [
-    'Claude OAuth credentials are not usable. The saved Claude subscription token is expired or could not be refreshed; sign in to Claude again, or switch this provider to an Anthropic API key.',
-    'ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again, or switch this provider to an OpenAI API key.',
-    'Sign in again to use this account.',
+test('an expired provider connection asks to reconnect that provider, never to sign in', () => {
+  for (const [error, notice] of [
+    ['Claude OAuth credentials are not usable. The saved Claude subscription token is expired or could not be refreshed; sign in to Claude again, or switch this provider to an Anthropic API key.', 'Your Claude connection expired.'],
+    ['ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again, or switch this provider to an OpenAI API key.', 'Your ChatGPT connection expired.'],
+    // The line older builds stored, and the server's line, name no provider.
+    ['Sign in again to use this account.', 'Your AI provider connection expired.'],
+    ['Your AI provider connection expired.', 'Your AI provider connection expired.'],
+    ['Your ChatGPT connection expired.', 'Your ChatGPT connection expired.'],
   ]) {
-    assert.equal(cloudAgentProviderFailureNotice(error), 'Sign in again to use this account.', error);
+    assert.equal(cloudAgentProviderFailureNotice(error), notice, error);
+    assert.equal(cloudAgentProviderFailureActionLabel(error), 'Reconnect', error);
     assert.equal(cloudAgentProviderFailureNeedsAuthentication(error), true, error);
     assert.equal(isCloudAgentNoProviderConfiguredError(error), false, error);
   }
-  assert.equal(cloudAgentLocalFailureMessage(new Error('ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again, or switch this provider to an OpenAI API key.')), 'Sign in again to use this account.');
+  assert.equal(cloudAgentLocalFailureMessage(new Error('ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again, or switch this provider to an OpenAI API key.')), 'Your ChatGPT connection expired.');
 });
 
 test('provider failure notices leave missing accounts and unrelated errors unchanged', () => {

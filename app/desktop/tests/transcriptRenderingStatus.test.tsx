@@ -218,7 +218,7 @@ test('no-provider failed agent turn renders red inline text with authentication 
   assert.match(markup, /app-error-line app-live-turn-error/);
   assert.doesNotMatch(markup, /text-rose-/);
   assert.match(markup, /No provider configured yet/);
-  assert.match(markup, /class="app-error-line-action"[^>]*>Sign in</);
+  assert.match(markup, /class="app-error-line-action"[^>]*>Connect</);
   assert.doesNotMatch(markup, /rounded-full border border-rose/);
 });
 
@@ -249,7 +249,7 @@ test('unknown-model failures render as a model notice without the authentication
   assert.doesNotMatch(markup, /Unknown model: openai\/gpt-5\.4/);
 });
 
-test('an unusable saved sign-in renders the sign-in notice with the authentication link', () => {
+test('an expired provider connection names the provider and links to reconnect it', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-sign-in-again',
     sessionId: 'session-1',
@@ -270,8 +270,9 @@ test('an unusable saved sign-in renders the sign-in notice with the authenticati
     onOpenAuthSettings: () => undefined,
   }));
 
-  assert.match(markup, /Sign in again to use this account\./);
-  assert.match(markup, />Sign in</);
+  assert.match(markup, /Your ChatGPT connection expired\./);
+  assert.match(markup, />Reconnect</);
+  assert.doesNotMatch(markup, /Sign in/);
   assert.doesNotMatch(markup, /OAuth credentials are not usable/);
 });
 
@@ -303,7 +304,7 @@ test('no-provider live turn keeps the source quote so reply context stays stable
   }));
 
   assert.match(markup, /No provider configured yet/);
-  assert.match(markup, />Sign in</);
+  assert.match(markup, />Connect</);
   assert.match(markup, /app-ordered-turn-surface[\s\S]*No provider configured yet[\s\S]*app-source-message-quote/);
   assert.match(markup, /app-message-mention-agent[^>]*>@MyKordi<\/span>/);
   assert.match(markup, /what are you doing/);

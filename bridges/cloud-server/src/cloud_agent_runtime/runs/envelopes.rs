@@ -12,6 +12,11 @@ const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
 const CLOUD_DIRECT_MESSAGE_PREFIX: &str = "kordi-cloud-message:";
 
+mod failure_code;
+pub(super) use failure_code::{
+    cloud_agent_failure_code, cloud_agent_shared_failure_text, with_failure_code,
+};
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(super) struct CloudGroupParticipant {
     #[serde(rename = "accountId")]

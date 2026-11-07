@@ -64,7 +64,7 @@ import {
   cloudAgentSyntheticResponseDirection,
   isDirectCloudContact,
 } from './cloudCollaborationPresentation';
-import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
+import { CLOUD_HOST_SENTINEL } from './cloudContactMapping'; import { cloudAgentFailureCodeField } from './cloudAgentFailureCode';
 import {
   CLOUD_AGENT_RUNTIME,
   CLOUD_PERSON_RUNTIME,
@@ -205,7 +205,7 @@ export function cloudMessageToCollaborationMessage(
     attachments: cloudMessageAttachmentsForPresentation(message.attachments, message.voiceMessage),
     mentions: agentResponse ? undefined : cloudDirectMessageMentions(message.body),
     messageAction: directMessageAction,
-    messageKind: message.messageKind ?? null, voiceMessage: message.voiceMessage ? cloudVoiceMessageToMessageVoice(message.voiceMessage) : null, planCard: message.planCard ?? null, reactionConversationId: message.conversationId ?? null, reactionTargetMessageId: message.messageId, cloudMessageVersion: message.version ?? null, editedAt: agentResponse?.agentExchangeStatus ? null : message.editedAt ?? null, reactions: message.reactions ?? [],
+    messageKind: message.messageKind ?? null, voiceMessage: message.voiceMessage ? cloudVoiceMessageToMessageVoice(message.voiceMessage) : null, planCard: message.planCard ?? null, reactionConversationId: message.conversationId ?? null, reactionTargetMessageId: message.messageId, cloudMessageVersion: message.version ?? null, editedAt: agentResponse?.agentExchangeStatus ? null : message.editedAt ?? null, reactions: message.reactions ?? [], ...cloudAgentFailureCodeField(agentResponse?.failureCode),
     localTurn: agentExchangeProgressTurn(agentResponse?.agentExchangeStatus, displayText, message.messageId, message.sessionId ?? '',
       agentResponse?.requestId ? options.localAgentTurnsByRequestId?.[agentResponse.requestId] ?? syncedExecutionTurn ?? syncedBackgroundTurn : null),
   };

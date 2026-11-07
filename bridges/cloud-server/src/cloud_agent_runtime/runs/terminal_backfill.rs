@@ -216,6 +216,7 @@ pub async fn publish_terminal_response(
             request_message_id: &request_id,
             response_text: text,
             delivery_state,
+            failure_code: None,
         },
     )
     .await?

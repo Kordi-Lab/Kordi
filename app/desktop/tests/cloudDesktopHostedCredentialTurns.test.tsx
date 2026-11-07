@@ -4,11 +4,11 @@ import test from 'node:test';
 import type { SetStateAction } from 'react';
 import type { CloudAccount, CloudAuthClient, CloudMessage } from '../src/features/cloud/authClient';
 import {
-  CLOUD_AGENT_RECONNECT_ACCOUNT_NOTICE,
-  cloudAgentCouldNotAnswerText,
+  cloudAgentCouldNotReplyText,
+  cloudAgentProviderFailureActionLabel,
   cloudAgentProviderFailureNeedsAuthentication,
   cloudAgentProviderFailureNotice,
-  cloudAgentSharedReplyFailureNotice,
+  cloudAgentSharedFailure,
   isCloudAgentHostedCredentialUnavailableError,
 } from '../src/features/cloud/cloudAgentFailureNotices';
 import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
@@ -68,7 +68,7 @@ function peerRequest(id: string, sequence: number, createdAtMs: number): CloudMe
 
 function failedReply(id: string, requestId: string, sequence: number, createdAtMs: number): CloudMessage {
   return wire(id, owner, sequence, encodeCloudAgentResponse({
-    requestId, text: cloudAgentCouldNotAnswerText('Helper'), deliveryState: 'failed',
+    requestId, ...cloudAgentSharedFailure(UNAVAILABLE, 'Helper'), deliveryState: 'failed',
   }), createdAtMs, 2);
 }
 
@@ -84,17 +84,20 @@ test('a Mac turn that could not load the hosted account is handed back to the cl
   assert.equal(desktopTurnNeedsCloudHandBack(turn({ status: 'cancelled' })), false);
 });
 
-test('the owner sees a reconnect notice with the account action; members see a neutral line', () => {
+test('the owner sees a reconnect notice with the provider action; members see a neutral line', () => {
+  const notice = 'Your AI provider connection is unavailable.';
   assert.equal(isCloudAgentHostedCredentialUnavailableError(UNAVAILABLE), true);
-  assert.equal(cloudAgentProviderFailureNotice(UNAVAILABLE), CLOUD_AGENT_RECONNECT_ACCOUNT_NOTICE);
+  assert.equal(cloudAgentProviderFailureNotice(UNAVAILABLE), notice);
   assert.equal(cloudAgentProviderFailureNeedsAuthentication(UNAVAILABLE), true);
-  assert.equal(cloudAgentProviderFailureNeedsAuthentication(CLOUD_AGENT_RECONNECT_ACCOUNT_NOTICE), true);
-  assert.equal(cloudAgentCouldNotAnswerText('Helper'), "Helper couldn't answer.");
-  assert.equal(cloudAgentCouldNotAnswerText('  '), "The agent couldn't answer.");
-  assert.equal(isCloudAgentHostedCredentialUnavailableError(cloudAgentCouldNotAnswerText('Helper')), false);
-  assert.equal(cloudAgentSharedReplyFailureNotice(UNAVAILABLE, 'Helper'), "Helper couldn't answer.");
-  assert.equal(cloudAgentSharedReplyFailureNotice('no saved accounts or keys', 'Helper'), 'No provider configured yet.');
-  assert.equal(cloudAgentSharedReplyFailureNotice('The provider failed', 'Helper'), null);
+  assert.equal(cloudAgentProviderFailureActionLabel(notice), 'Reconnect');
+  // A line older builds stored still reads as this failure.
+  assert.equal(cloudAgentProviderFailureNotice('Reconnect your account to run your agent.'), notice);
+  assert.equal(cloudAgentCouldNotReplyText('Helper'), "Helper couldn't reply.");
+  assert.equal(cloudAgentCouldNotReplyText('  '), "The agent couldn't reply.");
+  assert.equal(isCloudAgentHostedCredentialUnavailableError(cloudAgentCouldNotReplyText('Helper')), false);
+  assert.deepEqual(cloudAgentSharedFailure(UNAVAILABLE, 'Helper'), { text: "Helper couldn't reply.", failureCode: 'hosted_credentials_unavailable' });
+  assert.deepEqual(cloudAgentSharedFailure('no saved accounts or keys', 'Helper'), { text: "Helper couldn't reply.", failureCode: 'missing_provider_auth' });
+  assert.deepEqual(cloudAgentSharedFailure('The provider failed', 'Helper'), { text: "Helper couldn't reply.", failureCode: 'failed' });
 });
 
 test('a hand-back releases the run, removes the failed local turn and syncs', async () => {
@@ -135,7 +138,7 @@ test('direct and group Mac runs hand back before publishing a failure and ignore
   for (const file of ['useCloudDirectAgentExecution.ts', 'cloudGroupAgentExecution.ts']) {
     const source = readFileSync(new URL(`../src/features/cloud/${file}`, import.meta.url), 'utf8');
     const handBack = source.indexOf('await handBackHostedCredentialTurn(');
-    const publish = source.indexOf('cloudAgentSharedReplyFailureNotice(');
+    const publish = source.indexOf('cloudAgentSharedFailure(');
     assert.ok(handBack > 0, `${file} hands a hosted-credential failure back`);
     assert.ok(publish > handBack, `${file} publishes a neutral failure only after the hand-back`);
     assert.match(source, /requestRoute: ownerRequestRoute\(/);
