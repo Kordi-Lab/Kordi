@@ -130,3 +130,77 @@ extension CloudAPIClient {
         value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? value
     }
 }
+
+/// A group's shareable invitation link. Every admin sees the same live link.
+struct GroupInviteLinkInfo: Decodable, Hashable {
+    let invitationId: String
+    /// Absent from older servers' active-link listings.
+    let inviteUrl: String?
+    let expiresAt: String
+
+    var expiryDate: Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: expiresAt) ?? ISO8601DateFormatter().date(from: expiresAt)
+    }
+}
+
+private struct GroupInviteLinkRequest: Encodable {
+    let groupId: String
+    let groupSpaceId: String
+    let groupTitle: String
+    let reset: Bool
+}
+
+private struct GroupInviteLinkListResponse: Decodable {
+    let invitations: [GroupInviteLinkInfo]
+}
+
+extension CloudAPIClient {
+    /// `POST /v1/cloud/invitations/groups`: the group's live link, or a new
+    /// one when `reset` revokes the current link.
+    func groupInviteLink(token: String, groupSpaceId: String, groupTitle: String, reset: Bool) async throws -> GroupInviteLinkInfo {
+        try await send(
+            path: "/v1/cloud/invitations/groups",
+            method: "POST",
+            token: token,
+            body: GroupInviteLinkRequest(groupId: groupSpaceId, groupSpaceId: groupSpaceId, groupTitle: groupTitle, reset: reset),
+            fallback: "Could not create a group link."
+        )
+    }
+
+    /// `GET /v1/cloud/invitations/groups/active/{groupSpaceId}`: the current
+    /// link with its URL, for admins.
+    func activeGroupInviteLink(token: String, groupSpaceId: String) async throws -> GroupInviteLinkInfo? {
+        let response: GroupInviteLinkListResponse = try await send(
+            path: "/v1/cloud/invitations/groups/active/\(Self.groupInvitePathSegment(groupSpaceId))",
+            method: "GET",
+            token: token,
+            fallback: "Could not load the group link."
+        )
+        return response.invitations.first { $0.inviteUrl?.nonEmpty != nil }
+    }
+
+    /// `DELETE /v2/chat/group-spaces/{groupSpaceId}/members/me`: the caller
+    /// leaves every channel of the group. 409 `last_group_admin` or
+    /// `last_group_member` explain why they cannot.
+    func leaveGroupSpace(token: String, groupSpaceId: String) async throws {
+        try await sendWithoutResponse(
+            path: "/v2/chat/group-spaces/\(Self.groupInvitePathSegment(groupSpaceId))/members/me",
+            method: "DELETE",
+            token: token,
+            fallback: "Could not leave the group."
+        )
+    }
+
+    /// `DELETE /v2/chat/group-spaces/{groupSpaceId}`: removes every member and
+    /// every channel. Group owners and admins only.
+    func dissolveGroupSpace(token: String, groupSpaceId: String) async throws {
+        try await sendWithoutResponse(
+            path: "/v2/chat/group-spaces/\(Self.groupInvitePathSegment(groupSpaceId))",
+            method: "DELETE",
+            token: token,
+            fallback: "Could not dissolve the group."
+        )
+    }
+}

@@ -113,6 +113,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-data` | Complete signed-in Contact chat flow |
 | `--preview-agent-page` | Agents root tab (combine with preview data) |
 | `--preview-personal-agent` | Personal agent section with three sample agents, unread outreach messages with source chips, and an empty session; combine with `--preview-data --preview-agent-page` |
+| `--preview-personal-agent-unset` | Personal agent status entry as Not set up (no connector); combine with `--preview-data --preview-agent-page`. Add `--preview-personal-agent-page` to open its status page, also with `--preview-personal-agent` |
 | `--preview-login` | Welcome screen with Log in and Sign up (browser sign-in) |
 | `--preview-email-sign-in` | Email and social login form, the fallback for servers without browser sign-in |
 | `--preview-consent` | Signed-in home with the AI consent sheet ("Kordi uses AI models") over it; no server needed |
@@ -144,10 +145,21 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-expanded-groups` | Group rows with their session list expanded |
 | `--preview-group-management` | Group-management sheet |
 | `--preview-group-invite` | Group-management sheet opened to invitations |
+| `--preview-group-admin` | Makes this account an admin of the sample group, so group Info shows rename, the invitation link and Manage; combine with `--preview-group-management` |
+| `--preview-group-link` | Group Info with the sample group link created; combine with `--preview-group-management --preview-group-admin` |
+| `--preview-group-rename` | Group Info with the name field open for inline rename |
+| `--preview-group-manage-page` | Group Info opened on Manage, with Dissolve group |
+| `--preview-group-dissolve` | Manage with the Dissolve confirmation shown; combine with `--preview-group-manage-page` |
+| `--preview-group-leave` | Group Info as a member with the Leave group confirmation shown; combine with `--preview-data --preview-group-management` |
+| `--preview-channel-dissolve` | Chats with the Dissolve channel confirmation for the sample group's second channel; combine with `--preview-data --preview-group-admin` |
+| `--preview-group-created` | A new group conversation that opens with the "created the group" notice; combine with `--preview-data --preview-group-chat` |
+| `--preview-contact-blocked` | Maya's profile while she is on the block list, so More offers Unblock; add `--preview-contact-unblock-confirm` to show the confirmation |
 | `--preview-markdown` | Markdown-rich message transcript |
 | `--preview-memory` | Account sheet opened on the Memory screen with seven sample memories, both switches, and replay state; no server needed |
+| `--preview-memory-import` | Account › Memory with the import review list for a sample file; combine with `--preview-memory` |
 | `--preview-group-memory` | Group detail sheet opened on the Memory tab with sample group memories; no server needed |
 | `--preview-completed-subsession` | Completed long-answer task; combine with `--preview-data --preview-background-stop` to test repeated child navigation |
+| `--preview-background-fold` | Five background sessions under the agent message, folded into one summary line; add `--preview-background-unfolded` to list them. Combine with `--preview-data --preview-native-design --preview-native-agent` |
 | `--preview-menu-test-chat` | Manual menu testing chat with long text, voice, photos and captions; combine with `--preview-data --preview-contact-chat` |
 | `--preview-voice-message-actions` | Compact voice fixture for hold-versus-transcript checks |
 | `--preview-voice-hold=<state>` | Debug-only Hold to Talk states frozen for screenshots: `hold`, `cancel`, `convert`, `short`, and `converting` show the overlay with sample levels and a 0:04 timer; `draft-failed` shows the voice draft pill after a failed transcription. Combine with `--preview-data --preview-contact-chat` |
@@ -156,6 +168,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-long-message-actions` | Tall formatted message for menu scrolling and layout checks; combine with `--preview-data --preview-contact-chat` |
 | `--preview-formatted-message-actions` | Short formatted message for menu wrapping and return-position checks; combine with `--preview-data --preview-contact-chat` |
 | `--preview-tool-failure` | Completed My Kordi turn with one diagnostic tool failure |
+| `--preview-tool-details-open` | Opens the turn details and every tool of a preview turn; combine with `--preview-data --preview-tool-failure` to see web-fetch output without its model notice |
 | `--preview-forward-message` | Searchable forward-message picker; combine with `--preview-data --preview-contact-chat` |
 | `--preview-forward-batch` | Add to the forward-message preview to select four sample text messages |
 | `--preview-message-details` | Message delivery/read details |

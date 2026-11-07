@@ -18,6 +18,10 @@ protocol MemoryService: AnyObject {
     func cards() async -> [MemoryCard]
     /// The cloud conversations already loaded, for group names.
     func cloudConversations() async -> [CloudChatConversation]
+    /// Reads one chosen file into memories with the server's model; saves nothing.
+    func extractImport(fileName: String, text: String, existingMemories: [String]) async throws -> [CloudMemoryImportCandidate]
+    /// Saves one imported memory to the account (source `import`).
+    func saveImported(text: String, category: String?) async throws -> CloudMemory
 }
 
 extension MemoryService {
@@ -27,6 +31,12 @@ extension MemoryService {
     }
     func cards() async -> [MemoryCard] { [] }
     func cloudConversations() async -> [CloudChatConversation] { [] }
+    func extractImport(fileName: String, text: String, existingMemories: [String]) async throws -> [CloudMemoryImportCandidate] {
+        throw CloudAPIError(code: "memory_import_unavailable", message: "Import is not available right now. Try again later.", statusCode: 503)
+    }
+    func saveImported(text: String, category: String?) async throws -> CloudMemory {
+        throw CloudAPIError(code: "memory_import_unavailable", message: "Import is not available right now. Try again later.", statusCode: 503)
+    }
 }
 
 @MainActor
@@ -81,6 +91,14 @@ final class CloudMemoryService: MemoryService {
 
     func cloudConversations() async -> [CloudChatConversation] {
         await api.cachedChatConversations()
+    }
+
+    func extractImport(fileName: String, text: String, existingMemories: [String]) async throws -> [CloudMemoryImportCandidate] {
+        try await api.extractMemoryImport(token: token(), fileName: fileName, text: text, existingMemories: existingMemories)
+    }
+
+    func saveImported(text: String, category: String?) async throws -> CloudMemory {
+        try await api.saveImportedMemory(token: token(), text: text, category: category)
     }
 
     func cloudGroupConversationIds(sessionId: String) async -> [String] {
@@ -233,6 +251,28 @@ final class PreviewMemoryService: MemoryService {
         if let excludeSensitive { settings.excludeSensitive = excludeSensitive }
         return settings
     }
+
+    /// Sample memories for any file, as the server's model would read them.
+    func extractImport(fileName: String, text: String, existingMemories: [String]) async throws -> [CloudMemoryImportCandidate] {
+        try await wait()
+        return [
+            .init(text: "Run the unit tests before opening a pull request.", category: "hcp-custom:task_lessons", scope: "global"),
+            .init(text: "Prefer short commit messages that say what changed and why.", category: "general_preferences", scope: "global"),
+            .init(text: "Keep the release checklist in docs/release.md up to date.", category: "work_context", scope: "global"),
+        ]
+    }
+
+    func saveImported(text: String, category: String?) async throws -> CloudMemory {
+        try await wait()
+        addedCount += 1
+        let at = ISO8601DateFormatter().string(from: Date())
+        let created = CloudMemory(
+            memoryId: "lesson-imported-\(addedCount)", scope: .global, scopeId: "account",
+            scopeLabel: "Global", source: .other("import"), text: text, createdAt: at, updatedAt: at, category: category
+        )
+        memories.append(created)
+        return previewCards.filled(created)
+    }
 }
 
 @MainActor
@@ -298,6 +338,41 @@ final class MemorySettingsModel: ObservableObject {
     func syncCaption(now: Date = Date()) -> String? {
         guard let accountLabel else { return nil }
         return MemoryPresentation.syncCaption(accountLabel: accountLabel, lastSyncedAt: lastSyncedAt, now: now)
+    }
+
+    /// Reads each chosen file into memories with the server's model and
+    /// drops texts already saved or repeated. Throws the first failure, so
+    /// the screen can show the AI choice on `ai_consent_required`.
+    func extractImport(_ files: [MemoryImportFile]) async throws -> [MemoryImportCandidateRow] {
+        var seen = Set(ownMemories.map { MemoryImportFile.key($0.text) })
+        var rows: [MemoryImportCandidateRow] = []
+        for file in files {
+            let existing = ownMemories.map(\.text) + rows.map(\.text)
+            let candidates = try await service.extractImport(fileName: file.name, text: file.text, existingMemories: existing)
+            for candidate in candidates {
+                let text = candidate.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty, seen.insert(MemoryImportFile.key(text)).inserted else { continue }
+                rows.append(MemoryImportCandidateRow(text: text, category: candidate.category, fileName: file.name))
+            }
+        }
+        return rows
+    }
+
+    /// Saves the chosen rows and reloads the list. Returns how many were
+    /// saved and the first error line, if any failed.
+    func saveImports(_ rows: [MemoryImportCandidateRow]) async -> (saved: Int, error: String?) {
+        var saved = 0
+        var firstError: String?
+        for row in rows {
+            do {
+                _ = try await service.saveImported(text: row.text, category: row.category)
+                saved += 1
+            } catch {
+                firstError = firstError ?? ((error as? CloudAPIError)?.message.nonEmpty ?? "Could not save some memories.")
+            }
+        }
+        await load()
+        return (saved, firstError)
     }
 
     func load() async {
@@ -433,4 +508,52 @@ final class MemorySettingsModel: ObservableObject {
         if let apiError = error as? CloudAPIError, !apiError.message.isEmpty { return apiError.message }
         return fallback
     }
+}
+
+/// A chosen file's text, read on the device.
+struct MemoryImportFile: Hashable {
+    let name: String
+    let text: String
+
+    /// Compares memory texts the way the import skips repeats.
+    static func key(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
+    }
+
+    /// Reads the chosen files that fit: a supported type, not empty, at most
+    /// 200 KB, text without NUL, and at most 20 files. `notice` says why
+    /// others were left out.
+    static func read(_ urls: [URL]) -> (files: [MemoryImportFile], notice: String?) {
+        var files: [MemoryImportFile] = []
+        var reasons: [String] = []
+        func note(_ reason: String) { if !reasons.contains(reason) { reasons.append(reason) } }
+        for url in urls {
+            guard MemoryImportLimits.fileExtensions.contains(url.pathExtension.lowercased()) else {
+                note("Choose .md, .txt, or .json files."); continue
+            }
+            guard files.count < MemoryImportLimits.maxFiles else {
+                note("Import up to \(MemoryImportLimits.maxFiles) files at a time."); continue
+            }
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else { note("Some files could not be read."); continue }
+            guard !data.isEmpty else { note("Empty files were skipped."); continue }
+            guard data.count <= MemoryImportLimits.maxFileBytes else {
+                note("Files must be \(MemoryImportLimits.maxFileBytes / 1024) KB or smaller."); continue
+            }
+            guard let text = String(data: data, encoding: .utf8), !text.contains("\u{0}") else {
+                note("Choose .md, .txt, or .json files."); continue
+            }
+            files.append(MemoryImportFile(name: url.lastPathComponent, text: text))
+        }
+        return (files, reasons.isEmpty ? nil : reasons.joined(separator: " "))
+    }
+}
+
+/// One memory read from a file, waiting for the person to keep or skip it.
+struct MemoryImportCandidateRow: Identifiable, Hashable {
+    let id = UUID()
+    let text: String
+    let category: String?
+    let fileName: String
 }

@@ -4,6 +4,8 @@ mod attachment_actions;
 mod channels;
 #[path = "chat_sync_e2e/group_avatars.rs"]
 mod group_avatars;
+#[path = "chat_sync_e2e/group_leave.rs"]
+mod group_leave;
 #[path = "chat_sync_e2e/group_lifecycle.rs"]
 mod group_lifecycle;
 #[path = "chat_sync_e2e/live_photos.rs"]

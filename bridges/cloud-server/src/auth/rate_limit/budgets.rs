@@ -92,6 +92,9 @@ pub const INVITATION_ACCEPT_LIMIT: AccountActionLimit = budget("invitation-accep
 /// Memory import extractions: each sends one chosen file to the hosted model.
 pub const MEMORY_IMPORT_EXTRACT_LIMIT: AccountActionLimit =
     budget("memory-import-extract", 60, HOUR);
+/// Leaving a group. Each leave posts a line in the group, so this bounds
+/// leave-and-rejoin churn while leaving ample room for ordinary use.
+pub const GROUP_LEAVE_LIMIT: AccountActionLimit = budget("group-leave", 30, HOUR);
 
 /// The budgets unauthenticated routes count per address or per identifier.
 pub const UNAUTHENTICATED_BUDGETS: &[AccountActionLimit] = &[
@@ -128,6 +131,7 @@ pub const NAMED_BUDGETS: &[AccountActionLimit] = &[
     APP_INVITATION_CREATE_LIMIT,
     INVITATION_ACCEPT_LIMIT,
     MEMORY_IMPORT_EXTRACT_LIMIT,
+    GROUP_LEAVE_LIMIT,
     MESSAGE_SEND_LIMIT,
     DOCUMENT_PUBLIC_READ_LIMIT,
     DOCUMENT_PUBLIC_WRITE_LIMIT,

@@ -36,6 +36,9 @@ struct OrderedAgentExecution: View {
 struct AgentActivityGroup: View {
     @Environment(\.conversationRowContentState) private var rowContentState
     @State private var localExpanded = false
+    /// Tools whose output is open. `--preview-tool-details-open` opens every
+    /// tool of a preview turn, for screenshots.
+    @State private var openToolIDs: Set<String>? = Self.previewOpensDetails ? nil : []
     let group: AgentTurnContentGroup
     let execution: AgentExecutionSnapshot
     let isTail: Bool
@@ -45,7 +48,28 @@ struct AgentActivityGroup: View {
 
     var messageID: String? = nil
 
-    private var expanded: Bool { rowContentState?.expandedActivityGroups.contains(group.id) ?? localExpanded }
+    private var expanded: Bool {
+        Self.previewOpensDetails || (rowContentState?.expandedActivityGroups.contains(group.id) ?? localExpanded)
+    }
+
+    private static var previewOpensDetails: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--preview-tool-details-open")
+        #else
+        false
+        #endif
+    }
+
+    private func toolOpen(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { openToolIDs?.contains(id) ?? true },
+            set: { isOpen in
+                var ids = openToolIDs ?? Set(group.tools.map(\.id))
+                if isOpen { ids.insert(id) } else { ids.remove(id) }
+                openToolIDs = ids
+            }
+        )
+    }
     private var legacySteps: [AgentExecutionStep] { group.id == "legacy" && group.tools.isEmpty ? execution.steps : [] }
     private var expandable: Bool { !group.tools.isEmpty || group.unavailable > 0 || !legacySteps.isEmpty || (isTail && execution.thinkingText?.isEmpty == false) }
     private var active: Bool { isTail && !execution.completed }
@@ -107,8 +131,8 @@ struct AgentActivityGroup: View {
                         Text(step.label).font(.caption).foregroundStyle(step.state == .failed ? Color.red : Color.secondary)
                     }
                     ForEach(group.tools) { tool in
-                        DisclosureGroup {
-                            Text([tool.arguments, tool.liveOutput, tool.resultText ?? ""].filter { !$0.isEmpty }.joined(separator: "\n\n"))
+                        DisclosureGroup(isExpanded: toolOpen(tool.id)) {
+                            Text([tool.arguments, ToolActivityDisplay.output(tool.liveOutput), ToolActivityDisplay.output(tool.resultText ?? "")].filter { !$0.isEmpty }.joined(separator: "\n\n"))
                                 .font(.caption.monospaced())
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -141,5 +165,24 @@ struct AgentActivityGroup: View {
             if next { rowContentState.expandedActivityGroups.insert(group.id) }
             else { rowContentState.expandedActivityGroups.remove(group.id) }
         }
+    }
+}
+
+/// Tool output as people read it: web-fetch results open with a notice meant
+/// for the model and end with a citation instruction, neither shown here.
+enum ToolActivityDisplay {
+    static func output(_ text: String) -> String {
+        var shown = text.replacingOccurrences(
+            of: "(?m)^SECURITY NOTICE\\b[^\\n]*\\n*",
+            with: "",
+            options: .regularExpression
+        )
+        shown = shown.replacingOccurrences(
+            of: "\\n*When summarizing this page, copy the citation line above exactly into the final Sources section\\.\\s*$",
+            with: "",
+            options: .regularExpression
+        )
+        guard shown != text else { return text }
+        return shown.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
