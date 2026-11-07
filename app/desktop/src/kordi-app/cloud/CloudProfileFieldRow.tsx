@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 
 /** One row of the profile table: a fixed label column and a borderless value. */
@@ -22,7 +23,7 @@ export function CloudProfileFieldRow({ label, htmlFor, error, errorId, invalid, 
       <Label htmlFor={htmlFor} className="app-cloud-profile-row-label text-[13px] font-medium leading-5 text-white">{label}</Label>
       <div className="min-w-0">
         <div className="app-cloud-profile-row-value">{children}</div>
-        {error ? <div id={errorId} className="app-error-text app-cloud-profile-row-error" role="alert">{error}</div> : null}
+        {error ? <ErrorLine id={errorId} className="mt-0.5">{error}</ErrorLine> : null}
         {below}
       </div>
     </div>

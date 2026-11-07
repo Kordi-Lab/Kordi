@@ -2,6 +2,7 @@ import { Brain, Plus, Upload } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import {
   AppDialog,
   AppDialogActions,
@@ -154,10 +155,10 @@ export function MemoryList({
           className="app-input-shell app-flat-input block w-full resize-y rounded-lg px-3 py-2 text-[13px] leading-5 text-white outline-none placeholder:text-slate-500"
         />
         {current.error ? (
-          <p id={errorId} className="app-error-text m-0 mt-2 text-[12px] leading-5 text-rose-300" role="alert">{current.error}</p>
+          <ErrorLine id={errorId} className="mt-2">{current.error}</ErrorLine>
         ) : null}
         <div className="mt-2 flex items-center justify-between gap-3">
-          <span className={cn('text-[12px] tabular-nums', current.draft.length > LESSON_MAX_CHARS ? 'text-rose-300' : 'text-slate-400')}>
+          <span className={cn('text-[12px] tabular-nums', current.draft.length > LESSON_MAX_CHARS ? 'text-[color:var(--app-error-text)]' : 'text-slate-400')}>
             {current.draft.length} / {LESSON_MAX_CHARS}
           </span>
           <span className="flex gap-2">
@@ -268,9 +269,7 @@ export function MemoryList({
     <>
       <p className="sr-only" aria-live="polite">{statusMessage}</p>
       {error ? (
-        <p className="app-error-text my-2 rounded-[12px] bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100" role="alert">
-          {error}
-        </p>
+        <ErrorLine className="my-2">{error}</ErrorLine>
       ) : null}
       {addRow}
       {rows}

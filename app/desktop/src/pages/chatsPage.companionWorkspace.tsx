@@ -5,7 +5,8 @@ import { useCompanionReadPresentation } from '@/pages/useCompanionReadPresentati
 import { useCompanionHistorySession } from '@/pages/useCompanionHistorySession';
 import { importLivePhotos } from '@/features/chat/importLivePhotos';
 import { useEffect, useRef, useState } from 'react';
-import { GripVertical, RefreshCw } from 'lucide-react';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
+import { GripVertical } from 'lucide-react';
 
 import { localOwnedAgentSenderLabel } from '@/app/viewModels/helpers';
 import {
@@ -349,19 +350,10 @@ export function ChatCompanionWorkspace({
           onCancelQueuedMessage: transcript.onCancelQueuedMessage,
           emptyState: (
             session.transcript.loadError ? (
-              <div
-                className="flex h-full min-h-[12rem] flex-col items-center justify-center gap-2 px-4 text-center text-[12px] text-[color:var(--utility-muted-text)]"
-                role="alert"
-              >
-                <span>{session.transcript.loadError}</span>
-                <button
-                  type="button"
-                  className="app-button-quiet inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium"
-                  onClick={session.transcript.retry}
-                >
-                  <RefreshCw className="h-3 w-3" aria-hidden="true" />
-                  Try again
-                </button>
+              <div className="flex h-full min-h-[12rem] items-center justify-center px-4">
+                <ErrorLine align="center" action={{ label: 'Try again', onClick: session.transcript.retry }}>
+                  {withoutTryAgain(session.transcript.loadError)}
+                </ErrorLine>
               </div>
             ) : (
               <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">

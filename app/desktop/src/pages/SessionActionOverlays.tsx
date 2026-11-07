@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Archive, ArchiveRestore, Bell, BellOff, CheckCircle2, CircleOff, LoaderCircle, Mail, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import {
   AppDialog,
   AppDialogActions,
@@ -373,9 +374,7 @@ export function DeleteSessionDialog({ target, onCancel, onConfirm }: DeleteSessi
         This does not delete it for other participants. It will return only when a new visible message arrives.
       </p>
       {error ? (
-        <div className="app-error-text mt-2 text-[11px] leading-4 text-rose-500" role="alert">
-          {error}
-        </div>
+        <ErrorLine className="mt-2">{error}</ErrorLine>
       ) : null}
       <AppDialogActions className="mt-3 gap-2">
         <Button variant="quiet" size="sm" className="rounded-[12px] px-3" autoFocus disabled={isDeleting} onClick={cancel}>Cancel</Button>

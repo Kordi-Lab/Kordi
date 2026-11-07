@@ -1,6 +1,7 @@
 import './previewChatTheme';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { ErrorLine } from '../../src/components/ui/ErrorLine';
 import { setActiveChatRoute } from '../../src/features/chat/kordiCloudChatRoute';
 import { setLocalAccountChoices } from '../../src/features/cloud/hostedAccountRegistry';
 import { publishHostedProviderSnapshots } from '../../src/features/cloud/hostedAccounts';
@@ -69,7 +70,7 @@ function Fixture() {
   const agent = routing.main.selectedAgent;
   return <main className="kordi-app theme-light" style={{ minHeight: '100vh', padding: 24, background: 'var(--utility-background)', color: 'var(--utility-foreground)' }}>
     <div data-pending-saves={pendingSaves} style={{ position: 'fixed', bottom: 24, left: 24, right: 24, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-      {routing.main.error ? <p role="alert" className="app-error-text text-[11px] text-rose-500">{routing.main.error}</p> : null}
+      {routing.main.error ? <ErrorLine align="end">{routing.main.error}</ErrorLine> : null}
       {agent ? <CollaborationRoutingControls
         model={{ agents: routing.main.agents, selectedAgent: agent, selection: routing.main.selection, visibility: routing.main.visibility }}
         menu={{ openSelector, agentSelectorOpen: false, compact: false }}

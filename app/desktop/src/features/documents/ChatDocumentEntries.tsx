@@ -2,6 +2,7 @@ import { useId, useRef } from 'react';
 import { FilePlus2, FolderOpen, Paperclip } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { Message, SessionArtifact } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 
@@ -67,7 +68,7 @@ export function ChatDocumentEntries({ conversationId, messages, artifacts, empty
     </div>
   ) : null;
   const error = entries.error ? (
-    <div role="alert" className={cn('app-error-text rounded-[12px] bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100', empty ? 'mt-3 text-left' : 'mt-2')}>{entries.error}</div>
+    <ErrorLine className={empty ? 'mt-3' : 'mt-2'} align={empty ? 'center' : 'start'}>{entries.error}</ErrorLine>
   ) : null;
 
   if (empty) {

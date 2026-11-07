@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Check, Copy, Download, ExternalLink, FolderOpen, LoaderCircle, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import {
   AppDialog,
   AppDialogActions,
@@ -230,7 +231,7 @@ export function TranscriptFileAttachmentLink({
 
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [menuAction, setMenuAction] = useState<'reveal' | 'save' | null>(null);
-  const [menuNotice, setMenuNotice] = useState<string | null>(null);
+  const [menuNotice, setMenuNotice] = useState<{ text: string; failed: boolean } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const closeMenu = useCallback(() => {
@@ -271,7 +272,7 @@ export function TranscriptFileAttachmentLink({
       await revealDesktopAttachment(target);
       closeMenu();
     } catch (revealError) {
-      setMenuNotice(revealError instanceof Error ? revealError.message : 'Unable to show in Finder');
+      setMenuNotice({ text: revealError instanceof Error ? revealError.message : 'Unable to show in Finder', failed: true });
     } finally {
       setMenuAction(null);
     }
@@ -289,7 +290,7 @@ export function TranscriptFileAttachmentLink({
         closeMenu();
       }
     } catch (saveError) {
-      setMenuNotice(saveError instanceof Error ? saveError.message : 'Unable to save attachment');
+      setMenuNotice({ text: saveError instanceof Error ? saveError.message : 'Unable to save attachment', failed: true });
     } finally {
       setMenuAction(null);
     }
@@ -298,10 +299,10 @@ export function TranscriptFileAttachmentLink({
   async function handleCopyFilename() {
     try {
       await copyTextToClipboard(attachment.name);
-      setMenuNotice('Copied');
+      setMenuNotice({ text: 'Copied', failed: false });
       window.setTimeout(closeMenu, 600);
     } catch {
-      setMenuNotice('Unable to copy');
+      setMenuNotice({ text: 'Unable to copy', failed: true });
     }
   }
 
@@ -388,7 +389,7 @@ export function TranscriptFileAttachmentLink({
           {chipContent}
         </span>
       )}
-      {error ? <span className="app-error-text app-attachment-file-status">{error}</span> : null}
+      {error ? <ErrorLine className="mt-0">{error}</ErrorLine> : null}
       {menu && typeof document !== 'undefined' && document.body
         ? createPortal(
           <div
@@ -432,8 +433,10 @@ export function TranscriptFileAttachmentLink({
                 label="Copy Filename"
                 onClick={() => void handleCopyFilename()}
               />
-              {menuNotice ? (
-                <span className="app-transient-muted px-2.5 pb-1 text-[10px]">{menuNotice}</span>
+              {menuNotice?.failed ? (
+                <ErrorLine className="mt-0 px-2.5 pb-1">{menuNotice.text}</ErrorLine>
+              ) : menuNotice ? (
+                <span className="app-transient-muted px-2.5 pb-1 text-[10px]">{menuNotice.text}</span>
               ) : null}
             </div>
           </div>,

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEven
 import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, LoaderCircle, Plus, Search, Star, UserMinus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type {
   CloudGroupInvitation,
   CloudGroupInvitationCreateInput,
@@ -434,9 +435,7 @@ export function GroupDetailsDialog({
             }}
           >
             {actionError ? (
-              <div role="alert" className="app-group-management-error mb-3 rounded-[11px] px-2.5 py-2 text-[11px] leading-4">
-                {actionError}
-              </div>
+              <ErrorLine className="mb-3 mt-0">{actionError}</ErrorLine>
             ) : null}
 
             <>

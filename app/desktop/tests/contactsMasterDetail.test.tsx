@@ -353,7 +353,7 @@ test('a failed delete keeps the confirm open with the error', async () => {
     await page.click(page.host.querySelector('[aria-label="More actions"]'));
     await page.click(page.host.querySelector('[role="menuitem"]'));
     await page.click(buttonByText(page.host, 'Delete'));
-    const error = page.host.querySelector('.app-contacts-confirm .app-error-text');
+    const error = page.host.querySelector('.app-contacts-confirm .app-error-line[role="alert"]');
     assert.equal(error?.textContent, 'Contact service unavailable');
   } finally {
     await page.cleanup();

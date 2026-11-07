@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Copy, Download, ExternalLink, LoaderCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { copyAttachmentImage } from '@/features/chat/attachmentImageClipboard';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import {
@@ -166,7 +167,7 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
         ) : null}
         {isDownloading ? <span className="app-dense-menu-label">Downloading…</span> : null}
         {downloadedPath && !isDownloading ? <span className="app-dense-menu-label">Downloaded</span> : null}
-        {error ? <span role="alert" className="app-error-text app-transient-status max-w-[190px] px-2.5 pb-1 text-rose-300">{error}</span> : null}
+        {error ? <ErrorLine className="mt-0 max-w-[190px] px-2.5 pb-1">{error}</ErrorLine> : null}
       </div>
     );
   }
@@ -186,7 +187,7 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
       </div>
       {isDownloading ? <span className="text-[10px] text-slate-400">Downloading…</span> : null}
       {downloadedPath && !isDownloading ? <span className="text-[10px] text-slate-400">Downloaded</span> : null}
-      {error ? <span className="app-error-text max-w-[160px] text-right text-[10px] text-rose-300">{error}</span> : null}
+      {error ? <ErrorLine align="end" className="mt-0 max-w-[160px]">{error}</ErrorLine> : null}
     </div>
   );
 }

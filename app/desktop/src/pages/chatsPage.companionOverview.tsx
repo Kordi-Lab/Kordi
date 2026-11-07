@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import DigestPage, { type DigestPanelActions } from '@/features/digest/DigestPage';
 import { DigestRelatedLinks } from '@/features/digest/DigestRelatedLinks';
@@ -97,7 +98,7 @@ function CompanionDigest({ accountId, state, onRetry, actions }: { accountId: st
 }
 
 function ReadError({ label, onRetry }: { label: string; onRetry: () => void }) {
-  return <p className="app-companion-status" role="alert">{label} could not refresh. <button type="button" onClick={onRetry}>Try again</button></p>;
+  return <ErrorLine className="my-2" action={{ label: 'Try again', onClick: onRetry }}>{label} could not refresh.</ErrorLine>;
 }
 
 

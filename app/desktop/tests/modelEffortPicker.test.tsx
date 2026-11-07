@@ -191,7 +191,7 @@ test('failed saves keep the old route and a retryable error', async () => {
     await h.click('[aria-label^="Select model,"]'); await h.text('GPT-6 Sol');
     assert.ok(document.querySelector('[role=alert]')?.textContent?.includes('Route could not be saved'));
     assert.ok(document.querySelector('[aria-label="Select model, current GPT-6 Astra"]'));
-    h.allowSave(); await h.text('Retry');
+    h.allowSave(); await h.text('Try again');
     assert.ok(document.querySelector('[aria-label="Select model, current GPT-6 Sol"]'));
     assert.equal(document.querySelector('[role=dialog]'),null);
   } finally { await h.cleanup(); }

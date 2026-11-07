@@ -2,6 +2,7 @@ import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { SettingsRow, SettingsSection } from '@/kordi-app/components';
 import { EditableIdentityAvatar } from '@/kordi-app/components/EditableIdentityAvatar';
 import { CloudAccountEmailRow } from '@/kordi-app/cloud/CloudAccountEmailRow';
@@ -224,7 +225,7 @@ export function CloudProfilePanel({
           className="pt-0"
           title="Save changes"
           description={errors.form
-            ? <span id={id('form-error')} className="app-error-text text-rose-200" aria-live="polite">{errors.form}</span>
+            ? <ErrorLine id={id('form-error')} className="mt-0">{errors.form}</ErrorLine>
             : undefined}
           control={(
             <Button type="button" className="h-8 rounded-lg px-3.5 text-[12px]" disabled={editor.isSaving || !editor.isDirty} onClick={requestSave}>

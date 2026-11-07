@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { Archive, ChevronLeft } from 'lucide-react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 import { setSessionPanelSlot } from '@/app/sessionPanelSlot';
 import { ChatCreateDialog } from '@/pages/ChatCreateDialog';
@@ -301,9 +302,7 @@ export function WorkspaceSidebar({
                     ) : null}
 
                     {desktopChatError ? (
-                      <div className="app-error-text mb-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
-                        {desktopChatError}
-                      </div>
+                      <ErrorLine role="status" className="mb-2 mt-0 px-2">{desktopChatError}</ErrorLine>
                     ) : null}
 
                     <WorkspaceChatLists

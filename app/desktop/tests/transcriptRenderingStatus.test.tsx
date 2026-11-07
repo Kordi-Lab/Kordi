@@ -104,8 +104,7 @@ test('renders live turn errors as raw red inline text instead of a popped bubble
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
 
-  assert.match(markup, /app-live-turn-error app-live-turn-error-text/);
-  assert.match(markup, /text-\[12px\]/);
+  assert.match(markup, /app-error-line app-live-turn-error/);
   assert.doesNotMatch(markup, /rounded-\[14px\]/);
   assert.doesNotMatch(markup, /border-rose-500/);
   assert.doesNotMatch(markup, /bg-rose-500/);
@@ -216,13 +215,10 @@ test('no-provider failed agent turn renders red inline text with authentication 
     onOpenAuthSettings: () => undefined,
   }));
 
-  assert.match(markup, /app-live-turn-error app-live-turn-error-text/);
-  assert.match(markup, /text-rose-300/);
+  assert.match(markup, /app-error-line app-live-turn-error/);
+  assert.doesNotMatch(markup, /text-rose-/);
   assert.match(markup, /No provider configured yet/);
-  assert.match(markup, />Open authentication</);
-  assert.match(markup, /app-live-turn-auth-action/);
-  assert.match(markup, /whitespace-nowrap/);
-  assert.match(markup, /underline/);
+  assert.match(markup, /class="app-error-line-action"[^>]*>Sign in</);
   assert.doesNotMatch(markup, /rounded-full border border-rose/);
 });
 
@@ -249,7 +245,7 @@ test('unknown-model failures render as a model notice without the authentication
 
   assert.match(markup, /This model is not available for the selected account\./);
   assert.doesNotMatch(markup, /No provider configured yet/);
-  assert.doesNotMatch(markup, />Open authentication</);
+  assert.doesNotMatch(markup, />Sign in</);
   assert.doesNotMatch(markup, /Unknown model: openai\/gpt-5\.4/);
 });
 
@@ -275,7 +271,7 @@ test('an unusable saved sign-in renders the sign-in notice with the authenticati
   }));
 
   assert.match(markup, /Sign in again to use this account\./);
-  assert.match(markup, />Open authentication</);
+  assert.match(markup, />Sign in</);
   assert.doesNotMatch(markup, /OAuth credentials are not usable/);
 });
 
@@ -307,7 +303,7 @@ test('no-provider live turn keeps the source quote so reply context stays stable
   }));
 
   assert.match(markup, /No provider configured yet/);
-  assert.match(markup, />Open authentication</);
+  assert.match(markup, />Sign in</);
   assert.match(markup, /app-ordered-turn-surface[\s\S]*No provider configured yet[\s\S]*app-source-message-quote/);
   assert.match(markup, /app-message-mention-agent[^>]*>@MyKordi<\/span>/);
   assert.match(markup, /what are you doing/);

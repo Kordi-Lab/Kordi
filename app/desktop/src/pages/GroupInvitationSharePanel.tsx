@@ -3,6 +3,7 @@ import { Check, Copy, LoaderCircle, LockKeyhole, Share } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { CopyToast } from '@/components/ui/copyFeedback';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { useCopyFeedback } from '@/components/ui/useCopyFeedback';
 import { groupInvitationLinkErrorMessage, invitationExpiryLabel as expiryLabel } from '@/features/chat/groupCreateCopy';
 import type {
@@ -50,6 +51,9 @@ export function GroupInvitationSharePanel({
   onError,
 }: GroupInvitationSharePanelProps) {
   const [invitation, setInvitation] = useState<CloudGroupInvitation | null>(null);
+  // A failed link shows under the link button, not at the top of the dialog.
+  // `reset` remembers which request failed, so Try again repeats it.
+  const [linkError, setLinkError] = useState<{ message: string; reset: boolean } | null>(null);
   const [isLoading, setIsLoading] = useState(
     canShareInvitation && Boolean(onListGroupInvitations),
   );
@@ -79,9 +83,10 @@ export function GroupInvitationSharePanel({
   const requestLink = (reset: boolean) => {
     if (!onCreateGroupInvitation || !canShareInvitation) return;
     if (!groupSpaceId) {
-      onError('This group is not ready to share yet.');
+      setLinkError({ message: 'This group is not ready to share yet.', reset });
       return;
     }
+    setLinkError(null);
     const actionId = reset ? 'reset-group-invitation' : 'create-group-invitation';
     void runAction(actionId, async () => {
       let nextInvitation: CloudGroupInvitation;
@@ -93,7 +98,8 @@ export function GroupInvitationSharePanel({
           ...(reset ? { reset: true } : {}),
         });
       } catch (error) {
-        throw new Error(groupInvitationLinkErrorMessage(error));
+        setLinkError({ message: groupInvitationLinkErrorMessage(error), reset });
+        return;
       }
       setInvitation(nextInvitation);
       setConfirmingReset(false);
@@ -114,6 +120,17 @@ export function GroupInvitationSharePanel({
   if (hidden) return null;
   const busy = Boolean(pendingAction);
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  // Offer "Try again" only for a plain retry message, not "Try again later" or a fix-it hint.
+  const linkMessage = linkError?.message ?? null;
+  const linkRetryable = linkMessage !== null && withoutTryAgain(linkMessage) !== linkMessage;
+  const linkErrorLine = linkError && linkMessage ? (
+    <ErrorLine
+      className="mt-2"
+      action={linkRetryable ? { label: 'Try again', onClick: () => requestLink(linkError.reset), disabled: busy } : null}
+    >
+      {linkRetryable ? withoutTryAgain(linkMessage) : linkMessage}
+    </ErrorLine>
+  ) : null;
   const spinner = <LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />;
   const quietButton = 'h-7 rounded-[8px] px-2.5 text-[10.5px] font-medium';
   const iconButton = 'grid h-9 w-9 shrink-0 place-items-center rounded-[10px] p-0';
@@ -184,19 +201,23 @@ export function GroupInvitationSharePanel({
               </Button>
             </div>
           )}
+          {linkErrorLine}
           <CopyToast visible={copied} />
         </>
       ) : (
-        <Button
-          type="button"
-          className="mt-3 h-9 w-full rounded-[11px] text-[11px]"
-          disabled={isLoading || busy}
-          onClick={() => requestLink(false)}
-        >
-          {isLoading ? <>{spinner} Checking…</>
-            : pendingAction === 'create-group-invitation' ? <>{spinner} Creating…</>
-              : 'Create link'}
-        </Button>
+        <>
+          <Button
+            type="button"
+            className="mt-3 h-9 w-full rounded-[11px] text-[11px]"
+            disabled={isLoading || busy}
+            onClick={() => requestLink(false)}
+          >
+            {isLoading ? <>{spinner} Checking…</>
+              : pendingAction === 'create-group-invitation' ? <>{spinner} Creating…</>
+                : 'Create link'}
+          </Button>
+          {linkErrorLine}
+        </>
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { FileText } from 'lucide-react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 
 export function EmptyWorkspaceState({ icon: Icon, title, detail }: { icon: typeof FileText; title: string; detail: string }) {
   return (
@@ -18,4 +19,11 @@ export function WorkspaceHeading({ title, action }: { title: string; action?: Re
       {action}
     </div>
   );
+}
+
+/** File save feedback: errors use the shared error line, other notes stay muted. */
+export function FileFeedback({ text, tone }: { text: string; tone?: string }) {
+  return tone === 'error'
+    ? <ErrorLine className="mt-0 px-2.5 py-[7px]">{text}</ErrorLine>
+    : <div className="app-agent-studio-file-feedback">{text}</div>;
 }

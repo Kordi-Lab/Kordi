@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import { cn } from '@/lib/utils';
 import type { CloudAgentAccessScope, CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
@@ -122,9 +123,13 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
               </div>
               <div className="app-agent-row-meta mt-3 line-clamp-2">Tools: {(creatorAgent?.loadedTools ?? []).slice(0, 8).join(', ') || 'none exposed'}</div>
               <div className="app-agent-row-meta mt-1 line-clamp-2">Skills: {(creatorAgent?.loadedSkills ?? []).slice(0, 8).join(', ') || 'none exposed'}</div>
-              <div className={cn('mt-2 text-[12px]', creatorRoute ? 'text-emerald-300' : 'text-rose-300')}>
-                {creatorRoute ? `LLM route: ${creatorRoute.defaultAuthProvider} · ${creatorRoute.defaultModel}` : "Configure Kordi's LLM provider/model before shaping."}
-              </div>
+              {creatorRoute ? (
+                <div className="mt-2 text-[12px] text-emerald-300">
+                  LLM route: {creatorRoute.defaultAuthProvider} · {creatorRoute.defaultModel}
+                </div>
+              ) : (
+                <ErrorLine role="status" className="mt-2">Configure Kordi&apos;s LLM provider/model before shaping.</ErrorLine>
+              )}
             </div>
 
             <div>
@@ -179,7 +184,8 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
             ) : (
               <div className="app-agent-create-muted rounded-[18px] px-4 py-10 text-center text-[13px] leading-5">Add resources and identity, then click Shape draft.</div>
             )}
-            {feedback.text ? <div className={cn('app-error-text text-[12px]', feedback.tone === 'error' ? 'text-rose-300' : feedback.tone === 'success' ? 'text-emerald-300' : 'text-slate-400')}>{feedback.text}</div> : null}
+            {feedback.text && feedback.tone === 'error' ? <ErrorLine className="mt-3">{feedback.text}</ErrorLine>
+              : feedback.text ? <div className={cn('mt-3 text-[12px]', feedback.tone === 'success' ? 'text-emerald-300' : 'text-slate-400')}>{feedback.text}</div> : null}
           </div>
         </div>
 

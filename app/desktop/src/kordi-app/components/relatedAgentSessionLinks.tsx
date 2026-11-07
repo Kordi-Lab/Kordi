@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 const STATUS: Record<RelatedAgentSessionRunStatus, { label: string; tone: string }> = {
   running: { label: 'Running', tone: 'text-[color:var(--app-sidebar-accent)]' },
   done: { label: 'Done', tone: 'text-emerald-600 dark:text-emerald-400' },
-  failed: { label: 'Failed', tone: 'text-rose-600 dark:text-rose-400' },
+  failed: { label: 'Failed', tone: 'text-[color:var(--app-error-text)]' },
   stopped: { label: 'Stopped', tone: 'text-[color:var(--utility-muted-text)]' },
 };
 
@@ -190,7 +190,7 @@ function SubsessionLink({ session, first, last, hidden, status, onStatus, onOpen
     {menuOpen ? <div id={menuId} role="menu" className="absolute right-1 top-[28px] z-20 grid min-w-36 gap-px rounded-[9px] border border-[color:var(--app-transient-divider)] bg-[color:var(--app-transient-surface-fallback,var(--app-main-bg))] p-1 text-[12.5px] text-[color:var(--app-transient-text)] shadow-lg"
       onClick={(event) => event.stopPropagation()}>
       {onOpen ? <button type="button" role="menuitem" className="app-button-quiet rounded-md px-2 py-1 text-left" onClick={open}>Open</button> : null}
-      {control.canStop ? <button type="button" role="menuitem" className="app-button-quiet rounded-md px-2 py-1 text-left text-rose-600 disabled:opacity-60 dark:text-rose-400"
+      {control.canStop ? <button type="button" role="menuitem" className="app-button-quiet rounded-md px-2 py-1 text-left text-[color:var(--app-error-text)] disabled:opacity-60"
         aria-label={`${control.stopping ? 'Stopping' : 'Stop'} background agent session: ${title}`} disabled={control.stopping}
         onClick={() => { void control.stop(); }}>{control.stopping ? 'Stopping…' : 'Stop'}</button> : null}
     </div> : null}

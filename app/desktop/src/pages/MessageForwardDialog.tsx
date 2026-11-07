@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Check, Forward, Search, Users, X } from 'lucide-react';
 
 import { AppDialog } from '@/components/ui/dialog';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { filterForwardDestinations, forwardDestinationPath, type ForwardDestination } from '@/features/chat/messageForwarding';
 import type { ForwardMessageSource } from '@/features/chat/messageActionMetadata';
 import { canonicalAvatarImageUrl } from '@/features/cloud/canonicalAvatar';
@@ -142,7 +143,7 @@ export function MessageForwardDialog({ sources, destinations, sourceLabel, onClo
         <footer className="app-transient-divider forward-footer">
           {selected ? <div className="forward-selection-summary" aria-live="polite">To <strong>{forwardDestinationPath(selected)}</strong></div> : null}
           {!isBatch ? <><label className="sr-only" htmlFor="forward-comment">Add a comment (optional)</label><textarea id="forward-comment" rows={1} placeholder="Add a comment (optional)" disabled={locked} value={caption} onChange={(event) => setCaption(event.target.value)} /></> : null}
-          {status === 'error' ? <p className="forward-error" role="alert">{error}</p> : null}
+          {status === 'error' ? <ErrorLine className="mt-2">{withoutTryAgain(error)}</ErrorLine> : null}
           <div className="forward-actions"><button type="button" className="forward-secondary" disabled={busy} onClick={onClose}>Cancel</button><button type="button" className="forward-primary" disabled={!selected || !sources.length || busy} aria-busy={busy || undefined} onClick={() => { void forward(); }}><Forward aria-hidden="true" /><span aria-live="polite">{busy ? isBatch ? `Forwarding ${completed}/${sources.length}…` : 'Forwarding…' : status === 'error' ? 'Try again' : 'Forward'}</span></button></div>
         </footer>
       </>}

@@ -9,12 +9,12 @@ import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { memo } from 'react';
 import {
   CheckCircle2,
-  CircleAlert,
   LoaderCircle,
 } from 'lucide-react';
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { useVisibleLiveTurn } from '@/features/chat/useVisibleLiveTurn';
 import { cloudAgentProviderFailureNeedsAuthentication, cloudAgentProviderFailureNotice } from '@/features/cloud/cloudAgentFailureNotices';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 import { SourceMessageQuoteRow } from './transcriptReplyAttribution';
 import { MarkdownContent } from './markdown';
@@ -110,28 +110,29 @@ function LiveChatTurnCardView({
     <div data-live-turn-status={visibleTurn.status} className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
         <div className={cn('app-live-turn-response-panel app-ordered-turn-surface', 'w-full max-w-[min(100%,58rem)] space-y-2.5')}>
-          {isCompressionStatus ? (
+          {visibleTurn.status === 'compaction_failed' ? (
+            // A failure with its own error shows once, in the error line below.
+            displayedError ? null : (
+              <ErrorLine className="app-compression-error mt-0 px-0.5" role={historical ? 'status' : 'alert'}>
+                {visibleTurn.message || 'Could not compress the conversation.'}
+              </ErrorLine>
+            )
+          ) : isCompressionStatus ? (
             <div className={cn(
-          'app-compression-card rounded-2xl px-4 py-3 text-sm',
-          visibleTurn.status === 'compaction_failed'
-            ? 'app-compression-card-error'
-            : visibleTurn.status === 'compacted'
-              ? 'app-compression-card-success'
-              : 'app-compression-card-active',
-        )}>
-          <div className="app-compression-title flex items-center gap-2 font-medium">
-            {visibleTurn.status === 'compacting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : visibleTurn.status === 'compacted' ? <CheckCircle2 className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
-            <span>{visibleTurn.status === 'compacting' ? 'Compressing conversation…' : visibleTurn.status === 'compacted' ? 'Conversation compressed' : 'Compression needs attention'}</span>
-          </div>
-          <div className="app-compression-detail mt-1.5 text-[12px] leading-5">
-            {visibleTurn.status === 'compacting'
-              ? 'Kordi is summarizing older history before sending the next model request. New messages will wait in the queue.'
-              : visibleTurn.status === 'compacted'
-                ? 'The preserved summary is in the session and Kordi is continuing with the queued request.'
-                : (visibleTurn.error ?? visibleTurn.message)}
-          </div>
-        </div>
-      ) : null}
+              'app-compression-card rounded-2xl px-4 py-3 text-sm',
+              visibleTurn.status === 'compacted' ? 'app-compression-card-success' : 'app-compression-card-active',
+            )}>
+              <div className="app-compression-title flex items-center gap-2 font-medium">
+                {visibleTurn.status === 'compacting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                <span>{visibleTurn.status === 'compacting' ? 'Compressing conversation…' : 'Conversation compressed'}</span>
+              </div>
+              <div className="app-compression-detail mt-1.5 text-[12px] leading-5">
+                {visibleTurn.status === 'compacting'
+                  ? 'Kordi is summarizing older history before sending the next model request. New messages will wait in the queue.'
+                  : 'The preserved summary is in the session and Kordi is continuing with the queued request.'}
+              </div>
+            </div>
+          ) : null}
 
           {standaloneStop}
           {showsTurnProgress ? (
@@ -154,18 +155,13 @@ function LiveChatTurnCardView({
           ) : null}
 
           {displayedError ? (
-            <div className="app-live-turn-error app-live-turn-error-text max-w-full break-words px-0.5 text-[12px] font-medium leading-5 text-rose-300 [&_.app-live-turn-auth-action]:whitespace-nowrap">
+            <ErrorLine
+              className="app-live-turn-error mt-0 px-0.5"
+              role={historical ? 'status' : 'alert'}
+              action={showOpenAuthAction && onOpenAuthSettings ? { label: 'Sign in', onClick: onOpenAuthSettings } : null}
+            >
               {displayedError}
-              {showOpenAuthAction ? (
-                <button
-                  type="button"
-                  className="app-live-turn-auth-action ml-2 inline-flex p-0 text-[12px] font-semibold text-rose-100 underline decoration-rose-200/45 underline-offset-2 transition hover:text-rose-50 hover:decoration-rose-100"
-                  onClick={onOpenAuthSettings}
-                >
-                  Open authentication
-                </button>
-              ) : null}
-            </div>
+            </ErrorLine>
           ) : null}
 
           <InlineChangedFiles

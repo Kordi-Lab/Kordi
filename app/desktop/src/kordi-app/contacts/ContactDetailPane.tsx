@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, LoaderCircle, MessageCircle, Share, Trash2, X } from 'lucide-react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { useContactSafetyMenuItems } from '@/features/safety/contactSafetyMenuItems';
 import { defaultAgentDisplayName } from '@/lib/identityLabels';
@@ -236,7 +237,7 @@ function RequestActionStatus({ state, error }: { state: ReturnType<ContactReques
     return <div className="app-contacts-muted mt-3 text-center text-[12px] leading-4" aria-live="polite">Rejecting request…</div>;
   }
   if (error) {
-    return <div className="app-error-text app-contacts-error mt-3 text-center text-[12px] leading-5" aria-live="polite">{error}</div>;
+    return <ErrorLine align="center" className="mt-3">{error}</ErrorLine>;
   }
   return null;
 }

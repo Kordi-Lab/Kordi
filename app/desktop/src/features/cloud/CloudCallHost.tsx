@@ -6,7 +6,6 @@ import {
   useState,
 } from 'react';
 import {
-  AlertTriangle,
   Camera,
   CameraOff,
   Mic,
@@ -14,12 +13,19 @@ import {
   Minimize2,
   PhoneIncoming,
   PhoneOff,
-  RefreshCw,
   Users,
   Video,
   Volume2,
-  X,
 } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import {
+  AppDialog,
+  AppDialogActions,
+  AppDialogDescription,
+  AppDialogTitle,
+} from '@/components/ui/dialog';
+import { ErrorLine, type ErrorLineAction } from '@/components/ui/ErrorLine';
 
 import {
   AttachedAudio,
@@ -40,7 +46,38 @@ import {
   useCallDuration,
 } from './cloudCallSurfaceSupport';
 import type { CloudCallsController } from './cloudCallController';
+import { callPermissionCopy } from './callMediaPermission';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { MediaPermissionDialog } from './MediaPermissionDialog';
+
+type CallSurfaceNotice = {
+  text: string;
+  action: ErrorLineAction;
+};
+
+/**
+ * The one error line on an open call: a failed call offers to rejoin,
+ * paused audio offers to start it, and anything else can be dismissed.
+ */
+function callSurfaceNotice(
+  controller: CloudCallsController,
+  rejoin: () => void,
+): CallSurfaceNotice | null {
+  const recovery = controller.error ? recoveryContent(controller.error, controller.phase) : null;
+  if (recovery && controller.phase === 'failed') {
+    return { text: recovery.line, action: { label: 'Try again', onClick: rejoin } };
+  }
+  if (controller.isAudioPlaybackBlocked) {
+    return {
+      text: 'Audio is paused.',
+      action: { label: 'Start audio', onClick: () => { void controller.resumeAudio(); } },
+    };
+  }
+  if (recovery) {
+    return { text: recovery.line, action: { label: 'Dismiss', onClick: () => controller.dismissError() } };
+  }
+  return null;
+}
 
 function CallSurface({ controller }: { controller: CloudCallsController }) {
   const current = controller.currentCall;
@@ -78,7 +115,7 @@ function CallSurface({ controller }: { controller: CloudCallsController }) {
   const localParticipant = participants.find((participant) => participant.isLocal);
   const remoteProfile = otherParticipant(call, controller.account?.accountId);
   const status = duration ? `${phaseLabel(controller)} · ${duration}` : phaseLabel(controller);
-  const recovery = controller.error ? recoveryContent(controller.error, controller.phase) : null;
+  const notice = callSurfaceNotice(controller, () => { void controller.join(call, current.sessionId); });
   const toggleDeviceMenu = () => {
     setIsDeviceMenuOpen((open) => {
       if (!open) void controller.refreshMediaDevices();
@@ -142,48 +179,10 @@ function CallSurface({ controller }: { controller: CloudCallsController }) {
           </div>
         )}
 
-        {recovery ? (
-          <div className="app-call-recovery" role="alert">
-            <span className="app-call-recovery-icon"><AlertTriangle aria-hidden="true" /></span>
-            <span className="app-call-recovery-copy">
-              <strong>{recovery.title}</strong>
-              <span>{recovery.description}</span>
-            </span>
-            {controller.phase === 'failed' ? (
-              <button
-                type="button"
-                className="app-call-recovery-action"
-                onClick={() => { void controller.join(call, current.sessionId); }}
-              >
-                Try again
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="app-call-recovery-dismiss"
-              onClick={() => controller.dismissError()}
-              aria-label="Dismiss call notice"
-            >
-              <X />
-            </button>
-          </div>
-        ) : null}
-
-        {controller.isAudioPlaybackBlocked ? (
-          <div className="app-call-recovery" role="alert">
-            <span className="app-call-recovery-icon"><Volume2 aria-hidden="true" /></span>
-            <span className="app-call-recovery-copy">
-              <strong>Audio is paused</strong>
-              <span>macOS needs one click before Kordi can play the other participants.</span>
-            </span>
-            <button
-              type="button"
-              className="app-call-recovery-action"
-              onClick={() => { void controller.resumeAudio(); }}
-            >
-              Start audio
-            </button>
-          </div>
+        {notice ? (
+          <ErrorLine className="app-call-notice" align="center" action={notice.action}>
+            {notice.text}
+          </ErrorLine>
         ) : null}
 
         <footer className="app-call-controls" aria-label="Call controls">
@@ -325,17 +324,37 @@ function CallCard({
   );
 }
 
+/** A call that failed to start or join, with no call surface to show it on. */
 function CallError({ controller }: { controller: CloudCallsController }) {
   if (!controller.error || controller.currentCall || controller.phase === 'idle') return null;
   const recovery = recoveryContent(controller.error, controller.phase);
+  const dismiss = () => controller.dismissError();
   return (
-    <div className="app-call-error" role="alert">
-      <RefreshCw aria-hidden="true" />
-      <span><strong>{recovery.title}</strong>{recovery.description}</span>
-      <button type="button" onClick={() => controller.dismissError()} aria-label="Dismiss call error">
-        <X />
-      </button>
-    </div>
+    <AppDialog
+      titleId="call-error-title"
+      descriptionId="call-error-description"
+      onDismiss={dismiss}
+      className="max-w-sm rounded-[20px]"
+    >
+      <AppDialogTitle id="call-error-title">{recovery.title}</AppDialogTitle>
+      <AppDialogDescription id="call-error-description">{recovery.description}</AppDialogDescription>
+      <AppDialogActions>
+        <Button className="rounded-full px-4" autoFocus onClick={dismiss}>OK</Button>
+      </AppDialogActions>
+    </AppDialog>
+  );
+}
+
+function CallPermissionDialog({ controller }: { controller: CloudCallsController }) {
+  const issue = controller.permissionIssue;
+  if (!issue) return null;
+  return (
+    <MediaPermissionDialog
+      issue={issue}
+      copy={callPermissionCopy(issue)}
+      onCancel={() => controller.dismissPermissionIssue()}
+      onOpenSettings={() => { void controller.openPermissionSettings(); }}
+    />
   );
 }
 
@@ -364,6 +383,7 @@ export function CloudCallHost({
       {activeSurface ? <CallSurface controller={controller} /> : null}
       {cardMode ? <CallCard controller={controller} mode={cardMode} /> : null}
       <CallError controller={controller} />
+      <CallPermissionDialog controller={controller} />
     </>
   );
 }

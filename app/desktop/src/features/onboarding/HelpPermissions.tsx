@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Bell, CalendarDays, Camera, Check, ChevronDown, ListTodo, MapPin, Mic, Speech } from 'lucide-react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { invokeDesktop, isNativeDesktopShell } from '@/lib/desktop';
 import { parsePendingToolApprovals, TOOL_APPROVAL_PENDING_COMMAND, TOOL_APPROVAL_REQUEST_EVENT, TOOL_APPROVAL_RESOLVED_EVENT, toolApprovalHeadline, type ToolApprovalPrompt } from '@/features/connectors/toolApprovalModel';
 import { nativeMacPermissions, openPermissionSettings, permissionAction, permissionDefinitions, readHelpPermission, requestHelpPermission, type PermissionDefinition, type PermissionStatus } from './permissionAccess';
@@ -55,7 +56,7 @@ function PermissionRow({ definition }: { definition: PermissionDefinition }) {
       <p className="help-permission-description">{definition.description}</p>
       {!nativeMacPermissions() && (status === 'denied' || status === 'allowed') ? <p>Manage this permission in your browser or device settings.</p> : null}
       {status === 'restricted' ? <p>This device’s policy controls access. Contact the person who manages it.</p> : null}
-      {error ? <p role="alert">{error}</p> : null}
+      {error ? <ErrorLine className="mt-0">{error}</ErrorLine> : null}
     </li>
   );
 }
@@ -87,7 +88,7 @@ function PendingApprovals({ onOpenSession }: { onOpenSession: (id: string) => vo
     <section className="help-section">
       <h3>Requests waiting for you</h3>
       <p>Review each action in its conversation before choosing Allow or Not now. Requests may expire.</p>
-      <p role="status">{status === 'loading' ? 'Checking pending requests…' : status === 'error' ? 'Could not check pending requests.' : !prompts.length ? 'No pending requests on this Mac.' : `${prompts.length} pending request${prompts.length === 1 ? '' : 's'}`}</p>
+      {status === 'error' ? <ErrorLine role="status">Could not check pending requests.</ErrorLine> : <p role="status">{status === 'loading' ? 'Checking pending requests…' : !prompts.length ? 'No pending requests on this Mac.' : `${prompts.length} pending request${prompts.length === 1 ? '' : 's'}`}</p>}
       {prompts.map((prompt) => <div className="help-permission-row" key={prompt.requestId}>
         <div><h4>{toolApprovalHeadline(prompt)}</h4><p>{prompt.conversationTitle || 'Agent conversation'}</p></div>
         <button className="help-secondary" onClick={() => onOpenSession(prompt.sessionId)}>Review request</button>

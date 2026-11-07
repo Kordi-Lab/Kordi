@@ -33,7 +33,7 @@ test('failed own messages render an external retry action opposite the avatar', 
   assert.match(markup, /title="Retry sending message"/);
   assert.match(markup, /h-7 w-7/);
   assert.match(markup, /data-message-delivery-glyph="none"/);
-  assert.match(markup, /text-rose-600/);
+  assert.match(markup, /text-\[color:var\(--app-error-text\)\]/);
 });
 
 const failedImageMessage: Message = {

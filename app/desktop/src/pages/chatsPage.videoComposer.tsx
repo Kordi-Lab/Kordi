@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, CircleStop, LoaderCircle, RotateCcw, Send, X } from 'lucide-react';
+import { CircleStop, LoaderCircle, RotateCcw, Send, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { AppDialog, AppDialogTitle } from '@/components/ui/dialog';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import {
   attachmentVideoDisplaySize,
   attachmentVideoUrl,
@@ -16,6 +17,8 @@ import {
   captureVideoPosterDataUrl,
   captureVideoPreview,
 } from '@/features/chat/composerVideoPreview';
+import { mediaPermissionCopy } from '@/features/cloud/callMediaPermission';
+import { MediaPermissionDialog } from '@/features/cloud/MediaPermissionDialog';
 
 export function VideoRecordingSurface({ video }: { video: VideoMessageRecorderController }) {
   const previewRef = useRef<HTMLVideoElement | null>(null);
@@ -69,13 +72,27 @@ export function VideoRecordingSurface({ video }: { video: VideoMessageRecorderCo
     );
   }
 
+  if (state.phase === 'permission' && state.permissionIssue) {
+    return (
+      <MediaPermissionDialog
+        issue={state.permissionIssue}
+        copy={mediaPermissionCopy(state.permissionIssue, 'record again')}
+        onCancel={video.reset}
+        onOpenSettings={video.openPermissionSettings}
+      />
+    );
+  }
+
   if (state.phase === 'error') {
     return (
-      <div className="flex min-w-0 flex-1 items-center gap-3 py-2" data-video-recording-surface="error" role="alert">
-        <Camera className="h-5 w-5 shrink-0 text-red-500" aria-hidden="true" />
-        <p className="min-w-0 flex-1 text-[12px] leading-5 text-[color:var(--utility-foreground)]">{state.error}</p>
+      <div className="flex min-w-0 flex-1 items-center gap-3 py-2" data-video-recording-surface="error">
+        <ErrorLine
+          className="mt-0 flex-1"
+          action={{ label: 'Try again', onClick: () => { void video.start(); } }}
+        >
+          {withoutTryAgain(state.error ?? "Couldn't record this video.")}
+        </ErrorLine>
         <Button type="button" variant="quiet" size="sm" onClick={video.reset}>Cancel</Button>
-        <Button type="button" size="sm" onClick={() => { void video.start(); }}>Try again</Button>
       </div>
     );
   }
@@ -190,9 +207,9 @@ function VideoReviewSurface({
         ) : null}
       </div>
       {playbackState === 'error' || error ? (
-        <p className="text-[11px] text-red-500" role="alert">
+        <ErrorLine className="mt-0">
           {error ?? 'This video could not be played. Choose another MP4 file.'}
-        </p>
+        </ErrorLine>
       ) : !posterReady ? (
         <p className="text-[11px] text-[color:var(--utility-muted-text)]" role="status">
           Preparing video poster…

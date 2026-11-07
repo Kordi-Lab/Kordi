@@ -391,15 +391,6 @@
   opacity: 0.56;
 }
 
-.app-expressive-picker-inline-error {
-  padding: 0.5rem 0.625rem;
-  border-radius: 0.625rem;
-  background: color-mix(in oklab, #ef4444 12%, var(--app-control-bg));
-  color: color-mix(in oklab, #ef4444 76%, var(--utility-foreground));
-  font-size: 0.6875rem;
-  line-height: 1rem;
-}
-
 .app-expressive-picker-library-empty {
   display: grid;
   min-height: 5.25rem;

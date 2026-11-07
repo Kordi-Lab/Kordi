@@ -227,16 +227,6 @@
   font-weight: 600;
 }
 
-.app-skill-agent-picker-error {
-  margin: 5px 3px 2px;
-  padding: 7px 8px;
-  border-radius: 8px;
-  background: color-mix(in oklab, var(--agent-studio-danger) 9%, transparent);
-  color: var(--agent-studio-danger);
-  font-size: var(--agent-studio-type-caption);
-  line-height: 1.4;
-}
-
 .app-skill-library-confirm {
   position: absolute;
   z-index: 10;

@@ -11,7 +11,6 @@ import {
   CloudCallClient,
   callMediaErrorMessage,
   cloudCallTargetForConversation,
-  requestCallMediaAccess,
   type CloudCall,
   type CloudCallKind,
   type CloudCallsChangedDetail,
@@ -39,6 +38,13 @@ import {
   shouldApplyActiveCallSnapshot,
 } from './cloudCallState';
 import { useCloudCallMedia } from './useCloudCallMedia';
+import {
+  defaultCallPermissionDeps,
+  ensureCallMediaPermission,
+  openCallPermissionSettings,
+  type CallPermissionDeps,
+  type CallPermissionIssue,
+} from './callMediaPermission';
 import { showCallWindow } from './callWindow';
 import type { Conversation } from '@/kordi-app/types';
 
@@ -49,10 +55,12 @@ export function useCloudCalls({
   account,
   conversations,
   client: clientOverride,
+  permissionDeps,
 }: {
   account: CloudAccount | null;
   conversations: readonly Pick<Conversation, 'id' | 'canonicalSessionId'>[];
   client?: CloudAuthClient;
+  permissionDeps?: CallPermissionDeps;
 }): CloudCallsController {
   const client = useMemo(() => clientOverride ?? defaultCloudAuthClient(), [clientOverride]);
   const callClient = useMemo(() => new CloudCallClient(client), [client]);
@@ -60,6 +68,7 @@ export function useCloudCalls({
   const [current, setCurrent] = useState<CurrentCallState | null>(null);
   const [phase, setPhase] = useState<CloudCallPhase>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [permissionIssue, setPermissionIssue] = useState<CallPermissionIssue | null>(null);
   const [isPresented, setIsPresented] = useState(false);
   const [detachedCallId, setDetachedCallId] = useState<string | null>(null);
   const [detachedThumbnailUrl, setDetachedThumbnailUrl] = useState<string | null>(null);
@@ -89,7 +98,7 @@ export function useCloudCalls({
     mediaDevices,
     activeDeviceIds,
     canSelectAudioOutput,
-  } = useCloudCallMedia({ operationRef, currentRef, setPhase, setError });
+  } = useCloudCallMedia({ operationRef, currentRef, setPhase, setError, setPermissionIssue });
 
   useEffect(() => {
     currentRef.current = current;
@@ -145,6 +154,7 @@ export function useCloudCalls({
     setCallsBySessionId({});
     setMediaDevices([]);
     setError(null);
+    setPermissionIssue(null);
     void resetCurrent().catch(() => undefined);
   }, [account?.accountId, setMediaDevices, resetCurrent]);
 
@@ -155,11 +165,20 @@ export function useCloudCalls({
     nextCurrent: (call: CloudCall) => CurrentCallState,
   ) => {
     setError(null);
+    setPermissionIssue(null);
     setPhase('preparing');
     setIsPresented(true);
     try {
-      await requestCallMediaAccess(kind);
+      const permission = await ensureCallMediaPermission(kind, permissionDeps ?? defaultCallPermissionDeps());
       if (operationRef.current !== operation) return;
+      if (permission.status === 'blocked') {
+        // Nothing has been created yet: close the preparing surface and ask
+        // for access in a dialog instead of failing the call.
+        setPhase('idle');
+        setIsPresented(false);
+        setPermissionIssue(permission.issue);
+        return;
+      }
       setPhase('connecting');
       const session = await load();
       if (operationRef.current !== operation) return;
@@ -174,7 +193,7 @@ export function useCloudCalls({
       setPhase('failed');
       setError(callMediaErrorMessage(caught));
     }
-  }, [clearRoom, connectMedia, updateCall]);
+  }, [clearRoom, connectMedia, permissionDeps, updateCall]);
 
   const start = useCallback(async (conversation: Conversation, kind: 'voice' | 'video') => {
     if (!account || roomRef.current || phase === 'preparing' || phase === 'connecting') return;
@@ -447,5 +466,12 @@ export function useCloudCalls({
     setDetachedCallFolded,
     updateDetachedThumbnail: setDetachedThumbnailUrl,
     dismissError: () => setError(null),
+    permissionIssue,
+    dismissPermissionIssue: () => setPermissionIssue(null),
+    openPermissionSettings: async () => {
+      const issue = permissionIssue;
+      setPermissionIssue(null);
+      if (issue) await openCallPermissionSettings(issue);
+    },
   };
 }

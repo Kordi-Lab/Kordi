@@ -392,8 +392,7 @@
   color: rgb(15 23 42);
 }
 
-.app-group-management-confirm,
-.app-group-management-error {
+.app-group-management-confirm {
   border: 1px solid var(--app-transient-danger-border);
   background: var(--app-transient-danger-bg);
   color: var(--app-transient-danger-text);

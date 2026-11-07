@@ -1,7 +1,7 @@
 import { requireAiConsent } from '@/features/aiConsent/aiConsentStore';
 import { Sparkles } from 'lucide-react';
 import { useState } from 'react';
-import { cn } from '@/lib/utils';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { ProactiveDecision } from '@/features/cloud/proactiveClient';
 import { proactiveProposalExpired, type ProactiveProposal } from '@/features/cloud/proactiveOffer';
 
@@ -66,14 +66,15 @@ export function ProactiveOfferCard({
             <button type="button" className="app-plan-card-button app-plan-card-button-primary" disabled={Boolean(busy)} onClick={() => { void act('allow'); }}>Allow</button>
           </div>
         </div>
+      ) : status === 'failed' ? (
+        <ErrorLine className="mt-0" role="status">Could not finish</ErrorLine>
       ) : (
-        <div className={cn('app-proactive-offer-state', status === 'failed' && 'app-plan-card-notice')} role="status">
+        <div className="app-proactive-offer-state" role="status">
           {status === 'approved' || status === 'running' ? 'Working…' : null}
           {status === 'expired' ? 'Expired' : null}
-          {status === 'failed' ? 'Could not finish' : null}
         </div>
       )}
-      {notice ? <div className="app-plan-card-notice" role="alert">{notice}</div> : null}
+      {notice ? <ErrorLine className="mt-0">{notice}</ErrorLine> : null}
     </section>
   );
 }

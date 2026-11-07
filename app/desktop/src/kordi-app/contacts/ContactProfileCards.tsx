@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { ChevronRight, FileText, Image as ImageIcon, Link, LoaderCircle, Trash2, Users } from 'lucide-react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { CloudContactProfile, CloudContactProfileGroup } from '@/features/cloud/contactProfileClient';
 import { cn } from '@/lib/utils';
 import type { ContactProfileSharedPage } from '@/pages/contactProfileSharedItems';
@@ -169,14 +170,13 @@ function DeleteConfirm({
 }) {
   return (
     <div className="app-contacts-confirm mt-2 rounded-[12px] px-3.5 py-3" role="group" aria-label="Delete contact">
-      <div
-        className={cn('text-[12.5px] leading-[18px]', removeState === 'error' ? 'app-error-text app-contacts-error' : 'app-contacts-muted')}
-        aria-live="polite"
-      >
-        {removeState === 'error'
-          ? removeError || 'Unable to delete contact.'
-          : 'Deleting removes both contact directions. They will need approval before messages can reach you again.'}
-      </div>
+      {removeState === 'error' ? (
+        <ErrorLine className="mt-0">{removeError || 'Unable to delete contact.'}</ErrorLine>
+      ) : (
+        <div className="app-contacts-muted text-[12.5px] leading-[18px]" aria-live="polite">
+          Deleting removes both contact directions. They will need approval before messages can reach you again.
+        </div>
+      )}
       <div className="mt-2.5 flex justify-end gap-1.5">
         <button
           type="button"

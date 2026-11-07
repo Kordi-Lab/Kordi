@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Bird, Camera, Dice5 } from 'lucide-react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { AgentAvatarPicker } from './AgentAvatarPicker';
 import { fileToAvatarDataUrl, setAvatarOverride } from './avatarOverrides';
 import { resolveLocalAgentAvatarSeed } from '@/features/canonical/localAgentAvatar';
@@ -139,7 +140,7 @@ export function EditableIdentityAvatar({
         />
       ) : null}
       {isSaving ? <span className="sr-only" aria-live="polite">Saving avatar…</span> : null}
-      {error ? <div className="app-error-text max-w-[18rem] text-[11px] leading-4 text-rose-300">{error}</div> : null}
+      {error ? <ErrorLine className="mt-0 max-w-[18rem]">{error}</ErrorLine> : null}
     </div>
   );
 }

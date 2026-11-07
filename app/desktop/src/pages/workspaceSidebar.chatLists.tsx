@@ -1,4 +1,5 @@
 import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChatProjects } from '@/features/projects/chatProjects';
@@ -234,7 +235,7 @@ export function WorkspaceChatLists({
                   <FolderSearch size={15} aria-hidden="true" />
                 </button>
               ) : null}
-              {locateError?.id === descriptor.spaceId ? <p role="alert" className="chat-workspace-error chat-project-locate-error">{locateError.message}</p> : null}
+              {locateError?.id === descriptor.spaceId ? <ErrorLine className="chat-project-locate-error">{locateError.message}</ErrorLine> : null}
             </div>
           )
         ) : (

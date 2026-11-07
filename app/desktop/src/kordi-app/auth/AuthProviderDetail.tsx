@@ -3,6 +3,7 @@ import type { DesktopAuthProvider } from '@/kordi-app/types';
 import type { CloudProviderAuthSnapshotInput, CloudProviderRouteTestInput, CloudProviderRouteTestResult } from '@/features/cloud/cloudAgentRuntimeTypes';
 import type { ProviderLoginClient, ProviderLoginSnapshot } from '@/features/cloud/providerLogin';
 import type { LoginCallbackCapture } from '@/features/cloud/loginCallbackCapture';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLayout';
 import type { AuthDisplayMethod, AuthDisplayProvider } from './model';
 import { OMP_UNAVAILABLE_MESSAGE } from '@/features/cloud/ompAvailability';
@@ -209,9 +210,7 @@ export function AuthProviderDetail({
     >
       <div className="grid min-h-0 w-full pb-6 pt-6">
         {error && (
-          <div role="alert" className="app-error-text pb-3 text-[12px] leading-5 text-rose-200">
-            {error}
-          </div>
+          <ErrorLine className="mt-0 pb-3">{error}</ErrorLine>
         )}
         {isLocalModelControl ? null : notice}
 

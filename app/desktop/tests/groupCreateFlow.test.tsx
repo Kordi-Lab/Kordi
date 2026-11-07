@@ -140,8 +140,9 @@ test('a failed create shows short copy, never the server text, and keeps the pan
     await view.type('Launch QA');
     await act(async () => { view.button('Create group')?.click(); });
     await flushReactUpdates();
-    const alert = view.host.querySelector('[role="alert"]')?.textContent ?? '';
-    assert.equal(alert, "Couldn't create the group. Try again.");
+    const alert = view.host.querySelector('.app-error-line[role="alert"]');
+    assert.equal(alert?.firstElementChild?.textContent, "Couldn't create the group.");
+    assert.equal(alert?.querySelector('.app-error-line-action')?.textContent, 'Try again');
     assert.doesNotMatch(view.host.textContent ?? '', /member count|verified group admin/);
     assert.equal(view.closes(), 0);
   } finally {
@@ -214,9 +215,12 @@ test('a link that fails after the group exists shows short copy and retries with
     const invite = () => view.host.querySelector('[role="group"] > button') as HTMLButtonElement;
     await act(async () => { invite().click(); });
     await flushReactUpdates();
-    assert.equal(view.host.querySelector('[role="alert"]')?.textContent, "Couldn't create the link. Try again.");
+    const alert = view.host.querySelector('.app-error-line[role="alert"]');
+    assert.equal(alert?.firstElementChild?.textContent, "Couldn't create the link.");
     assert.doesNotMatch(view.host.textContent ?? '', /verified group admin/);
-    await act(async () => { invite().click(); });
+    const retry = alert?.querySelector<HTMLButtonElement>('.app-error-line-action');
+    assert.equal(retry?.textContent, 'Try again');
+    await act(async () => { retry!.click(); });
     await flushReactUpdates();
     assert.equal(view.requests.length, 1, 'the retry reuses the group');
     assert.match(view.host.textContent ?? '', /Expires in 1 day/);

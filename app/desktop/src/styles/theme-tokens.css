@@ -144,11 +144,10 @@
   --app-cloud-login-hint-border: oklch(0.78 0.14 75 / 0.72);
   --app-cloud-login-hint-ring: oklch(0.78 0.14 75 / 0.18);
   --app-cloud-login-hint-text: oklch(0.78 0.11 75);
-  --app-cloud-login-danger-border: oklch(0.62 0.20 25 / 0.55);
-  --app-cloud-login-danger-border-strong: oklch(0.62 0.20 25 / 0.78);
-  --app-cloud-login-danger-ring: oklch(0.62 0.20 25 / 0.20);
-  --app-cloud-login-danger-text: oklch(0.78 0.13 25);
-  --app-cloud-login-danger-bg: oklch(0.55 0.20 25 / 0.12);
+  --app-cloud-login-danger-border: color-mix(in oklab, var(--app-error-text) 55%, transparent);
+  --app-cloud-login-danger-border-strong: color-mix(in oklab, var(--app-error-text) 78%, transparent);
+  --app-cloud-login-danger-ring: color-mix(in oklab, var(--app-error-text) 20%, transparent);
+  --app-cloud-login-danger-text: var(--app-error-text);
 }
 
 .kordi-app.theme-light {
@@ -289,11 +288,10 @@
   --app-cloud-login-hint-border: rgba(14, 165, 233, 0.36);
   --app-cloud-login-hint-ring: rgba(14, 165, 233, 0.12);
   --app-cloud-login-hint-text: rgb(71 85 105);
-  --app-cloud-login-danger-border: oklch(0.62 0.20 25 / 0.55);
-  --app-cloud-login-danger-border-strong: oklch(0.62 0.20 25 / 0.78);
-  --app-cloud-login-danger-ring: oklch(0.62 0.20 25 / 0.14);
-  --app-cloud-login-danger-text: oklch(0.42 0.18 25);
-  --app-cloud-login-danger-bg: oklch(0.97 0.04 25 / 0.55);
+  --app-cloud-login-danger-border: color-mix(in oklab, var(--app-error-text) 55%, transparent);
+  --app-cloud-login-danger-border-strong: color-mix(in oklab, var(--app-error-text) 78%, transparent);
+  --app-cloud-login-danger-ring: color-mix(in oklab, var(--app-error-text) 14%, transparent);
+  --app-cloud-login-danger-text: var(--app-error-text);
 }
 
 /* Transient surfaces intentionally live on both the app root and body.
@@ -323,6 +321,9 @@
   --app-transient-danger-hover-bg: rgb(244 63 94 / 0.17);
   --app-transient-danger-border: rgb(251 113 133 / 0.24);
   --app-transient-danger-text: rgb(253 164 175);
+  /* The one error color: ErrorLine, .app-error-text and failure accents. */
+  --app-error-text: rgb(253 164 175);
+  --app-danger-text: var(--app-error-text);
   --app-transient-shadow:
     0 0 0 1px rgb(255 255 255 / 0.025),
     0 18px 46px rgb(0 0 0 / 0.38),
@@ -353,6 +354,8 @@
   --app-transient-danger-hover-bg: rgb(225 29 72 / 0.12);
   --app-transient-danger-border: rgb(190 18 60 / 0.18);
   --app-transient-danger-text: rgb(159 18 57);
+  --app-error-text: rgb(159 18 57);
+  --app-danger-text: var(--app-error-text);
   --app-transient-shadow:
     0 0 0 1px rgb(15 23 42 / 0.025),
     0 18px 44px rgb(15 23 42 / 0.14),

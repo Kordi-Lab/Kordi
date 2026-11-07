@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { AppDialog, AppDialogActions, AppDialogTitle } from '@/components/ui/dialog';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 
 export function ChannelCreateDialog({ groupName, onCancel, onCreate }: {
   groupName: string;
@@ -29,7 +30,7 @@ export function ChannelCreateDialog({ groupName, onCancel, onCreate }: {
         <input id="new-channel-name" autoFocus required maxLength={200}
           value={name} onChange={(event) => setName(event.target.value)} disabled={busy}
           className="app-input mt-2 w-full rounded-lg border px-3 py-2" placeholder="e.g. Announcements" />
-        {error ? <p role="alert" className="mt-3 text-sm text-destructive">{error}</p> : null}
+        {error ? <ErrorLine className="mt-3">{error}</ErrorLine> : null}
         <AppDialogActions>
           <Button type="button" variant="quiet" disabled={busy} onClick={onCancel}>Cancel</Button>
           <Button type="submit" disabled={busy || !name.trim()}>{busy ? 'Creating…' : 'Create channel'}</Button>

@@ -3,6 +3,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Send } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { BlobEmojiComposerInput, type BlobEmojiComposerInputHandle } from '@/features/emoji/BlobEmojiComposerInput';
@@ -219,9 +220,7 @@ export function CompanionComposer({
               onReplace={updateChatComposerAttachment}
             />
             {error ? (
-              <p className="px-0.5 pb-1 text-[10.5px] leading-4 text-amber-500" role="alert">
-                {error}
-              </p>
+              <ErrorLine className="mt-0 px-0.5 pb-1">{error}</ErrorLine>
             ) : null}
             <BlobEmojiComposerInput
               ref={editor}

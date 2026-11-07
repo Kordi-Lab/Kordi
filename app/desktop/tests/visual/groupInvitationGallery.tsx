@@ -82,6 +82,9 @@ const visualCallController: CloudCallsController = {
   setDetachedCallFolded: () => undefined,
   updateDetachedThumbnail: () => undefined,
   dismissError: () => undefined,
+  permissionIssue: null,
+  dismissPermissionIssue: () => undefined,
+  openPermissionSettings: async () => undefined,
 };
 const [space] = buildParticipantSpaces([conversation({
   id: 'session:group:invitation-visual',

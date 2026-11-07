@@ -86,7 +86,7 @@ export function FoldableAssistantAnswer({
   return (
     <div className={cn(
       'app-live-assistant-answer w-full text-[13px]',
-      cancelled && 'app-live-assistant-answer-cancelled text-rose-300',
+      cancelled && 'app-live-assistant-answer-cancelled text-[color:var(--app-error-text)]',
     )}>
       <div className={cn('app-live-assistant-answer-content', folded && 'app-live-assistant-answer-folded')}>
         <MarkdownContent
@@ -95,7 +95,7 @@ export function FoldableAssistantAnswer({
           copySurface="message"
           className={cn(
             'app-live-assistant-answer-markdown',
-            cancelled && '[&_p]:!text-rose-300 [&_li]:!text-rose-300 [&_blockquote]:!text-rose-300',
+            cancelled && '[&_:is(p,li,blockquote)]:!text-[color:var(--app-error-text)]',
           )}
         />
       </div>

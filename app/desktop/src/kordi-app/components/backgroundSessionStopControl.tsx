@@ -1,4 +1,5 @@
 import { Square } from 'lucide-react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { useBackgroundSessionControl } from '@/features/chat/useBackgroundSessionControl';
 import { useAgentSubsession } from '@/features/cloud/useAgentSubsession';
 
@@ -18,7 +19,7 @@ export function BackgroundSessionStopButton({ control, title }: {
       <Square className="h-2.5 w-2.5 fill-current" aria-hidden="true" />
       {control.stopping ? 'Stopping…' : 'Stop'}
     </button>
-    {control.error ? <span role="alert" className="max-w-48 text-[11px] text-rose-500">{control.error}</span> : null}
+    {control.error ? <ErrorLine align="end" className="mt-0 max-w-48">{control.error}</ErrorLine> : null}
   </span>;
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LoaderCircle, Users, X } from 'lucide-react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import {
   CloudAuthError,
   defaultCloudAuthClient,
@@ -273,17 +274,17 @@ export function GroupInvitationDialog({
           </p>
         ) : null}
 
-        {state.message ? (
+        {state.message && failed && !finalError ? (
+          <ErrorLine id={summary ? undefined : 'group-invitation-description'} className="mt-3">
+            {state.message}
+          </ErrorLine>
+        ) : state.message ? (
           <p
             id={summary ? undefined : 'group-invitation-description'}
-            role={failed && !finalError ? 'alert' : 'status'}
+            role="status"
             className={finalError
               ? 'mt-2 text-[11.5px] leading-4 text-[color:var(--app-transient-text)]'
-              : `mt-3 rounded-[10px] px-3 py-2 text-[11px] leading-4 ${
-                failed
-                  ? 'bg-rose-500/10 text-[color:var(--app-transient-danger-text)]'
-                  : 'bg-emerald-500/10 text-emerald-600'
-              }`}
+              : 'mt-3 rounded-[10px] bg-emerald-500/10 px-3 py-2 text-[11px] leading-4 text-emerald-600'}
           >
             {state.message}
           </p>

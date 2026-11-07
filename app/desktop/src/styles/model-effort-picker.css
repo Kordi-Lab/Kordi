@@ -25,7 +25,6 @@
 .app-model-picker-divider { border-top: 1px solid var(--app-transient-border); margin: 4px 6px; }
 .app-model-picker .app-model-picker-account { color: var(--app-transient-muted-text); }
 .app-model-picker-message { margin: 6px; font-size: 12px; overflow-wrap: anywhere; }
-.app-model-picker-message button { margin-left: 6px; text-decoration: underline; }
 .app-model-picker-actions { display: flex; justify-content: flex-end; gap: 6px; padding: 6px; }
 .app-model-picker-actions button { padding: 6px 9px; border-radius: 8px; background: var(--app-transient-selected-bg); font-size: 12px; }
 .app-model-picker-search { width: 100%; margin-bottom: 5px; padding: 7px 9px; border: 1px solid var(--app-transient-border); border-radius: 8px; background: var(--app-control-bg); font-size: 12px; }

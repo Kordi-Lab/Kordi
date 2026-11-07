@@ -1,5 +1,6 @@
 import { requireAiConsent } from '@/features/aiConsent/aiConsentStore';
 import { useEffect, useState } from 'react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { digestClient } from './client';
 import type { DigestSettings as Settings } from './types';
 
@@ -29,11 +30,11 @@ export function DigestSettings({ accountId, onRebuilt }: { accountId: string; on
     catch { setError('Could not rebuild the digest.'); }
     finally { setBusy(false); }
   }
-  if (!settings) return error ? <p role="alert">{error}</p> : <p>Loading…</p>;
+  if (!settings) return error ? <ErrorLine>{error}</ErrorLine> : <p>Loading…</p>;
   const named = (label: string, model?: string | null) => model ? `${label} (${model})` : label;
   const custom = settings.model !== 'fast' && settings.model !== 'chat';
   return <div className="digest-settings">
-    {error && <p role="alert" className="digest-warning">{error}</p>}
+    {error && <ErrorLine>{error}</ErrorLine>}
     <label>Model<select value={settings.model} onChange={event => void save({ ...settings, model: event.target.value })}>
       <option value="fast">{named('Fast', settings.fastModel)}</option>
       <option value="chat">{named('Same as chat', settings.chatModel)}</option>

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLayout';
+import { cn } from '@/lib/utils';
 import { loginCallbackHint, pasteCodeFallback, type ProviderLoginClient, type ProviderLoginSnapshot } from '@/features/cloud/providerLogin';
 import { loginCallbackPath, loginCallbackPort, type LoginCallbackCapture } from '@/features/cloud/loginCallbackCapture';
 import { OMP_UNAVAILABLE_MESSAGE } from '@/features/cloud/ompAvailability';
@@ -128,6 +130,8 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
     : kind === 'api-key' && view.error?.code === 'login_unsupported'
       ? 'This provider does not take an API key here. Use another method.'
       : view.error?.message ?? null;
+  // A refused key is shown under the key field, which takes the invalid border.
+  const keyError = kind === 'api-key' && errorMessage && (keyStep || !running) ? errorMessage : null;
 
   return (
     <div className="grid min-h-0 min-w-0 w-full pb-6 pt-6">
@@ -159,7 +163,7 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
                     Get an API key
                   </a>
                 ) : null}
-                {errorMessage && (keyStep || !running) ? <span role="alert" className="app-error-text block text-rose-200">{errorMessage}</span> : null}
+                {keyError ? <ErrorLine>{keyError}</ErrorLine> : null}
               </>
             )}
             control={(
@@ -171,8 +175,9 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
                   placeholder={input?.placeholder ?? login.placeholder ?? login.envVars[0] ?? 'API key'}
                   value={keyValue}
                   disabled={running && !keyStep}
+                  aria-invalid={keyError ? true : undefined}
                   onChange={(event) => setKeyValue(event.target.value)}
-                  className={inputClass}
+                  className={cn(inputClass, keyError && 'app-flat-input-error')}
                 />
                 <AuthActionButton
                   key={view.error ? 'save-retry' : 'save'}
@@ -246,7 +251,7 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
                   {input.kind === 'paste-code' ? pasteDescription : input.message}
                   {input.kind !== 'paste-code' && input.placeholder ? <span className="block text-[11px] text-slate-500">e.g., {input.placeholder}</span> : null}
                   {callbackHint && (input.kind !== 'paste-code' || pasteMessage) ? <span data-login-callback-hint="" className="block text-[11px] text-slate-500">{callbackHint}</span> : null}
-                  {errorMessage ? <span role="alert" className="app-error-text block text-rose-200">{errorMessage}</span> : null}
+                  {errorMessage ? <ErrorLine>{errorMessage}</ErrorLine> : null}
                 </>
               )}
               control={(
@@ -257,8 +262,9 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
                     autoComplete="off"
                     placeholder={input.placeholder ?? ''}
                     value={inputValue}
+                    aria-invalid={errorMessage ? true : undefined}
                     onChange={(event) => setInputValue(event.target.value)}
-                    className={inputClass}
+                    className={cn(inputClass, errorMessage && 'app-flat-input-error')}
                   />
                   <AuthActionButton
                     key="continue"
@@ -284,12 +290,9 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
             </p>
           ) : null}
           {view.phase === 'failed' ? (
-            <SettingsRow
-              role="alert"
-              title="Sign-in did not finish"
-              description={<span className="app-error-text text-rose-200">{errorMessage}</span>}
-              control={<AuthActionButton key="retry" type="button" className={authButtonPrimaryClass} onClick={reset}>Try again</AuthActionButton>}
-            />
+            <ErrorLine className="mt-0 py-3.5" action={{ label: 'Try again', onClick: reset }}>
+              {errorMessage && !keyError ? `Sign-in did not finish: ${withoutTryAgain(errorMessage)}` : 'Sign-in did not finish.'}
+            </ErrorLine>
           ) : null}
           {view.phase === 'cancelled' ? (
             <SettingsRow

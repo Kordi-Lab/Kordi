@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Folder, LoaderCircle, Plus, Search, X } from 'lucide-react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { projectForChat, useChatProjects } from './chatProjects';
 
 export function ChatProjectPicker({
@@ -117,7 +118,7 @@ export function ChatProjectPicker({
           setName(query); setFolder(''); setCreating(true);
         }}><Plus size={14} aria-hidden="true" />New project</button></div>
       </>}
-      {error ? <p role="alert" className="chat-project-error">{error}</p> : null}
+      {error ? <ErrorLine className="m-0 p-2">{error}</ErrorLine> : null}
     </div>, document.body) : null}
   </>;
 }

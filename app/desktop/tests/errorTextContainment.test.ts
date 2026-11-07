@@ -18,7 +18,7 @@ test('app error text has a shared containment utility for long provider/API stri
 test('auth provider detail error uses the shared contained error text class', () => {
   const source = readSource('kordi-app/auth/AuthProviderDetail.tsx');
 
-  assert.match(source, /error && \([\s\S]*app-error-text[\s\S]*\{error\}/);
+  assert.match(source, /error && \([\s\S]*<ErrorLine[^>]*>\{error\}<\/ErrorLine>/);
 });
 
 test('common app error surfaces opt into contained error text', () => {
@@ -45,6 +45,6 @@ test('common app error surfaces opt into contained error text', () => {
   ];
 
   for (const path of sources) {
-    assert.match(readSource(path), /app-error-text/, `${path} should contain long error text inside its box`);
+    assert.match(readSource(path), /app-error-text|<ErrorLine\b/, `${path} should contain long error text inside its box`);
   }
 });

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LoaderCircle, Send, StopCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { composerAttachmentItemFromFile } from '@/features/chat/composerAttachments';
 import { composerAttachmentItemFromStoredPath } from '@/features/chat/useComposerInputActions';
@@ -474,16 +475,15 @@ export function AgentStudioConversation({
                 }
               }}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  void submit();
-                }
+                if (event.key !== 'Enter' || event.shiftKey) return;
+                event.preventDefault();
+                void submit();
               }}
               className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
               placeholder={creating ? 'Describe what you want Kordi Factory to build or change…' : `Ask Kordi Factory to build or refine ${targetName}…`}
               aria-label="Message Kordi Factory"
             />
-            {attachmentError ? <div className="pt-1 text-[11px] text-rose-500" role="alert">{attachmentError}</div> : null}
+            {attachmentError ? <ErrorLine className="mt-1">{attachmentError}</ErrorLine> : null}
           </div>
           <div className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
             <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">

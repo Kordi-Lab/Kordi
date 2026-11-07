@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Folder, FolderPlus, FolderSearch, GitBranch, Laptop, LoaderCircle } from 'lucide-react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { Conversation } from '@/kordi-app/types';
 import { remoteProjectCatalogId } from '@/features/canonical/sessionResolver';
 import { ChatProjectPicker } from './ChatProjectPicker';
@@ -106,7 +107,7 @@ export function ChatWorkspaceControls({ conversation, disabled }: { conversation
       {editable && projects.openImporter ? <button type="button" className="chat-workspace-pill chat-workspace-add" disabled={disabled || busy}
         aria-label="Add project to chat" title="Add project" onClick={() => projects.openImporter?.(conversation.id)}><FolderPlus size={15} aria-hidden="true" /></button> : null}
     </div>
-    {error ? <p className="chat-workspace-error" role="alert">{error}</p> : null}
+    {error ? <ErrorLine>{error}</ErrorLine> : null}
     {open && git ? createPortal(<div id={id} ref={menu} role="dialog" aria-label="Select branch or worktree"
       className={`chat-project-menu chat-workspace-menu${light ? ' app-compact-model-menu-light' : ''}`} style={position}
       onKeyDown={(event) => {

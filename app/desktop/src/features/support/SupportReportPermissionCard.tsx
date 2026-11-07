@@ -1,13 +1,13 @@
 import { useContext, useMemo, useState } from 'react';
 import {
   CheckCircle2,
-  CircleAlert,
   Flag,
   LoaderCircle,
   Send,
   ShieldCheck,
 } from 'lucide-react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import {
   buildSupportTicketInput,
   supportProposalSubmissionId,
@@ -93,34 +93,16 @@ export function SupportReportPermissionCard({
               </p>
             </div>
           ) : state.stage === 'lookup-error' ? (
-            <div className="mt-2" role="alert">
-              <div className="flex items-start gap-1.5 text-[10px] leading-4 text-[color:var(--app-transient-danger-text)]">
-                <CircleAlert className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                <span>{state.message}</span>
-              </div>
-              <div className="mt-2.5 flex justify-end">
-                <button
-                  type="button"
-                  className="app-button-quiet rounded-[8px] px-2.5 py-1 text-[10px] font-medium"
-                  onClick={submission.retryLookup}
-                >
-                  Retry status
-                </button>
-              </div>
-            </div>
+            <ErrorLine className="mt-2" action={{ label: 'Retry status', onClick: submission.retryLookup }}>
+              {state.message}
+            </ErrorLine>
           ) : !declined && (state.stage === 'pending' || state.stage === 'sending' || state.stage === 'error') ? (
             <>
               <p className="mt-2 text-[10px] leading-4 text-[color:var(--utility-muted-text)]">
                 Approval sends only this draft, your signed-in account identity, and this support-session reference. Chat history, files, diagnostics, and provider credentials stay private.
               </p>
               {state.stage === 'error' ? (
-                <div
-                  className="mt-2 flex items-start gap-1.5 text-[10px] leading-4 text-[color:var(--app-transient-danger-text)]"
-                  role="alert"
-                >
-                  <CircleAlert className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                  <span>{state.message}</span>
-                </div>
+                <ErrorLine className="mt-2">{state.message}</ErrorLine>
               ) : null}
               <div className="mt-2.5 flex flex-wrap items-center justify-end gap-1.5">
                 <button

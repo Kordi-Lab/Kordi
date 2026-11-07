@@ -313,7 +313,7 @@ test('email row refreshes the account at once when the server says the email is 
       assert.match(view.host.textContent!, /Verified/, stage);
       assert.doesNotMatch(view.host.textContent!, /Not verified/, stage);
       assert.match(view.host.querySelector('[role="status"]')!.textContent!, /This email is already verified\./, stage);
-      assert.equal(view.host.querySelector('.app-error-text'), null, stage);
+      assert.equal(view.host.querySelector('.app-error-line'), null, stage);
     } finally {
       await view.cleanup();
     }
@@ -333,7 +333,7 @@ test('email row shows the server delivery message and falls back to readable tex
     });
     try {
       await act(async () => view.button('Verify email')!.click());
-      assert.match(view.host.querySelector('.app-error-text')!.textContent!, expected);
+      assert.match(view.host.querySelector('.app-error-line')!.textContent!, expected);
       assert.equal(view.button('Verify email')?.disabled, false);
     } finally {
       await view.cleanup();
@@ -354,7 +354,7 @@ test('a rate limited request arms the countdown from Retry-After', async () => {
   });
   try {
     await act(async () => view.button('Verify email')!.click());
-    assert.match(view.host.querySelector('.app-error-text')!.textContent!, /Too many attempts/);
+    assert.match(view.host.querySelector('.app-error-line')!.textContent!, /Too many attempts/);
     const held = view.button('Verify email (42s)');
     assert.ok(held);
     assert.equal(held.disabled, true);

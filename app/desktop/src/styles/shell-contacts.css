@@ -25,10 +25,6 @@
   color: var(--app-accent);
 }
 
-.app-contacts-error {
-  color: var(--app-transient-danger-text);
-}
-
 /* List column: in the sidebar session panel it inherits the panel's backdrop; on its own
  * (previews, tests) it draws the same divider the panel does. */
 .app-contacts-list-column {

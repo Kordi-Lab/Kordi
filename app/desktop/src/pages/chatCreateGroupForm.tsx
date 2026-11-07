@@ -3,6 +3,7 @@ import { Check, Copy, Link2, LoaderCircle, Share } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { CopyToast } from '@/components/ui/copyFeedback';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { useCopyFeedback } from '@/components/ui/useCopyFeedback';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import type { CloudGroupInvitation, CloudGroupInvitationCreateInput } from '@/features/cloud/authClient';
@@ -34,6 +35,8 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
   const [name, setName] = useState('');
   const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Which action a "Try again" on the error line repeats.
+  const [errorRetry, setErrorRetry] = useState<'create' | 'link' | null>(null);
   const [busy, setBusy] = useState<'create' | 'link' | null>(null);
   const [link, setLink] = useState<SharedLink | null>(null);
   // A group created for a link whose invitation then failed: retrying reuses it.
@@ -51,14 +54,14 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
     if (busy || !nameIsValid) return;
     // The group already exists when only its link failed: finish with it.
     if (linkGroup) { onDone(); return; }
-    setBusy('create'); setError(null);
+    setBusy('create'); setError(null); setErrorRetry(null);
     try { await onCreateGroup(request(false)); onDone(); }
-    catch (caught) { setError(groupCreationErrorMessage(caught)); }
+    catch (caught) { setError(groupCreationErrorMessage(caught)); setErrorRetry('create'); }
     finally { setBusy(null); }
   };
   const inviteWithLink = async () => {
     if (!onCreateGroupInvitation || busy || !nameIsValid) return;
-    setBusy('link'); setError(null);
+    setBusy('link'); setError(null); setErrorRetry(null);
     let group = linkGroup;
     try {
       if (!group) {
@@ -69,6 +72,7 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
       }
     } catch (caught) {
       setError(groupCreationErrorMessage(caught));
+      setErrorRetry('link');
       setBusy(null);
       return;
     }
@@ -78,13 +82,29 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
       onLinkShown?.(group.title);
     } catch (caught) {
       setError(groupInvitationLinkErrorMessage(caught, { asCreator: true }));
+      setErrorRetry('link');
     } finally { setBusy(null); }
   };
   const copy = async () => {
     if (!link) return;
+    setErrorRetry(null);
     try { await copyText(link.url); setError(null); }
     catch { setError("Couldn't copy the link. Select it and copy it."); }
   };
+  // Offer "Try again" only for a plain retry message, not "Try again later" or a fix-it hint.
+  const retryable = error !== null && errorRetry !== null && withoutTryAgain(error) !== error;
+  const errorLine = error ? (
+    <ErrorLine
+      className="mt-0"
+      action={retryable ? {
+        label: 'Try again',
+        disabled: Boolean(busy),
+        onClick: () => { void (errorRetry === 'link' ? inviteWithLink() : create()); },
+      } : null}
+    >
+      {retryable ? withoutTryAgain(error) : error}
+    </ErrorLine>
+  ) : null;
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
   if (link) {
@@ -109,7 +129,7 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
           ) : null}
         </div>
         <p className="app-chat-create-group-note">{expiryLabel(link.expiresAt)}</p>
-        {error ? <p role="alert" className="app-error-text text-[11px]">{error}</p> : null}
+        {errorLine}
         <Button type="button" className="h-8 w-full rounded-[8px] text-[12px]" onClick={onDone}>Done</Button>
         <CopyToast visible={copied} />
       </div>
@@ -139,7 +159,7 @@ export function ChatCreateGroupForm({ contacts, onCreateGroup, onCreateGroupInvi
           className="app-input-shell h-8 min-w-0 flex-1 rounded-[8px] px-2.5 text-[12px] outline-none"
         />
       </div>
-      {error ? <p role="alert" className="app-error-text text-[11px]">{error}</p> : null}
+      {errorLine}
       <div className="app-dense-menu-items app-chat-create-option-list max-h-[min(15rem,calc(100vh-12rem))] overflow-auto" role="group" aria-label="People">
         {onCreateGroupInvitation ? (
           <button type="button" disabled={Boolean(busy) || !nameIsValid} onClick={() => { void inviteWithLink(); }}>

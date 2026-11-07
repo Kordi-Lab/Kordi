@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { AppDialog, AppDialogActions, AppDialogDescription, AppDialogTitle } from '@/components/ui/dialog';
 import { KORDI_PRIVACY_URL } from './legalLinks';
 import { openDesktopExternalUrl } from '@/lib/desktop';
@@ -10,7 +11,6 @@ import { cn } from '@/lib/utils';
 // use the body-scoped transient tokens rather than `--utility-*` or slate.
 const dialogText = 'text-[color:var(--app-transient-text)]';
 const dialogMuted = 'text-[color:var(--app-transient-muted-text)]';
-const dialogDanger = 'text-[color:var(--app-transient-danger-text)]';
 
 export const AI_CONSENT_TITLE = 'Kordi uses AI models';
 export const AI_CONSENT_BODY = 'Agents, the System agent, Digest and Grounding send the messages, files and calendar details they work on to AI providers such as OpenAI, Anthropic and Google.';
@@ -30,7 +30,7 @@ type DialogProps = {
 };
 
 function SaveError({ error }: { error: string | null }) {
-  return error ? <p className={cn('m-0 mt-3 text-[12px] leading-5', dialogDanger)} role="alert">{error}</p> : null;
+  return error ? <ErrorLine className="mt-3">{error}</ErrorLine> : null;
 }
 
 /** Asked once after sign-in, and before an AI action while no choice is saved. */
