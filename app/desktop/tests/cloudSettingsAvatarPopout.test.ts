@@ -117,7 +117,8 @@ test('cloud authentication tab suppresses nested auth chrome and stays readable'
   assert.match(providerList, /app-auth-provider-index-row/);
   assert.match(providerList, /aria-label="Provider index"/);
   assert.doesNotMatch(providerList, /rounded-2xl border border-white\/\[0\.08\]/);
-  assert.match(providerList, /rounded-xl border-0 bg-white\/\[0\.045\]/);
+  // A transparent border lets the focused search field show the neutral focus border.
+  assert.match(providerList, /rounded-xl border border-transparent bg-white\/\[0\.045\]/);
   assert.doesNotMatch(providerList, /divide-y|border-b border-white/);
   assert.doesNotMatch(shellPages, /app-auth-provider-count\s*\{[^}]*(?:background|border)/s);
 });
