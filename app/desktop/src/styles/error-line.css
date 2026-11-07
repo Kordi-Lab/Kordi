@@ -51,9 +51,9 @@
     text-decoration-color: currentColor;
   }
 
+  /* Keyboard focus uses the shared neutral fill from focus.css, never a ring. */
   .app-error-line-action:focus-visible {
-    outline: 2px solid var(--app-transient-focus-ring);
-    outline-offset: 2px;
+    text-decoration-color: currentColor;
   }
 
   .app-error-line-action:disabled {
