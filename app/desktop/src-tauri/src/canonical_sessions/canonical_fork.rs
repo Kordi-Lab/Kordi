@@ -1,3 +1,5 @@
+mod inherited_history;
+
 use std::collections::HashMap;
 
 use kordi_cli::desktop_runtime::DesktopForkSessionOutcome;
@@ -7,6 +9,8 @@ use uuid::Uuid;
 use super::models::{
     AppendCanonicalMessageRequest, CanonicalSessionMessage, OpenCanonicalSessionRequest,
 };
+use inherited_history::populate_fork_runtime_session;
+
 use super::{
     append_message_in_db, local_profile_human_identity_id, open_db, open_or_create_session_in_db,
 };
@@ -157,7 +161,7 @@ pub fn fork_canonical_session_into_local_chat(
         fork_primary_agent(source_info.primary_identity_id.as_deref(), &source_agents)?;
 
     let new_session_id = format!("session:fork:{}", Uuid::new_v4().simple());
-    let mut message_aliases = vec![canonical_message_id.to_string()];
+    let mut runtime_anchor_ids = Vec::new();
     for alias in source_message_alias
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -165,8 +169,14 @@ pub fn fork_canonical_session_into_local_chat(
         .into_iter()
         .chain(desktop_entry_alias(&messages[anchor_index]))
     {
-        if !message_aliases.contains(&alias) {
-            message_aliases.push(alias);
+        if !runtime_anchor_ids.contains(&alias) {
+            runtime_anchor_ids.push(alias);
+        }
+    }
+    let mut message_aliases = vec![canonical_message_id.to_string()];
+    for alias in &runtime_anchor_ids {
+        if !message_aliases.contains(alias) {
+            message_aliases.push(alias.clone());
         }
     }
     let mut metadata = serde_json::json!({
@@ -253,6 +263,19 @@ pub fn fork_canonical_session_into_local_chat(
             Some(canonical_message_id),
         )
         .map_err(|err| err.to_string())?;
+    }
+    // The fork already exists; missing inherited history must not fail it.
+    if let Err(error) = populate_fork_runtime_session(
+        &local_conn,
+        canonical_session_id,
+        &new_session_id,
+        &runtime_anchor_ids,
+        path,
+        canonical_message_id,
+    ) {
+        eprintln!(
+            "[kordi-desktop] fork {new_session_id}: inherited history was not populated: {error}"
+        );
     }
 
     Ok(DesktopForkSessionOutcome {

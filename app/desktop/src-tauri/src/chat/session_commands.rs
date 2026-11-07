@@ -237,6 +237,19 @@ pub async fn desktop_chat_fork_session_from_message(
     if !canonical_entry_match && !local_session_exists {
         return Err(format!("Session not found: {trimmed_session_id}"));
     }
+    // A Cloud self-agent chat whose rows have not caught up with its runtime
+    // transcript must not take the local fork path: that fork would use a
+    // local agent and never publish its requests to Kordi Cloud.
+    if !canonical_entry_match
+        && crate::canonical_sessions::desktop_sync::canonical_session_is_cloud_self_agent(
+            trimmed_session_id,
+        )?
+    {
+        return Err(
+            "This chat is still syncing with Kordi Cloud. Try forking it again in a moment."
+                .to_string(),
+        );
+    }
 
     // Canonical Agent entries snapshot through the canonical
     // path. Purely-local sessions without canonical mirroring use the

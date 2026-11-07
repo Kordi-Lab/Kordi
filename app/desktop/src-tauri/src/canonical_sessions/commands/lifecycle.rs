@@ -47,7 +47,12 @@ fn delete_message_rows(
 
 fn canonical_cloud_message_id(source_transport: &str, source_event_id: &str) -> Option<String> {
     match source_transport {
-        "cloud-self-agent" | "canonical-fork-snapshot" => Some(source_event_id),
+        "cloud-self-agent" => Some(source_event_id),
+        // Locally created fork snapshots are not cloud messages; only cloud-restored
+        // snapshot rows carry a cloud message id.
+        "canonical-fork-snapshot" => {
+            (!source_event_id.starts_with("fork-snapshot:")).then_some(source_event_id)
+        }
         "cloud-group" | "cloud-group-agent" => source_event_id
             .strip_prefix(&format!("{source_transport}:"))
             .and_then(|value| value.split(':').next()),

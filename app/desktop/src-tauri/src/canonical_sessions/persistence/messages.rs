@@ -277,7 +277,8 @@ fn upsert_message_in_transaction(
     } else {
         chat_sync_sequence_num(conn, &request)?.unwrap_or(existing_message.sequence_num)
     };
-    let content_value = request.content;
+    let content_value =
+        preserve_desktop_entry_id(existing_message.content.as_ref(), request.content);
     let content = json_to_db(&content_value)?;
     let content_hash = hash_hex(
         &format!(
@@ -370,6 +371,34 @@ fn upsert_message_in_transaction(
     .map_err(|err| err.to_string())?;
 
     select_message(conn, &id)?.ok_or_else(|| "Unable to update canonical message".to_string())
+}
+
+/// A cloud replay can rewrite a row with cloud-only content. Keep the
+/// runtime entry alias a local turn stored on the row, so forking from that
+/// runtime entry still resolves to this canonical message. An incoming alias
+/// always wins.
+fn preserve_desktop_entry_id(
+    existing: Option<&serde_json::Value>,
+    mut incoming: Option<serde_json::Value>,
+) -> Option<serde_json::Value> {
+    fn entry_id(value: Option<&serde_json::Value>) -> Option<&str> {
+        value
+            .and_then(|value| value.get("desktopEntryId"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+    }
+    let Some(existing_entry_id) = entry_id(existing) else {
+        return incoming;
+    };
+    if entry_id(incoming.as_ref()).is_none() {
+        if let Some(object) = incoming.as_mut().and_then(serde_json::Value::as_object_mut) {
+            object.insert(
+                "desktopEntryId".to_string(),
+                serde_json::Value::String(existing_entry_id.to_string()),
+            );
+        }
+    }
+    incoming
 }
 
 pub(crate) fn select_message_by_source(

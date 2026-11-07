@@ -1,5 +1,8 @@
 use super::*;
 
+mod runtime_linkage;
+use runtime_linkage::{canonical_id_from_runtime_linkage, session_is_cloud_self_agent_in_db};
+
 pub(crate) fn is_placeholder_or_default_agent_session_title(title: &str) -> bool {
     let normalized = title.trim().to_lowercase();
     let placeholders = "new chat\nnew session\nuntitled session\nsession\nkordi\nmy kordi\nmy agent\nmy kordi session\nmy agent session";
@@ -157,6 +160,11 @@ pub(crate) fn resolve_desktop_entry_to_canonical_message_id(
             .map_err(|err| err.to_string())?;
     let local_entries = kordi_session::store::get_entries(&local_conn, session_id)
         .map_err(|err| err.to_string())?;
+    if let Some(message_id) =
+        canonical_id_from_runtime_linkage(conn, session_id, entry_id, &local_entries)?
+    {
+        return Ok(Some(message_id));
+    }
     let Some(entry_index) = local_entries
         .iter()
         .filter(|entry| entry.entry_type == "message")
@@ -187,6 +195,12 @@ pub(crate) fn canonical_session_message_id_for_entry(
 ) -> Result<Option<String>, String> {
     let conn = open_db()?;
     resolve_desktop_entry_to_canonical_message_id(&conn, session_id, entry_id)
+}
+
+/// Whether `session_id` is a Kordi Cloud self-agent chat in the canonical store.
+pub(crate) fn canonical_session_is_cloud_self_agent(session_id: &str) -> Result<bool, String> {
+    let conn = open_db()?;
+    session_is_cloud_self_agent_in_db(&conn, session_id)
 }
 
 pub(crate) fn canonical_fork_message_id(

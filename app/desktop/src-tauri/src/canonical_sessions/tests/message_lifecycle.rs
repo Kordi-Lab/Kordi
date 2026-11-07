@@ -158,3 +158,85 @@ fn persisted_terminal_agent_turn_rejects_unknown_status_replay() {
     assert_eq!(replayed.status, "complete");
     assert_eq!(replayed.content_text, "Finished answer");
 }
+
+fn self_agent_reply(session_id: &str, content: serde_json::Value) -> AppendCanonicalMessageRequest {
+    AppendCanonicalMessageRequest {
+        id: Some("msg:cloud:self:response:entry-request".to_string()),
+        session_id: session_id.to_string(),
+        sender_identity_id: "agent:cloud-self:account".to_string(),
+        sender_role: "owned-agent".to_string(),
+        message_kind: "text".to_string(),
+        content_text: "Here is the plan".to_string(),
+        content: Some(content),
+        parent_message_id: None,
+        delegated_exchange_id: None,
+        status: Some("sent".to_string()),
+        created_at_ms: Some(1_000),
+        source_transport: None,
+        source_event_id: None,
+    }
+}
+
+#[test]
+fn upsert_keeps_desktop_entry_alias_unless_the_update_sets_one() {
+    let conn = test_conn();
+    let session = open_group(&conn);
+    append_message_in_db(
+        &conn,
+        self_agent_reply(
+            &session.id,
+            serde_json::json!({
+                "cloudRequestMessageId": "entry-request",
+                "desktopEntryId": "entry-assistant",
+            }),
+        ),
+    )
+    .expect("append reply");
+
+    let cloud_only = self_agent_reply(
+        &session.id,
+        serde_json::json!({
+            "cloudRequestMessageId": "entry-request",
+            "deliveryState": "complete",
+        }),
+    );
+    let updated = upsert_message_in_db(&conn, cloud_only.clone()).expect("cloud update");
+    let expected_content = serde_json::json!({
+        "cloudRequestMessageId": "entry-request",
+        "deliveryState": "complete",
+        "desktopEntryId": "entry-assistant",
+    });
+    assert_eq!(updated.content, Some(expected_content.clone()));
+    let expected_hash = hash_hex(
+        &format!(
+            "{}|{}",
+            updated.content_text,
+            json_to_db(&Some(expected_content)).unwrap().unwrap()
+        ),
+        16,
+    );
+    assert_eq!(
+        updated.content_hash.as_deref(),
+        Some(expected_hash.as_str())
+    );
+
+    let replayed = upsert_message_in_db(&conn, cloud_only).expect("identical replay");
+    assert_eq!(replayed.updated_at_ms, updated.updated_at_ms);
+    assert_eq!(replayed.content, updated.content);
+
+    let relinked = upsert_message_in_db(
+        &conn,
+        self_agent_reply(
+            &session.id,
+            serde_json::json!({
+                "cloudRequestMessageId": "entry-request",
+                "desktopEntryId": "entry-newer",
+            }),
+        ),
+    )
+    .expect("relink update");
+    assert_eq!(
+        relinked.content.as_ref().unwrap()["desktopEntryId"],
+        "entry-newer"
+    );
+}
