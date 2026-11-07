@@ -98,7 +98,7 @@
   --app-update-action-bg: rgba(255, 255, 255, 0.1);
   --app-update-action-hover: rgba(255, 255, 255, 0.15);
   --app-update-action-text: rgba(255, 255, 255, 0.9);
-  --app-update-focus: rgba(147, 197, 253, 0.72);
+  --app-update-focus: var(--app-focus-border);
   background: var(--app-update-surface) !important;
   border: 1px solid var(--app-update-edge) !important;
   box-shadow: var(--app-update-shadow) !important;
@@ -118,7 +118,7 @@
   --app-update-action-bg: var(--app-transient-text);
   --app-update-action-hover: color-mix(in oklab, var(--app-transient-text) 88%, var(--app-transient-surface-fallback));
   --app-update-action-text: var(--app-transient-surface-fallback);
-  --app-update-focus: rgba(37, 99, 235, 0.62);
+  --app-update-focus: var(--app-focus-border);
 }
 
 .app-update-popover-title {
@@ -193,12 +193,6 @@
 
 .app-update-popover-action-primary:hover:not(:disabled) {
   background: var(--app-update-action-hover);
-}
-
-.app-update-popover-action:focus-visible,
-.app-update-popover-close:focus-visible {
-  outline: 2px solid var(--app-update-focus);
-  outline-offset: 2px;
 }
 
 .app-update-popover-close {

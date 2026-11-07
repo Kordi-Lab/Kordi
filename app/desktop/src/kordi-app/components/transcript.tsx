@@ -778,7 +778,7 @@ function MessageBubbleView({
             <button
               type="button"
               data-message-sender-profile="true"
-              className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--app-sidebar-accent)]"
+              className="shrink-0 rounded-full"
               aria-label={`Open ${avatarName} profile`}
               onClick={(event) => {
                 event.preventDefault();

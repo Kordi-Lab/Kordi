@@ -24,7 +24,7 @@
   --app-nav-rail-active-hover-bg: oklch(34% 0.048 252);
   --app-nav-rail-active-pressed-bg: oklch(28% 0.043 252);
   --app-nav-rail-active-text: oklch(94% 0.009 242);
-  --app-nav-rail-focus-ring: oklch(72% 0.12 242);
+  --app-nav-rail-focus-ring: var(--app-focus-border);
   --app-nav-rail-glass-bg: linear-gradient(180deg, rgb(24 24 24 / 0.76) 0%, rgb(24 24 24 / 0.76) 100%);
   --app-nav-rail-glass-fallback: linear-gradient(180deg, rgb(20 23 29 / 0.96) 0%, rgb(12 14 19 / 0.97) 100%);
   --app-nav-rail-glass-border: rgb(255 255 255 / 0.10);
@@ -90,7 +90,7 @@
   --app-quiet-control-hover-bg: rgba(255, 255, 255, 0.065);
   --app-quiet-control-pressed-bg: rgba(255, 255, 255, 0.1);
   --app-quiet-control-selected-bg: rgba(132, 122, 196, 0.13);
-  --app-quiet-control-focus-ring: oklch(72% 0.12 242);
+  --app-quiet-control-focus-ring: var(--app-focus-border);
   --app-quiet-control-disabled-text: rgba(255, 255, 255, 0.32);
   --app-quiet-control-duration: 150ms;
   --app-quiet-control-ease: cubic-bezier(0.25, 1, 0.5, 1);
@@ -138,9 +138,9 @@
   --app-cloud-login-border: rgba(255, 255, 255, 0.1);
   --app-cloud-login-inner-border: rgba(255, 255, 255, 0.08);
   --app-cloud-login-divider: rgba(255, 255, 255, 0.12);
-  --app-cloud-login-focus-border: oklch(0.72 0.16 211 / 0.78);
-  --app-cloud-login-focus-ring: oklch(0.72 0.16 211 / 0.22);
-  --app-cloud-login-focus-ring-visible: oklch(0.72 0.16 211 / 0.55);
+  --app-cloud-login-focus-border: var(--app-focus-border);
+  --app-cloud-login-focus-ring: var(--app-focus-border);
+  --app-cloud-login-focus-ring-visible: var(--app-focus-border);
   --app-cloud-login-hint-border: oklch(0.78 0.14 75 / 0.72);
   --app-cloud-login-hint-ring: oklch(0.78 0.14 75 / 0.18);
   --app-cloud-login-hint-text: oklch(0.78 0.11 75);
@@ -174,7 +174,7 @@
   --app-nav-rail-active-hover-bg: color-mix(in oklab, var(--app-sidebar-selected-bg) 86%, var(--app-sidebar-accent));
   --app-nav-rail-active-pressed-bg: color-mix(in oklab, var(--app-sidebar-selected-bg) 76%, var(--app-sidebar-accent));
   --app-nav-rail-active-text: var(--app-sidebar-title-text);
-  --app-nav-rail-focus-ring: oklch(58% 0.155 246);
+  --app-nav-rail-focus-ring: var(--app-focus-border);
   --app-nav-rail-glass-bg: linear-gradient(180deg, oklch(99% 0.002 248 / 0.34) 0%, oklch(96% 0.004 248 / 0.24) 100%);
   --app-nav-rail-glass-fallback: linear-gradient(180deg, oklch(96.5% 0.004 248 / 0.98) 0%, oklch(93.5% 0.005 248 / 0.98) 100%);
   --app-nav-rail-glass-border: rgb(15 23 42 / 0.12);
@@ -237,7 +237,7 @@
   --app-quiet-control-hover-bg: rgba(43, 35, 32, 0.07);
   --app-quiet-control-pressed-bg: rgba(43, 35, 32, 0.12);
   --app-quiet-control-selected-bg: rgba(43, 35, 32, 0.095);
-  --app-quiet-control-focus-ring: oklch(58% 0.155 246);
+  --app-quiet-control-focus-ring: var(--app-focus-border);
   --app-quiet-control-disabled-text: rgba(76, 70, 65, 0.42);
   --app-chip-active-bg: rgba(47, 41, 37, 0.88);
   --app-chip-active-border: rgba(47, 41, 37, 0.18);
@@ -283,9 +283,9 @@
   --app-cloud-login-border: rgba(37, 99, 235, 0.12);
   --app-cloud-login-inner-border: rgba(100, 116, 139, 0.18);
   --app-cloud-login-divider: rgba(100, 116, 139, 0.22);
-  --app-cloud-login-focus-border: rgba(37, 99, 235, 0.34);
-  --app-cloud-login-focus-ring: rgba(37, 99, 235, 0.12);
-  --app-cloud-login-focus-ring-visible: rgba(37, 99, 235, 0.32);
+  --app-cloud-login-focus-border: var(--app-focus-border);
+  --app-cloud-login-focus-ring: var(--app-focus-border);
+  --app-cloud-login-focus-ring-visible: var(--app-focus-border);
   --app-cloud-login-hint-border: rgba(14, 165, 233, 0.36);
   --app-cloud-login-hint-ring: rgba(14, 165, 233, 0.12);
   --app-cloud-login-hint-text: rgb(71 85 105);
@@ -315,7 +315,7 @@
   --app-transient-muted-text: rgb(160 167 179);
   --app-transient-subtle-text: rgb(116 124 138);
   --app-transient-icon-bg: rgb(255 255 255 / 0.055);
-  --app-transient-focus-ring: rgb(96 165 250 / 0.82);
+  --app-transient-focus-ring: var(--app-focus-border);
   --app-transient-overlay-bg: rgb(5 7 10 / 0.66);
   --app-transient-disabled-bg: rgb(255 255 255 / 0.035);
   --app-transient-disabled-text: rgb(116 124 138);
@@ -345,7 +345,7 @@
   --app-transient-muted-text: rgb(92 103 121);
   --app-transient-subtle-text: rgb(132 142 158);
   --app-transient-icon-bg: rgb(233 236 240 / 0.98);
-  --app-transient-focus-ring: rgb(37 99 235 / 0.72);
+  --app-transient-focus-ring: var(--app-focus-border);
   --app-transient-overlay-bg: rgb(15 23 42 / 0.34);
   --app-transient-disabled-bg: rgb(15 23 42 / 0.035);
   --app-transient-disabled-text: rgb(148 156 169);

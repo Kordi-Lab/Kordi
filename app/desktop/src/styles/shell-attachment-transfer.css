@@ -50,10 +50,6 @@ button[data-attachment-file-chip]:hover:not(:disabled) {
   border-color: color-mix(in oklab, currentColor 16%, transparent);
 }
 button[data-attachment-file-chip]:active:not(:disabled) { transform: scale(0.988); }
-button[data-attachment-file-chip]:focus-visible {
-  outline: 2px solid var(--app-chat-accent);
-  outline-offset: 2px;
-}
 
 [data-attachment-file-chip][data-file-family='pdf'] { --attachment-file: var(--attachment-file-pdf); }
 [data-attachment-file-chip][data-file-family='doc'] { --attachment-file: var(--attachment-file-doc); }
@@ -235,9 +231,4 @@ button[data-attachment-file-chip]:hover:not(:disabled) .app-attachment-file-acti
 
 .app-attachment-image-media-ring-cancel:hover {
   opacity: 0.78;
-}
-
-.app-attachment-image-media-ring-cancel:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 1px;
 }

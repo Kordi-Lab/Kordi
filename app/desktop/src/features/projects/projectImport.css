@@ -36,4 +36,3 @@
 .chat-project-import button:disabled { opacity: .45; cursor: default; }
 
 .chat-project-sources > button > svg { flex-shrink: 0; color: var(--app-transient-muted-text); }
-.chat-project-sources > button:focus-visible { outline: 2px solid var(--app-transient-text); outline-offset: 2px; }

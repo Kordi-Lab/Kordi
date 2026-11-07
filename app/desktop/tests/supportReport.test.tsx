@@ -503,7 +503,7 @@ test('the report review explains the privacy boundary before sending', () => {
   assert.match(source, /app-support-report-action/);
   assert.match(transientStyles, /\.app-transient-surface \.app-support-report-action\s*\{[^}]*font-size: 0\.625rem;/s);
   assert.match(source, /peer-checked:bg-\[color:var\(--app-sidebar-accent\)\]/);
-  assert.match(source, /peer-focus-visible:outline-\[color:var\(--app-transient-focus-ring\)\]/);
+  assert.match(source, /peer-focus-visible:border-\[color:var\(--app-focus-border\)\]/);
   assert.doesNotMatch(source, /accent-\[color:var/);
   assert.doesNotMatch(source, /app-transient-row flex cursor-pointer/);
 });

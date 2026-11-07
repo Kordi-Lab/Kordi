@@ -12,7 +12,6 @@
 .app-model-picker.app-dense-menu.app-model-picker-effort { display: block; width: 232px; padding: 8px; }
 .app-model-picker button:disabled { opacity: .5; cursor: not-allowed; }
 .app-model-picker button:hover:not(:disabled) { background: var(--app-transient-hover-bg); }
-.app-model-picker button:focus-visible, .app-model-picker input:focus-visible, .app-model-effort-pill > button:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
 .app-model-picker-heading strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; line-height: 24px; }
 .app-model-picker .app-model-picker-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 4px 8px; min-height: 28px; border-radius: 6px; text-align: left; font-size: 12px; font-weight: 400; line-height: 16px; }
 .app-model-picker-row small { display: block; font-size: 11px; line-height: 14px; color: var(--app-transient-muted-text); }

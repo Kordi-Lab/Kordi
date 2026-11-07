@@ -181,13 +181,16 @@ test('composer send area keeps the outer surface without an inner input pop or d
   assert.match(composerInputBlock, /background:\s*transparent/);
   assert.match(composerInputBlock, /box-shadow:\s*none/);
   assert.match(composerMetaBlock, /border-top:\s*0/);
-  assert.match(composerFocusBlock, /var\(--app-accent-ring\)/);
+  // Focus is a neutral border; the accent never rings the composer.
+  assert.match(composerFocusBlock, /border-color:\s*var\(--app-focus-border\)/);
+  assert.doesNotMatch(composerFocusBlock, /accent/);
   assert.doesNotMatch(shellCss, /\.app-composer-shell:focus-within \.app-composer-input/);
   assert.doesNotMatch(themeOverridesCss, /\.kordi-app\.theme-light \.app-composer-input \{[^}]*background:/);
   assert.match(lightComposerBlock, /background:\s*var\(--app-main-raised-bg\);/);
   assert.match(lightComposerBlock, /border-color:\s*rgba\(37, 99, 235, 0\.12\);/);
   assert.doesNotMatch(lightComposerBlock, /linear-gradient|rgba\(248, 251, 255|rgba\(241, 247, 255/);
-  assert.match(lightComposerFocusBlock, /border-color:\s*rgba\(37, 99, 235, 0\.22\);/);
+  assert.match(lightComposerFocusBlock, /border-color:\s*var\(--app-focus-border\);/);
+  assert.doesNotMatch(lightComposerFocusBlock, /rgba\(37, 99, 235/);
   assert.match(lightComposerFocusBlock, /background:\s*var\(--app-main-raised-bg\);/);
   assert.match(lightComposerFocusBlock, /box-shadow:/);
 });

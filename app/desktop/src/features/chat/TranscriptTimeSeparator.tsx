@@ -26,7 +26,7 @@ export function TranscriptTimeSeparator({ timestampMs, label, timeZone, dateOnly
     >
       <button
         type="button"
-        className="cursor-pointer rounded-md px-2 py-1 hover:bg-black/5 dark:hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
+        className="cursor-pointer rounded-md px-2 py-1 hover:bg-black/5 dark:hover:bg-white/5"
         aria-label={`${detailed ? 'Show compact time' : 'Show detailed date and time'}: ${visibleLabel}`}
         aria-pressed={detailed}
         onClick={() => setDetailed((current) => !current)}

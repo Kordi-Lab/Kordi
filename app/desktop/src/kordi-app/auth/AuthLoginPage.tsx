@@ -224,7 +224,7 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
                     href={signInUrl}
                     title={signInUrl}
                     onClick={(event) => { event.preventDefault(); openExternal(signInUrl); }}
-                    className={`${linkClass} block min-w-0 max-w-full truncate font-mono focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--app-sidebar-accent)]`}
+                    className={`${linkClass} block min-w-0 max-w-full truncate font-mono focus-visible:rounded-sm`}
                   >
                     {signInUrl}
                   </a>

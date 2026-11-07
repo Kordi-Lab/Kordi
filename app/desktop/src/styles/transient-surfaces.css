@@ -145,7 +145,7 @@
 .kordi-app .app-transient-surface .app-input-shell.app-flat-input:focus,
 .kordi-app .app-transient-surface .app-input-shell.app-flat-input:focus-visible,
 .kordi-app .app-transient-surface .app-input-shell.app-flat-input:focus-within {
-  border-color: color-mix(in oklab, var(--app-transient-focus-ring) 58%, var(--app-transient-border));
+  border-color: var(--app-focus-border);
   background: transparent;
   box-shadow: none;
   outline: none;
@@ -186,18 +186,6 @@
 
 .app-transient-surface .app-button-primary:hover {
   background: color-mix(in oklab, var(--app-transient-text) 88%, var(--app-transient-surface-fallback));
-}
-
-.app-transient-surface :where(button, a, input, textarea, select, [tabindex]):focus-visible {
-  outline: 2px solid var(--app-transient-focus-ring);
-  outline-offset: 2px;
-}
-
-/* The group invitation prompt focuses its primary action when it opens;
-   the ring appears only after the user presses Tab. */
-.app-group-invitation-dialog:focus-visible,
-.app-group-invitation-dialog:not([data-keyboard-nav]) :focus-visible {
-  outline: none;
 }
 
 .app-transient-surface :where(button, input, textarea, select):disabled,

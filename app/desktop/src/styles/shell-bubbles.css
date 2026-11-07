@@ -378,8 +378,6 @@ body[data-kordi-chat-theme="classic"] .kordi-app.theme-light .app-chat-bubble-pe
 }
 
 .app-attachment-image-delivery-retry:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 1px;
   border-radius: 0.2rem;
 }
 

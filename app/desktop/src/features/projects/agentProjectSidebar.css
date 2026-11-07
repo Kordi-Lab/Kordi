@@ -91,12 +91,6 @@ button[aria-expanded="true"] > .chat-project-collapse-indicator { transform: rot
 .chat-project-session-list .app-agent-session-row-saved { height: 50px; }
 .chat-project-session-list .app-agent-session-row-saved .app-agent-session-preview { display: flex; }
 .chat-project-session-list .app-session-fork-children { margin-left: 0; padding-left: 0; border-left: 0; }
-.chat-project-group:focus-visible, .chat-project-show-more:focus-visible,
-.chat-project-section-toggle:focus-visible, .chat-project-heading-actions button:focus-visible,
-.chat-project-new-session:focus-visible, .chat-sidebar-new-session:focus-visible {
-  outline: 2px solid var(--app-sidebar-title-text);
-  outline-offset: -2px;
-}
 
 @media (prefers-reduced-motion: reduce) {
   .chat-project-collapse-indicator { transition: none; }

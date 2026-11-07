@@ -97,12 +97,6 @@ html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app .app-chat-pane-hea
   border-bottom-color: var(--app-chat-pane-divider, var(--app-nav-rail-glass-border));
 }
 
-/* Keyboard focus is independent of the panel's structural edges. */
-html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app [data-virtual-transcript-scroll][data-transcript-keyboard-focus='true']:focus {
-  box-shadow: none;
-  outline: 1px solid color-mix(in oklab, var(--utility-muted-text) 24%, transparent);
-  outline-offset: -4px;
-}
 @media (forced-colors: active) {
   html:is(.kordi-native-shell, .kordi-browser-shell) .kordi-app [data-virtual-transcript-scroll][data-transcript-keyboard-focus='true']:focus {
     outline-color: Highlight;

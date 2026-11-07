@@ -248,7 +248,7 @@ test('participant-space row CSS separates the timestamp and actions while adding
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*min-height:\s*2\.875rem;[^}]*border:\s*0;[^}]*border-radius:\s*0;/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*width:\s*calc\(100% - 1rem\);[^}]*margin-left:\s*1rem;[^}]*border-left:\s*1px solid color-mix\(in oklab, var\(--app-divider\) 44%, transparent\);[^}]*padding-left:\s*0\.75rem;/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row:hover,\s*\.app-workspace-sidebar \.app-participant-space-session-row:focus-visible\s*{[^}]*background:\s*color-mix\(in oklab, var\(--app-sidebar-selected-bg\) 72%, transparent\)/s);
-  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row:focus-visible\s*{[^}]*outline:\s*2px solid var\(--app-nav-rail-focus-ring\);[^}]*outline-offset:\s*-2px;/s);
+  assert.doesNotMatch(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row:focus-visible\s*{[^}]*outline:\s*\d/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-preview\s*{[^}]*color:\s*var\(--app-sidebar-preview-text\)/s);
   assert.match(shellCss, /\.kordi-app \.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*border-left-color:\s*color-mix\(in oklab, var\(--app-divider\) 44%, transparent\);[^}]*background:\s*var\(--app-sidebar-selected-bg\);[^}]*box-shadow:\s*none;/s);
   assert.doesNotMatch(shellCss, /\.kordi-app \.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*0 8px 18px/s);

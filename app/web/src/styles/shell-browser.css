@@ -41,7 +41,6 @@ html.kordi-browser-shell .kordi-app.app-browser-viewport {
   z-index: 1;
   padding: 4px;
   background: var(--app-native-session-fallback);
-  outline: 2px solid var(--app-nav-rail-focus-ring);
 }
 
 .app-browser-skip-link:not(:focus) {

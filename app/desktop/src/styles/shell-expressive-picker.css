@@ -128,8 +128,7 @@
   contain-intrinsic-size: 2.5rem 2.5rem;
 }
 
-.app-blob-emoji-option:hover,
-.app-blob-emoji-option:focus-visible {
+.app-blob-emoji-option:hover {
   background: var(--app-control-hover);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--app-accent-ring) 44%, transparent);
 }
@@ -280,7 +279,7 @@
 }
 
 .app-expressive-picker-search:focus-within {
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--app-accent-ring) 62%, transparent);
+  box-shadow: inset 0 0 0 1px var(--app-focus-border);
   color: var(--utility-foreground);
 }
 
@@ -428,8 +427,7 @@
   color: var(--utility-muted-text);
 }
 
-.app-expressive-picker-media:hover,
-.app-expressive-picker-media:focus-visible {
+.app-expressive-picker-media:hover {
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--app-accent-ring) 68%, transparent);
 }
 

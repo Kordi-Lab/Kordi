@@ -148,8 +148,8 @@
 
 .app-agent-studio-rail-search:focus-within,
 .app-agent-studio-search:focus-within {
-  border-color: color-mix(in oklab, var(--agent-studio-accent) 62%, var(--app-control-border));
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--agent-studio-accent) 12%, transparent);
+  border-color: var(--app-focus-border);
+  box-shadow: none;
 }
 
 .app-agent-studio-agent-list {
@@ -191,15 +191,9 @@
   line-height: 1;
 }
 
-.app-agent-studio-skill-index button:hover:not(:disabled),
-.app-agent-studio-skill-index button:focus-visible {
+.app-agent-studio-skill-index button:hover:not(:disabled) {
   background: color-mix(in oklab, var(--agent-studio-accent) 10%, transparent);
   color: var(--agent-studio-accent);
-}
-
-.app-agent-studio-skill-index button:focus-visible {
-  outline: 1px solid color-mix(in oklab, var(--agent-studio-accent) 42%, transparent);
-  outline-offset: -1px;
 }
 
 .app-agent-studio-skill-index button:disabled {

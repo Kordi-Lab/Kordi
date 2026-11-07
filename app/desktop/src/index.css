@@ -91,3 +91,6 @@
 @import './styles/theme-palette.css';
 
 @import './styles/shell-compact.css';
+
+/* Last on purpose: the focus contract must win over every surface above. */
+@import './styles/focus.css';

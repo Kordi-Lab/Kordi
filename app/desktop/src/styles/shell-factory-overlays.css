@@ -83,8 +83,8 @@
 .app-agent-studio-field input:focus,
 .app-agent-studio-field select:focus,
 .app-agent-studio-field textarea:focus {
-  border-color: color-mix(in oklab, var(--agent-studio-accent) 56%, var(--app-control-border));
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--agent-studio-accent) 10%, transparent);
+  border-color: var(--app-focus-border);
+  box-shadow: none;
 }
 
 .app-agent-studio-field-help {
