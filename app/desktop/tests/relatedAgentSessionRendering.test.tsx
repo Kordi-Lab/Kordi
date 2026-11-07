@@ -48,14 +48,15 @@ test('renders a compact linked agent session beneath the normal parent response'
 
   assert.match(markup, /I started the deeper review in a background session\./);
   assert.match(markup, /data-related-agent-sessions="true"/);
-  assert.match(markup, /data-related-agent-session-style="thread-preview"/);
+  assert.match(markup, /data-related-agent-session-style="bracket"/);
   assert.match(markup, /data-related-agent-session-id="child-session"/);
   assert.match(markup, /Open background agent session: Review subagent orchestration/);
-  assert.match(markup, /min-h-10/);
-  assert.match(markup, />My Kordi</);
-  assert.match(markup, />Background session</);
   assert.match(markup, /data-related-agent-session-status="failed"/);
   assert.match(markup, />Failed</);
-  assert.doesNotMatch(markup, /min-h-11/);
+  assert.match(markup, /More actions for Review subagent orchestration/);
+  // One title line: no icon, agent name, subtitle or separate Open link.
+  assert.doesNotMatch(markup, /Background session</);
+  assert.doesNotMatch(markup, />Open</);
+  assert.doesNotMatch(markup, /lucide-bot/);
   assert.doesNotMatch(markup, /Open work thread/);
 });

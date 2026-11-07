@@ -337,7 +337,7 @@ export function AttachmentVideoCard({
             <button
               type="button"
               onClick={() => { void loadVideo(); }}
-              className="grid h-12 w-12 place-items-center rounded-full bg-black/55 text-white shadow-sm outline-none transition hover:bg-black/65 focus-visible:ring-2 focus-visible:ring-[color:var(--app-sidebar-accent)]"
+              className="grid h-12 w-12 place-items-center rounded-full bg-black/55 text-white shadow-sm outline-none transition hover:bg-black/65"
               aria-label={phase === 'error' ? `Retry loading ${attachment.name}` : `Play ${attachment.name}`}
             >
               {phase === 'error'
@@ -410,7 +410,7 @@ export function AttachmentVideoCard({
               type="button"
               data-attachment-video-window-trigger="true"
               onClick={openVideoWindow}
-              className={`absolute right-2 top-2 z-10 grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white shadow-sm outline-none transition hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-white/90 ${controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+              className={`absolute right-2 top-2 z-10 grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white shadow-sm outline-none transition hover:bg-black/70 ${controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
               aria-label={`Open ${displayAttachmentName(attachment.name, attachment.kind)} in a separate window`}
               title="Open in separate window"
             >
@@ -449,7 +449,7 @@ export function AttachmentVideoCard({
               <button
                 type="button"
                 onClick={() => { void loadVideo(); }}
-                className="relative grid h-14 w-14 place-items-center rounded-full bg-white/20 text-white outline-none transition hover:bg-white/30 active:scale-95 focus-visible:ring-2 focus-visible:ring-white/90 motion-reduce:active:scale-100"
+                className="relative grid h-14 w-14 place-items-center rounded-full bg-white/20 text-white outline-none transition hover:bg-white/30 active:scale-95 motion-reduce:active:scale-100"
                 aria-label={phase === 'error' ? `Retry loading ${attachment.name}` : `Play ${attachment.name}`}
               >
                 {phase === 'error'

@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use axum::extract::{ConnectInfo, Path, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use chrono::{DateTime, Utc};
@@ -21,7 +21,9 @@ use super::config::{
 use super::store::{apply_evidence, expire_due, VerifyOutcome};
 use super::view::{caller_state, is_due, AdmissionState, CallerFacts, JoinOptions};
 use super::{error, not_configured};
-use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, EMAIL_VERIFICATION_LIMIT};
+use crate::auth::rate_limit::{
+    rate_limited_response, CloudRateLimiter, RateLimitDecision, EMAIL_VERIFICATION_LIMIT,
+};
 use crate::auth::routes::CloudSession;
 use crate::auth::signup_email::{
     consume_organization_email_code, request_organization_email_code, SignupCodeError,
@@ -215,29 +217,16 @@ fn email_code_organization<'a>(
     Ok(org)
 }
 
-async fn charge(
-    limiter: &CloudRateLimiter,
-    session: &CloudSession,
-    headers: &HeaderMap,
-    connect_info: Option<&ConnectInfo<std::net::SocketAddr>>,
-) -> Result<(), ApiError> {
-    let ip = crate::client_ip::resolve_client_ip(headers, connect_info.map(|info| info.0.ip()));
-    let ip_decision = limiter.observe_ip(ip).await;
-    let account_decision = match ip_decision {
-        RateLimitDecision::Allowed => {
-            limiter
-                .observe_account_limit(EMAIL_VERIFICATION_LIMIT, &session.account_id)
-                .await
-        }
-        limited => limited,
-    };
-    match account_decision {
-        RateLimitDecision::Allowed => Ok(()),
-        RateLimitDecision::Limited { .. } => Err(error(
-            "rate_limited",
-            "Too many attempts. Try again shortly.",
-            StatusCode::TOO_MANY_REQUESTS,
-        )),
+/// Charges the account's email verification budget and returns the refusal
+/// when it is spent. Authenticated, so it counts per account and never per
+/// address.
+async fn charge(limiter: &CloudRateLimiter, session: &CloudSession) -> Option<Response> {
+    match limiter
+        .observe_account_limit(EMAIL_VERIFICATION_LIMIT, &session.account_id)
+        .await
+    {
+        RateLimitDecision::Allowed => None,
+        RateLimitDecision::Limited { retry_after } => Some(rate_limited_response(retry_after)),
     }
 }
 
@@ -277,8 +266,6 @@ pub(super) async fn send_email_code(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Extension(limiter): Extension<Arc<CloudRateLimiter>>,
-    connect_info: Option<ConnectInfo<std::net::SocketAddr>>,
-    headers: HeaderMap,
     Path(config_id): Path<String>,
     Json(req): Json<EmailCodeRequest>,
 ) -> Response {
@@ -300,13 +287,16 @@ pub(super) async fn send_email_code(
     let Some(service) = state.signup_email() else {
         return email_unavailable().into_response();
     };
-    if let Err(error) = charge(&limiter, &session, &headers, connect_info.as_ref()).await {
-        return error.into_response();
+    if let Some(response) = charge(&limiter, &session).await {
+        return response;
     }
     match request_organization_email_code(state.db_pool(), service, &session.account_id, &email)
         .await
     {
         Ok(challenge) => (StatusCode::OK, Json(challenge)).into_response(),
+        Err(SignupCodeError::Limited(seconds)) => {
+            rate_limited_response(std::time::Duration::from_secs(seconds))
+        }
         Err(code) => code_error(code).into_response(),
     }
 }
@@ -331,8 +321,6 @@ pub(super) async fn verify_email_code(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Extension(limiter): Extension<Arc<CloudRateLimiter>>,
-    connect_info: Option<ConnectInfo<std::net::SocketAddr>>,
-    headers: HeaderMap,
     Path(config_id): Path<String>,
     Json(req): Json<EmailCodeVerification>,
 ) -> Response {
@@ -343,8 +331,8 @@ pub(super) async fn verify_email_code(
     let Some(service) = state.signup_email() else {
         return email_unavailable().into_response();
     };
-    if let Err(error) = charge(&limiter, &session, &headers, connect_info.as_ref()).await {
-        return error.into_response();
+    if let Some(response) = charge(&limiter, &session).await {
+        return response;
     }
     let pool = state.db_pool();
     let email = match consume(pool, service, &session.account_id, &req).await {

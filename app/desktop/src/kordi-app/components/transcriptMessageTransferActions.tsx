@@ -32,7 +32,7 @@ function MessageDeliveryGlyph({ status }: { status?: string | null }) {
   const toneClass = visual?.tone === 'blue'
     ? 'text-sky-400'
     : visual?.tone === 'red'
-      ? 'text-rose-600'
+      ? 'text-[color:var(--app-error-text)]'
       : 'text-slate-400';
   const activeGlyph = visual?.glyph ?? 'none';
   const glyphClass = (glyph: NonNullable<ReturnType<typeof messageDeliveryVisual>>['glyph']) => cn(
@@ -117,7 +117,7 @@ export function TranscriptMessageTransferActions({
           data-message-retry-state={isRetrying ? 'retrying' : 'idle'}
           data-message-transfer-action-side="opposite-avatar"
           className={cn(
-            'app-message-transfer-action shrink-0 text-rose-600',
+            'app-message-transfer-action shrink-0 text-[color:var(--app-error-text)]',
             imageOnly
               ? 'h-8 w-auto self-center rounded-[10px] px-2.5 text-[11px] font-semibold'
               : 'mb-0.5 h-7 w-7 self-end rounded-full p-0',

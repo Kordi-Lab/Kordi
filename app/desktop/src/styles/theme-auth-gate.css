@@ -249,13 +249,6 @@ html.kordi-native-shell .app-cloud-workspace-surface {
   }
 }
 
-/* Error banner (per-form submission). */
-.app-cloud-login-error {
-  border-color: var(--app-cloud-login-danger-border);
-  background: var(--app-cloud-login-danger-bg);
-  color: var(--app-cloud-login-danger-text);
-}
-
 /* Primary submit button — inverted ink button that picks up the
  * shared --app-button-primary-* tokens that flip per theme. */
 .app-cloud-login-submit {
@@ -406,11 +399,6 @@ html.kordi-native-shell .app-cloud-workspace-surface {
 .app-cloud-starting-retry:hover {
   color: var(--utility-foreground);
   border-color: var(--utility-secondary-text);
-}
-
-.app-cloud-starting-retry:focus-visible {
-  outline: 2px solid var(--app-cloud-login-focus-border);
-  outline-offset: 3px;
 }
 
 @keyframes app-kordi-bird-flap {

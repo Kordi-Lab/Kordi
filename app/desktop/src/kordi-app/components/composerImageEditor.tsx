@@ -18,6 +18,7 @@ import {
   type ComposerImageCropRect,
 } from '@/features/chat/composerAttachments';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { readDesktopChatAttachment } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 import {
@@ -336,7 +337,7 @@ export function ComposerImageEditor({
 
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black/25 p-4">
           {error && !isReady ? (
-            <p className="max-w-sm text-center text-sm leading-6 text-rose-400" role="alert">{error}</p>
+            <ErrorLine align="center" className="mt-0 max-w-sm">{error}</ErrorLine>
           ) : null}
           {!error && !isReady ? (
             <p className="text-sm text-[color:var(--utility-muted-text)]" role="status">Opening image…</p>
@@ -419,7 +420,7 @@ export function ComposerImageEditor({
           </button>
         </footer>
         {error && isReady ? (
-          <p className="shrink-0 px-4 pb-3 text-center text-xs text-rose-400" role="alert">{error}</p>
+          <ErrorLine align="center" className="mt-0 shrink-0 px-4 pb-3">{error}</ErrorLine>
         ) : null}
       </div>
     </dialog>

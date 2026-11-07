@@ -66,22 +66,65 @@ function settingPath(agentId: string) {
   return `/v1/cloud/agents/${encodeURIComponent(agentId)}/personal-agent`;
 }
 
-function personalAgentSetting(body: unknown): { proactive: boolean } {
-  return { proactive: Boolean(body && typeof body === 'object' && (body as { proactive?: unknown }).proactive === true) };
+/** One connector the agent watches. */
+export type PersonalAgentSource = { connectorId: string; provider: string; status: string };
+
+/**
+ * One agent's Proactive setting as its owner sees it. `proactive` is the
+ * setting in effect, so it is false while `connected` is: the agent needs a
+ * live connector granted to it before it can be turned on.
+ */
+export type PersonalAgentStatus = {
+  proactive: boolean;
+  connected: boolean;
+  sources: PersonalAgentSource[];
+  /** When the agent last looked at new events, while it is on. */
+  checkedAt: string | null;
+  /** What it shared recently, newest first. */
+  recent: Array<{ at: string; text: string }>;
+};
+
+function list(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object') : [];
 }
 
-/** Whether the agent may reach out first in its personal session. Owner only. */
-export async function getPersonalAgentSetting(token: string, agentId: string): Promise<{ proactive: boolean }> {
-  return personalAgentSetting(await defaultCloudAuthClient().request<unknown>(
+export function normalizePersonalAgentStatus(body: unknown): PersonalAgentStatus {
+  const record = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+  const sources = list(record.sources).flatMap((source) => {
+    const connectorId = text(source.connectorId);
+    const provider = text(source.provider);
+    return connectorId && provider ? [{ connectorId, provider, status: text(source.status) }] : [];
+  });
+  // Older servers answer `{proactive}` only: a setting that is on had something to watch.
+  const connected = typeof record.connected === 'boolean' ? record.connected : record.proactive === true;
+  return {
+    proactive: record.proactive === true,
+    connected,
+    sources,
+    checkedAt: text(record.checkedAt) || null,
+    recent: list(record.recent).flatMap((entry) => {
+      const at = text(entry.at);
+      const message = text(entry.text);
+      return at && message ? [{ at, text: message }] : [];
+    }),
+  };
+}
+
+/** The agent's Proactive setting and what it watches. Owner only. */
+export async function getPersonalAgentSetting(token: string, agentId: string): Promise<PersonalAgentStatus> {
+  return normalizePersonalAgentStatus(await defaultCloudAuthClient().request<unknown>(
     settingPath(agentId),
     { method: 'GET', headers: { authorization: `Bearer ${token}` } },
     'Could not load the Proactive setting.',
   ));
 }
 
-/** Turns reaching out in the personal session on or off. Owner only. */
-export async function setPersonalAgentSetting(token: string, agentId: string, proactive: boolean): Promise<{ proactive: boolean }> {
-  return personalAgentSetting(await defaultCloudAuthClient().request<unknown>(
+/** The server refuses Proactive for an agent with no live connector granted to it. */
+export const PERSONAL_AGENT_NEEDS_CONNECTOR = 'personal_agent_needs_connector';
+
+/** Turns reaching out on or off. Owner only; turning it on needs a connector. */
+export async function setPersonalAgentSetting(token: string, agentId: string, proactive: boolean): Promise<PersonalAgentStatus> {
+  return normalizePersonalAgentStatus(await defaultCloudAuthClient().request<unknown>(
     settingPath(agentId),
     {
       method: 'PUT',

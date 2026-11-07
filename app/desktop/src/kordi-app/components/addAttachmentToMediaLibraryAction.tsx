@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ImagePlus, LoaderCircle } from 'lucide-react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
@@ -83,13 +84,13 @@ export function AddAttachmentToMediaLibraryAction({
         role="menuitem"
         onClick={() => void handleAddToLibrary(mediaKind)}
         disabled={isSaving}
-        className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left transition disabled:cursor-wait disabled:opacity-55"
+        className="app-dense-menu-row disabled:cursor-wait"
         aria-label={`${actionLabel}: ${attachment.name}`}
       >
         {isSaving ? <LoaderCircle className="app-transient-action-icon animate-spin" /> : <ImagePlus className="app-transient-action-icon" />}
         <span className="app-transient-action-label">{actionLabel}</span>
       </button>
-      {error ? <span className="app-error-text app-transient-status max-w-[190px] px-2.5 pb-1 text-rose-300">{error}</span> : null}
+      {error ? <ErrorLine className="mt-0 max-w-[190px] px-2.5 pb-1">{error}</ErrorLine> : null}
     </div>
   );
 }

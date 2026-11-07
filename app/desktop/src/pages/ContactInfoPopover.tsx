@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { isApprovedCollaborationContact } from '@/features/chat/chatCreateFlows';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import type { CloudPresenceAccount } from '@/features/cloud/presence';
@@ -420,13 +421,13 @@ export function ContactInfoPopover({
                 ? <ContactPermissionsCard accountId={accountId} initial={null} host={permissionsHost} />
                 : null}
               {requestState === 'error' || messageState === 'error' || copyState === 'error' ? (
-                <p role="alert" className="app-transient-status mt-2 px-1 text-rose-500">
+                <ErrorLine className="mt-2 px-1">
                   {requestState === 'error'
                     ? 'Could not send the contact request.'
                     : messageState === 'error'
                       ? 'Could not open the conversation.'
                       : 'Could not copy the Kordi ID.'}
-                </p>
+                </ErrorLine>
               ) : null}
             </div>
           </>

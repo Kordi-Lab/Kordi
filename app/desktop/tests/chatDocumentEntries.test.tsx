@@ -129,7 +129,7 @@ test('the entries are absent where an attachment cannot be sent', () => {
 
   const without = renderToStaticMarkup(artifactsPanel(hostWith()));
   assert.doesNotMatch(without, /New document|Add file|data-chat-document-entries/);
-  assert.match(without, /No generated code or docs in this chat yet\./);
+  assert.match(without, /data-chat-artifacts-empty=""[^]*>No artifacts yet</, 'the empty state stays, without the buttons');
   assert.doesNotMatch(renderToStaticMarkup(artifactsPanel(null)), /New document|Add file/, 'no reader host, as in the agent companion page');
 
   const artifacts: SessionArtifact[] = [{ id: 'notes/plan.md', path: 'notes/plan.md', name: 'plan.md', kind: 'document', category: 'artifact', summary: 'Created' }];

@@ -1,6 +1,7 @@
 import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChatProjects } from '@/features/projects/chatProjects';
 import { projectChatGroups } from '@/features/projects/projectChatGroups';
 import { ChevronRight, Folder, FolderOpen, FolderSearch, Plus } from 'lucide-react';
@@ -11,8 +12,9 @@ import { participantSpaceSessionPreferenceId } from '@/pages/workspaceSidebar.ch
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
 
 import { AgentSidebarRow } from '@/pages/workspaceSidebar.agentRows';
-import { PersonalAgentSidebarRow } from '@/features/personalAgent/PersonalAgentSidebarRow';
-import { personalAgentIdFromRowKey, personalAgentSidebarRows } from '@/features/personalAgent/personalAgentSidebarRows';
+import { PersonalAgentStatusEntry } from '@/features/personalAgent/PersonalAgentStatusEntry';
+import { closePersonalAgentPage, usePersonalAgentPageOpen } from '@/features/personalAgent/personalAgentPageState';
+import { emptyPersonalAgentSessionIds } from '@/features/personalAgent/personalAgentSidebarRows';
 import { usePersonalAgentEntries, usePersonalAgentListLoaded } from '@/features/personalAgent/personalAgentStore';
 import type { ContactSidebarRowActions } from '@/pages/workspaceSidebar.contactRows';
 import { ContactSidebarRow } from '@/pages/workspaceSidebar.contactRows';
@@ -60,24 +62,31 @@ export function WorkspaceChatLists({
   ), [model.agentSessionRowsById, model.pinnedSessionIds]);
   const personalAgents = usePersonalAgentEntries();
   const personalAgentsLoaded = usePersonalAgentListLoaded();
-  const personal = useMemo(() => (
-    model.showArchived ? undefined : {
-      ...personalAgentSidebarRows(personalAgents, model.allSidebarSessionRowsById, model.chatSearch, { markerFallback: !personalAgentsLoaded }),
-      // While searching, matching personal agents show even when the section is folded.
-      showWhileCollapsed: Boolean(model.chatSearch.trim()),
-    }
-  ), [model.allSidebarSessionRowsById, model.chatSearch, model.showArchived, personalAgents, personalAgentsLoaded]);
+  // A personal agent is the entry under New; its session joins the list once it has messages.
+  const personal = useMemo(() => (model.showArchived ? undefined : {
+    rows: [],
+    sessionIds: emptyPersonalAgentSessionIds(personalAgents, model.allSidebarSessionRowsById, { markerFallback: !personalAgentsLoaded }),
+  }), [model.allSidebarSessionRowsById, model.showArchived, personalAgents, personalAgentsLoaded]);
+  // The Personal agent page replaces the chat pane: no chat row is selected under it.
+  const personalPageOpen = usePersonalAgentPageOpen();
+  const selectedConvId = personalPageOpen ? '' : activeConvId;
+  const { onSelectChatSession } = contactActions;
+  const selectChat = useCallback((sessionId: string) => {
+    closePersonalAgentPage();
+    onSelectChatSession(sessionId);
+  }, [onSelectChatSession]);
   const grouped = useMemo(() => projectChatGroups(
     model.agentSidebarRows, model.showArchived ? [] : projects?.projects ?? [], collapsed,
     Boolean(projects?.enabled && !model.chatSearch && !model.showArchived),
     { pinnedSessionIds, expandedProjectIds, previewLimit: model.chatSearch ? Infinity : 5, personal },
   ), [model.agentSidebarRows, projects?.projects, projects?.enabled, collapsed, model.chatSearch, model.showArchived, pinnedSessionIds, expandedProjectIds, personal]);
+  // Rows render again only when they change, so opening or closing the page gives them new identities.
   const animatedRows = useMemo(() => grouped.rows.map((row) => {
     if (row.kind !== 'session') return row;
     const session = model.agentSessionRowsById.get(row.sessionId);
     return session?.space.kind === 'self' && !primaryAgentForConversation(session.session.conversation)
-      ? { ...row, estimatedHeight: 50 } : row;
-  }), [grouped.rows, model.agentSessionRowsById]);
+      ? { ...row, estimatedHeight: 50 } : personalPageOpen ? { ...row } : row;
+  }), [grouped.rows, model.agentSessionRowsById, personalPageOpen]);
   const toggle = (id: string) => setCollapsed((current) => {
     const next = new Set(current);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -171,11 +180,12 @@ export function WorkspaceChatLists({
           {newSessionShortcut ? <kbd aria-hidden="true">{usesMacShortcuts ? '⌘ N' : 'Ctrl N'}</kbd> : null}
         </button>
       </div> : null}
+      {!model.showArchived ? <PersonalAgentStatusEntry activeConvId={activeConvId} onSelectChatSession={selectChat} /> : null}
       <VirtualChatList
         groupChannels={Boolean(projects?.enabled)}
         compactChannels
         rows={animatedRows}
-        activeSessionId={model.activeSidebarRowSessionId}
+        activeSessionId={personalPageOpen ? null : model.activeSidebarRowSessionId}
         scrollClassName="app-workspace-session-scroll chat-project-session-list min-h-0 flex-1"
         dataMode="agent-sessions-flat"
         scrollOffsets={scrollOffsets}
@@ -185,7 +195,7 @@ export function WorkspaceChatLists({
             <ProjectSidebarHeading
               section={descriptor.spaceId.slice(8) as 'personal' | 'pinned' | 'projects' | 'recents'}
               first={grouped.rows[0]?.key === descriptor.key}
-              expanded={!collapsed.has(descriptor.spaceId) || (descriptor.spaceId === 'section:personal' && Boolean(personal?.showWhileCollapsed))}
+              expanded={!collapsed.has(descriptor.spaceId)}
               onToggle={() => toggle(descriptor.spaceId)}
               onCreateProject={projects?.enabled ? projects.openImporter : undefined}
             />
@@ -225,25 +235,16 @@ export function WorkspaceChatLists({
                   <FolderSearch size={15} aria-hidden="true" />
                 </button>
               ) : null}
-              {locateError?.id === descriptor.spaceId ? <p role="alert" className="chat-workspace-error chat-project-locate-error">{locateError.message}</p> : null}
+              {locateError?.id === descriptor.spaceId ? <ErrorLine className="chat-project-locate-error">{locateError.message}</ErrorLine> : null}
             </div>
           )
-        ) : personalAgentIdFromRowKey(descriptor.key) ? (
-          <PersonalAgentSidebarRow
-            entry={personal?.entriesByAgentId.get(personalAgentIdFromRowKey(descriptor.key) ?? '')}
-            row={descriptor.kind === 'session' ? model.allSidebarSessionRowsById.get(descriptor.sessionId) : undefined}
-            model={model}
-            activeConvId={activeConvId}
-            onSelectChatSession={contactActions.onSelectChatSession}
-            onOpenSessionContextMenu={contactActions.onOpenSessionContextMenu}
-          />
         ) : (
           <AgentSidebarRow
             descriptor={descriptor}
             projectGrouped={descriptor.key.startsWith('project:')}
             model={model}
-            activeConvId={activeConvId}
-            onSelectChatSession={contactActions.onSelectChatSession}
+            activeConvId={selectedConvId}
+            onSelectChatSession={selectChat}
             onOpenSessionContextMenu={contactActions.onOpenSessionContextMenu}
           />
         )}

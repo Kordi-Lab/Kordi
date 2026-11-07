@@ -351,7 +351,10 @@ async fn runner_lease_reports_missing_provider_auth_and_fail_marks_run_failed() 
     assert_eq!(envelope["kind"], "agent-response");
     assert_eq!(envelope["requestId"], "msg_runner_missing_provider");
     assert_eq!(envelope["deliveryState"], "failed");
-    assert_eq!(envelope["text"], "No provider configured yet.");
+    // The requester is not the owner: the reply shares only a neutral line,
+    // and the code lets the owner's devices show the reason.
+    assert_eq!(envelope["text"], "The agent couldn't reply.");
+    assert_eq!(envelope["failureCode"], "missing_provider_auth");
 }
 
 #[tokio::test]

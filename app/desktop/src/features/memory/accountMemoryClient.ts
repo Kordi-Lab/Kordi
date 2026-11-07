@@ -36,7 +36,7 @@ export type AccountMemoryAuthClient = Pick<CloudAuthClient, 'request' | 'me'>;
 export type AccountMemoryRoutes = Pick<
   CloudMemoryClient,
   'list' | 'create' | 'update' | 'remove' | 'forgetAll' | 'settings' | 'updateSettings'
-> & Partial<Pick<CloudMemoryClient, 'patch'>>;
+> & Partial<Pick<CloudMemoryClient, 'patch' | 'extractImport'>>;
 
 /** Memory commands of the desktop shell. They only exist in the native shell. */
 export type AccountMemoryDesktop = {
@@ -318,6 +318,12 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
       markSynced(stored);
       syncDesktop();
       return toLesson({ lessonId: memoryId, ...rest });
+    },
+    async extractImport(input) {
+      const stored = await requireSession();
+      const routes = memory();
+      if (!routes.extractImport) throw new Error('Memory import is unavailable.');
+      return routes.extractImport(stored.token, input);
     },
     async importLesson(save) {
       const stored = await requireSession();

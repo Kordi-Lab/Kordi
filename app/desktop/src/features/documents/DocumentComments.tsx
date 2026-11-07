@@ -1,6 +1,7 @@
 import { AtSign, Check, MoreHorizontal } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 
 import { agentRunLine, canDeleteAgentReply, isFailedRunNotice, mentionedAgentName, prefixMention, threadAgentName } from './documentAgentThreads';
@@ -220,21 +221,20 @@ function AgentRunStatus({ line, agentName, onRetry }: {
     );
   }
   return (
-    <div className="app-document-agent-failed" role="status">
+    <ErrorLine
+      className="app-document-agent-failed"
+      role="status"
+      action={onRetry ? {
+        label: 'Retry',
+        disabled: retrying,
+        onClick: () => {
+          setRetrying(true);
+          void onRetry().finally(() => setRetrying(false));
+        },
+      } : null}
+    >
       Could not answer
-      {onRetry ? (
-        <button
-          type="button"
-          disabled={retrying}
-          onClick={() => {
-            setRetrying(true);
-            void onRetry().finally(() => setRetrying(false));
-          }}
-        >
-          Retry
-        </button>
-      ) : null}
-    </div>
+    </ErrorLine>
   );
 }
 

@@ -1,6 +1,6 @@
 import { collaborationReplyIdentity } from './collaborationReplyIdentity';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { withLocalExecutionProgress } from '@/features/chat/localExecutionProgress';
+import { withLocalExecutionProgress } from '@/features/chat/localExecutionProgress'; import { cloudAgentViewerFailureText } from '@/features/cloud/cloudAgentFailureNotices';
 import { collaborationMessageActionSourceReference,collaborationMessageActionWithRealSourceLabel } from "./messageActionPresentation";
 import { getLocalAgentAvatar } from '@/features/canonical/localAgentAvatar'; import { withSystemNoticeIdentity } from '@/features/canonical/readModel/systemNotice';
 import { isProcessingPlaceholderText,stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
@@ -337,7 +337,7 @@ export function mapCollaborationConversationToViewModel(
           tools: localTurn?.tools ?? [],
           completed: responseCancelled || responseFailed || !isLiveAgentReply,
           succeeded: responseCancelled || responseFailed ? false : !isLiveAgentReply ? (localTurn?.succeeded ?? true) : false,
-          error: responseFailed ? (displayText || localTurn?.error || 'Message failed') : localTurn?.error ?? null,
+          error: responseFailed ? cloudAgentViewerFailureText({ error: localTurn?.error || displayText || 'Message failed', failureCode: message.failureCode, viewerOwnsAgent: isLocalAgentResponse || isSupportContact, agentName: responseSender }) : localTurn?.error ?? null,
           replyToMessageId,
           pendingCollaborationAgentRequest: isLiveAgentReply && requestId ? {
             conversationId: conversation.id,

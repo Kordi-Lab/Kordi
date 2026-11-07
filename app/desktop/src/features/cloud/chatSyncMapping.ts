@@ -14,14 +14,11 @@ import {
 import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from './cloudDirectMessages';
 import { parseCloudAgentResponse } from './cloudAgentMessages';
 import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
+import { decodeBase64UrlUtf8 } from './cloudBase64Url';
 
 function decodeBase64UrlJson<T>(value: string): T | null {
   try {
-    const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
-    const binary = atob(padded);
-    const bytes = Uint8Array.from(binary, (character: string) => character.charCodeAt(0));
-    return JSON.parse(new TextDecoder().decode(bytes)) as T;
+    return JSON.parse(decodeBase64UrlUtf8(value)) as T;
   } catch {
     return null;
   }

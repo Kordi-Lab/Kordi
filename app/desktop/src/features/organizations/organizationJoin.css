@@ -8,7 +8,7 @@
 .org-join-line { margin: 6px 0 0; font-size: 12px; line-height: 18px; color: var(--app-transient-muted-text); }
 
 .org-join-search { display: flex; align-items: center; gap: 6px; margin-top: 14px; padding: 8px 10px; border: 1px solid var(--app-transient-border); border-radius: 8px; color: var(--app-transient-muted-text); }
-.org-join-search:focus-within, .org-join-input:focus { border-color: color-mix(in oklab, var(--app-transient-focus-ring) 58%, var(--app-transient-border)); }
+.org-join-search:focus-within, .org-join-input:focus { border-color: var(--app-focus-border); }
 .org-join-search input { width: 100%; min-width: 0; border: 0; outline: none; background: transparent; font-size: 12px; color: var(--app-transient-text); }
 .org-join-search input::placeholder, .org-join-input::placeholder { color: var(--app-transient-subtle-text); }
 .org-join-search input:focus-visible, .org-join-input:focus-visible { outline: none; }
@@ -29,11 +29,9 @@
 .org-join-action-request { border-color: var(--app-transient-border); background: transparent; color: var(--app-transient-text); }
 .org-join-action-request:hover:not(:disabled) { background: var(--app-transient-hover-bg); }
 .org-join-action-done, .org-join-action-done:disabled { padding: 0 4px; background: transparent; color: var(--app-transient-subtle-text); opacity: 1; }
-.org-join-action:focus-visible { outline: 2px solid var(--app-transient-focus-ring); outline-offset: 2px; }
 
 /* Inline inputs under a row: an email code, or the required join-request fields. */
 .org-join-form { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin: 8px 0 0 42px; }
 .org-join-input { flex: 1 1 100%; min-width: 0; height: 28px; padding: 0 10px; border: 1px solid var(--app-transient-border); border-radius: 8px; outline: none; background: transparent; font-size: 12px; color: var(--app-transient-text); }
-.org-join-error { margin: 6px 0 0 42px; font-size: 11px; line-height: 16px; color: var(--app-danger-text, #e5484d); }
 
 .org-join-empty { margin: 10px 0 2px; font-size: 12px; line-height: 18px; color: var(--app-transient-muted-text); }

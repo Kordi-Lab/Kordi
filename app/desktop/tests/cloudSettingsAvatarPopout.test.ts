@@ -117,7 +117,8 @@ test('cloud authentication tab suppresses nested auth chrome and stays readable'
   assert.match(providerList, /app-auth-provider-index-row/);
   assert.match(providerList, /aria-label="Provider index"/);
   assert.doesNotMatch(providerList, /rounded-2xl border border-white\/\[0\.08\]/);
-  assert.match(providerList, /rounded-xl border-0 bg-white\/\[0\.045\]/);
+  // A transparent border lets the focused search field show the neutral focus border.
+  assert.match(providerList, /rounded-xl border border-transparent bg-white\/\[0\.045\]/);
   assert.doesNotMatch(providerList, /divide-y|border-b border-white/);
   assert.doesNotMatch(shellPages, /app-auth-provider-count\s*\{[^}]*(?:background|border)/s);
 });
@@ -165,7 +166,7 @@ test('profile rows use borderless accent values with per-row errors', () => {
   assert.doesNotMatch(panel, /Your name and avatar are shown to your contacts/);
   // Email ends the table: the Save row sits outside the divided section, after a 24px gap.
   assert.match(panel, /<\/SettingsSection>\s*\{\/\*[^*]*\*\/\}\s*<div className="app-cloud-profile-save pt-6">\s*<SettingsRow/);
-  assert.match(row, /app-error-text app-cloud-profile-row-error/);
+  assert.match(row, /<ErrorLine id=\{errorId\}[^>]*>\{error\}<\/ErrorLine>/);
   assert.match(profileCss, /\.app-cloud-profile-input\s*\{[^}]*border:\s*0;[^}]*color:\s*var\(--app-palette-accent\);/s);
   assert.match(profileCss, /\.app-cloud-profile-input\[aria-invalid='true'\]\s*\{[^}]*var\(--app-transient-danger-text\)/s);
   assert.match(profileCss, /\.app-cloud-profile-input:disabled,\s*\.app-cloud-account-profile input\.app-cloud-profile-input\[readonly\]\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*cursor:\s*default;/s);
@@ -197,13 +198,13 @@ test('account popover variants share compact responsive geometry and shell typog
   const profileControl = readSource('pages/workspaceSidebar.profile.tsx');
   const shellCss = readDesktopShellCss();
 
-  assert.equal((profileControl.match(/app-profile-popover app-account-popover/g) ?? []).length, 2);
+  // Both variants are Help-style dense menus: one surface, a header row, dense rows.
+  assert.equal((profileControl.match(/app-transient-surface app-dense-menu app-account-popover/g) ?? []).length, 2);
   assert.doesNotMatch(profileControl, /w-\[(?:22rem|21\.25rem)\]/);
-  assert.match(shellCss, /\.app-account-popover\s*\{[^}]*width:\s*min\(17\.75rem, calc\(100vw - 1rem\)\);[^}]*font-family:\s*inherit;/s);
-  assert.match(shellCss, /\.app-account-popover \.app-transient-identity-title\s*\{[^}]*font-size:\s*0\.8125rem;[^}]*line-height:\s*1\.125rem;/s);
-  assert.match(shellCss, /\.app-account-popover \.app-transient-action-row,[^}]*font-size:\s*0\.75rem;[^}]*line-height:\s*1rem;/s);
-  assert.match(shellCss, /\.app-account-popover \.app-transient-metadata\s*\{[^}]*font-size:\s*0\.6875rem;[^}]*line-height:\s*0\.9375rem;/s);
-  assert.match(profileControl, /grid-cols-\[0\.875rem_minmax\(0,1fr\)_1\.75rem\]/);
+  assert.match(shellCss, /\.app-account-popover\.app-dense-menu\s*\{[^}]*width:\s*min\(16\.25rem, calc\(100vw - 1rem\)\);[^}]*font-family:\s*inherit;/s);
+  assert.match(shellCss, /\.app-account-identity-name\s*\{[^}]*font-size:\s*13px;[^}]*font-weight:\s*600;/s);
+  assert.match(profileControl, /app-dense-menu-header app-account-identity/);
+  assert.match(profileControl, /className="app-dense-menu-row"/);
 });
 
 test('account popover stays within the compact window safe area', () => {
@@ -212,11 +213,12 @@ test('account popover stays within the compact window safe area', () => {
     viewportWidth: 1200,
     rootFontSize: 16,
   }), 62);
+  // The 260px menu fits a 300px window beside the rail by moving left, inside the safe inset.
   assert.equal(accountPopoverLeft({
     triggerRight: 54,
     viewportWidth: 300,
     rootFontSize: 16,
-  }), 8);
+  }), 32);
   assert.equal(accountPopoverLeft({
     triggerRight: 54,
     viewportWidth: 220,

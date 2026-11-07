@@ -45,12 +45,14 @@ export const helpTours: Record<HelpTourId, readonly HelpTourStep[]> = {
     { target: 'grounding-topics', groundingScreen: 'card', title: 'Review what your card says', body: 'Review the topics and their sources. Edit or hide anything you do not want on the card before sharing.' },
     { target: 'grounding-sharing', groundingScreen: 'card', title: 'Decide whether to share this card', body: 'Use Share my card to control sharing. Turn it on when you are ready to use this card in Grounding.' },
   ],
-  // Import reads agent files on this computer, so the browser app skips it.
+  // The Mac finds agent files on this computer; the browser app imports files the person chooses.
   imports: [
-    { target: 'settings-memory', settings: 'memory', desktopOnly: true, title: 'Bring your existing knowledge into Kordi', body: 'Open Memory in settings to import instructions and memories from your coding agents. Turn on Memory to show the Import section.' },
-    { target: 'memory-import-files', settings: 'memory', desktopOnly: true, title: 'Choose the files to import', body: 'Review the detected files or click Choose files to add your own. Select only the files you want Kordi to read.' },
-    { target: 'memory-import-run', settings: 'memory', desktopOnly: true, title: 'Import the selected files', body: 'Click Import when you are ready. Kordi extracts memories from the selected files; you can review and remove them in Memory.' },
-    { target: 'memory-review', settings: 'memory', desktopOnly: true, title: 'Review what was imported', body: 'Find the imported memories here. Search, edit, or remove anything you do not want Kordi to remember.' },
+    { target: 'settings-memory', settings: 'memory', title: 'Bring your existing knowledge into Kordi', body: 'Open Memory in settings to import instructions and memories from your coding agents. Turn on Memory to show the Import section.',
+      browserBody: 'Open Memory in settings to import instruction or memory files from your coding agents. Turn on Memory to show the Import section.' },
+    { target: 'memory-import-files', settings: 'memory', title: 'Choose the files to import', body: 'Review the detected files or click Choose files to add your own. Select only the files you want Kordi to read.',
+      browserBody: 'Click Choose files to add Markdown, text, or JSON files from your computer. Select only the files you want Kordi to read.' },
+    { target: 'memory-import-run', settings: 'memory', title: 'Import the selected files', body: 'Click Import when you are ready. Kordi extracts memories from the selected files; you can review and remove them in Memory.' },
+    { target: 'memory-review', settings: 'memory', title: 'Review what was imported', body: 'Find the imported memories here. Search, edit, or remove anything you do not want Kordi to remember.' },
   ],
 };
 

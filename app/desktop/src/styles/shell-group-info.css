@@ -1,0 +1,137 @@
+/* Group Info: the admin's inline rename and the Manage second level. */
+
+/* .app-button-quiet sets position: relative after the utility layer, which
+ * pulled the close button into the header flow above the avatar. */
+.app-group-management-header > .app-group-management-close {
+  position: absolute;
+}
+
+/* The title is the rename control. The pencil sits outside the centred name. */
+.app-group-name-button {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  margin-inline: auto;
+  padding: 0 4px;
+  border-radius: 7px;
+  color: var(--app-transient-text);
+  line-height: 20px;
+  text-align: center;
+  cursor: text;
+}
+
+.app-group-name-button:hover {
+  background: var(--app-transient-hover-bg);
+}
+
+.app-group-name-pencil {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 2px);
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--app-transient-subtle-text);
+  opacity: 0;
+  transform: translateY(-50%);
+}
+
+/* The pencil is a hover hint only; at rest the title stands alone. */
+.app-group-name-button:hover .app-group-name-pencil,
+.app-group-name-button:focus-visible .app-group-name-pencil {
+  opacity: 1;
+}
+
+/* A 26px input with -3px margins keeps the 20px title line, so nothing moves. */
+.app-group-name-form {
+  position: relative;
+  width: 15rem;
+  max-width: 100%;
+  margin: -3px auto;
+}
+
+.app-group-management-popover .app-group-name-input {
+  width: 100%;
+  height: 26px;
+  padding: 0 32px;
+  border: 1px solid color-mix(in oklab, var(--app-transient-border) 62%, var(--app-transient-muted-text));
+  border-radius: 9px;
+  background: var(--app-palette-composer-glass, var(--app-transient-raised-bg));
+  box-shadow: inset 0 1px 0 var(--app-palette-highlight, transparent);
+  color: var(--app-transient-text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  outline: none;
+}
+
+/* The input is the focus: no extra ring around the title line. */
+.app-group-management-popover .app-group-name-input:focus-visible {
+  outline: none;
+}
+
+.app-group-name-save {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--app-transient-text);
+  color: var(--app-transient-surface-fallback);
+}
+
+.app-group-name-save:disabled {
+  background: var(--app-transient-disabled-bg);
+  color: var(--app-transient-disabled-text);
+  cursor: default;
+}
+
+/* Manage: the same shape as the account menu's organization level. */
+.app-group-manage-page {
+  padding: 10px;
+}
+
+.app-group-manage-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1rem;
+}
+
+.app-group-manage-row {
+  min-height: 1.875rem;
+  padding-block: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1rem;
+}
+
+@keyframes app-group-management-level-forward {
+  from { opacity: 0; transform: translate3d(10px, 0, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes app-group-management-level-back {
+  from { opacity: 0; transform: translate3d(-10px, 0, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+.app-group-management-level[data-direction='forward'] {
+  animation: app-group-management-level-forward 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.app-group-management-level[data-direction='back'] {
+  animation: app-group-management-level-back 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-group-management-level {
+    animation: none !important;
+  }
+}

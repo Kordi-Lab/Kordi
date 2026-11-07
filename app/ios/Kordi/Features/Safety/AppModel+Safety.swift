@@ -141,6 +141,14 @@ extension AppModel {
         return fallback
     }
 
+    #if DEBUG
+    /// Preview data only: puts an account on the local block list.
+    func previewMarkBlocked(_ blocked: CloudBlockedAccount) {
+        guard isPreviewMode else { return }
+        rememberBlocked(blocked)
+    }
+    #endif
+
     private func setBlockedAccounts(_ accounts: [CloudBlockedAccount]) {
         guard let viewer = account?.accountId else { return }
         blockedAccountList = BlockedAccountList(viewerAccountId: viewer, accounts: accounts)

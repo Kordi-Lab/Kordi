@@ -211,18 +211,19 @@ async fn claim_run_with_executor(
             return Err(super::RunError::ContextUnavailable("Open Kordi on the project Mac to run this task. Project files are available only on that device."));
         }
     }
-    // Every claim path admits runs here; a restricted requester gets none,
-    // not even a run admitted before the restriction.
-    if !crate::contact_permissions::agent_allowed(
+    // Every claim path admits runs here; a restricted requester, or one the
+    // agent's Access leaves out, gets none, not even a run admitted before.
+    let agent_id = super::execution_agent_id(pool, input).await?;
+    if !crate::agent_access::agent_usable(
         pool,
         &input.owner_account_id,
         &input.requester_account_id,
+        &agent_id,
     )
     .await?
     {
         return Err(super::RunError::AgentUnavailable);
     }
-    let agent_id = super::execution_agent_id(pool, input).await?;
     if let Some(run_id) = existing_run_id(pool, input, &agent_id).await? {
         match desktop_executor {
             // The owner's Mac takes a run still waiting for the cloud runner.
@@ -274,13 +275,14 @@ async fn claim_run_with_executor(
     let lease_expires_at =
         desktop_executor.map(|_| (Utc::now() + chrono::Duration::seconds(45)).to_rfc3339());
     // The permission check and the insert hold the owner and requester's
-    // permission lock, so a restriction saved meanwhile either refuses this
-    // run or sees it and cancels it.
+    // permission lock and the owner's Access lock, so a restriction saved
+    // meanwhile either refuses this run or sees it and cancels it.
     let mut tx = pool.begin().await?;
-    if !crate::contact_permissions::lock_and_check_agent(
+    if !crate::agent_access::lock_and_check(
         &mut tx,
         &input.owner_account_id,
         &input.requester_account_id,
+        &agent_id,
     )
     .await?
     {

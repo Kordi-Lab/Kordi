@@ -259,7 +259,13 @@ pub(super) fn landing_content(view: &LandingView) -> (String, String) {
 
 pub(super) fn landing_document(view: &LandingView) -> String {
     let (title, content) = landing_content(view);
-    super::landing_page::page_shell(&title, &content)
+    // Only a signed-out visitor is offered the header's Log in and Sign up,
+    // and they return to this invitation.
+    let return_to = match view {
+        LandingView::SignedOut { token, .. } => Some(format!("/g/{token}")),
+        _ => None,
+    };
+    super::landing_page::page_shell(&title, &content, return_to.as_deref())
 }
 
 pub(super) fn landing_response(status: StatusCode, view: &LandingView) -> Response {
@@ -308,7 +314,10 @@ pub(crate) async fn group_invitation_landing(
     axum::extract::Path(token): axum::extract::Path<String>,
 ) -> Response {
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(&headers, connect_info.as_ref()))
+        .observe_address_limit(
+            INVITATION_VIEW_ADDRESS_LIMIT,
+            client_ip(&headers, connect_info.as_ref()),
+        )
         .await
     {
         return limited_response(retry_after);
@@ -399,7 +408,10 @@ pub(crate) async fn claim_group_invitation_from_page(
     axum::Form(form): axum::Form<ClaimForm>,
 ) -> Response {
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(&headers, connect_info.as_ref()))
+        .observe_address_limit(
+            INVITATION_PAGE_CLAIM_ADDRESS_LIMIT,
+            client_ip(&headers, connect_info.as_ref()),
+        )
         .await
     {
         return limited_response(retry_after);

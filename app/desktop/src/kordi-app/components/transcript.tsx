@@ -34,7 +34,7 @@ import { TranscriptCallActivityContent } from './transcriptCallActivityContent';
 import { StandaloneEmojiMessage } from './transcriptEmojiMessage';
 import { standaloneEmojiItemForMessage } from './transcriptEmojiMessageEligibility';
 import { LiveChatTurnCard,LiveChatTurnMessage } from './transcriptLiveTurns';
-import { AgentRequestHeaderStop,type StopActiveTurnHandler,type StopCollaborationAgentRequestHandler } from './transcriptTurnStopControls';
+import { type StopActiveTurnHandler,type StopCollaborationAgentRequestHandler } from './transcriptTurnStopControls';
 import type { MessageForkSummary } from './transcriptMessageForks';
 import { transcriptMessageIsOwnHuman,transcriptMessageIsPeerHuman } from './transcriptMessageHumanRole';
 import { TranscriptMessageSurface } from './transcriptMessageSurface';
@@ -325,21 +325,24 @@ function MessageBubbleView({
 
   // Fork is offered on assistant turns only. Reserve its header slot before the
   // canonical entry ID arrives so reconciliation cannot shift or remount it.
+  // A streaming reply has nothing settled to fork yet; a finished one shows
+  // Fork beside the name while the pointer is over the row.
   const isAssistantRoleForFork = msg.role === 'owned-agent' || msg.role === 'external-agent';
   const canRenderForkControl = Boolean(onForkMessage && isAssistantRoleForFork);
+  const canForkNow = Boolean(msg.entryId && !(msg.turn && !msg.turn.completed));
   const forkButton = canRenderForkControl ? (
     <button
       type="button"
-      className={cn('app-button-quiet app-message-fork-button inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md p-0', !msg.entryId && 'invisible pointer-events-none')}
-      disabled={!msg.entryId}
-      aria-hidden={!msg.entryId}
-      tabIndex={msg.entryId ? undefined : -1}
+      className={cn('app-button-quiet app-message-fork-button inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md p-0', !canForkNow && 'invisible pointer-events-none')}
+      disabled={!canForkNow}
+      aria-hidden={!canForkNow}
+      tabIndex={canForkNow ? undefined : -1}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (msg.entryId) onForkMessage?.(msg.entryId);
+        if (canForkNow && msg.entryId) onForkMessage?.(msg.entryId);
       }}
-      title="Fork from here — new session continues this thread"
+      title="Fork from here"
       aria-label="Fork this conversation from here"
     >
       <Split className="h-3.5 w-3.5" />
@@ -559,13 +562,6 @@ function MessageBubbleView({
             <div className="flex min-h-[18px] w-full items-center gap-1.5">
               {threadLayout ? <ThreadMessageHeader msg={msg} name={msg.sender || "Agent"} ownerName={agentOwnerName} /> : null}
               {!threadLayout ? <><div className="app-message-meta"><span className={groupChatAgentAvatar ? AGENT_GROUP_NAME_CLASS : undefined}>{msg.sender}</span></div><AgentOwnerTag name={agentOwnerName} /></> : null}
-              <AgentRequestHeaderStop
-                turn={msg.turn}
-                message={msg}
-                historical={msg.turn.completed}
-                onStopActiveTurn={onStopActiveTurn}
-                onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
-              />
               {forkButton}
               {forkChip}
             </div>
@@ -574,7 +570,7 @@ function MessageBubbleView({
               hideSourceQuote={threadLayout}
               historical={msg.turn.completed} showReasoning={msg.role === 'owned-agent'}
               plainAgentResponse={plainAgentResponse}
-              stopInHeader
+              stopMessage={msg}
               onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
               onStopActiveTurn={onStopActiveTurn}
               onNavigateToMessage={onNavigateToMessage}
@@ -782,7 +778,7 @@ function MessageBubbleView({
             <button
               type="button"
               data-message-sender-profile="true"
-              className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--app-sidebar-accent)]"
+              className="shrink-0 rounded-full"
               aria-label={`Open ${avatarName} profile`}
               onClick={(event) => {
                 event.preventDefault();

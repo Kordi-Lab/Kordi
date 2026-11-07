@@ -350,7 +350,13 @@ extension AppModel {
             remover: { [weak self] in
                 guard let self else { throw CancellationError() }
                 let (api, token, _) = try self.digestContext()
-                try await api.removeContact(token: token, accountId: accountId)
+                let removed = self.removeContactLocally(accountId: accountId)
+                do {
+                    try await api.removeContact(token: token, accountId: accountId)
+                } catch {
+                    if let removed { self.restoreContactLocally(removed) }
+                    throw error
+                }
                 await self.refreshWorkspace(showSyncActivity: false)
             }
         )

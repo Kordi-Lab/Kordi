@@ -25,7 +25,19 @@ export class ChatSyncClient {
     );
     this.conversations = new ChatSyncConversationClient(this.state);
     this.sync = new ChatSyncSyncClient(this.state);
-    this.state.bootstrap = (token) => this.sync.bootstrapChatSync(token);
+    // Several conversations missing at once (for example a batch of read
+    // receipts) share one bootstrap instead of downloading it per conversation.
+    let bootstrapInFlight: { token: string; promise: Promise<ChatSyncBootstrapResponse> } | null = null;
+    this.state.bootstrap = (token) => {
+      if (bootstrapInFlight?.token !== token) {
+        const promise = this.sync.bootstrapChatSync(token).finally(() => {
+          if (bootstrapInFlight?.promise === promise) bootstrapInFlight = null;
+        });
+        bootstrapInFlight = { token, promise };
+      }
+      // Callers may complete fields on their response; each receives its own copy.
+      return bootstrapInFlight.promise.then((response) => ({ ...response }));
+    };
     this.state.ensureConversation = (token, input) => (
       this.conversations.ensureChatConversation(token, input)
     );
@@ -59,6 +71,10 @@ export class ChatSyncClient {
 
   dissolveGroupChannel(token: string, groupSpaceId: string, channelSessionId: string): Promise<void> {
     return this.conversations.dissolveGroupChannel(token, groupSpaceId, channelSessionId);
+  }
+
+  leaveGroup(token: string, groupSpaceId: string): Promise<void> {
+    return this.conversations.leaveGroup(token, groupSpaceId);
   }
 
   drainOutbox(token: string, accountId: string): Promise<CloudMessage[]> {

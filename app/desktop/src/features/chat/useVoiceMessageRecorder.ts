@@ -2,6 +2,8 @@ import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { pendingVoiceTranscription } from './voiceTranscription';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import type { CallPermissionIssue } from '@/features/cloud/callMediaPermission';
+import { isNativeDesktopShell } from '@/lib/desktop';
 import {
   cancelDesktopVoiceRecording,
   sampleDesktopVoiceRecording,
@@ -26,6 +28,8 @@ export type VoiceMessageRecorderState = {
   trimStartMs: number;
   trimEndMs: number;
   error: string | null;
+  /** Set when recording could not start because microphone access is off. */
+  permissionIssue: CallPermissionIssue | null;
 };
 
 const IDLE_STATE: VoiceMessageRecorderState = {
@@ -36,7 +40,17 @@ const IDLE_STATE: VoiceMessageRecorderState = {
   trimStartMs: 0,
   trimEndMs: 0,
   error: null,
+  permissionIssue: null,
 };
+
+/**
+ * The Mac app and the browser both report a refused microphone with an
+ * "Allow … microphone" line; that refusal opens the permission dialog.
+ */
+export function voiceMicrophonePermissionIssue(message: string | null | undefined): CallPermissionIssue | null {
+  if (!message || !/Allow (Kordi.*microphone|microphone access)/i.test(message)) return null;
+  return { sources: ['microphone'], canOpenSettings: isNativeDesktopShell() };
+}
 
 export function downsampleVoiceWaveform(samples: readonly number[], count = 48) {
   if (samples.length === 0) return Array.from({ length: count }, () => 0.08);
@@ -189,12 +203,14 @@ export function useVoiceMessageRecorder() {
     } catch (error) {
       activeRef.current = false;
       stopSampling();
+      const message = error instanceof Error
+        ? error.message
+        : 'Allow Kordi to use the microphone and try again.';
       commit({
         ...IDLE_STATE,
         phase: 'error',
-        error: error instanceof Error
-          ? error.message
-          : 'Allow Kordi to use the microphone and try again.',
+        error: message,
+        permissionIssue: voiceMicrophonePermissionIssue(message),
       });
       return false;
     }

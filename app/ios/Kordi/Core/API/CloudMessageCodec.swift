@@ -26,6 +26,8 @@ enum CloudMessageCodec {
         let deliveryState: String?
         /// Older replies omit it; unknown values decode as no marker.
         let ending: String?
+        /// Why a failed reply failed; its text stays a neutral line every member reads.
+        let failureCode: String?
         let execution: AgentExecutionSnapshot?
         let executionClaimId: String?
         let backgroundSessions: [BackgroundAgentSession.Wire]?
@@ -195,6 +197,12 @@ enum CloudMessageCodec {
             return nil
         }
         return response.ending.flatMap(AgentReplyEnding.init(rawValue:))
+    }
+
+    /// The failure code of a failed reply, which only the agent's owner renders as a reason.
+    static func agentFailureCode(_ body: String) -> String? {
+        guard let response = parsedEnvelopes(body).response, response.deliveryState == "failed" else { return nil }
+        return response.failureCode
     }
 
     static func agentResponseRequestId(_ body: String) -> String? {
@@ -503,5 +511,82 @@ enum CloudAgentLifecycleProjector {
         let lhsDate = parseCloudDate(lhs.createdAt)
         let rhsDate = parseCloudDate(rhs.createdAt)
         return lhsDate < rhsDate || (lhsDate == rhsDate && lhs.messageId < rhs.messageId)
+    }
+}
+
+/// The failure line one viewer sees for a failed agent reply. Every member
+/// receives the same reply, so only the agent's owner reads why it failed,
+/// with a link to the provider settings under Authentication. "Sign in"
+/// always means Kordi, so a provider failure never says it.
+enum AgentFailurePresentation {
+    static let authenticationLink = "kordi://settings/authentication"
+
+    /// The neutral line other members see.
+    static func couldNotReply(_ agentName: String?) -> String {
+        guard let name = agentName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+            return "The agent couldn't reply."
+        }
+        return "\(name) couldn't reply."
+    }
+
+    static func text(stored: String, failureCode: String?, viewerOwnsAgent: Bool, agentName: String?) -> String {
+        let stored = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard viewerOwnsAgent else {
+            // Kordi Support's own line is already neutral.
+            return stored.hasPrefix("Kordi Support couldn") ? stored : couldNotReply(agentName)
+        }
+        let code = failureCode?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? legacyCode(stored)
+        let provider = providerName(stored) ?? "AI provider"
+        switch code {
+        case "provider_auth_rejected":
+            return "Your \(provider) connection expired. [Reconnect](\(authenticationLink))"
+        case "hosted_credentials_unavailable":
+            return "Your \(provider) connection is unavailable. [Reconnect](\(authenticationLink))"
+        case "missing_provider_auth":
+            return "No provider configured yet. [Connect](\(authenticationLink))"
+        case "model_unavailable":
+            return "This model is not available for the selected account."
+        case "model_provider_error":
+            return "The provider failed while Kordi was replying. Try again in a moment."
+        case "sandbox_error":
+            return "Kordi Cloud couldn't finish this reply in the sandbox. Try again."
+        default:
+            return stored.isEmpty ? couldNotReply(agentName) : stored
+        }
+    }
+
+    /// The category of a line older builds stored without a code.
+    private static func legacyCode(_ text: String) -> String? {
+        let normalized = text.lowercased()
+        if normalized == "sign in again to use this account."
+            || normalized.contains("oauth credentials are not usable")
+            || (normalized.hasPrefix("your ") && normalized.hasSuffix(" connection expired.")) {
+            return "provider_auth_rejected"
+        }
+        if normalized == "reconnect your account to run your agent." { return "hosted_credentials_unavailable" }
+        if normalized == "no provider configured yet." { return "missing_provider_auth" }
+        if normalized == "this model is not available for the selected account." { return "model_unavailable" }
+        return nil
+    }
+
+    private static func providerName(_ text: String) -> String? {
+        guard let range = text.range(of: " OAuth credentials are not usable") else { return nil }
+        let name = text[..<range.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty || name.count > 40 ? nil : name
+    }
+}
+
+extension CloudMessageCodec {
+    /// The text a viewer sees for a message body; a failed agent reply shows
+    /// its reason only to the agent's owner.
+    static func viewerText(_ body: String, viewerOwnsAgent: Bool, agentName: String?) -> String {
+        // A reply that ended early keeps its partial answer.
+        guard agentResponseDeliveryState(body) == .failed, agentReplyEnding(body) == nil else { return displayText(body) }
+        return AgentFailurePresentation.text(
+            stored: displayText(body),
+            failureCode: agentFailureCode(body),
+            viewerOwnsAgent: viewerOwnsAgent,
+            agentName: agentName
+        )
     }
 }

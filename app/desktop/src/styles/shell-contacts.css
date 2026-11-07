@@ -25,10 +25,6 @@
   color: var(--app-accent);
 }
 
-.app-contacts-error {
-  color: var(--app-transient-danger-text);
-}
-
 /* List column: in the sidebar session panel it inherits the panel's backdrop; on its own
  * (previews, tests) it draws the same divider the panel does. */
 .app-contacts-list-column {
@@ -42,21 +38,6 @@
 
 .app-contacts-page.is-narrow .app-contacts-list-column {
   border-right: 0;
-}
-
-.app-contact-request-select:focus-visible::after,
-.app-group-show-all:focus-visible,
-.app-contacts-icon-button:focus-visible,
-.app-contacts-tile:focus-visible,
-.app-contacts-card-action:focus-visible,
-.app-contacts-quiet-action:focus-visible,
-.app-contacts-danger-fill:focus-visible,
-.app-contacts-accept-pill:focus-visible,
-.app-contacts-group-row:focus-visible,
-:is(.app-contacts-page, .app-contacts-list-column) .app-contact-row:focus-visible,
-.app-contacts-danger-action:focus-visible {
-  outline: 2px solid var(--app-quiet-control-focus-ring);
-  outline-offset: -2px;
 }
 
 /* Add contact: the Kordi ID search sits in the list column like the contacts search,

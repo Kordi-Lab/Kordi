@@ -1,7 +1,7 @@
 import { useContext, useEffect, useRef, type DragEventHandler } from 'react';
 import {
-  ChevronDown,
-  ChevronLeft,
+  ArrowLeft,
+  ChevronRight,
   Ellipsis,
   SquarePen,
   X,
@@ -172,7 +172,7 @@ export function CompanionHeader({
           <div
             data-side-chat-options-menu="true"
             data-side-chat-root-menu="true"
-            className="app-transient-surface absolute right-8 top-full z-50 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-[18px] border p-1.5"
+            className="app-transient-surface app-dense-menu app-side-chat-menu absolute right-8 top-full z-50 mt-2"
           >
             {tabbed ? <div className="app-companion-menu-session">
               <h2>{conversation.name}</h2>
@@ -186,13 +186,13 @@ export function CompanionHeader({
               >
                 <button
                   type="button"
-                  className="app-transient-row app-transient-flat-action app-transient-action-row mb-1 flex w-full shrink-0 items-center gap-2 rounded-[12px] px-2 py-1.5 text-left transition"
+                  className="app-dense-menu-row shrink-0"
                   onClick={actions.onCloseSessionList}
                 >
-                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  <ArrowLeft aria-hidden="true" />
                   <span>Back</span>
                 </button>
-                <div className="mb-1 h-px shrink-0 bg-[color:var(--app-divider)]" aria-hidden="true" />
+                <div className="app-dense-menu-divider shrink-0" aria-hidden="true" />
                 <div className="app-transient-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5">
                   {sessionOptions.map((option) => {
                     const candidate = option.conversation;
@@ -223,13 +223,12 @@ export function CompanionHeader({
                           data-side-chat-current-session={isCurrent ? 'true' : undefined}
                           data-side-chat-open-in-main={option.openInMain ? 'true' : undefined}
                           className={cn(
-                            'app-transient-row app-transient-action-row flex w-full items-center justify-between gap-2 rounded-[12px] px-2.5 py-1.5 text-left transition',
-                            isCurrent && 'app-transient-row-selected',
-                            !isCurrent && 'app-transient-flat-action',
+                            'app-dense-menu-row',
+                            isCurrent && 'app-side-chat-menu-current',
                             option.openInMain && 'cursor-default opacity-60',
                           )}
                           style={isFork ? {
-                            paddingInlineStart: `${0.625 + visualDepth * 0.875}rem`,
+                            paddingInlineStart: `${0.5 + visualDepth * 0.875}rem`,
                           } : undefined}
                           title={`${rowTitle} — ${stateLabel}`}
                           onClick={() => {
@@ -239,11 +238,9 @@ export function CompanionHeader({
                         >
                           <span className="min-w-0 flex-1 truncate">{rowTitle}</span>
                           {option.openInMain ? (
-                            <span className="shrink-0 text-[10px] font-medium text-[color:var(--app-transient-subtle-text)]">
-                              Main
-                            </span>
+                            <span className="app-dense-menu-meta">Main</span>
                           ) : isCurrent ? (
-                            <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium text-[color:var(--app-transient-subtle-text)]">
+                            <span className="app-dense-menu-meta inline-flex items-center gap-1">
                               <span className="h-1.5 w-1.5 rounded-full bg-pink-300" aria-hidden="true" />
                               Current
                             </span>
@@ -255,11 +252,11 @@ export function CompanionHeader({
                 </div>
               </div>
             ) : (
-              <div className="space-y-1">
+              <div className="app-dense-menu-items">
                 {menu.canCreateSession ? (
                   <button
                     type="button"
-                    className="app-transient-row flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition"
+                    className="app-dense-menu-row"
                     title="New chat"
                     aria-label="New chat"
                     onClick={() => {
@@ -267,17 +264,17 @@ export function CompanionHeader({
                       actions.onCreateSession();
                     }}
                   >
-                    <SquarePen className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <SquarePen aria-hidden="true" />
                     <span className="truncate">New chat</span>
                   </button>
                 ) : null}
                 <button
                   type="button"
-                  className="app-transient-row flex w-full items-center justify-between gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition"
+                  className="app-dense-menu-row"
                   onClick={actions.onOpenSessionList}
                 >
                   <span>Switch Chat</span>
-                  <ChevronDown className="h-4 w-4 -rotate-90" aria-hidden="true" />
+                  <ChevronRight aria-hidden="true" />
                 </button>
               </div>
             )}

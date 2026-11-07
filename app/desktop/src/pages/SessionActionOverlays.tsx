@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Archive, ArchiveRestore, Bell, BellOff, CheckCircle2, CircleOff, LoaderCircle, Mail, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import {
   AppDialog,
   AppDialogActions,
@@ -75,7 +76,7 @@ export function SessionContextMenu({
   return (
     <div className="fixed inset-0 z-50" onMouseDown={onClose}>
       <div
-        className="app-transient-surface app-modal-panel absolute w-[220px] rounded-[18px] border p-1.5"
+        className="app-transient-surface app-dense-menu app-context-menu absolute"
         style={{
           left: Math.max(12, Math.min(target.x, window.innerWidth - 232)),
           top: Math.max(12, Math.min(target.y, window.innerHeight - 300)),
@@ -85,7 +86,7 @@ export function SessionContextMenu({
         {target.canRename !== false ? (
           <button
             type="button"
-            className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+            className="app-dense-menu-row"
             onClick={() => {
               onClose();
               onRename({
@@ -95,7 +96,7 @@ export function SessionContextMenu({
               });
             }}
           >
-            <Pencil className="app-transient-action-icon" aria-hidden="true" />
+            <Pencil aria-hidden="true" />
             Rename
           </button>
         ) : null}
@@ -104,41 +105,41 @@ export function SessionContextMenu({
           <button
             type="button"
             data-session-context-action="pin"
-            className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+            className="app-dense-menu-row"
             onClick={() => run(() => onSetPinned(target.sessionId, !target.pinned))}
           >
             {target.pinned
-              ? <PinOff className="app-transient-action-icon" aria-hidden="true" />
-              : <Pin className="app-transient-action-icon" aria-hidden="true" />}
+              ? <PinOff aria-hidden="true" />
+              : <Pin aria-hidden="true" />}
             {target.pinned ? 'Unpin' : 'Pin'}
           </button>
         ) : null}
         <button
           type="button"
           data-session-context-action={target.unread ? 'read' : 'unread'}
-          className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+          className="app-dense-menu-row"
           onClick={() => run(() => onSetUnread(target.sessionId, !target.unread))}
         >
           {target.unread
-            ? <CheckCircle2 className="app-transient-action-icon" aria-hidden="true" />
-            : <Mail className="app-transient-action-icon" aria-hidden="true" />}
+            ? <CheckCircle2 aria-hidden="true" />
+            : <Mail aria-hidden="true" />}
           {target.unread ? 'Mark as read' : 'Mark as unread'}
         </button>
         <button
           type="button"
           data-session-context-action="mute"
-          className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+          className="app-dense-menu-row"
           onClick={() => run(() => onSetMuted(target.sessionId, !target.muted))}
         >
           {target.muted
-            ? <Bell className="app-transient-action-icon" aria-hidden="true" />
-            : <BellOff className="app-transient-action-icon" aria-hidden="true" />}
+            ? <Bell aria-hidden="true" />
+            : <BellOff aria-hidden="true" />}
           {target.muted ? 'Unmute' : 'Mute notifications'}
         </button>
         <button
           type="button"
           data-session-context-action={target.archived ? 'restore' : 'archive'}
-          className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+          className="app-dense-menu-row"
           onClick={() => run(() => (
             target.archived
               ? onRestore(target.sessionId)
@@ -146,13 +147,14 @@ export function SessionContextMenu({
           ))}
         >
           {target.archived
-            ? <ArchiveRestore className="app-transient-action-icon" aria-hidden="true" />
-            : <Archive className="app-transient-action-icon" aria-hidden="true" />}
+            ? <ArchiveRestore aria-hidden="true" />
+            : <Archive aria-hidden="true" />}
           {target.archived ? 'Restore' : 'Archive'}
         </button>
+        <div className="app-dense-menu-divider" />
         <button
           type="button"
-          className="app-transient-row app-transient-row-danger app-transient-action-row mt-1 flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+          className="app-dense-menu-row app-dense-menu-danger"
           onClick={() => {
             onClose();
             onDelete({
@@ -162,14 +164,14 @@ export function SessionContextMenu({
             });
           }}
         >
-          <Trash2 className="app-transient-action-icon" aria-hidden="true" />
+          <Trash2 aria-hidden="true" />
           Delete chat
         </button>
         {target.dissolvableChannel && onDissolveChannel ? (
           <button
             type="button"
             data-session-context-action="dissolve-channel"
-            className="app-transient-row app-transient-row-danger app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+            className="app-dense-menu-row app-dense-menu-danger"
             onClick={() => {
               onClose();
               onDissolveChannel({
@@ -180,7 +182,7 @@ export function SessionContextMenu({
               });
             }}
           >
-            <CircleOff className="app-transient-action-icon" aria-hidden="true" />
+            <CircleOff aria-hidden="true" />
             Dissolve channel
           </button>
         ) : null}
@@ -213,7 +215,7 @@ export function GroupContextMenu({
   return (
     <div className="fixed inset-0 z-50" onMouseDown={onClose}>
       <div
-        className="app-transient-surface app-modal-panel absolute w-[220px] rounded-[18px] border p-1.5"
+        className="app-transient-surface app-dense-menu app-context-menu absolute"
         style={{
           left: Math.max(12, Math.min(target.x, window.innerWidth - 232)),
           top: Math.max(12, Math.min(target.y, window.innerHeight - 260)),
@@ -225,28 +227,28 @@ export function GroupContextMenu({
           <button
             type="button"
             data-group-context-action="pin"
-            className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+            className="app-dense-menu-row"
             onClick={() => run(() => onSetPinned(target.groupSpaceId, !target.pinned))}
           >
             {target.pinned
-              ? <PinOff className="app-transient-action-icon" aria-hidden="true" />
-              : <Pin className="app-transient-action-icon" aria-hidden="true" />}
+              ? <PinOff aria-hidden="true" />
+              : <Pin aria-hidden="true" />}
             {target.pinned ? 'Unpin group' : 'Pin group'}
           </button>
         ) : null}
         <button
           type="button"
           data-group-context-action="read"
-          className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+          className="app-dense-menu-row"
           onClick={() => run(() => onMarkRead(target.sessionIds))}
         >
-          <CheckCircle2 className="app-transient-action-icon" aria-hidden="true" />
+          <CheckCircle2 aria-hidden="true" />
           Mark group as read
         </button>
         <button
           type="button"
           data-group-context-action="mute"
-          className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+          className="app-dense-menu-row"
           onClick={() => run(() => onSetMuted(
             target.groupSpaceId,
             target.sessionIds,
@@ -254,14 +256,14 @@ export function GroupContextMenu({
           ))}
         >
           {target.muted
-            ? <Bell className="app-transient-action-icon" aria-hidden="true" />
-            : <BellOff className="app-transient-action-icon" aria-hidden="true" />}
+            ? <Bell aria-hidden="true" />
+            : <BellOff aria-hidden="true" />}
           {target.muted ? 'Unmute group' : 'Mute group'}
         </button>
         <button
           type="button"
           data-group-context-action={target.archived ? 'restore' : 'archive'}
-          className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+          className="app-dense-menu-row"
           onClick={() => run(() => (
             target.archived
               ? onRestore(target.groupSpaceId, target.sessionIds)
@@ -269,8 +271,8 @@ export function GroupContextMenu({
           ))}
         >
           {target.archived
-            ? <ArchiveRestore className="app-transient-action-icon" aria-hidden="true" />
-            : <Archive className="app-transient-action-icon" aria-hidden="true" />}
+            ? <ArchiveRestore aria-hidden="true" />
+            : <Archive aria-hidden="true" />}
           {target.archived ? 'Restore group' : 'Archive group'}
         </button>
       </div>
@@ -372,9 +374,7 @@ export function DeleteSessionDialog({ target, onCancel, onConfirm }: DeleteSessi
         This does not delete it for other participants. It will return only when a new visible message arrives.
       </p>
       {error ? (
-        <div className="app-error-text mt-2 text-[11px] leading-4 text-rose-500" role="alert">
-          {error}
-        </div>
+        <ErrorLine className="mt-2">{error}</ErrorLine>
       ) : null}
       <AppDialogActions className="mt-3 gap-2">
         <Button variant="quiet" size="sm" className="rounded-[12px] px-3" autoFocus disabled={isDeleting} onClick={cancel}>Cancel</Button>

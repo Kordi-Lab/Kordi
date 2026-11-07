@@ -75,21 +75,16 @@ export function latestAgentRequestStopTarget(
  * The composer's stop for a chat: the newest running request the viewer sent,
  * or the chat's own running turn. Null when nothing the viewer sent is running.
  */
-export function composerAgentRequestStop({
-  messages,
-  liveTurn,
-  liveTurnIsRunning = false,
-  onStopActiveTurn,
-  onStopCollaborationAgentRequest,
-}: {
-  messages: readonly Message[];
-  liveTurn?: DesktopChatTurnSnapshot | null;
-  liveTurnIsRunning?: boolean;
+type AgentRequestStopHandlers = {
   onStopActiveTurn?: AgentRequestStopHandler;
   onStopCollaborationAgentRequest?: (request: CollaborationAgentRequestControl) => Promise<void> | void;
-}): { requestKey: string; onStop: AgentRequestStopHandler } | null {
-  const target = latestAgentRequestStopTarget(messages, liveTurn)
-    ?? (liveTurnIsRunning ? { kind: 'turn' as const, turnId: 'active-live-turn' } : null);
+};
+export type AgentRequestStopAction = { requestKey: string; onStop: AgentRequestStopHandler };
+
+function stopActionForTarget(
+  target: AgentRequestStopTarget | null,
+  { onStopActiveTurn, onStopCollaborationAgentRequest }: AgentRequestStopHandlers,
+): AgentRequestStopAction | null {
   if (target?.kind === 'collaboration' && onStopCollaborationAgentRequest) {
     const { request } = target;
     return { requestKey: target.turnId, onStop: () => onStopCollaborationAgentRequest(request) };
@@ -98,4 +93,33 @@ export function composerAgentRequestStop({
     return { requestKey: target.turnId, onStop: onStopActiveTurn };
   }
   return null;
+}
+
+export function composerAgentRequestStop({
+  messages,
+  liveTurn,
+  liveTurnIsRunning = false,
+  ...handlers
+}: {
+  messages: readonly Message[];
+  liveTurn?: DesktopChatTurnSnapshot | null;
+  liveTurnIsRunning?: boolean;
+} & AgentRequestStopHandlers): AgentRequestStopAction | null {
+  const target = latestAgentRequestStopTarget(messages, liveTurn)
+    ?? (liveTurnIsRunning ? { kind: 'turn' as const, turnId: 'active-live-turn' } : null);
+  return stopActionForTarget(target, handlers);
+}
+
+/** The Stop on one running reply's status line, or null when the viewer may not stop it. */
+export function replyAgentRequestStop({
+  turn,
+  message,
+  historical = false,
+  ...handlers
+}: {
+  turn: DesktopChatTurnSnapshot | null | undefined;
+  message?: Pick<Message, 'role' | 'senderOwnerName'>;
+  historical?: boolean;
+} & AgentRequestStopHandlers): AgentRequestStopAction | null {
+  return stopActionForTarget(historical ? null : agentRequestStopTarget(turn, message), handlers);
 }

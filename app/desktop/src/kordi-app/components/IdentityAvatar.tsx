@@ -196,7 +196,7 @@ export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, ava
     || (normalizedPresenceStatus ? `${name?.trim() || fallbackLabel} is ${normalizedPresenceStatus}` : null);
 
   return (
-    <span className={cn('relative inline-flex shrink-0 rounded-[17%]', className)} style={{ borderRadius: cornerRadius }}>
+    <span className={cn('relative inline-flex shrink-0 rounded-[17%]', className)} style={{ borderRadius: cornerRadius }} data-identity-avatar="">
       <Avatar
         className="h-full w-full rounded-[17%] bg-transparent"
         style={{ borderRadius: cornerRadius }}

@@ -10,8 +10,9 @@ use crate::cloud_agent_runtime::sync_events::{
 };
 
 use super::envelopes::{
-    cloud_group_request_envelope_for_run, cloud_group_response_body,
-    latest_cloud_group_envelope_for_session, CloudGroupEnvelope,
+    cloud_agent_shared_failure_text, cloud_group_request_envelope_for_run,
+    cloud_group_response_body, latest_cloud_group_envelope_for_session, with_failure_code,
+    CloudGroupEnvelope,
 };
 use super::RunResult;
 
@@ -57,6 +58,9 @@ pub(super) struct GroupResponse<'a> {
     pub(super) request_message_id: &'a str,
     pub(super) response_text: &'a str,
     pub(super) delivery_state: &'a str,
+    /// A failed reply's category. Every member reads the group reply, so its
+    /// text becomes the neutral line and only the code carries the reason.
+    pub(super) failure_code: Option<&'a str>,
 }
 
 pub(super) async fn ensure_group_response_messages(
@@ -124,15 +128,29 @@ pub(super) async fn ensure_group_response_messages(
         .unwrap_or_else(Utc::now);
     let now_string = now.to_rfc3339();
     let now_ms = now.timestamp_millis();
+    let shared_failure_text = response.failure_code.map(|_| {
+        cloud_agent_shared_failure_text(
+            request_envelope
+                .message
+                .as_ref()
+                .and_then(|message| message.target_cloud_agent_name.as_deref()),
+        )
+    });
     let response_body = cloud_group_response_body(
         &request_envelope,
         response.owner_account_id,
         response.request_message_id,
         &response_group_message_id,
-        response.response_text,
+        shared_failure_text
+            .as_deref()
+            .unwrap_or(response.response_text),
         response.delivery_state,
         now_ms,
     );
+    let response_body = match response.failure_code {
+        Some(code) => with_failure_code(&response_body, code),
+        None => response_body,
+    };
     // A completed reply carries the documents the run created (issue 1808).
     let documents = if response.delivery_state == "complete" {
         let mut conn = pool.acquire().await?;

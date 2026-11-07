@@ -12,7 +12,7 @@ document.body.dataset.kordiChatTheme = 'quiet';
 const waveform = Array.from({ length: 48 }, (_, i) => 0.12 + Math.abs(Math.sin(i * 0.71) * Math.cos(i * 0.23)) * 0.8);
 const initial: VoiceMessageRecorderState = {
   phase: 'review', durationMs: 8000,
-  waveformSamples: waveform, trimStartMs: 0, trimEndMs: 8000, error: null,
+  waveformSamples: waveform, trimStartMs: 0, trimEndMs: 8000, error: null, permissionIssue: null,
   attachment: { id: 'synthetic-audio', name: 'Voice message.m4a', path: '', kind: 'file',
     voiceMessage: { mimeType: 'audio/mp4', durationMs: 8000, waveformSamples: waveform, transcript: '',
       transcription: { status: 'pending', sourceVersion: 'synthetic-audio', engine: 'apple-speech-v1', attempts: 0 } } },

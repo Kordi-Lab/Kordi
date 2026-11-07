@@ -107,7 +107,7 @@ async function stubClipboard(page: Page) {
 }
 
 for (const theme of ['light', 'dark'] as const) {
-  test(`Start group needs a name, uses dense people rows and invites with a link (${theme})`, async ({ page }) => {
+  test(`Start group needs a name, uses dense people rows and copies the new group's link (${theme})`, async ({ page }) => {
     await stubClipboard(page);
     await page.goto(`${preview}?theme=${theme}&mode=group&show=create`);
     const dialog = page.getByRole('dialog', { name: 'Start group', exact: true });
@@ -123,19 +123,18 @@ for (const theme of ['light', 'dark'] as const) {
     expect(box.height).toBeLessThanOrEqual(32);
     await expect(maya).toHaveCSS('font-size', '12px');
 
-    // The name comes first: it has focus, and both actions wait for it.
+    // The name comes first: it has focus, and Create group waits for it.
     const name = dialog.getByRole('textbox', { name: 'Group name' });
     await expect(name).toBeFocused();
     await expect(name).toHaveAttribute('placeholder', 'Group name');
-    const invite = people.getByRole('button', { name: /Invite with a link/ });
+    // The link is made with the group, so there is no separate invite row.
+    await expect(people.getByRole('button', { name: /Invite with a link/ })).toHaveCount(0);
     const create = dialog.getByRole('button', { name: 'Create group', exact: true });
-    await expect(invite).toBeDisabled();
     await expect(create).toBeDisabled();
     await page.screenshot({ path: test.info().outputPath(`start-group-empty-${theme}.png`) });
     await name.fill('   ');
     await expect(create).toBeDisabled();
     await name.fill('Launch QA');
-    await expect(invite).toBeEnabled();
     await expect(create).toBeEnabled();
 
     await maya.focus();
@@ -144,30 +143,19 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(name).toHaveValue('Launch QA');
     await settle(page);
     await page.screenshot({ path: test.info().outputPath(`start-group-named-${theme}.png`) });
-    await page.keyboard.press('Space');
-    await expect(maya).toHaveAttribute('aria-pressed', 'false');
 
-    await invite.click();
-    await expect(page.getByTestId('started')).toHaveText('group:0:link:Launch QA');
-    const shared = page.getByRole('dialog', { name: 'Launch QA', exact: true });
-    await expect(shared.getByRole('textbox', { name: 'Group invitation link' })).toHaveValue(/\/g\/kordi_gi_/);
-    await expect(shared.getByText('Expires in 7 days')).toBeVisible();
-    const copy = shared.getByRole('button', { name: 'Copy link', exact: true });
-    const [sharedBox, copyBox] = [await rowBox(shared), await rowBox(copy)];
-    expect(copyBox.x + copyBox.width).toBeLessThanOrEqual(sharedBox.x + sharedBox.width - 8);
-    await copy.focus();
-    await page.keyboard.press('Enter');
-    await expect(shared.getByRole('button', { name: 'Link copied', exact: true })).toBeVisible();
-    const toast = page.getByRole('status').filter({ hasText: 'Link copied' });
-    await expect(toast).toBeVisible();
-    await expect(toast).toHaveCSS('opacity', '1');
+    await create.click();
+    await expect(page.getByTestId('started')).toHaveText('group:1:Launch QA');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const notice = page.getByRole('status').filter({ hasText: 'Invite link copied' });
+    await expect(notice).toBeVisible();
     expect(await page.evaluate(() => (window as unknown as { copied?: string }).copied)).toMatch(/\/g\/kordi_gi_/);
+    const noticeBox = await rowBox(notice);
+    expect(noticeBox.height).toBeLessThanOrEqual(32);
+    await expect(notice).toHaveCSS('font-size', '12px');
     await settle(page);
     await page.screenshot({ path: test.info().outputPath(`start-group-link-copied-${theme}.png`) });
-    await expect(page.getByRole('status').filter({ hasText: 'Link copied' })).toHaveCount(0, { timeout: 3_000 });
-    await expect(shared.getByRole('button', { name: 'Copy link', exact: true })).toBeVisible();
-    await shared.getByRole('button', { name: 'Done', exact: true }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(notice).toHaveCount(0, { timeout: 6_000 });
   });
 }
 
@@ -182,4 +170,66 @@ test('Start group creates a named group with only its creator on Enter and close
   await name.press('Enter');
   await expect(page.getByTestId('started')).toHaveText('group:0:Launch QA');
   await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`Start group photo menu opens whole under the avatar, inside the popover (${theme})`, async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 560 });
+    await page.goto(`${preview}?theme=${theme}&show=create&mode=group`);
+    const popover = page.locator('[data-create-surface="side-popover"]');
+    await expect(popover).toHaveAccessibleName('Start group');
+    await settle(page);
+    const avatar = popover.getByRole('button', { name: 'Edit group avatar' });
+    await avatar.click();
+    const menu = page.getByRole('menu', { name: 'Group avatar' });
+    const upload = menu.getByRole('menuitem', { name: 'Upload photo' });
+    await expect(upload).toBeVisible();
+    await settle(page);
+
+    const [menuBox, popoverBox, avatarBox, uploadBox] = await Promise.all([menu, popover, avatar, upload].map(rowBox));
+    expect(menuBox.x).toBeCloseTo(avatarBox.x, 0);
+    expect(menuBox.y).toBeGreaterThan(avatarBox.y + avatarBox.height);
+    expect(menuBox.x).toBeGreaterThanOrEqual(popoverBox.x);
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(popoverBox.x + popoverBox.width);
+    // The whole label shows: nothing in the row is cut off.
+    const clipped = await upload.evaluate((row) => row.scrollWidth > row.clientWidth
+      || document.elementFromPoint(row.getBoundingClientRect().left + 4, row.getBoundingClientRect().top + 4)?.closest('[role="menu"]') === null);
+    expect(clipped).toBe(false);
+    expect(uploadBox.height).toBeCloseTo(28, 0);
+    await expect(upload).toHaveCSS('font-size', '12px');
+    const surfaces = await page.evaluate(() => {
+      const read = (element: Element | null) => {
+        const style = getComputedStyle(element!);
+        return { radius: style.borderRadius, padding: style.padding, background: style.backgroundColor, border: style.borderColor };
+      };
+      return { menu: read(document.querySelector('[data-group-avatar-menu]')), popover: read(document.querySelector('[data-create-surface]')) };
+    });
+    // The Help menu surface; the menu keeps the dense 5px inset of the action list.
+    expect({ ...surfaces.menu, padding: surfaces.popover.padding }).toEqual(surfaces.popover);
+    expect(surfaces.menu.padding).toBe('5px');
+
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(avatar).toBeFocused();
+    await expect(popover).toBeVisible();
+  });
+}
+
+test('Start group contact rows keep square avatars, with photos cropped to fit', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 560 });
+  await page.goto(`${preview}?theme=dark&show=create&mode=group`);
+  const people = page.getByRole('group', { name: 'People' });
+  const rows = people.locator('button[aria-pressed]');
+  await expect(rows).toHaveCount(3);
+  await settle(page);
+  for (const row of await rows.all()) {
+    const avatar = await rowBox(row.locator('[data-identity-avatar]'));
+    expect(avatar.width).toBeCloseTo(20, 0);
+    expect(avatar.height).toBeCloseTo(20, 0);
+  }
+  const photo = rows.first().locator('[data-identity-avatar] img');
+  await expect(photo).toHaveCSS('object-fit', 'cover');
+  const photoBox = await rowBox(photo);
+  expect(photoBox.width).toBeCloseTo(20, 0);
+  expect(photoBox.height).toBeCloseTo(20, 0);
 });

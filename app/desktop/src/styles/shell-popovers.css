@@ -63,28 +63,6 @@
   color-scheme: light;
 }
 
-/* Attachment menu geometry follows the composer, while its compact type scale
- * remains explicit and independent from the available composer width. */
-.app-transient-surface.app-composer-attachment-add-menu {
-  border: 0 !important;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.24) !important;
-}
-
-.app-transient-surface.app-composer-attachment-add-menu.app-compact-model-menu-light {
-  box-shadow: 0 8px 26px rgb(15 23 42 / 0.08) !important;
-}
-
-.app-composer-attachment-add-menu-label {
-  font-size: 9px;
-  line-height: 12px;
-}
-
-.app-composer-attachment-add-menu-action {
-  min-height: 28px;
-  font-size: 11px;
-  line-height: 16px;
-}
-
 .app-composer-model-menu-layer .app-composer-popover-item,
 .app-composer-model-menu-layer .app-composer-popover-item.app-composer-popover-item-active {
   background: transparent;
@@ -383,8 +361,7 @@
 }
 
 .app-group-management-member-actions,
-.app-group-management-add-panel,
-.app-group-management-settings {
+.app-group-management-add-panel {
   border-color: var(--app-transient-divider);
 }
 
@@ -415,15 +392,10 @@
   color: rgb(15 23 42);
 }
 
-.app-group-management-confirm,
-.app-group-management-error {
+.app-group-management-confirm {
   border: 1px solid var(--app-transient-danger-border);
   background: var(--app-transient-danger-bg);
   color: var(--app-transient-danger-text);
-}
-
-.app-group-management-setting-row {
-  min-height: 48px;
 }
 
 @media (pointer: coarse) {
@@ -442,8 +414,7 @@
   }
 
   .app-group-management-action-row,
-  .app-group-management-contact-row,
-  .app-group-management-setting-row {
+  .app-group-management-contact-row {
     min-height: 44px;
   }
 }

@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { CloudProviderAuthSnapshotInput } from '@/features/cloud/cloudAgentRuntimeTypes';
 import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLayout';
+import { cn } from '@/lib/utils';
 import { AuthActionButton, authButtonPrimaryClass } from './AuthDetailPrimitives';
 import { CUSTOM_MODEL_MAX_LENGTH, customModelIdError, type CustomApiAccount } from './customApiAccount';
 
@@ -31,9 +33,8 @@ type AuthCustomApiSetupProps = {
   onSaved?: (authChoice: string, options: { edited: boolean }) => void;
 };
 
-function errorText(error: FieldError | null, field: FieldError['field'], disabledReason: string | null) {
-  if (!error || error.field !== field || error.message === disabledReason) return null;
-  return <span role="alert" className="app-error-text block text-rose-200">{error.message}</span>;
+function fieldError(error: FieldError | null, field: FieldError['field'], disabledReason: string | null) {
+  return error && error.field === field && error.message !== disabledReason ? error.message : null;
 }
 
 /** Kordi-only OpenAI-compatible endpoint; OMP has no catalog entry for it, so the account names its model. */
@@ -44,6 +45,9 @@ export function AuthCustomApiSetup({ account = null, onValidateCloudKey, onSaveC
   const [apiKey, setApiKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<FieldError | null>(null);
+  const baseUrlError = fieldError(error, 'baseUrl', disabledReason);
+  const modelError = fieldError(error, 'model', disabledReason);
+  const saveError = fieldError(error, 'save', disabledReason);
   // Save stays off until the base URL, model ID and key are all entered.
   const complete = Boolean(baseUrl.trim() && model.trim() && apiKey.trim());
 
@@ -53,9 +57,9 @@ export function AuthCustomApiSetup({ account = null, onValidateCloudKey, onSaveC
       setError({ field: 'baseUrl', message: 'Enter a public HTTPS base URL.' });
       return;
     }
-    const modelError = customModelIdError(model);
-    if (modelError) {
-      setError({ field: 'model', message: modelError });
+    const modelIdError = customModelIdError(model);
+    if (modelIdError) {
+      setError({ field: 'model', message: modelIdError });
       return;
     }
     setSaving(true);
@@ -93,17 +97,17 @@ export function AuthCustomApiSetup({ account = null, onValidateCloudKey, onSaveC
       />
       <SettingsRow
         title="Base URL"
-        description={<>The endpoint root, ending before /chat/completions.{errorText(error, 'baseUrl', disabledReason)}</>}
-        control={<input aria-label="API base URL" placeholder="https://api.example.com/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} className={inputClass} />}
+        description={<>The endpoint root, ending before /chat/completions.{baseUrlError ? <ErrorLine>{baseUrlError}</ErrorLine> : null}</>}
+        control={<input aria-label="API base URL" placeholder="https://api.example.com/v1" value={baseUrl} aria-invalid={baseUrlError ? true : undefined} onChange={(event) => setBaseUrl(event.target.value)} className={cn(inputClass, baseUrlError && 'app-flat-input-error')} />}
       />
       <SettingsRow
         title="Model ID"
-        description={<>The model name your endpoint serves, sent as the Chat Completions model field.{errorText(error, 'model', disabledReason)}</>}
-        control={<input aria-label="Model ID" placeholder="deepseek-chat" maxLength={CUSTOM_MODEL_MAX_LENGTH} value={model} onChange={(event) => setModel(event.target.value)} className={inputClass} />}
+        description={<>The model name your endpoint serves, sent as the Chat Completions model field.{modelError ? <ErrorLine>{modelError}</ErrorLine> : null}</>}
+        control={<input aria-label="Model ID" placeholder="deepseek-chat" maxLength={CUSTOM_MODEL_MAX_LENGTH} value={model} aria-invalid={modelError ? true : undefined} onChange={(event) => setModel(event.target.value)} className={cn(inputClass, modelError && 'app-flat-input-error')} />}
       />
       <SettingsRow
         title="API key"
-        description={errorText(error, 'save', disabledReason) ?? 'Stored in your Kordi account for hosted agents.'}
+        description={saveError ? <ErrorLine className="mt-0">{saveError}</ErrorLine> : 'Stored in your Kordi account for hosted agents.'}
         control={(
           <>
             <input aria-label="API key" type="password" autoComplete="off" placeholder="API key" value={apiKey} onChange={(event) => setApiKey(event.target.value)} className={inputClass} />

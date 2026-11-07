@@ -164,7 +164,7 @@ struct ContactProfileSharedSection: View {
     private func rowView(_ row: ContactProfileSharedRow) -> some View {
         let count = presentation.sharedCount(row)
         let enabled = presentation.isSharedRowEnabled(row)
-        let groups = row == .groups ? Array((presentation.shared?.groups ?? []).prefix(2)) : []
+        let groups = row == .groups ? Array((presentation.shared?.groups ?? []).prefix(3)) : []
         return Button { onOpen(row) } label: {
             HStack(spacing: 12) {
                 Image(systemName: row.systemImage)
@@ -179,7 +179,7 @@ struct ContactProfileSharedSection: View {
                 if !groups.isEmpty {
                     HStack(spacing: -6) {
                         ForEach(groups) { group in
-                            IdentityAvatar(name: group.title, imageSource: group.avatarUrl, kind: .group, size: 20, seed: group.groupId, cornerRadius: 10)
+                            ContactProfileGroupAvatar(group: group, size: 22)
                                 .overlay { Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 1.5) }
                         }
                     }
@@ -235,7 +235,7 @@ struct ContactProfileGroupsList: View {
                     if index > 0 { ContactProfileDivider(inset: 68) }
                     Button { onOpen(group) } label: {
                         HStack(spacing: 12) {
-                            IdentityAvatar(name: group.title, imageSource: group.avatarUrl, kind: .group, size: 36, seed: group.groupId, cornerRadius: 18)
+                            ContactProfileGroupAvatar(group: group, size: 36)
                             Text(group.title)
                                 .font(.body)
                                 .lineLimit(1)
@@ -254,5 +254,57 @@ struct ContactProfileGroupsList: View {
         .background(Color(uiColor: .systemBackground))
         .navigationTitle("Groups in common")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// A group in common: its image, else two or three of its members' avatars
+/// when the group is loaded on this iPhone, else the group glyph.
+struct ContactProfileGroupAvatar: View {
+    @EnvironmentObject private var model: AppModel
+    let group: CloudContactProfile.SharedGroup
+    let size: CGFloat
+
+    private var members: [CloudGroupParticipant] {
+        let space = normalizedGroupSpaceId(group.groupId)
+        let conversation = model.groupConversation(groupSpaceId: group.groupId)
+            ?? model.conversations.first { $0.kind == .group && normalizedGroupSpaceId($0.groupSpaceId) == space }
+        return Array((conversation?.groupParticipants ?? [])
+            .filter { !KordiSystemIdentity.isServiceAccount($0.accountId) }
+            .sorted(by: CloudGroupParticipant.canonicalPrecedes)
+            .prefix(3))
+    }
+
+    var body: some View {
+        let members = members
+        if group.avatarUrl?.nonEmpty != nil || members.count < 2 {
+            IdentityAvatar(name: group.title, imageSource: group.avatarUrl, kind: .group, size: size, seed: group.groupId, cornerRadius: size / 2)
+        } else {
+            GroupMemberCluster(members: members, size: size)
+        }
+    }
+}
+
+/// Two members top-left and bottom-right, or three in a triangle, inside a
+/// circle of `size`.
+struct GroupMemberCluster: View {
+    let members: [CloudGroupParticipant]
+    let size: CGFloat
+
+    var body: some View {
+        let tile = size * (members.count >= 3 ? 0.56 : 0.64)
+        let positions: [CGPoint] = members.count >= 3
+            ? [CGPoint(x: (size - tile) / 2, y: 0), CGPoint(x: 0, y: size - tile), CGPoint(x: size - tile, y: size - tile)]
+            : [.zero, CGPoint(x: size - tile, y: size - tile)]
+        ZStack(alignment: .topLeading) {
+            Circle().fill(Color(uiColor: .secondarySystemFill))
+            ForEach(Array(members.prefix(positions.count).enumerated()), id: \.element.id) { index, member in
+                IdentityAvatar(name: member.displayName, imageSource: member.avatarUrl, kind: .person,
+                               size: tile, seed: member.accountId, cornerRadius: tile / 2)
+                    .overlay { Circle().stroke(Color(uiColor: .systemBackground), lineWidth: max(1, size / 30)) }
+                    .offset(x: positions[index].x, y: positions[index].y)
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }

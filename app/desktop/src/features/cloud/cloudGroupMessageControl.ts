@@ -281,7 +281,7 @@ export async function applyCloudGroupMessageControl({
         replyToMessageId: messageReplyToId,
         ...(message.messageAction?.kind === 'thread' ? { messageAction: message.messageAction } : {}),
         ...(cloudMessage.planCard ? { planCard: cloudMessage.planCard } : {}),
-        ...(agentDeliveryState === 'failed' ? { error: message.text || 'Message failed' } : {}),
+        ...(agentDeliveryState === 'failed' ? { error: message.text || 'Message failed', ...(message.failureCode ? { failureCode: message.failureCode } : {}) } : {}),
       } : (Object.keys(structuredContent).length > 0 || mappedAttachments.length > 0 || message.voiceMessage?.mediaId || message.mentions?.length || message.messageAction || cloudMessage.planCard) ? {
         ...structuredContent,
         cloudMessageVersion: cloudMessage.version ?? null,

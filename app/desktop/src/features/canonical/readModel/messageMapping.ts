@@ -6,7 +6,7 @@ import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { canonicalMessageRole } from './messageRole';
 export { canonicalMessageRole } from './messageRole';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
-import { cloudAgentFallbackErrorNotice } from '@/features/cloud/cloudAgentMessages';
+import { canonicalAgentTurnErrorText } from './agentFailureText';
 import { cloudAgentStoredReplyHasRunOutput, isCloudAgentStoredNoProviderReply, isFailedReplyTextOnlyItsError } from '@/features/cloud/cloudAgentReplyText';
 import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
@@ -400,11 +400,8 @@ export function mapCanonicalMessage(
     ? cancelledTurnContent(displayText, cancelledByRole ? `Request canceled by ${cancelledByRole}.` : displayText.trim() || 'Request canceled.')
     : null;
   const rawErrorText = stringValue(content.error) ?? (noProviderFailure ? rawDisplayText : null) ?? 'Message failed';
-  const agentTurnErrorText = failed
-    ? sourceTransport.startsWith('cloud-') || rawErrorText.toLowerCase().includes('cloud fallback')
-      ? cloudAgentFallbackErrorNotice({ message: rawErrorText })
-      : rawErrorText
-    : null;
+  const agentTurnErrorText = failed ? canonicalAgentTurnErrorText({ message, failureCode: content.failureCode, storedError: rawErrorText,
+    legacyCollaborationFailure: legacyCollaborationAgentFailure, viewerOwnsAgent: role === 'owned-agent', agentName: sender }) : null;
   const sourceHumanIdentity = identity?.kind === 'agent' && identity.ownerIdentityId
     ? identityById.get(identity.ownerIdentityId)
     : identity;
@@ -478,7 +475,7 @@ export function mapCanonicalMessage(
           completedAtMs: numberValue(content.completedAtMs) ?? (execution.completed === true ? numberValue(execution.updatedAtMs) : undefined),
           completed,
           succeeded: completed && !failed && !cancelled,
-          error: cancelled || ending ? null : failed ? (legacyCollaborationAgentFailure ? 'Message failed' : agentTurnErrorText) : null,
+          error: cancelled || ending ? null : agentTurnErrorText,
           ...(ending ? { ending } : {}),
           replyToMessageId,
           pendingCollaborationAgentRequest,

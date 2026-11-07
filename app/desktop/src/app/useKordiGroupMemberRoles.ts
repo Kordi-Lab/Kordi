@@ -4,7 +4,8 @@ import {
   type SetStateAction,
 } from 'react';
 
-import type { CloudAccount } from '@/features/cloud/authClient';
+import { defaultCloudAuthClient, type CloudAccount } from '@/features/cloud/authClient';
+import { loadSession } from '@/features/cloud/session';
 import type { SendCloudGroupControlInput } from '@/features/cloud/cloudGroupControl.types';
 import {
   cloudGroupParticipantsForCollaborationSession,
@@ -134,7 +135,24 @@ export function useKordiGroupMemberRoles({
     }
     setCanonicalState(nextState);
 
+    // Leaving takes the person out of the group on the server too, after the
+    // group update below, which they can only post while still a member.
+    const leaveCloudGroup = async () => {
+      if (!account || (identityId !== actorIdentityId && removedAccountId !== account.accountId)) return;
+      const login = await loadSession();
+      try {
+        if (!login?.token) throw new Error('Sign in to Kordi first.');
+        await defaultCloudAuthClient().leaveGroup(login.token, fallbackGroupSpaceId);
+      } catch (error) {
+        const message = `Left the group locally, but Cloud sync failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
+        setDesktopError(message);
+        throw new Error(message);
+      }
+    };
     if (!account || !removedAccountId || targetAccountIds.length === 0) {
+      await leaveCloudGroup();
       return;
     }
     const participants = canonicalGroupParticipantsForSessions(
@@ -201,6 +219,7 @@ export function useKordiGroupMemberRoles({
       setDesktopError(message);
       throw new Error(message);
     }
+    await leaveCloudGroup();
   }, [
     account,
     canonicalState,

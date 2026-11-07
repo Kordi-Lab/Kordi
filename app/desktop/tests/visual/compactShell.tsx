@@ -7,9 +7,12 @@ import { mockNativeHttpInvoke } from '../helpers/nativeHttp';
 import type { CanonicalSessionState, CanonicalSessionMessage } from '../../src/kordi-app/types';
 import '../../src/index.css';
 import './compactShell.css';
-import { applyChatTheme, writeStoredChatTheme } from '../../src/app/themePreference';
-writeStoredChatTheme('classic');
-applyChatTheme('classic');
+import { applyChatTheme, KORDI_THEME_MODE_STORAGE_KEY, writeStoredChatTheme } from '../../src/app/themePreference';
+import { previewChatTheme } from './previewChatTheme';
+// ?chatTheme=<theme> and ?mode=light|dark review the shell in another theme; Classic light is the default.
+const chatTheme = previewChatTheme();
+writeStoredChatTheme(chatTheme);
+applyChatTheme(chatTheme);
 
 // The complete app runs with in-memory sample data. Native window operations
 // remain native; account, provider, agent, and network operations stay offline.
@@ -66,6 +69,8 @@ if (!localStorage.getItem('kordi.syntheticCompactInitialized.v1')) {
   localStorage.setItem('kordi.themeMode.v1', 'light');
   localStorage.setItem('kordi.syntheticCompactInitialized.v1', '1');
 }
+const requestedMode = new URLSearchParams(location.search).get('mode');
+if (requestedMode === 'light' || requestedMode === 'dark') localStorage.setItem(KORDI_THEME_MODE_STORAGE_KEY, requestedMode);
 
 const calls: string[] = [];
 Object.assign(window, { syntheticPreviewCalls: calls, syntheticPreviewState: state });

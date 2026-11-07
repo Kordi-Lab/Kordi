@@ -55,7 +55,8 @@ enum ContactProfilePreviewData {
                     documentCount: 3,
                     groups: [
                         .init(groupId: "session:group:mobile", title: "Mobile builders", avatarUrl: nil),
-                        .init(groupId: "group_preview_reading", title: "Reading group", avatarUrl: nil)
+                        .init(groupId: "group_preview_reading", title: "Reading group", avatarUrl: nil),
+                        .init(groupId: "group_preview_design", title: "Design crit", avatarUrl: nil)
                     ]
                 ),
                 commonGround: .init(

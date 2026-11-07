@@ -29,7 +29,7 @@ export function BlockedMessageGate({
     >
       <button
         type="button"
-        className="cursor-pointer rounded-md px-2 py-1 hover:bg-black/5 dark:hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
+        className="cursor-pointer rounded-md px-2 py-1 hover:bg-black/5 dark:hover:bg-white/5"
         disabled={!key}
         onClick={() => revealBlockedMessage(key)}
       >

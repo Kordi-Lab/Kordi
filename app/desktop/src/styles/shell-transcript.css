@@ -35,8 +35,6 @@
 }
 
 .app-markdown-link:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--app-markdown-link) 74%, transparent);
-  outline-offset: 2px;
   border-radius: 4px;
 }
 
@@ -345,10 +343,6 @@
   color: var(--app-tool-running-fg);
 }
 
-.app-transcript-tool-pin-error {
-  color: rgb(251 113 133);
-}
-
 .app-transcript-tool-activity-details {
   display: grid;
   gap: 8px;
@@ -452,10 +446,6 @@
 
 .app-transcript-status-text-done {
   color: rgb(52 211 153) !important;
-}
-
-.app-transcript-status-text-error {
-  color: rgb(251 113 133) !important;
 }
 
 .app-transcript-status-text-running {

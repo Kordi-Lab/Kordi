@@ -128,8 +128,7 @@
   contain-intrinsic-size: 2.5rem 2.5rem;
 }
 
-.app-blob-emoji-option:hover,
-.app-blob-emoji-option:focus-visible {
+.app-blob-emoji-option:hover {
   background: var(--app-control-hover);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--app-accent-ring) 44%, transparent);
 }
@@ -280,7 +279,7 @@
 }
 
 .app-expressive-picker-search:focus-within {
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--app-accent-ring) 62%, transparent);
+  box-shadow: inset 0 0 0 1px var(--app-focus-border);
   color: var(--utility-foreground);
 }
 
@@ -391,15 +390,6 @@
   opacity: 0.56;
 }
 
-.app-expressive-picker-inline-error {
-  padding: 0.5rem 0.625rem;
-  border-radius: 0.625rem;
-  background: color-mix(in oklab, #ef4444 12%, var(--app-control-bg));
-  color: color-mix(in oklab, #ef4444 76%, var(--utility-foreground));
-  font-size: 0.6875rem;
-  line-height: 1rem;
-}
-
 .app-expressive-picker-library-empty {
   display: grid;
   min-height: 5.25rem;
@@ -428,8 +418,7 @@
   color: var(--utility-muted-text);
 }
 
-.app-expressive-picker-media:hover,
-.app-expressive-picker-media:focus-visible {
+.app-expressive-picker-media:hover {
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--app-accent-ring) 68%, transparent);
 }
 

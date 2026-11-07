@@ -112,7 +112,8 @@ function recordingClient() {
   return { client, added };
 }
 
-const addRow = (host: ParentNode) => host.querySelector('[data-memory-add] button');
+// The add row also holds Import, so Add memory is found by its text.
+const addRow = (host: ParentNode) => Array.from(host.querySelectorAll('[data-memory-add] button')).find((button) => button.textContent?.trim() === 'Add memory') ?? null;
 
 test('a chat adds to itself, a group chat to its cloud group, and a project tab to its root', () => {
   assert.deepEqual(

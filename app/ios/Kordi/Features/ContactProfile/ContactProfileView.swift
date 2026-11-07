@@ -31,6 +31,8 @@ struct ContactProfileView: View {
     @State private var confirmsDelete = false
     @State private var deleteError: String?
     @State private var blockAccount: SafetyAccount?
+    @State private var unblockAccount: CloudBlockedAccount?
+    @State private var unblockError: String?
     @State private var reportTarget: ReportTarget?
 
     init(
@@ -133,6 +135,34 @@ struct ContactProfileView: View {
             Text(deleteError ?? "")
         }
         .safetyActions(block: $blockAccount, report: $reportTarget) { dismiss() }
+        .task(id: model.account?.accountId) {
+            // The More menu offers Unblock for an account on the block list.
+            if model.blockedAccounts == nil { await model.refreshBlockedAccounts() }
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--preview-contact-unblock-confirm") {
+                try? await Task.sleep(for: .milliseconds(700))
+                unblockAccount = blockedEntry
+            }
+            #endif
+        }
+        .alert(
+            unblockAccount.map { "Unblock \($0.preferredName)?" } ?? "",
+            isPresented: Binding(get: { unblockAccount != nil }, set: { if !$0 { unblockAccount = nil } }),
+            presenting: unblockAccount
+        ) { blocked in
+            Button("Cancel", role: .cancel) {}
+            Button("Unblock") { unblock(blocked) }
+        } message: { _ in
+            Text("They can message, call and invite you again.")
+        }
+        .alert(
+            "Could not unblock",
+            isPresented: Binding(get: { unblockError != nil }, set: { if !$0 { unblockError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(unblockError ?? "")
+        }
         .sheet(isPresented: $showsShare) {
             ContactProfileShareSheet(name: presentation.name, kordiId: presentation.kordiId ?? "")
         }
@@ -240,16 +270,6 @@ struct ContactProfileView: View {
                 seed: subject.accountId,
                 cornerRadius: 48
             )
-            .overlay(alignment: .bottomTrailing) {
-                if presentation.isOnline {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 16, height: 16)
-                        .overlay { Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 2.5) }
-                        .offset(x: -4, y: -4)
-                        .accessibilityHidden(true)
-                }
-            }
             Text(presentation.name)
                 .font(.title2.weight(.semibold))
                 .lineLimit(1)
@@ -307,7 +327,11 @@ struct ContactProfileView: View {
                         Button("Share", systemImage: "square.and.arrow.up") { showsShare = true }
                             .disabled(presentation.kordiId == nil)
                     }
-                    Button("Block", systemImage: "nosign") { blockAccount = presentation.blockAccount }.disabled(presentation.blockAccount == nil)
+                    if let blocked = blockedEntry {
+                        Button("Unblock", systemImage: "checkmark.circle") { unblockAccount = blocked }
+                    } else {
+                        Button("Block", systemImage: "nosign") { blockAccount = presentation.blockAccount }.disabled(presentation.blockAccount == nil)
+                    }
                     Button("Report", systemImage: "flag") { reportTarget = presentation.reportTarget }.disabled(presentation.reportTarget == nil)
                     Divider()
                     if presentation.offersDelete {
@@ -477,6 +501,18 @@ struct ContactProfileView: View {
 
     private func openOwnAgentSettings() {
         if let ownAgentConversation { route = .details(ownAgentConversation) }
+    }
+
+    /// This profile's account when it is on the block list.
+    private var blockedEntry: CloudBlockedAccount? {
+        guard let accountId = presentation.blockAccount?.accountId else { return nil }
+        return model.blockedAccounts?.first { $0.accountId == accountId }
+    }
+
+    private func unblock(_ blocked: CloudBlockedAccount) {
+        Task {
+            if case .failed(let message) = await model.unblock(blocked) { unblockError = message }
+        }
     }
 
     private func deleteContact() {

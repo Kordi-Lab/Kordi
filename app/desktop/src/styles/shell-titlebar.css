@@ -171,11 +171,6 @@ html:is(.kordi-native-shell, .kordi-browser-shell) .app-native-companion-titleba
   background: var(--app-control-active);
 }
 
-.app-native-titlebar button:focus-visible {
-  outline: 2px solid var(--app-nav-rail-focus-ring);
-  outline-offset: 1px;
-}
-
 .app-native-titlebar button svg {
   width: 16px;
   height: 16px;

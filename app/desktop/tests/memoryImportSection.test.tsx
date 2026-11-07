@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client';
 import type { MemoryImportSave, MemoryImporter } from '../src/features/memory/memoryImport';
 import { createPreviewMemoryImporter } from '../src/features/memory/memoryImportClient';
 import { MemoryImportSection } from '../src/features/memory/MemoryImportSection';
+import { createUploadMemoryImporter } from '../src/features/memory/memoryUploadImporter';
 import type { MemoryLesson } from '../src/features/memory/memoryModel';
 
 function installDom() {
@@ -50,6 +51,9 @@ async function render(element: React.ReactElement) {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   return {
     container,
+    async rerender(next: React.ReactElement) {
+      await act(async () => { root.render(next); });
+    },
     async cleanup() {
       await act(async () => { root.unmount(); });
       env.restore();
@@ -76,8 +80,8 @@ const expand = async (container: HTMLElement, label: string) => {
 };
 const NOW = () => Date.parse('2026-10-20T10:00:00Z');
 
-function renderSection(overrides: Partial<React.ComponentProps<typeof MemoryImportSection>> = {}) {
-  return render(
+function sectionElement(overrides: Partial<React.ComponentProps<typeof MemoryImportSection>> = {}) {
+  return (
     <MemoryImportSection
       client={{ importLesson: async () => ({}) as MemoryLesson }}
       importer={createPreviewMemoryImporter({ latencyMs: 0, now: NOW })}
@@ -85,8 +89,12 @@ function renderSection(overrides: Partial<React.ComponentProps<typeof MemoryImpo
       providerReady
       onImported={() => undefined}
       {...overrides}
-    />,
+    />
   );
+}
+
+function renderSection(overrides: Partial<React.ComponentProps<typeof MemoryImportSection>> = {}) {
+  return render(sectionElement(overrides));
 }
 
 test('the list starts collapsed by app, all selected, and opens app, project and file layers', async () => {
@@ -227,10 +235,19 @@ test('importing rolls progress and results up to projects and apps', async () =>
 });
 
 test('without a provider the import cannot start; without files the section says so', async () => {
-  const noProvider = await renderSection({ providerReady: false });
+  let connects = 0;
+  const connect = { importer: createPreviewMemoryImporter({ latencyMs: 0, now: NOW }), onConnectProvider: () => { connects += 1; } };
+  const noProvider = await renderSection({ ...connect, providerReady: false });
   try {
-    assert.match(noProvider.container.textContent ?? '', /No provider configured yet\./);
-    assert.equal(importButton(noProvider.container)?.disabled, true);
+    const { container } = noProvider;
+    assert.match(container.textContent ?? '', /\d+ files? selected · Connect an AI provider to import\./);
+    assert.equal(container.textContent?.includes('No provider configured'), false);
+    assert.equal(importButton(container)?.disabled, true);
+    await act(async () => { button(container, 'Connect an AI provider')?.click(); });
+    assert.equal(connects, 1, 'the link opens provider sign-in');
+    await noProvider.rerender(sectionElement({ ...connect, providerReady: true }));
+    assert.equal(container.textContent?.includes('Connect an AI provider'), false, 'a connected provider clears the footer in place');
+    assert.equal(importButton(container)?.disabled, false);
   } finally {
     await noProvider.cleanup();
   }
@@ -429,6 +446,39 @@ test('repeated activation while starting an import runs only one batch', async (
     await act(async () => { finishStart?.(); });
     await settle();
     assert.match(view.container.textContent ?? '', /Nothing new\./);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test('the browser upload importer lists chosen files, needs no provider, and imports what the server model read', async () => {
+  const saves: MemoryImportSave[] = [];
+  const importer = createUploadMemoryImporter({
+    pick: () => Promise.resolve([
+      { name: 'AGENTS.md', size: 40, lastModified: NOW(), text: async () => '# Rules\n\n- Use pnpm for every script.\n' },
+      { name: 'photo.png', size: 10, lastModified: NOW(), text: async () => 'x' },
+    ]),
+    extract: async () => ({ memories: [{ text: 'Use pnpm for every script.', category: 'hcp-custom:task_lessons', scope: 'project' }] }),
+  });
+  const view = await renderSection({
+    importer,
+    providerReady: false,
+    client: { importLesson: async (save) => { saves.push(save); return {} as MemoryLesson; } },
+  });
+  try {
+    const { container } = view;
+    assert.equal(container.textContent?.includes('No agent files found'), false);
+    assert.equal(container.textContent?.includes('No provider configured'), false);
+    assert.match(container.textContent ?? '', /No files chosen/);
+    assert.equal(importButton(container)?.disabled, true);
+    await act(async () => { button(container, 'Choose files…')?.click(); });
+    await settle();
+    assert.match(container.textContent ?? '', /1 file selected · Choose \.md, \.txt, or \.json files\./);
+    assert.deepEqual(rows(container, 'app').map((element) => element.firstElementChild?.textContent), ['Chosen files1 file']);
+    await act(async () => { importButton(container)?.click(); });
+    await settle();
+    assert.deepEqual(saves.map((save) => [save.scope, save.scopeId, save.source, save.text]), [['global', 'account', 'import', 'Use pnpm for every script.']]);
+    assert.match(container.textContent ?? '', /Imported 1 memory\./);
   } finally {
     await view.cleanup();
   }

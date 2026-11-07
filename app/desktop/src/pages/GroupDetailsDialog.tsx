@@ -1,9 +1,10 @@
 import { filterGroupManagementMembers, normalizedSearch } from './groupManagementMembers';
 export { filterGroupManagementMembers } from './groupManagementMembers';
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, LoaderCircle, Plus, Search, Star, UserMinus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type {
   CloudGroupInvitation,
   CloudGroupInvitationCreateInput,
@@ -12,7 +13,6 @@ import type {
 import { GroupAvatarEditor } from '@/kordi-app/components/GroupAvatarEditor';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import {
-  adminIdentityIdsFromMetadata,
   buildChatCreateGroupPersonOptions,
   contactCanonicalIdentityRequest,
   participantSpaceCanonicalMembershipSessionIds,
@@ -20,7 +20,10 @@ import {
 } from '@/features/chat/chatCreateFlows';
 import type { Contact, ConversationParticipant, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
-import { GroupNameSettings } from '@/pages/GroupNameSettings';
+import { formatPresenceLine } from '@/kordi-app/contactPresenceLine';
+import { groupNameIsValid } from '@/features/chat/groupCreateCopy';
+import { GroupManagePage } from '@/pages/GroupManagePage';
+import { GroupNameInline } from '@/pages/GroupNameInline';
 import { GroupProfileHeader } from '@/pages/GroupProfileHeader';
 import { GroupInvitationSharePanel } from '@/pages/GroupInvitationSharePanel';
 import {
@@ -32,7 +35,19 @@ import {
   type ViewportSize,
 } from '@/pages/groupManagementGeometry';
 import { MemberContactProfileContent } from '@/pages/MemberContactProfilePopover';
-import { GroupInfoFooterActions } from '@/pages/GroupInfoFooterActions';
+import {
+  isHumanMember,
+  isSelfMember,
+  groupAdminIds,
+  memberStableId,
+  memberIsAdmin,
+  memberMatchesIdentity,
+  contactStableId,
+  visibleIdentityLabel,
+  duplicateNameCounts,
+  hasDuplicateName,
+  groupActionErrorMessage,
+} from '@/pages/groupManagementIdentity';
 
 export type { GroupManagementPopoverAnchor } from '@/pages/groupManagementGeometry';
 
@@ -52,112 +67,10 @@ export type GroupDetailsDialogProps = {
     input: CloudGroupInvitationCreateInput,
   ) => Promise<CloudGroupInvitation>;
   onListGroupInvitations?: (groupSpaceId: string) => Promise<CloudGroupInvitationSummary[]>;
-  onRevokeGroupInvitation?: (invitationId: string) => Promise<void>;
   onMessageContact?: (contact: Contact) => Promise<void> | void;
   onDissolveGroup?: (groupSpaceId: string, sessionIds: string[]) => Promise<void> | void;
   anchorRect?: GroupManagementPopoverAnchor | null;
 };
-
-function isHumanMember(participant: ConversationParticipant) {
-  return participant.kind === 'human';
-}
-
-function isSelfMember(participant: ConversationParticipant) {
-  return participant.role === 'self' || (participant.kind === 'human' && participant.source === 'local');
-}
-
-function fallbackRoleAdminIds(members: ConversationParticipant[]) {
-  return members.filter((member) => member.role === 'admin').map((member) => member.id);
-}
-
-function groupAdminIds(space: ParticipantSpaceViewModel | null, members: ConversationParticipant[]) {
-  const activeSession = space?.sessions[0] ?? null;
-  if (space?.groupAdminIdentityIds?.length) {
-    return new Set(space.groupAdminIdentityIds.map((id) => id.trim()).filter(Boolean));
-  }
-  const metadataAdminIds = adminIdentityIdsFromMetadata(activeSession?.conversation.metadata);
-  const uniqueMetadataAdminIds = [...new Set(metadataAdminIds.map((id) => id.trim()).filter(Boolean))];
-  const creatorId = space?.groupCreatorIdentityId?.trim()
-    || activeSession?.conversation.canonicalCreatedByIdentityId?.trim()
-    || '';
-  if (uniqueMetadataAdminIds.length > 0) return new Set([creatorId, ...uniqueMetadataAdminIds].filter(Boolean));
-  const roleAdminIds = fallbackRoleAdminIds(members);
-  if (roleAdminIds.length > 0) return new Set([creatorId, ...roleAdminIds].filter(Boolean));
-  return new Set(creatorId ? [creatorId] : []);
-}
-
-function memberStableId(member: ConversationParticipant) {
-  return member.humanId?.trim()
-    || member.sourceIdentityId?.trim()
-    || member.id.trim();
-}
-
-function identityKeyVariants(value?: string | null) {
-  const key = value?.trim() ?? '';
-  if (!key) return [];
-  return key.startsWith('human:')
-    ? [key, key.slice('human:'.length)]
-    : [key, `human:${key}`];
-}
-
-function memberIdentityKeys(member: ConversationParticipant, currentAccountId?: string | null) {
-  return new Set([
-    ...identityKeyVariants(member.id),
-    ...identityKeyVariants(memberStableId(member)),
-    ...identityKeyVariants(member.humanId),
-    ...identityKeyVariants(member.sourceIdentityId),
-    ...(isSelfMember(member) ? identityKeyVariants(currentAccountId) : []),
-  ]);
-}
-
-function memberIsAdmin(member: ConversationParticipant, adminIds: Set<string>, currentAccountId?: string | null) {
-  const keys = memberIdentityKeys(member, currentAccountId);
-  return [...adminIds].some((adminId) => identityKeyVariants(adminId).some((key) => keys.has(key)));
-}
-
-function memberMatchesIdentity(member: ConversationParticipant, identityId?: string | null, currentAccountId?: string | null) {
-  const keys = memberIdentityKeys(member, currentAccountId);
-  return identityKeyVariants(identityId).some((key) => keys.has(key));
-}
-
-function contactStableId(contact: Contact) {
-  return contact.sourceHumanId?.trim()
-    || contact.sourceParticipantId?.trim()
-    || (contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length).trim() : '')
-    || contact.id.trim();
-}
-
-function isOpaqueIdentityLabel(value: string) {
-  const normalized = value.trim().toLowerCase();
-  return normalized.startsWith('acct_')
-    || normalized.startsWith('human:acct_')
-    || normalized.startsWith('cloud:acct_');
-}
-
-function visibleIdentityLabel(value: string) {
-  const normalized = value.trim();
-  return normalized && !isOpaqueIdentityLabel(normalized) ? normalized : '';
-}
-
-function duplicateNameCounts(names: string[]) {
-  const counts = new Map<string, number>();
-  for (const name of names) {
-    const key = name.trim().toLowerCase();
-    if (!key) continue;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return counts;
-}
-
-function hasDuplicateName(name: string, counts: Map<string, number>) {
-  return (counts.get(name.trim().toLowerCase()) ?? 0) > 1;
-}
-
-function groupActionErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim()) return error.message.trim();
-  if (typeof error === 'string' && error.trim()) return error.trim();
-  return 'The group could not be updated. Try again.';
-}
 
 export function GroupDetailsDialog({
   isOpen,
@@ -173,7 +86,6 @@ export function GroupDetailsDialog({
   onAddContact,
   onCreateGroupInvitation,
   onListGroupInvitations,
-  onRevokeGroupInvitation,
   onMessageContact,
   onDissolveGroup,
   anchorRect = null,
@@ -199,6 +111,9 @@ export function GroupDetailsDialog({
   const [actionError, setActionError] = useState<string | null>(null);
   const [gridFocusId, setGridFocusId] = useState<string | null>(null);
   const [showAllMembers, setShowAllMembers] = useState(false);
+  // Manage is a second level inside the panel, like the account menu's organization list.
+  const [level, setLevel] = useState<{ page: 'main' | 'manage'; direction: 'forward' | 'back' | null }>({ page: 'main', direction: null });
+  const stepBackRef = useRef<() => boolean>(() => false);
 
   const session = space?.sessions[0] ?? null;
   const groupSessionIds = useMemo(
@@ -305,16 +220,30 @@ export function GroupDetailsDialog({
     setActionError(null);
     setGridFocusId(null);
     setShowAllMembers(false);
+    setLevel({ page: 'main', direction: null });
   }, [isOpen, space?.id, space?.title]);
 
+  // Escape cancels a rename, then steps back from Manage, before it closes the panel.
   useEffect(() => {
-    if (!isEditingName || typeof document === 'undefined') return;
-    const input = document.getElementById(nameInputId);
-    if (!(input instanceof HTMLInputElement)) return;
-    input.focus();
-    input.select();
-    input.scrollIntoView({ block: 'nearest' });
-  }, [isEditingName, nameInputId]);
+    stepBackRef.current = () => {
+      if (isEditingName) {
+        if (pendingAction !== 'rename') { setIsEditingName(false); setActionError(null); }
+        return true;
+      }
+      if (level.page !== 'manage') return false;
+      setLevel({ page: 'main', direction: 'back' });
+      return true;
+    };
+  });
+
+  // The focused control unmounts when the level changes; keep keyboard focus in the panel.
+  useEffect(() => {
+    if (level.direction === null) return;
+    dialogRef.current?.querySelector<HTMLElement>(
+      level.page === 'manage' ? '[data-group-manage-back]' : '[data-group-profile-action="manage"]',
+    )?.focus({ preventScroll: true });
+  }, [level]);
+
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined') return undefined;
     const updateViewport = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
@@ -335,7 +264,7 @@ export function GroupDetailsDialog({
         if (dialogRef.current?.querySelector('[data-group-avatar-menu]')) return;
         event.preventDefault();
         event.stopPropagation();
-        onCloseRef.current();
+        if (!stepBackRef.current()) onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -391,12 +320,17 @@ export function GroupDetailsDialog({
     }
   };
 
-  const submitRename = (event: FormEvent) => {
-    event.preventDefault();
-    if (!canManageGroup) return;
+  // Enter, the check button or leaving the field: an empty name is refused, an unchanged one just closes.
+  const commitRename = () => {
     const name = nameDraft.trim();
-    if (!name) return;
-    void runAction('rename', () => onRename(groupSessionIds, name), () => setIsEditingName(false));
+    if (!canManageGroup || !isEditingName || pendingAction) return;
+    if (!groupNameIsValid(name)) {
+      setActionError('Enter a group name.');
+    } else if (name === space.title.trim()) {
+      setIsEditingName(false);
+    } else {
+      void runAction('rename', () => onRename(groupSessionIds, name), () => setIsEditingName(false));
+    }
   };
 
   const toggleAddContact = (contactId: string) => {
@@ -451,13 +385,24 @@ export function GroupDetailsDialog({
           />
         ) : null}
 
-        <div className="app-group-management-layout flex min-h-0 w-full flex-col">
+        {level.page === 'manage' && onDissolveGroup ? (
+          <div key="manage" className="app-group-management-layout app-group-management-level flex min-h-0 w-full flex-col" data-direction={level.direction ?? undefined}>
+            <GroupManagePage spaceId={space.id} title={space.title} sessionIds={groupMembershipSessionIds} disabled={Boolean(pendingAction)}
+              onBack={() => setLevel({ page: 'main', direction: 'back' })} onDissolveGroup={onDissolveGroup} />
+          </div>
+        ) : (
+        <div key="main" className="app-group-management-layout app-group-management-level flex min-h-0 w-full flex-col" data-direction={level.direction ?? undefined}>
           <GroupProfileHeader
             space={space}
             memberCount={members.length}
             adminCount={adminCount}
             canInvitePeople={canInvitePeople}
-            canManageGroup={canManageGroup}
+            titleSlot={(
+              <GroupNameInline title={space.title} canRename={canManageGroup} isEditing={isEditingName} draft={nameDraft}
+                saving={pendingAction === 'rename'} inputId={nameInputId} onCommit={commitRename}
+                onDraftChange={(value) => { setNameDraft(value); setActionError(null); }}
+                onStartEditing={() => { setNameDraft(space.title); setIsEditingName(true); setActionError(null); }} />
+            )}
             avatarEditor={onUpdateAvatar && canManageGroup ? (
               <GroupAvatarEditor
                 avatars={space.avatarStack}
@@ -472,11 +417,11 @@ export function GroupDetailsDialog({
             onClose={onClose}
             onShowMembers={() => memberSearchRef.current?.focus()}
             onAddPeople={openAddPeople}
-            onManage={() => {
-              setNameDraft(space.title);
-              setIsEditingName(true);
+            onManage={canManageGroup && onDissolveGroup ? () => {
+              setIsEditingName(false);
               setActionError(null);
-            }}
+              setLevel({ page: 'manage', direction: 'forward' });
+            } : undefined}
           />
 
           <div
@@ -490,9 +435,7 @@ export function GroupDetailsDialog({
             }}
           >
             {actionError ? (
-              <div role="alert" className="app-group-management-error mb-3 rounded-[11px] px-2.5 py-2 text-[11px] leading-4">
-                {actionError}
-              </div>
+              <ErrorLine className="mb-3 mt-0">{actionError}</ErrorLine>
             ) : null}
 
             <>
@@ -538,6 +481,8 @@ export function GroupDetailsDialog({
                     const showIdentityLabel = hasDuplicateName(member.name, duplicateNames)
                       && identityLabel
                       && identityLabel !== member.name;
+                    // Online people's names take the accent; the description keeps it from being colour-only.
+                    const showsOnline = !isSelfMember(member) && memberPresence(member) === 'online';
                     return (
                       <button
                         key={member.id}
@@ -545,6 +490,8 @@ export function GroupDetailsDialog({
                         data-group-member-grid-item
                         data-member-role={admin ? 'admin' : 'member'}
                         aria-label={`${member.name}, ${admin ? 'admin' : 'member'}${showIdentityLabel ? `, ${identityLabel}` : ''}`}
+                        aria-description={showsOnline ? 'online' : undefined}
+                        data-member-presence={showsOnline ? 'online' : undefined}
                         aria-expanded={selected}
                         aria-controls={selected ? `${memberSearchId}-member-actions` : undefined}
                         tabIndex={resolvedGridFocusId === member.id ? 0 : -1}
@@ -574,7 +521,7 @@ export function GroupDetailsDialog({
                             </span>
                           ) : null}
                         </span>
-                        <span className="mt-1.5 block truncate text-[10.5px] font-medium leading-4" title={member.name}>
+                        <span className={cn('mt-1.5 block truncate text-[10.5px] font-medium leading-4', showsOnline && 'app-contacts-presence-online')} title={member.name}>
                           {member.name}
                         </span>
                         {showIdentityLabel ? (
@@ -809,6 +756,9 @@ export function GroupDetailsDialog({
                           const showIdentityLabel = hasDuplicateName(option.label, duplicateNames)
                             && identityLabel
                             && identityLabel !== option.label;
+                          // As in Contacts rows, a known presence line takes the handle's place.
+                          const presenceLine = formatPresenceLine(option.contact.presenceStatus, option.contact.presenceLastSeenAt);
+                          const secondaryText = showIdentityLabel ? identityLabel : presenceLine ?? detail;
                           return (
                             <button
                               key={option.id}
@@ -828,9 +778,9 @@ export function GroupDetailsDialog({
                               />
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate font-medium">{option.label}</span>
-                                {showIdentityLabel || detail ? (
-                                  <span className="block truncate text-[9.5px] text-[color:var(--utility-muted-text)]">
-                                    {showIdentityLabel ? identityLabel : detail}
+                                {secondaryText ? (
+                                  <span className={cn('block truncate text-[9.5px]', !showIdentityLabel && presenceLine === 'online' ? 'app-contacts-presence-online' : 'text-[color:var(--utility-muted-text)]')}>
+                                    {secondaryText}
                                   </span>
                                 ) : null}
                               </span>
@@ -879,7 +829,6 @@ export function GroupDetailsDialog({
                       pendingAction={pendingAction}
                       onCreateGroupInvitation={onCreateGroupInvitation}
                       onListGroupInvitations={onListGroupInvitations}
-                      onRevokeGroupInvitation={onRevokeGroupInvitation}
                       runAction={runAction}
                       onError={setActionError}
                     />
@@ -887,31 +836,10 @@ export function GroupDetailsDialog({
                 </section>
               ) : null}
 
-
-              <GroupNameSettings
-                title={space.title}
-                canManageGroup={canManageGroup}
-                pendingAction={pendingAction}
-                isEditingName={isEditingName}
-                nameDraft={nameDraft}
-                nameInputId={nameInputId}
-                onToggleEditing={() => { setNameDraft(space.title); setIsEditingName((current) => !current); setActionError(null); }}
-                onNameDraftChange={setNameDraft}
-                onCancel={() => { setNameDraft(space.title); setIsEditingName(false); }}
-                onSubmit={submitRename}
-              />
-              <GroupInfoFooterActions spaceId={space.id} title={space.title} sessionIds={groupMembershipSessionIds} isAdmin={currentMemberIsAdmin}
-                canLeave={Boolean(currentMember) && !currentMemberIsCreator} disabled={Boolean(pendingAction)} onDissolveGroup={onDissolveGroup}
-                onLeave={() => {
-                  if (!currentMember) return;
-                  setIsAddPeopleOpen(false);
-                  setSelectedMemberId(currentMember.id);
-                  setConfirmingRemovalId(currentMember.id);
-                }}
-              />
           </>
           </div>
         </div>
+        )}
       </div>
     </>
   );

@@ -1,6 +1,6 @@
 import { CalendarDays, PanelRightClose, PanelRightOpen, MessageSquare, Newspaper } from 'lucide-react';
 
-export type CompanionView = 'chat' | 'digest' | 'calendar' | 'document';
+export type CompanionView = 'chat' | 'digest' | 'calendar' | 'document' | 'discussion';
 export type CompanionToolbarProps = {
   view: CompanionView;
   isOpen: boolean;
@@ -9,6 +9,8 @@ export type CompanionToolbarProps = {
   /** Keeps the fold control available while a document is open. */
   hasDocument?: boolean;
   hasTabs?: boolean;
+  /** An open message discussion; the Chat button selects its tab. */
+  hasDiscussion?: boolean;
   onToggle?: () => void;
   onSelect: (view: CompanionView) => void;
   onHide: () => void;
@@ -23,12 +25,12 @@ const views = [
 export function CompanionToolbar(props: CompanionToolbarProps) {
   return <div className="app-companion-toolbar" role="group" aria-label="Companion panel" data-kordi-window-drag="false">
     {views.map(({ id, label, icon: Icon }) => {
-      const selected = props.isOpen && props.view === id;
+      const selected = props.isOpen && (props.view === id || (id === 'chat' && props.view === 'discussion'));
       return <button
         key={id} type="button" aria-label={label}
         title={`Open ${label} tab`}
         aria-pressed={selected}
-        disabled={id === 'chat' && !props.canOpenChat && !props.hasChat}
+        disabled={id === 'chat' && !props.canOpenChat && !props.hasChat && !props.hasDiscussion}
         onClick={event => {
           // A double click must not immediately undo the first toggle.
           if (event.detail > 1) return;

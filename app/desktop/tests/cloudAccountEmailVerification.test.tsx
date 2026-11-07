@@ -57,6 +57,17 @@ test('rate limit answers carry the Retry-After header as seconds', async () => {
     requestAccountEmailCode(client, 'session-token'),
     (error: unknown) => error instanceof CloudAuthError && error.code === 'rate_limited' && error.retryAfterSeconds === 42,
   );
+  const bodyOnly = new CloudAuthClient({
+    baseUrl: 'http://srv',
+    fetchImpl: async () => Response.json(
+      { errorCode: 'rate_limited', message: 'Too many attempts. Try again in 7 seconds.', retryAfterSeconds: 7 },
+      { status: 429 },
+    ),
+  });
+  await assert.rejects(
+    requestAccountEmailCode(bodyOnly, 'session-token'),
+    (error: unknown) => error instanceof CloudAuthError && error.retryAfterSeconds === 7,
+  );
   const now = Date.parse('2026-10-06T00:00:00Z');
   assert.equal(parseRetryAfterSeconds('Tue, 06 Oct 2026 00:00:30 GMT', now), 30);
   assert.equal(parseRetryAfterSeconds(null, now), undefined);
@@ -302,7 +313,7 @@ test('email row refreshes the account at once when the server says the email is 
       assert.match(view.host.textContent!, /Verified/, stage);
       assert.doesNotMatch(view.host.textContent!, /Not verified/, stage);
       assert.match(view.host.querySelector('[role="status"]')!.textContent!, /This email is already verified\./, stage);
-      assert.equal(view.host.querySelector('.app-error-text'), null, stage);
+      assert.equal(view.host.querySelector('.app-error-line'), null, stage);
     } finally {
       await view.cleanup();
     }
@@ -322,7 +333,7 @@ test('email row shows the server delivery message and falls back to readable tex
     });
     try {
       await act(async () => view.button('Verify email')!.click());
-      assert.match(view.host.querySelector('.app-error-text')!.textContent!, expected);
+      assert.match(view.host.querySelector('.app-error-line')!.textContent!, expected);
       assert.equal(view.button('Verify email')?.disabled, false);
     } finally {
       await view.cleanup();
@@ -343,7 +354,7 @@ test('a rate limited request arms the countdown from Retry-After', async () => {
   });
   try {
     await act(async () => view.button('Verify email')!.click());
-    assert.match(view.host.querySelector('.app-error-text')!.textContent!, /Too many attempts/);
+    assert.match(view.host.querySelector('.app-error-line')!.textContent!, /Too many attempts/);
     const held = view.button('Verify email (42s)');
     assert.ok(held);
     assert.equal(held.disabled, true);

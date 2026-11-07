@@ -151,7 +151,7 @@ export function agentBuilderSeedForAgent(agent?: Agent): DesktopAgentBuilderSeed
     sourceSummary: cloudAgentDraftSourceSummary(agent),
     boundaries: cloudAgentDraftBoundaries(agent),
     systemPrompt: agent?.systemPrompt ?? '',
-    access: agent?.cloudAgentAccessScope === 'participant_conversations' ? 'participant-conversations' : 'only-me',
+    access: agent?.cloudAgentAccessScope === 'private' ? 'only-me' : 'participant-conversations',
     provider: agent?.defaultAuthProvider ?? null,
     authChoice: agent?.defaultAuthChoice ?? null,
     model: agent?.defaultModel ?? null,

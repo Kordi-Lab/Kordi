@@ -3,6 +3,7 @@ import { isBrowserAppRuntime } from '@web/auth/browserAppRuntime';
 import { loadArtifactPreview } from './artifactPreviewLoader';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Braces, ChevronLeft, FileText, FolderOpen, Globe2, LoaderCircle, Maximize2, X } from 'lucide-react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { MarkdownCodeBlock, MarkdownContent, MermaidDiagram } from '@/kordi-app/components';
 import type { ConversationParticipant, DesktopArtifactDirectory, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
 import { fetchDesktopChatArtifactDirectory } from '@/lib/desktop';
@@ -21,7 +22,7 @@ type ArtifactInspectorProps = {
   artifacts: SessionArtifact[];
   activeArtifactId: string | null;
   onSelectArtifact: (artifactId: string | null) => void;
-  emptyMessage: string;
+  emptyMessage: string | null; // null: the caller shows the empty state
   previewBaseRoot?: string | null;
   folderBrowserRoot?: string | null;
   footer?: ReactNode;
@@ -383,24 +384,20 @@ export function ArtifactInspector({
 
   return (
     <div data-artifact-inspector="true" className="flex h-full min-h-0 flex-col">
-      <div data-artifact-file-list="true" className="shrink-0 overflow-y-auto overflow-x-hidden pr-1 max-h-[38%]">
+      <div data-artifact-file-list="true" className={cn('shrink-0 overflow-y-auto overflow-x-hidden pr-1', previewArtifact && !opensInCompanion ? 'max-h-[38%]' /* room for the preview */ : 'max-h-full')}>
         {folderBrowserRootPath ? (
           <section className="app-detail-section">
           <div className="app-detail-kicker">Project folder</div>
           <div className="app-inspector-emphasis">
-            <div className="truncate text-[11px] text-[color:var(--utility-foreground)]">
-              {fileNameFromPath(browserDirectory?.path ?? folderBrowserRootPath)}
-            </div>
-            <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">
-              {browserDirectory?.entries.length ?? 0} items
-            </div>
+            <div className="truncate text-[11px] text-[color:var(--utility-foreground)]">{fileNameFromPath(browserDirectory?.path ?? folderBrowserRootPath)}</div>
+            <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{browserDirectory?.entries.length ?? 0} items</div>
           </div>
           {isBrowserLoading ? (
             <div className="mt-2 flex items-center gap-2 rounded-[14px] border border-[color:var(--app-divider)] px-3 py-2 text-[12px] text-[color:var(--utility-muted-text)]">
               <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Loading folder…
             </div>
           ) : browserError ? (
-            <div className="app-error-text mt-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{browserError}</div>
+            <ErrorLine className="mt-2">{browserError}</ErrorLine>
           ) : browserDirectory ? (
             <div className="app-inspector-list mt-2">
               {browserDirectory.parentPath ? (
@@ -481,7 +478,7 @@ export function ArtifactInspector({
             onSelect={selectListArtifact}
           />
           </>
-        ) : (
+        ) : emptyMessage === null ? null : (
           <section className="app-detail-section">
             <div className="app-detail-kicker">Artifacts</div>
             <div className="app-inspector-empty">{emptyMessage}</div>

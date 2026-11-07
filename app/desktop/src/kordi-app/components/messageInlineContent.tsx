@@ -168,7 +168,7 @@ export function MessageInlineContent({
           <button
             key={`mention-${part.start}`}
             type="button"
-            className="rounded-sm bg-transparent p-0 text-left font-[inherit] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[color:var(--app-sidebar-accent)]"
+            className="rounded-sm bg-transparent p-0 text-left font-[inherit]"
             aria-label={`Open ${part.label.replace(/^@/, '')} profile`}
             onClick={(event) => {
               event.preventDefault();

@@ -43,7 +43,7 @@
 }
 
 .app-factory-recovery > svg {
-  color: var(--agent-studio-danger);
+  color: var(--app-error-text);
 }
 
 .app-factory-recovery h2,

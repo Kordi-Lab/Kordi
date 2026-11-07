@@ -69,7 +69,7 @@ pub(crate) fn site_header(home: &str) -> String {
 /// The home page's footer: the bird, the wordmark and the same links.
 pub(crate) fn site_footer(home: &str) -> String {
     format!(
-        r#"<footer class="wrap"><a class="brand" href="{home}">{}<span>kordi</span></a><nav aria-label="Footer"><a href="https://github.com/Kordi-Lab/Kordi">GitHub</a><a href="https://github.com/Kordi-Lab/Kordi/blob/main/LICENSE">MIT License</a><a href="{home}about">About</a><a href="{home}privacy">Privacy policy</a><a href="{home}terms">Terms</a></nav></footer>"#,
+        r#"<footer class="wrap"><a class="brand" href="{home}">{}<span>kordi</span></a><nav aria-label="Footer"><a href="https://github.com/Kordi-AI/Kordi">GitHub</a><a href="https://github.com/Kordi-AI/Kordi/blob/main/LICENSE">MIT License</a><a href="{home}about">About</a><a href="{home}download">Download</a><a href="{home}privacy">Privacy policy</a><a href="{home}terms">Terms</a></nav></footer>"#,
         bird("kordi-bird-foot")
     )
 }

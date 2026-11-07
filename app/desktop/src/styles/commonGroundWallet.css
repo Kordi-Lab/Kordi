@@ -1,6 +1,6 @@
 /* Grounding Home and card page on the Mac: header, deck rail, one 540px column, 10px panels, hairlines. */
 
-.cg-page.is-wallet { flex-direction: column; --cg-rail-bg: color-mix(in oklab, var(--utility-foreground) 3%, var(--app-main-bg)); }
+.cg-page.is-wallet { flex-direction: column; container: cg-wallet / inline-size; --cg-rail-bg: color-mix(in oklab, var(--utility-foreground) 3%, var(--app-main-bg)); }
 .cg-wallet { display: flex; min-height: 0; min-width: 0; flex: 1; flex-direction: column; }
 .cg-wallet-head { display: flex; height: 52px; flex: none; align-items: center; gap: 10px; padding: 0 16px 0 24px; border-bottom: 1px solid var(--cg-line); }
 .cg-wallet-head h1 { min-width: 0; flex: 1; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; }
@@ -90,10 +90,9 @@ button.cg-mrow:hover { background: var(--cg-fill); }
   width: 30px; height: 34px; border: 1px solid var(--cg-line); border-radius: 7px; background: var(--app-main-bg);
   color: var(--utility-foreground); text-align: center; font: 600 17px ui-monospace, "SF Mono", Menlo, monospace; outline: none;
 }
-.cg-paircode .cg-digits input:focus { border-color: var(--app-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 22%, transparent); }
+.cg-paircode .cg-digits input:focus { border-color: var(--app-focus-border); box-shadow: none; }
 .cg-paircode .cg-digits input:disabled { opacity: 0.5; }
-.cg-paircode .cg-digits.is-missing input { border-color: var(--app-transient-danger-text, oklch(58% 0.2 27)); background: color-mix(in srgb, var(--app-transient-danger-text, oklch(58% 0.2 27)) 10%, transparent); }
-.cg-pair-error { margin-top: -4px; padding: 0 14px 10px 48px; color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 11px; }
+.cg-paircode .cg-digits.is-missing input { border-color: var(--app-error-text); background: color-mix(in srgb, var(--app-error-text) 10%, transparent); }
 
 /* Pair: the row above Pair code; its popover shows your code and takes theirs. */
 .cg-pair-open { width: 100%; border: 0; border-radius: 9px 9px 0 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
@@ -112,8 +111,6 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .cg-pair-copy svg { width: 14px; height: 14px; }
 .cg-pair-copy:hover:not(:disabled) { background: var(--cg-fill); color: var(--utility-foreground); }
 .cg-pair-sub { margin-top: 2px; color: var(--utility-muted-text); font-size: 11px; font-variant-numeric: tabular-nums; }
-.cg-pair-sub.is-error { color: var(--app-transient-danger-text, oklch(58% 0.2 27)); text-align: center; }
-.cg-pair-retry { margin-left: 6px; padding: 0; border: 0; background: none; color: var(--app-accent); font: inherit; font-weight: 600; cursor: pointer; }
 .cg-pair-their { margin-top: 16px; border-top: 0.5px solid var(--cg-line); }
 .cg-pair-their .cg-pop-label { display: block; }
 .cg-pair-field { display: flex; align-items: center; gap: 8px; }
@@ -132,7 +129,7 @@ button.cg-mrow:hover { background: var(--cg-fill); }
   display: block; width: 100%; height: 30px; margin-top: 12px; padding: 0 10px; border: 1px solid var(--cg-line); border-radius: 7px;
   background: var(--app-main-bg); color: var(--utility-foreground); font: inherit; font-size: 13px; outline: none;
 }
-.cg-pop-input:focus { border-color: var(--app-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 22%, transparent); }
+.cg-pop-input:focus { border-color: var(--app-focus-border); box-shadow: none; }
 .cg-pop-input::placeholder { color: var(--utility-muted-text); }
 .cg-pop-label { margin: 14px 0 8px; color: var(--utility-muted-text); font-size: 11px; font-weight: 600; }
 .cg-pop-cards { display: flex; align-items: center; gap: 8px; }
@@ -144,7 +141,6 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .cg-pop-card:hover { opacity: 0.85; }
 .cg-pop-card.is-on { opacity: 1; box-shadow: 0 0 0 2px var(--app-main-bg), 0 0 0 4px var(--app-accent), inset 0 0 0 0.5px var(--edge); }
 .cg-pop-pick { margin-left: 4px; font-size: 12px; font-weight: 600; }
-.cg-pop-error { margin-top: 10px; color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 11px; }
 .cg-pop-foot { display: flex; justify-content: flex-end; margin-top: 16px; }
 .cg-code-big { display: flex; justify-content: center; gap: 8px; margin: 6px 0 12px; }
 .cg-code-big span { display: grid; width: 50px; height: 60px; place-items: center; border-radius: 10px; background: var(--cg-fill); font: 600 30px ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
@@ -198,15 +194,14 @@ button.cg-mrow:hover { background: var(--cg-fill); }
   background: var(--app-main-bg); color: var(--utility-foreground); font: inherit; font-size: 12px; outline: none;
 }
 .cg-cardpage-fields .cg-cardpage-name-in { font-size: 15px; font-weight: 650; }
-.cg-cardpage-error { color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 11px; }
-.cg-cardpage-fields input:focus { border-color: var(--app-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 22%, transparent); }
+.cg-cardpage-fields input:focus { border-color: var(--app-focus-border); box-shadow: none; }
 .cg-cardpage .cg-msec { margin-top: 18px; }
 
 /* Card look: the icon square opens backgrounds and icons. */
 .cg-look-anchor { position: relative; display: inline-flex; flex: none; }
 .is-look:is(.cg-cardpage-glyph, .cg-card-glyph) { padding: 0; border: 0; font: inherit; cursor: pointer; transition: box-shadow 150ms ease-out, filter 150ms ease-out; }
 .is-look:is(.cg-cardpage-glyph, .cg-card-glyph):hover { filter: brightness(1.08); }
-.is-look:is(.cg-cardpage-glyph, .cg-card-glyph)[aria-expanded="true"], .is-look:is(.cg-cardpage-glyph, .cg-card-glyph):focus-visible {
+.is-look:is(.cg-cardpage-glyph, .cg-card-glyph)[aria-expanded="true"] {
   outline: none; box-shadow: 0 0 0 2px var(--app-main-bg), 0 0 0 4px var(--app-accent);
 }
 .cg-pop.cg-look { top: 36px; right: auto; left: 0; width: 300px; padding: 14px; transform-origin: top left; }
@@ -266,7 +261,6 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .cg-chip { display: inline-flex; max-width: 100%; }
 .cg-chip.is-link { padding: 0; border: 0; border-radius: 6px; background: none; font: inherit; cursor: pointer; }
 .cg-chip.is-link:hover .cg-tag { filter: brightness(0.96); }
-.cg-chip.is-link:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--app-accent); }
 .cg-timeline { margin: 0; padding: 4px 0; list-style: none; }
 .cg-tl-row { position: relative; display: grid; align-items: start; grid-template-columns: 72px 8px minmax(0, 1fr); column-gap: 12px; padding: 8px 14px; }
 .cg-tl-row::before { content: ""; position: absolute; top: 0; bottom: 0; left: 101.25px; border-left: 1.5px dotted color-mix(in srgb, var(--utility-muted-text) 45%, transparent); }
@@ -305,6 +299,23 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .cg-mem-tick { display: inline-grid; width: 14px; flex: none; place-items: center; }
 .cg-src-icon { display: grid; width: 26px; height: 26px; flex: none; place-items: center; border-radius: 7px; color: #fff; }
 .cg-cardpage-share { margin-top: 12px; }
+
+/* Narrow panes (the browser app on a phone): the deck sits above one scrolling column. */
+@container cg-wallet (max-width: 640px) {
+  .cg-wallet-head { padding: 0 12px 0 16px; }
+  .cg-wallet-body { display: block; overflow-y: auto; scrollbar-width: thin; }
+  .cg-deck-rail { overflow: visible; padding: 16px; border-right: 0; border-bottom: 0.5px solid var(--cg-line); }
+  .cg-deck { width: 176px; margin: 0 auto; }
+  .cg-wallet-main { overflow: visible; padding: 20px 16px 32px; }
+  .cg-paircode > .cg-pop { right: 0; left: 0; width: auto; }
+}
+@container cg-wallet (max-width: 420px) {
+  .cg-pair-row.is-code { flex-wrap: wrap; row-gap: 8px; }
+  .cg-pair-row.is-code .cg-pair-title { flex-basis: calc(100% - 36px); }
+  .cg-pair-row.is-code .cg-digits { margin-left: 36px; }
+  .cg-cardpage-head { flex-wrap: wrap; row-gap: 8px; }
+  .cg-cardpage-title { flex-basis: calc(100% - 38px); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .cg-deck-new, .cg-pop-card, .cg-design, .cg-line-act, .cg-look-icon, .cg-look-colour, .is-look { transition: none; }

@@ -22,6 +22,8 @@ import {
 import { loadSession } from './session';
 import { isAgentUnavailableRefusal } from './agentRestrictions';
 import { cloudAgentLocalFailureMessage } from './cloudAgentLocalExecution';
+import { cloudAgentSharedFailure } from './cloudAgentFailureNotices';
+import type { CloudAgentFailureCode } from './cloudAgentFailureCode';
 import {
   cloudAgentCanonicalIdentityId,
   cloudAgentDisplayName,
@@ -99,6 +101,7 @@ export function cloudGroupAgentFailureNoticeRequest({
       replyToMessageId: requestId,
       ...(messageAction?.kind === 'thread' ? { messageAction } : {}),
       error: failureText,
+      failureCode: cloudAgentSharedFailure(error, agentDisplayName).failureCode,
     },
     createdAtMs: now,
     parentMessageId: requestId,
@@ -143,9 +146,8 @@ export async function handleCloudGroupAgentFailure(
     || 'Cloud user';
   const agentId = cloudAgentId(message.targetCloudAgentId, account.accountId);
   const agentDisplayName = cloudAgentDisplayName(hostedAgentName);
-  const failureText = noProvider
-    ? cloudAgentNoProviderNoticeText()
-    : cloudAgentLocalFailureMessage(error);
+  // Every member reads the published reply; only this owner's own row keeps the reason.
+  const sharedFailure = cloudAgentSharedFailure(error, agentDisplayName);
   const failedResponseRequest = cloudGroupAgentFailureNoticeRequest({
     accountId: account.accountId,
     agentId,
@@ -197,7 +199,7 @@ export async function handleCloudGroupAgentFailure(
     runtime,
     responseMessageId,
     responseCreatedAtMs,
-    failureText,
+    sharedFailure,
     agentDisplayName,
     agentId,
     signal,
@@ -214,7 +216,7 @@ async function publishCloudGroupAgentFailure({
   runtime,
   responseMessageId,
   responseCreatedAtMs,
-  failureText,
+  sharedFailure,
   agentDisplayName,
   agentId,
   signal,
@@ -223,7 +225,7 @@ async function publishCloudGroupAgentFailure({
   runtime: CloudGroupAgentRuntime;
   responseMessageId: string;
   responseCreatedAtMs: number;
-  failureText: string;
+  sharedFailure: { text: string; failureCode: CloudAgentFailureCode };
   agentDisplayName: string;
   agentId: string;
   signal?: AbortSignal;
@@ -257,11 +259,12 @@ async function publishCloudGroupAgentFailure({
       id: responseMessageId,
       senderAccountId: account.accountId,
       senderAgentId: agentId,
-      text: failureText,
+      text: sharedFailure.text,
       createdAtMs: responseCreatedAtMs,
       senderKind: 'agent',
       senderDisplayName: agentDisplayName,
       deliveryState: 'failed',
+      failureCode: sharedFailure.failureCode,
       replyToMessageId: message.id,
       requestId: message.id,
       ...(message.messageAction?.kind === 'thread' ? { messageAction: message.messageAction } : {}),

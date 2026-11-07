@@ -351,6 +351,12 @@ pub(super) async fn prepare_desktop_session_for_send(
             ),
             skill_names: Some(agent.loaded_skills),
             proactive_run: runtime.is_proactive_run(),
+            // A background session runs on the parent turn's route by default:
+            // the same model and the same account. `detail.provider` is only
+            // the model namespace, which a ChatGPT sign-in shares with OpenAI keys.
+            turn_route: parent_route
+                .0
+                .map(super::background_tasks::turn_route_from_message_route),
             ..DesktopRuntimeProfile::default()
         };
         // The owner's own request keeps its tools in background sessions.

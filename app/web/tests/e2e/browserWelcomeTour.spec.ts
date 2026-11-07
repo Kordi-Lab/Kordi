@@ -34,7 +34,7 @@ for (const width of [1440, 390]) {
       await tourCard(page).getByRole('button', { name: 'Next', exact: true }).click();
       await expect(tourCard(page).getByRole('heading')).not.toHaveText(title, { timeout: 10_000 });
     }
-    // The fixture has no Grounding capability, and file import is desktop-only.
+    // The fixture reports neither Grounding nor Memory, so their sections are skipped.
     expect(titles).toEqual([
       'Connect an AI account', 'Add someone to your contacts', 'Start a conversation',
       'Set up an agent', 'Check your daily overview', 'Find help here anytime',

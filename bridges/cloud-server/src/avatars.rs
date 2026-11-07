@@ -16,7 +16,9 @@ use sqlx_postgres::Postgres;
 use url::Url;
 use uuid::Uuid;
 
-use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, RateLimitDecision};
+use crate::auth::rate_limit::{
+    rate_limited_response_with, CloudRateLimiter, RateLimitDecision, AVATAR_RENDER_ADDRESS_LIMIT,
+};
 use crate::server::ServerState;
 
 use self::rendering::{
@@ -255,18 +257,10 @@ pub async fn preserve_avatar_render_key(
     Ok(())
 }
 
-/// `shared` lends its trusted networks to the render throttle.
-pub fn routes(state: Arc<ServerState>, shared: &CloudRateLimiter) -> Router {
-    // ponytail: per-process throttling plus the durable render-key allowlist bounds
-    // work today; give this route its own Redis namespace if replica-level abuse appears.
-    let rate_limiter = Arc::new(
-        CloudRateLimiter::memory(CloudRateLimitConfig {
-            per_ip_limit: 120,
-            per_ip_window: Duration::from_secs(60),
-            ..CloudRateLimitConfig::production()
-        })
-        .with_trusted_networks(shared.trusted_networks().clone()),
-    );
+/// Uncached renders charge [`AVATAR_RENDER_ADDRESS_LIMIT`] on the shared
+/// limiter, a budget of their own that never touches the sign-in routes.
+pub fn routes(state: Arc<ServerState>, shared: &Arc<CloudRateLimiter>) -> Router {
+    let rate_limiter = shared.clone();
     Router::new()
         .route(
             "/v1/avatars/:renderer/:style/:file_name",
@@ -309,7 +303,10 @@ async fn render_generated_avatar(
     }
 
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(avatar_request_ip(&headers, connect_info.as_ref()))
+        .observe_address_limit(
+            AVATAR_RENDER_ADDRESS_LIMIT,
+            avatar_request_ip(&headers, connect_info.as_ref()),
+        )
         .await
     {
         return avatar_rate_limited(retry_after);
@@ -349,7 +346,10 @@ async fn render_avatar_preview(
         return avatar_png_response(bytes);
     }
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(avatar_request_ip(&headers, connect_info.as_ref()))
+        .observe_address_limit(
+            AVATAR_RENDER_ADDRESS_LIMIT,
+            avatar_request_ip(&headers, connect_info.as_ref()),
+        )
         .await
     {
         return avatar_rate_limited(retry_after);
@@ -380,27 +380,14 @@ async fn render_and_cache_avatar(cache_key: RenderKey) -> Response {
     avatar_png_response(bytes)
 }
 
-/// Keys the render throttle only. Unlike the sign-in limits, which trust
-/// forwarded addresses only from `KORDI_CLOUD_TRUSTED_PROXIES`, this follows
-/// any private proxy's `X-Real-IP` so the product edge's forwarded address
-/// spreads render load instead of sharing one in-cluster bucket.
+/// The client address for the render budget, resolved like every other route
+/// (see [`crate::client_ip`]): forwarded headers count only from a configured
+/// trusted proxy, so a client cannot choose its own bucket.
 fn avatar_request_ip(
     headers: &HeaderMap,
     connect_info: Option<&ConnectInfo<SocketAddr>>,
 ) -> Option<std::net::IpAddr> {
-    let peer = connect_info.map(|info| info.0.ip())?;
-    let trusted_proxy = match peer {
-        std::net::IpAddr::V4(ip) => ip.is_loopback() || ip.is_private(),
-        std::net::IpAddr::V6(ip) => ip.is_loopback() || ip.is_unique_local(),
-    };
-    if !trusted_proxy {
-        return Some(peer);
-    }
-    headers
-        .get("x-real-ip")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.trim().parse().ok())
-        .or(Some(peer))
+    crate::client_ip::resolve_client_ip(headers, connect_info.map(|info| info.0.ip()))
 }
 
 async fn canonical_avatar_render_key_exists(
@@ -465,14 +452,7 @@ fn avatar_error(status: StatusCode, message: &'static str) -> Response {
 }
 
 fn avatar_rate_limited(retry_after: Duration) -> Response {
-    let mut response = avatar_error(
-        StatusCode::TOO_MANY_REQUESTS,
-        "Too many avatar requests. Try again shortly.",
-    );
-    if let Ok(value) = HeaderValue::from_str(&retry_after.as_secs().max(1).to_string()) {
-        response.headers_mut().insert(header::RETRY_AFTER, value);
-    }
-    response
+    rate_limited_response_with(retry_after, "Too many avatar requests.")
 }
 
 #[cfg(test)]

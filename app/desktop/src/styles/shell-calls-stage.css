@@ -105,8 +105,7 @@
 }
 
 .app-call-icon-button,
-.app-call-card-button,
-.app-call-error button {
+.app-call-card-button {
   display: grid;
   flex: none;
   place-items: center;
@@ -120,26 +119,14 @@
 }
 
 .app-call-icon-button:hover,
-.app-call-card-button:hover,
-.app-call-error button:hover {
+.app-call-card-button:hover {
   border-color: rgb(255 255 255 / 0.16);
   background: rgb(255 255 255 / 0.12);
 }
 
 .app-call-icon-button:active,
-.app-call-card-button:active,
-.app-call-error button:active {
+.app-call-card-button:active {
   transform: scale(0.96);
-}
-
-.app-call-icon-button:focus-visible,
-.app-call-control:focus-visible,
-.app-call-card-button:focus-visible,
-.app-call-error button:focus-visible,
-.app-call-recovery button:focus-visible,
-.app-call-device-option:focus-visible {
-  outline: 2px solid rgb(154 169 255 / 0.95);
-  outline-offset: 3px;
 }
 
 .app-call-icon-button {
@@ -151,8 +138,7 @@
 }
 
 .app-call-icon-button svg,
-.app-call-card-button svg,
-.app-call-error svg {
+.app-call-card-button svg {
   width: 18px;
   height: 18px;
   stroke-width: 1.85;

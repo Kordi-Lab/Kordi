@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { AppDialog, AppDialogActions, AppDialogTitle } from '@/components/ui/dialog';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 
 type ProjectCreateDialogProps = {
   onCancel: () => void;
@@ -111,7 +112,7 @@ export function ProjectCreateDialog({
         </div>
       )}
 
-      {error ? <div className="app-error-text mt-4 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{error}</div> : null}
+      {error ? <ErrorLine className="mt-4">{error}</ErrorLine> : null}
 
       <AppDialogActions>
         <Button variant="quiet" className="rounded-full px-4" disabled={isSubmitting} onClick={onCancel}>Cancel</Button>

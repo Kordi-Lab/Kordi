@@ -135,6 +135,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
             args.setActiveConvId(conversationId);
           }}
           renderPersonInfo={renderPersonInfo}
+          cloudAccount={account}
         />
         </DocumentReaderHostContext.Provider>
       )}

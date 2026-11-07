@@ -452,5 +452,5 @@ test('chat links keep fixed icon geometry and immediate hover/focus feedback', (
   assert.match(css, /\.app-message-link-site-icon\s*{[\s\S]*width:\s*14px;[\s\S]*height:\s*14px;[\s\S]*vertical-align:\s*-2px;/);
   assert.match(css, /\.app-markdown-link\s*{[\s\S]*transition:\s*color 80ms ease-out;/);
   assert.match(css, /\.app-markdown-link:hover\s*{[\s\S]*text-decoration-line:\s*underline;/);
-  assert.match(css, /\.app-markdown-link:focus-visible\s*{[\s\S]*outline:\s*2px solid/);
+  assert.doesNotMatch(css, /\.app-markdown-link:focus-visible\s*{[^}]*outline:\s*\d/);
 });

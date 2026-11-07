@@ -63,6 +63,7 @@ export function ArtifactListRow({ artifact, location, isActive, participants, on
   // Inside a conversation the creator says more than "Shared in <group>".
   const meta = [location, creator ? null : artifact.summary, artifact.live ? 'Live' : artifact.timeLabel].filter(Boolean).join(' · ');
 
+  // Laid out like a Memory row: the name over one muted line, people on the right.
   return (
     <button
       type="button"
@@ -70,32 +71,38 @@ export function ArtifactListRow({ artifact, location, isActive, participants, on
       aria-current={isActive ? 'true' : undefined}
       onClick={onSelect}
       className={cn(
-        'flex h-10 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-left transition-colors',
+        'flex w-full min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors',
         isActive ? 'bg-[color:var(--app-control-bg)]' : 'hover:bg-[color:var(--app-control-hover)]',
       )}
     >
-      <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-md', badge.className)} title={badge.label}>
+      <span className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-md', badge.className)} title={badge.label}>
         <BadgeIcon className="h-3.5 w-3.5" aria-hidden="true" />
       </span>
-      <span className="min-w-0 shrink truncate text-[13px] font-medium leading-5 text-[color:var(--utility-foreground)]" title={label === artifact.name ? undefined : artifact.name}>{label}</span>
-      {artifact.pinned ? <span className="shrink-0 rounded-md bg-amber-400/15 px-1.5 text-[10.5px] leading-4 text-amber-600">Pinned</span> : null}
-      <span className="ml-auto flex min-w-0 shrink-[2] items-center gap-2 pl-3 text-[11.5px] leading-5 text-[color:var(--utility-muted-text)]">
-        {creator && creatorName ? (
-          <span className="flex min-w-0 items-center gap-1.5" data-artifact-creator="true" title={`Created by ${creatorName}`}>
-            <PersonAvatar participant={creator} className="h-[18px] w-[18px] shrink-0" />
-            <span className="truncate text-[color:var(--utility-foreground)]">{creatorName}</span>
-          </span>
-        ) : null}
-        {others.length > 0 ? (
-          <span className="flex shrink-0 items-center" data-artifact-participants="true" title={others.map((person) => person.publicName?.trim() || person.name).join(', ')}>
-            {others.slice(0, 3).map((person, index) => (
-              <PersonAvatar key={person.id} participant={person} className={cn('h-4 w-4 opacity-80 ring-2 ring-[color:var(--app-shell-bg,transparent)]', index > 0 && '-ml-1')} />
-            ))}
-            {others.length > 3 ? <span className="pl-1">+{others.length - 3}</span> : null}
-          </span>
-        ) : null}
-        {meta ? <span className="truncate text-right">{meta}</span> : null}
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-2">
+          <span data-artifact-row-title="" className="min-w-0 truncate text-[13px] font-normal leading-5 text-[color:var(--utility-foreground)]" title={label === artifact.name ? undefined : artifact.name}>{label}</span>
+          {artifact.pinned ? <span className="shrink-0 rounded-md bg-amber-400/15 px-1.5 text-[10.5px] leading-4 text-amber-600">Pinned</span> : null}
+        </span>
+        {meta ? <span data-artifact-row-meta="" className="mt-0.5 block truncate text-[12px] leading-5 text-[color:var(--utility-muted-text)]">{meta}</span> : null}
       </span>
+      {creator || others.length > 0 ? (
+        <span className="flex min-w-0 shrink-[2] items-center gap-2 pl-3 text-[12px] leading-5 text-[color:var(--utility-muted-text)]">
+          {creator && creatorName ? (
+            <span className="flex min-w-0 items-center gap-1.5" data-artifact-creator="true" title={`Created by ${creatorName}`}>
+              <PersonAvatar participant={creator} className="h-[18px] w-[18px] shrink-0" />
+              <span className="truncate text-[color:var(--utility-foreground)]">{creatorName}</span>
+            </span>
+          ) : null}
+          {others.length > 0 ? (
+            <span className="flex shrink-0 items-center" data-artifact-participants="true" title={others.map((person) => person.publicName?.trim() || person.name).join(', ')}>
+              {others.slice(0, 3).map((person, index) => (
+                <PersonAvatar key={person.id} participant={person} className={cn('h-4 w-4 opacity-80 ring-2 ring-[color:var(--app-shell-bg,transparent)]', index > 0 && '-ml-1')} />
+              ))}
+              {others.length > 3 ? <span className="pl-1">+{others.length - 3}</span> : null}
+            </span>
+          ) : null}
+        </span>
+      ) : null}
     </button>
   );
 }

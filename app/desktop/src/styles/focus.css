@@ -1,0 +1,91 @@
+/* Focus contract (owner rule, permanent): no blue or accent focus ring, glow,
+ * or outline anywhere in the desktop and web app.
+ *
+ * - Text inputs, search fields, textareas and selects show a neutral, darker
+ *   border (--app-focus-border) and no outer ring.
+ * - Buttons, rows, tabs, chips and links show a hover-like fill
+ *   (--app-focus-fill), painted as an inset shadow so the control keeps its
+ *   own background color or image.
+ * - Destructive controls keep their red hover state from their own rules.
+ *
+ * This file loads last and is unlayered, so it wins over Tailwind utilities
+ * and over component styles. Component CSS and class names must not add focus
+ * outlines, rings, or accent borders; tests/focusRingStyles.test.ts enforces
+ * that. The guided tour spotlight (help.css) is not a focus ring.
+ */
+
+/* Re-declared on surfaces that swap the theme ink, such as light menus in the
+ * dark app, so the fill follows the surface it sits on. */
+:where(:root, body, .kordi-app, .app-transient-surface, .app-transient-theme-light,
+  .app-compact-model-menu-light, .app-composer-mention-menu-light) {
+  --app-focus-border: color-mix(in oklab, var(--app-transient-text, currentColor) 46%, transparent);
+  --app-focus-fill: color-mix(in oklab, var(--app-transient-text, currentColor) 9%, transparent);
+}
+
+/* Outlines are never a focus treatment, including the browser default ring. */
+:focus,
+:focus-visible {
+  outline: none !important;
+}
+
+:root :is(
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='color'], [type='image']),
+  textarea,
+  select
+):focus:not([aria-invalid='true'], .app-flat-input-error) {
+  border-color: var(--app-focus-border);
+  box-shadow: none;
+}
+
+/* Dense menus draw their own hover fill on focus. The group invitation prompt
+ * and the browser sign-in window focus an action as they open and show the
+ * fill only after a key press. */
+:root :is(
+  button,
+  a[href],
+  summary,
+  [role='button'],
+  [role='link'],
+  [role='tab'],
+  [role='menuitem'],
+  [role='menuitemradio'],
+  [role='menuitemcheckbox'],
+  [role='option'],
+  [role='switch'],
+  [role='checkbox'],
+  [role='radio'],
+  [role='treeitem'],
+  [role='row'],
+  [role='gridcell']
+):focus-visible:not(:disabled, input, textarea, select, .app-button-primary, .app-dense-menu *, .app-group-invitation-dialog:not([data-keyboard-nav]) *, .app-cloud-browser-signin:not([data-keyboard-focus]) *) {
+  box-shadow: inset 0 0 0 100vmax var(--app-focus-fill);
+}
+
+/* Focusable regions (scroll areas, code blocks, live status) show the neutral
+ * border inside their edge instead of a fill. */
+:root :is(
+  [tabindex]:not([role]),
+  [role='region'],
+  [role='status'],
+  [role='separator'],
+  [role='tabpanel'],
+  [role='listbox'],
+  [role='grid'],
+  [role='log']
+):focus-visible:not([tabindex^='-'], button, a, input, textarea, select, summary, [contenteditable]) {
+  box-shadow: inset 0 0 0 1px var(--app-focus-border);
+}
+
+/* Ink-filled primary buttons tint with their own text color instead. */
+:root .app-button-primary:focus-visible:not(:disabled, .app-dense-menu *, .app-group-invitation-dialog:not([data-keyboard-nav]) *, .app-cloud-browser-signin:not([data-keyboard-focus]) *) {
+  /* A custom property keeps the build from adding an opaque currentColor fallback. */
+  --app-focus-own-fill: color-mix(in oklab, currentColor 14%, transparent);
+  box-shadow: inset 0 0 0 100vmax var(--app-focus-own-fill);
+}
+
+/* Forced-colors mode (Windows high contrast) keeps the system highlight. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight !important;
+  }
+}

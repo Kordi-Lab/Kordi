@@ -1,6 +1,9 @@
 use super::*;
 
-fn group_request(members: Vec<String>, title: Option<&str>) -> CreateConversationRequest {
+pub(super) fn group_request(
+    members: Vec<String>,
+    title: Option<&str>,
+) -> CreateConversationRequest {
     CreateConversationRequest {
         client_operation_id: Uuid::now_v7(),
         kind: ConversationKind::Group,
@@ -11,7 +14,11 @@ fn group_request(members: Vec<String>, title: Option<&str>) -> CreateConversatio
     }
 }
 
-async fn removal_events(pool: &PgPool, account_id: &str, conversation_id: Uuid) -> Vec<String> {
+pub(super) async fn removal_events(
+    pool: &PgPool,
+    account_id: &str,
+    conversation_id: Uuid,
+) -> Vec<String> {
     query_as::<_, (serde_json::Value,)>(
         "SELECT payload FROM cloud_chat_user_sync_events \
          WHERE account_id = $1 AND conversation_id = $2 AND event_type = 'membership.removed'",
@@ -26,7 +33,7 @@ async fn removal_events(pool: &PgPool, account_id: &str, conversation_id: Uuid) 
     .collect()
 }
 
-async fn active_people(pool: &PgPool, conversation_id: Uuid) -> i64 {
+pub(super) async fn active_people(pool: &PgPool, conversation_id: Uuid) -> i64 {
     query_as::<_, (i64,)>(
         "SELECT COUNT(*) FROM cloud_chat_conversation_members \
          WHERE conversation_id = $1 AND membership_state = 'active'",

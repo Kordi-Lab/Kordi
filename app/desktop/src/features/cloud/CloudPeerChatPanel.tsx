@@ -17,6 +17,7 @@ import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { AttachmentPreview } from '@/kordi-app/components/transcriptAttachments';
 import type { Contact, Message } from '@/kordi-app/types';
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
@@ -147,9 +148,7 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
         {/* Composer */}
         <div className="app-transient-divider shrink-0 border-t bg-[color:var(--app-transient-raised-bg)] px-3 py-3">
           {conversation.error ? (
-            <div className="app-error-text mb-2 rounded-[10px] border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-200">
-              {conversation.error}
-            </div>
+            <ErrorLine className="mt-0 mb-2">{conversation.error}</ErrorLine>
           ) : null}
           {attachments.length > 0 ? (
             <div className="mb-2 flex flex-wrap gap-1.5">

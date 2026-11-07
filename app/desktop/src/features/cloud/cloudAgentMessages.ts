@@ -1,4 +1,5 @@
 import { agentExchangeStatus, type AgentExchangeStatus } from './agentExchangePresentation';
+import { decodeBase64UrlUtf8, encodeBase64UrlUtf8 } from './cloudBase64Url';
 import { cloudAgentReplyEnding, type CloudAgentReplyEnding } from './cloudAgentReplyEnding';
 export { cloudAgentReplyEnding, type CloudAgentReplyEnding } from './cloudAgentReplyEnding';
 import { voiceAgentText } from '@/features/chat/voiceTranscription';
@@ -20,6 +21,7 @@ import { cloudDirectMessageAction, cloudDirectMessageDisplayText, parseCloudDire
 import { isCloudGroupControlMessage } from './cloudGroupMessages';
 import { compareCloudMessages } from './cloudMessageMerge';
 import { parseCloudAgentSources } from './cloudAgentSources';
+import { cloudAgentFailureCodeField, type CloudAgentFailureCode } from './cloudAgentFailureCode';
 const CLOUD_AGENT_RESPONSE_PREFIX = 'kordi-cloud-agent-response:';
 const CLOUD_AGENT_CANCEL_PREFIX = 'kordi-cloud-agent-cancel:';
 const CLOUD_AGENT_NATIVE_CONTEXT_MESSAGE_LIMIT = 40;
@@ -34,6 +36,8 @@ export type CloudAgentResponseEnvelope = {
   requestId: string;
   text: string;
   deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled';
+  /** Why a failed reply failed; its text stays a neutral line every member may read. */
+  failureCode?: CloudAgentFailureCode;
   synchronizationOnly?: boolean;
   agentExchangeStatus?: AgentExchangeStatus;
   ending?: CloudAgentReplyEnding;
@@ -59,7 +63,10 @@ export type {
 
 export const CLOUD_AGENT_NO_PROVIDER_NOTICE = 'No provider configured yet.';
 export const CLOUD_AGENT_MODEL_UNAVAILABLE_NOTICE = 'This model is not available for the selected account.';
-export const CLOUD_AGENT_SIGN_IN_AGAIN_NOTICE = 'Sign in again to use this account.';
+/** The owner's line for an expired AI provider connection whose provider is not named. */
+export const CLOUD_AGENT_PROVIDER_EXPIRED_NOTICE = 'Your AI provider connection expired.';
+/** Older builds stored this line for an expired provider connection. */
+const LEGACY_PROVIDER_SIGN_IN_AGAIN_NOTICE = 'sign in again to use this account.';
 
 export type CloudAgentFallbackRunStatus = 'queued' | 'leased' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
 
@@ -91,7 +98,7 @@ export function cloudAgentFallbackErrorNotice(input: { code?: string | null; mes
   if (normalizedCode === 'owner_online') {
     return 'The owner device is online, so Kordi will answer from the device.';
   }
-  if (normalizedCode === 'provider_auth_rejected') return CLOUD_AGENT_SIGN_IN_AGAIN_NOTICE;
+  if (normalizedCode === 'provider_auth_rejected') return CLOUD_AGENT_PROVIDER_EXPIRED_NOTICE;
   if (normalizedCode === 'model_provider_error') {
     return 'The provider failed while Kordi was replying. Try again in a moment.';
   }
@@ -143,10 +150,12 @@ export function isCloudAgentModelUnavailableError(value: unknown): boolean {
   return normalized.includes('unknown model:') || normalized === CLOUD_AGENT_MODEL_UNAVAILABLE_NOTICE.toLowerCase();
 }
 
-/** A saved sign-in exists but is expired or could not be refreshed. */
-export function isCloudAgentSignInAgainError(value: unknown): boolean {
+/** A saved AI provider connection exists but is expired or could not be refreshed. */
+export function isCloudAgentProviderExpiredError(value: unknown): boolean {
   const normalized = normalizedErrorText(value);
-  return normalized.includes('oauth credentials are not usable') || normalized === CLOUD_AGENT_SIGN_IN_AGAIN_NOTICE.toLowerCase();
+  return normalized.includes('oauth credentials are not usable')
+    || normalized === LEGACY_PROVIDER_SIGN_IN_AGAIN_NOTICE
+    || /^your .{1,60} connection expired\.$/.test(normalized);
 }
 
 /** Older builds stored an unknown model as a no-provider failure; stored history still reads that way. */
@@ -159,24 +168,11 @@ export type CloudAgentCancelEnvelope = {
   requestId: string;
 };
 
-function encodeBase64Url(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = '';
-  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function decodeBase64Url(value: string): string {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
-  const binary = atob(padded);
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
-
 export function encodeCloudAgentResponse(input: {
   requestId: string;
   text: string;
   deliveryState?: CloudAgentResponseEnvelope['deliveryState'];
+  failureCode?: CloudAgentFailureCode;
   ending?: CloudAgentReplyEnding;
   execution?: CloudAgentExecutionSnapshot;
   backgroundSessions?: CloudAgentBackgroundSession[];
@@ -191,6 +187,7 @@ export function encodeCloudAgentResponse(input: {
     ...(internalProgress ? { synchronizationOnly: true } : {}),
     ...(input.messageAction ? { messageAction: input.messageAction } : {}),
     ...(input.deliveryState ? { deliveryState: input.deliveryState } : {}),
+    ...(input.deliveryState === 'failed' ? cloudAgentFailureCodeField(input.failureCode) : {}),
     ...(input.ending ? { ending: input.ending } : {}),
     ...(input.execution ? { execution: input.execution } : {}),
     ...(input.backgroundSessions?.length
@@ -200,13 +197,13 @@ export function encodeCloudAgentResponse(input: {
       ? { executionClaimId: input.executionClaimId }
       : {}),
   };
-  return `${CLOUD_AGENT_RESPONSE_PREFIX}${encodeBase64Url(JSON.stringify(envelope))}`;
+  return `${CLOUD_AGENT_RESPONSE_PREFIX}${encodeBase64UrlUtf8(JSON.stringify(envelope))}`;
 }
 
 export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelope | null {
   if (!body.startsWith(CLOUD_AGENT_RESPONSE_PREFIX)) return null;
   try {
-    const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_AGENT_RESPONSE_PREFIX.length))) as Partial<CloudAgentResponseEnvelope>;
+    const parsed = JSON.parse(decodeBase64UrlUtf8(body.slice(CLOUD_AGENT_RESPONSE_PREFIX.length))) as Partial<CloudAgentResponseEnvelope>;
     if (parsed.kind !== 'agent-response') return null;
     if (typeof parsed.requestId !== 'string' || typeof parsed.text !== 'string') return null;
     const deliveryState = parsed.deliveryState === 'processing'
@@ -231,6 +228,7 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       ...(exchangeStatus ? { agentExchangeStatus: exchangeStatus } : {}),
       ...(parsed.synchronizationOnly === true ? { synchronizationOnly: true } : {}),
       ...(deliveryState ? { deliveryState } : {}),
+      ...(deliveryState === 'failed' ? cloudAgentFailureCodeField(parsed.failureCode) : {}),
       ...(ending ? { ending } : {}),
       ...(execution ? { execution } : {}),
       ...(backgroundSessions.length > 0 ? { backgroundSessions } : {}),
@@ -264,13 +262,13 @@ export function encodeCloudAgentCancel(input: { requestId: string }): string {
     kind: 'agent-cancel',
     requestId: input.requestId,
   };
-  return `${CLOUD_AGENT_CANCEL_PREFIX}${encodeBase64Url(JSON.stringify(envelope))}`;
+  return `${CLOUD_AGENT_CANCEL_PREFIX}${encodeBase64UrlUtf8(JSON.stringify(envelope))}`;
 }
 
 export function parseCloudAgentCancel(body: string): CloudAgentCancelEnvelope | null {
   if (!body.startsWith(CLOUD_AGENT_CANCEL_PREFIX)) return null;
   try {
-    const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_AGENT_CANCEL_PREFIX.length))) as Partial<CloudAgentCancelEnvelope>;
+    const parsed = JSON.parse(decodeBase64UrlUtf8(body.slice(CLOUD_AGENT_CANCEL_PREFIX.length))) as Partial<CloudAgentCancelEnvelope>;
     if (parsed.kind !== 'agent-cancel') return null;
     if (typeof parsed.requestId !== 'string') return null;
     return {

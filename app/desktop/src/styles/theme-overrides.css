@@ -92,13 +92,13 @@
   --app-update-active-soft: rgba(96, 165, 250, 0.1);
   --app-update-success: rgb(110 231 183);
   --app-update-success-soft: rgba(52, 211, 153, 0.1);
-  --app-update-danger: rgb(253 164 175);
+  --app-update-danger: var(--app-error-text);
   --app-update-danger-soft: rgba(244, 63, 94, 0.1);
   --app-update-progress-track: rgba(255, 255, 255, 0.07);
   --app-update-action-bg: rgba(255, 255, 255, 0.1);
   --app-update-action-hover: rgba(255, 255, 255, 0.15);
   --app-update-action-text: rgba(255, 255, 255, 0.9);
-  --app-update-focus: rgba(147, 197, 253, 0.72);
+  --app-update-focus: var(--app-focus-border);
   background: var(--app-update-surface) !important;
   border: 1px solid var(--app-update-edge) !important;
   box-shadow: var(--app-update-shadow) !important;
@@ -112,13 +112,12 @@
   --app-update-active-soft: rgba(37, 99, 235, 0.085);
   --app-update-success: rgb(4 120 87);
   --app-update-success-soft: rgba(5, 150, 105, 0.085);
-  --app-update-danger: rgb(190 18 60);
   --app-update-danger-soft: rgba(225, 29, 72, 0.08);
   --app-update-progress-track: rgba(15, 23, 42, 0.09);
   --app-update-action-bg: var(--app-transient-text);
   --app-update-action-hover: color-mix(in oklab, var(--app-transient-text) 88%, var(--app-transient-surface-fallback));
   --app-update-action-text: var(--app-transient-surface-fallback);
-  --app-update-focus: rgba(37, 99, 235, 0.62);
+  --app-update-focus: var(--app-focus-border);
 }
 
 .app-update-popover-title {
@@ -162,7 +161,7 @@
 }
 
 .app-update-popover-status-danger {
-  color: var(--app-update-danger);
+  color: var(--app-error-text);
 }
 
 .app-update-popover-progress {
@@ -195,12 +194,6 @@
   background: var(--app-update-action-hover);
 }
 
-.app-update-popover-action:focus-visible,
-.app-update-popover-close:focus-visible {
-  outline: 2px solid var(--app-update-focus);
-  outline-offset: 2px;
-}
-
 .app-update-popover-close {
   color: var(--utility-meta-text);
 }
@@ -216,35 +209,6 @@
   background: var(--app-transient-surface-bg);
   border-color: var(--app-transient-border);
   box-shadow: var(--app-transient-shadow);
-}
-
-.app-account-popover {
-  width: min(17.75rem, calc(100vw - 1rem));
-  max-width: calc(100vw - 1rem);
-  font-family: inherit;
-}
-
-.app-account-popover .app-transient-identity-title {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  line-height: 1.125rem;
-}
-
-.app-account-popover .app-transient-action-row,
-.app-account-popover .app-transient-action-label {
-  font-size: 0.75rem;
-  font-weight: 500;
-  line-height: 1rem;
-}
-
-.app-account-popover .app-transient-metadata {
-  font-size: 0.6875rem;
-  font-weight: 400;
-  line-height: 0.9375rem;
-}
-
-.app-account-popover-row > .app-transient-action-icon {
-  justify-self: center;
 }
 
 .kordi-app.theme-light .app-profile-popover {

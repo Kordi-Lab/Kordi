@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { CheckCheck, CheckCircle2, Copy, Eye, Flag, Forward, MessagesSquare, Pencil, Pin, TextQuote, Trash2 } from 'lucide-react';
 
 import {
@@ -17,12 +17,6 @@ import { AttachmentActions } from './transcriptAttachmentActions';
 import { messageStickerAttachment } from './messageStickerPresentation';
 import { transcriptMessageIsOwnHuman } from './transcriptMessageHumanRole';
 
-const textStyle = {
-  fontSize: '10px',
-  fontWeight: 400,
-  lineHeight: 1.45,
-} satisfies CSSProperties;
-
 function SeenRow({ summary }: { summary?: Message['readReceiptSummary'] | null }) {
   const count = Math.max(0, Math.floor(summary?.count ?? 0));
   if (count <= 0) return null;
@@ -31,10 +25,9 @@ function SeenRow({ summary }: { summary?: Message['readReceiptSummary'] | null }
   const title = names.length > 0 ? `Seen by ${names.join(', ')}` : `${count} seen`;
   return (
     <div
-      className="app-transient-divider app-transient-muted flex items-center gap-2 border-t px-3 py-1.5 text-[10px] font-normal leading-[1.45]"
+      className="app-message-context-menu-seen app-dense-menu-label flex items-center gap-2"
       data-message-context-menu-seen-row="true"
       title={title}
-      style={textStyle}
     >
       <CheckCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span>{count} Seen</span>
@@ -62,15 +55,11 @@ function Action({ icon, label, action, onClick, destructive = false }: { icon: R
       type="button"
       role="menuitem"
       data-message-context-menu-action={action}
-      className={cn(
-        'app-transient-flat-action app-transient-action-row app-message-context-menu-action flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left font-normal transition',
-        destructive && 'app-transient-flat-action-danger',
-      )}
-      style={textStyle}
+      className={cn('app-dense-menu-row app-message-context-menu-action', destructive && 'app-dense-menu-danger')}
       onClick={onClick}
     >
-      <span className="grid h-4 w-4 shrink-0 place-items-center" aria-hidden="true">{icon}</span>
-      <span className="app-transient-action-label">{label}</span>
+      <span className="app-dense-menu-icon" aria-hidden="true">{icon}</span>
+      <span>{label}</span>
     </button>
   );
 }
@@ -198,18 +187,18 @@ export function MessageContextMenuContent({
           onToggleExpanded={() => setShowsAllReactions((current) => !current)}
         />
       ) : null}
-      {!showsAllReactions ? <div className="app-transient-surface overflow-hidden rounded-[14px] w-[13.5rem] border p-1">
+      {!showsAllReactions ? <div className="app-transient-surface app-dense-menu app-message-context-menu-list overflow-hidden">
         {mediaAttachment ? (
           <>
             <Action action="review-attachment" icon={<Eye className="h-4 w-4" />} label="Review" onClick={reviewMediaAttachment} />
             <AttachmentActions attachment={mediaAttachment} variant="menu" />
             <AddAttachmentToMediaLibraryAction attachment={mediaAttachment} onAdded={() => onClose?.()} />
-            <div className="app-transient-divider mx-3 my-1 border-t" role="separator" />
+            <div className="app-dense-menu-divider" role="separator" />
           </>
         ) : null}
         {actionEligible && onReplyMessage ? <Action action="quote" icon={<TextQuote className="h-4 w-4" />} label="Quote" onClick={() => closeAfterReply('conversation')} /> : null}
         {actionEligible && onOpenMessageThread ? <Action action="open-discussion" icon={<MessagesSquare className="h-4 w-4" />} label="Open discussion" onClick={() => closeAfterReply('thread')} /> : null}
-        {actionEligible && (onReplyMessage || onOpenMessageThread) ? <div className="app-transient-divider mx-3 my-1 border-t" role="separator" /> : null}
+        {actionEligible && (onReplyMessage || onOpenMessageThread) ? <div className="app-dense-menu-divider" role="separator" /> : null}
         {canEdit ? <Action action="edit" icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={() => closeAfter(onEditMessage)} /> : null}
         {copyableText ? <Action action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy" onClick={() => void copyText()} /> : null}
         {actionEligible ? <Action action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={() => closeAfter(onForwardMessage)} /> : null}
@@ -219,7 +208,7 @@ export function MessageContextMenuContent({
             ? <Action action="unpin" icon={<Pin className="h-4 w-4" />} label="Unpin" onClick={() => closeAfter(onRequestUnpinMessage)} />
             : <Action action="pin" icon={<Pin className="h-4 w-4" />} label="Pin" onClick={() => closeAfter(onRequestPinMessage)} />
         ) : null}
-        {actionEligible ? <div className="app-transient-divider mx-3 my-1 border-t" role="separator" /> : null}
+        {actionEligible ? <div className="app-dense-menu-divider" role="separator" /> : null}
         {actionEligible ? <Action action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={() => closeAfter(onSelectMessage)} /> : null}
         {reportTarget ? <Action action="report" icon={<Flag className="h-4 w-4" />} label="Report" onClick={() => { onClose?.(); safety.openReport(reportTarget); }} /> : null}
         {canDelete ? <Action action="delete" icon={<Trash2 className="h-4 w-4" />} label="Delete" destructive onClick={() => closeAfter(onDeleteMessage)} /> : null}

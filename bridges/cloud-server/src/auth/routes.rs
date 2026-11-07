@@ -40,7 +40,11 @@ use crate::auth::password::{
     hash_password, validate_email, validate_password_strength, verify_password, EmailFormatError,
     PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
 };
-use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, CONTACT_ADD_LIMIT};
+use crate::auth::rate_limit::{
+    CloudRateLimiter, RateLimitDecision, APP_AUTHORIZE_ADDRESS_LIMIT, APP_INVITATION_CREATE_LIMIT,
+    CONTACT_ADD_LIMIT, GROUP_INVITATION_CREATE_LIMIT, INVITATION_ACCEPT_LIMIT,
+    INVITATION_PAGE_CLAIM_ADDRESS_LIMIT, INVITATION_VIEW_ADDRESS_LIMIT, PROFILE_LOOKUP_LIMIT,
+};
 use crate::auth::rows::{
     AccountRecordRow, ContactListRow, ContactRequestRow, DefaultAgentProfileRow,
     OwnerAccountRecordRow, ACCOUNT_RECORD_COLUMNS, OWNER_ACCOUNT_RECORD_COLUMNS,
@@ -76,6 +80,7 @@ mod expressive_media;
 mod group_invitation_handlers;
 mod identity_handlers;
 mod memory_handlers;
+mod memory_import_handlers;
 #[cfg(test)]
 mod memory_tests;
 mod middleware;
@@ -107,6 +112,7 @@ use expressive_media::*;
 use group_invitation_handlers::*;
 use identity_handlers::*;
 use memory_handlers::*;
+use memory_import_handlers::extract_memory_import;
 use oauth_avatar::*;
 use password_handlers::*;
 use presence_handlers::*;
@@ -122,8 +128,8 @@ pub(crate) use contact_acceptance::{direct_person_session_id, open_direct_conver
 pub(crate) use contact_removal::delete_contact_pair;
 pub(crate) use contact_send::{send_request, ContactOutcome};
 pub(crate) use group_invitation_handlers::{
-    audit_join, create_invitation_in_transaction, redeem_group_invitation_by_id, Redemption,
-    ROOM_GROUP_MIN_MEMBERS,
+    audit_join, group_invitation_link_in_transaction, redeem_group_invitation_by_id, LinkOutcome,
+    LinkRequest, Redemption, ROOM_GROUP_MIN_MEMBERS,
 };
 pub use middleware::cloud_session_middleware;
 pub(crate) use session_forks::cloud_session_participants;
@@ -370,6 +376,10 @@ pub fn routes_with_shared_rate_limiter(
         .route(
             "/v1/cloud/memory/settings",
             get(get_memory_settings).put(update_memory_settings),
+        )
+        .route(
+            "/v1/cloud/memory/import/extract",
+            post(extract_memory_import),
         )
         .route(
             "/v1/cloud/memory/:memory_id",

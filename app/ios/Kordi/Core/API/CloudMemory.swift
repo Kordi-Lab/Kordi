@@ -243,3 +243,71 @@ struct CloudMemorySettingsUpdateRequest: Encodable {
     var memoryEnabled: Bool?
     var excludeSensitive: Bool?
 }
+
+/// One memory the server's import model read from a chosen file.
+struct CloudMemoryImportCandidate: Decodable, Hashable {
+    let text: String
+    let category: String?
+    let scope: String?
+}
+
+private struct CloudMemoryImportExtractRequest: Encodable {
+    let fileName: String
+    let text: String
+    let existingMemories: [String]
+}
+
+private struct CloudMemoryImportExtractResponse: Decodable {
+    let memories: [CloudMemoryImportCandidate]
+}
+
+/// An imported memory, saved to the account like a Mac import of a file
+/// outside any project.
+private struct CloudMemoryImportSaveRequest: Encodable {
+    let scope = "global"
+    let scopeId = "account"
+    let scopeLabel = "Global"
+    let source = "import"
+    let text: String
+    let category: String?
+}
+
+/// Limits shared with the desktop and browser import.
+enum MemoryImportLimits {
+    static let maxFiles = 20
+    static let maxFileBytes = 200 * 1024
+    static let fileExtensions = ["md", "markdown", "txt", "json"]
+    /// Existing memories one request may name.
+    static let maxExistingMemories = 500
+}
+
+extension CloudAPIClient {
+    /// `POST /v1/cloud/memory/import/extract`: the server's model reads one
+    /// file into memories and saves nothing. 403 `ai_consent_required` when
+    /// the account has not allowed AI models.
+    func extractMemoryImport(token: String, fileName: String, text: String, existingMemories: [String]) async throws -> [CloudMemoryImportCandidate] {
+        let response: CloudMemoryImportExtractResponse = try await send(
+            path: "/v1/cloud/memory/import/extract",
+            method: "POST",
+            token: token,
+            body: CloudMemoryImportExtractRequest(
+                fileName: fileName,
+                text: text,
+                existingMemories: Array(existingMemories.prefix(MemoryImportLimits.maxExistingMemories))
+            ),
+            fallback: "Could not read this file. Try again."
+        )
+        return response.memories
+    }
+
+    func saveImportedMemory(token: String, text: String, category: String?) async throws -> CloudMemory {
+        let response: CloudMemoryResponse = try await send(
+            path: "/v1/cloud/memory",
+            method: "POST",
+            token: token,
+            body: CloudMemoryImportSaveRequest(text: text, category: category),
+            fallback: "Could not save this memory. Try again."
+        )
+        return response.memory
+    }
+}

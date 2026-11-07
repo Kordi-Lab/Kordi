@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import {
   fetchDesktopCommunitySkillDetail,
@@ -210,7 +211,7 @@ export function AddToAgentControl({
             );
           })}
         </div>
-        {addError ? <div className="app-skill-agent-picker-error" role="alert">{addError}</div> : null}
+        {addError ? <ErrorLine className="mx-[3px] mb-0.5 mt-[5px]">{addError}</ErrorLine> : null}
       </div>
     </details>
   );
@@ -426,8 +427,7 @@ function InstalledSkillView({
           </div>
         ) : null}
       </section>
-      {error ? <div className="app-agent-studio-inline-error">{error}</div> : null}
-      {detailError ? <div className="app-agent-studio-inline-error">{detailError}</div> : null}
+      {error || detailError ? <ErrorLine className="mt-0 px-2.5 py-[7px]">{[error, detailError].filter(Boolean).join(' ')}</ErrorLine> : null}
       {detailLoading ? <SkillLibraryState loading title="Opening skill" detail="Reading files and provenance." /> : detail ? (
         <div className="app-skill-library-files">
           <nav aria-label={`${selectedSkill.name} files`}>
@@ -616,7 +616,7 @@ export function CommunitySkillView({
         </div>
       </aside>
       <section className="app-skill-community-preview">
-        {error ? <div className="app-agent-studio-inline-error">{error}</div> : null}
+        {error ? <ErrorLine className="mt-0 px-2.5 py-[7px]">{error}</ErrorLine> : null}
         {detailLoading ? <SkillLibraryState loading title="Inspecting community skill" detail="Loading its manifest, files, and available security report." /> : detail ? (
           <>
             <header className="app-skill-community-preview-head">

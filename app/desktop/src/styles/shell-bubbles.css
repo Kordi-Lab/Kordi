@@ -350,7 +350,7 @@ body[data-kordi-chat-theme="classic"] .kordi-app.theme-light .app-chat-bubble-pe
 }
 
 .app-attachment-image-delivery-error {
-  color: oklch(0.64 0.22 25);
+  color: var(--app-error-text);
 }
 
 .app-attachment-image-delivery-retry {
@@ -378,8 +378,6 @@ body[data-kordi-chat-theme="classic"] .kordi-app.theme-light .app-chat-bubble-pe
 }
 
 .app-attachment-image-delivery-retry:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 1px;
   border-radius: 0.2rem;
 }
 
@@ -437,12 +435,6 @@ body[data-kordi-chat-theme="classic"] .kordi-app.theme-light .app-chat-bubble-pe
   border-color: rgba(16, 185, 129, 0.26);
   background: rgba(16, 185, 129, 0.12);
   color: rgb(209 250 229);
-}
-
-.app-compression-card-error {
-  border-color: rgba(244, 63, 94, 0.28);
-  background: rgba(244, 63, 94, 0.12);
-  color: rgb(255 228 230);
 }
 
 .app-compression-detail {

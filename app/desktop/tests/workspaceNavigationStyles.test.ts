@@ -12,7 +12,8 @@ test('workspace rail navigation owns its semantic active and focus states', () =
   assert.match(source, /aria-current=\{active \? 'page' : undefined\}/);
   assert.doesNotMatch(source, /app-workspace-nav-button app-list-item/);
   assert.match(styles, /\.app-workspace-nav-button\[data-active='true'\]/);
-  assert.match(styles, /\.app-workspace-nav-button:focus-visible/);
+  // Focus uses the shared neutral fill from focus.css; the rail only drops the outline.
+  assert.match(styles, /\.app-workspace-nav-button:focus\s*\{\s*outline: none;\s*\}/);
   assert.match(styles, /--app-nav-rail-active-bg/);
 });
 

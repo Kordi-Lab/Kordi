@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLayout';
 import { settingsType } from '@/kordi-app/components/settingsType';
 
@@ -408,14 +409,12 @@ export function ConnectorsSettingsPanel({
       <p className="sr-only" aria-live="polite">{statusMessage}</p>
 
       {error ? (
-        <div className="app-error-text mt-4 flex items-center justify-between gap-3 rounded-[12px] bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100" role="alert">
-          <span>{error}</span>
-          {!hasLoaded ? (
-            <Button type="button" variant="quiet" className="h-7 shrink-0 rounded-lg px-3 text-[12px]" disabled={isLoading} onClick={() => { void refresh(); }}>
-              Try again
-            </Button>
-          ) : null}
-        </div>
+        <ErrorLine
+          className="mt-4"
+          action={hasLoaded ? null : { label: 'Try again', onClick: () => { void refresh(); }, disabled: isLoading }}
+        >
+          {hasLoaded ? error : withoutTryAgain(error)}
+        </ErrorLine>
       ) : null}
 
       {!hasLoaded ? (
@@ -445,14 +444,13 @@ export function ConnectorsSettingsPanel({
               {servicesStatus === 'checking' ? (
                 <p className="m-0 py-2 text-[12px] text-slate-400" role="status">Checking Kordi Cloud…</p>
               ) : servicesStatus === 'unreachable' ? (
-                <div className="flex items-center justify-between gap-3 py-2 text-[12px] text-slate-400" role="status">
-                  <span>Could not reach Kordi Cloud.</span>
-                  {onRetryServices ? (
-                    <Button type="button" variant="quiet" className="h-7 shrink-0 rounded-lg px-3 text-[12px]" onClick={onRetryServices}>
-                      Try again
-                    </Button>
-                  ) : null}
-                </div>
+                <ErrorLine
+                  className="my-0 py-2"
+                  role="status"
+                  action={onRetryServices ? { label: 'Try again', onClick: onRetryServices } : null}
+                >
+                  Could not reach Kordi Cloud.
+                </ErrorLine>
               ) : services.map(renderListRow)}
             </SettingsSection>
           ) : null}

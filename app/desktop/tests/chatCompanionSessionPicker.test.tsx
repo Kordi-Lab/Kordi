@@ -120,8 +120,8 @@ test('side chat picker exposes hierarchy, panel states, and flat inactive rows',
   assert.match(headerSource, /data-side-chat-current-session=/);
   assert.match(headerSource, /data-session-fork-depth=/);
   assert.match(headerSource, /app-transient-scroll/);
-  assert.match(headerSource, /app-transient-row app-transient-flat-action app-transient-action-row mb-1/);
-  assert.match(headerSource, /!isCurrent && 'app-transient-flat-action'/);
+  assert.match(headerSource, /app-transient-surface app-dense-menu app-side-chat-menu/);
+  assert.match(headerSource, /isCurrent && 'app-side-chat-menu-current'/);
   assert.match(headerSource, />\s*Main\s*</);
   assert.match(headerSource, />\s*Current\s*</);
   assert.match(sessionSource, /candidateIds\.has\(conversationId\)/);

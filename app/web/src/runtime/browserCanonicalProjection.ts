@@ -1,4 +1,5 @@
 import { browserSessionTitle } from '@web/runtime/browserSessionTitle';
+import { browserCanonicalRowsMatch } from '@web/runtime/browserCanonicalChanges';
 import type {
   AdoptCloudProfileIdentityRequest, AppendCanonicalMessageRequest, CanonicalIdentity,
   CanonicalMessagePage, CanonicalSessionCatalog, CanonicalSessionMessage, CanonicalSessionState,
@@ -62,6 +63,7 @@ export function upsertBrowserIdentity(state: CanonicalSessionState, request: Ups
   const identity: CanonicalIdentity = { ...previous, ...request, id, source: request.source ?? previous?.source ?? 'cloud',
     displayName: request.displayName, avatarKey: request.avatarKey ?? previous?.avatarKey ?? id,
     createdAtMs: previous?.createdAtMs ?? now, updatedAtMs: now };
+  if (previous && browserCanonicalRowsMatch(previous, identity)) return previous;
   state.identities = [...state.identities.filter(row => row.id !== id), identity];
   return identity;
 }
@@ -77,17 +79,21 @@ export function adoptBrowserIdentity(state: CanonicalSessionState, request: Adop
 export function openBrowserCanonicalSession(state: CanonicalSessionState, request: OpenCanonicalSessionRequest, now = Date.now()) {
   const id = request.id?.trim() || crypto.randomUUID();
   const previous = state.sessions.find(row => row.id === id);
-  const session = { ...previous, ...request, id, ...browserSessionTitle(previous, request, now),
+  const candidate = { ...previous, ...request, id, ...browserSessionTitle(previous, request, now),
     status: request.status ?? previous?.status ?? 'active', createdAtMs: previous?.createdAtMs ?? now, updatedAtMs: now };
-  state.sessions = [...state.sessions.filter(row => row.id !== id), session];
+  const session = previous && browserCanonicalRowsMatch(previous, candidate) ? previous : candidate;
+  if (session !== previous) state.sessions = [...state.sessions.filter(row => row.id !== id), session];
   for (const identityId of new Set([request.createdByIdentityId, ...request.participantIdentityIds])) {
     const existing = state.participants.find(row => row.sessionId === id && row.identityId === identityId);
-    if (existing) { existing.state = 'active'; continue; }
+    if (existing) {
+      if (existing.state !== 'active') state.participants = state.participants.map(row => row === existing ? { ...row, state: 'active' } : row);
+      continue;
+    }
     const identity = state.identities.find(row => row.id === identityId);
-    state.participants.push({ sessionId: id, identityId, state: 'active', addedAtMs: now,
+    state.participants = [...state.participants, { sessionId: id, identityId, state: 'active', addedAtMs: now,
       addedByIdentityId: request.createdByIdentityId,
       role: identityId === state.profile.humanIdentityId ? 'self'
-        : identity?.kind === 'agent' ? (identity.ownerIdentityId === state.profile.humanIdentityId ? 'owned-agent' : 'external-agent') : 'person' });
+        : identity?.kind === 'agent' ? (identity.ownerIdentityId === state.profile.humanIdentityId ? 'owned-agent' : 'external-agent') : 'person' }];
   }
   return { session, participants: state.participants.filter(row => row.sessionId === id) };
 }
@@ -104,6 +110,7 @@ export function upsertBrowserMessage(state: CanonicalSessionState, request: Appe
   const message: CanonicalSessionMessage = { ...previous, ...request, id, sequenceNum,
     status: request.status ?? previous?.status ?? 'sent', createdAtMs: request.createdAtMs ?? previous?.createdAtMs ?? now,
     updatedAtMs: now };
+  if (previous && browserCanonicalRowsMatch(previous, message)) return previous;
   state.messages = [...state.messages.filter(row => row.id !== id), message];
   session.lastMessageAtMs = Math.max(session.lastMessageAtMs ?? 0, message.createdAtMs);
   session.updatedAtMs = Math.max(session.updatedAtMs, now);

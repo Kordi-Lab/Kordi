@@ -207,12 +207,10 @@ pub(crate) async fn claim_group_invitation(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
     axum::extract::Path(token): axum::extract::Path<String>,
 ) -> Response {
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(&headers, connect_info.as_ref()))
+        .observe_account_limit(INVITATION_ACCEPT_LIMIT, &session.account_id)
         .await
     {
         return limited_response(retry_after);
@@ -259,12 +257,10 @@ pub(crate) async fn accept_pending_group_invitation(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
     axum::extract::Path(pending_id): axum::extract::Path<String>,
 ) -> Response {
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(&headers, connect_info.as_ref()))
+        .observe_account_limit(INVITATION_ACCEPT_LIMIT, &session.account_id)
         .await
     {
         return limited_response(retry_after);

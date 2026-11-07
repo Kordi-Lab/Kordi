@@ -6,13 +6,11 @@ import { IdentityAvatar, useLocalAgentAvatarSeed } from './IdentityAvatar';
 import { ThreadMessageHeader } from './ThreadMessageHeader';
 import { SourceMessageQuoteRow } from './transcriptReplyAttribution';
 
-export function LiveTurnMessageFrame({ turn, sender, showSourceQuote, onNavigateToMessage, headerAccessory, children }: {
+export function LiveTurnMessageFrame({ turn, sender, showSourceQuote, onNavigateToMessage, children }: {
   turn: DesktopChatTurnSnapshot;
   sender: string;
   showSourceQuote: boolean;
   onNavigateToMessage?: (id: string, source?: MessageSourceReference) => void;
-  /** Controls beside the time, such as the running request's stop. */
-  headerAccessory?: ReactNode;
   children: ReactNode;
 }) {
   const threadLayout = useMessageLayout() === 'threads';
@@ -22,7 +20,6 @@ export function LiveTurnMessageFrame({ turn, sender, showSourceQuote, onNavigate
     <div id={id} data-transcript-message-root="true" className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
       <div className="flex min-h-[18px] items-center gap-1.5">
         <div className="app-message-meta">{sender}</div>
-        {headerAccessory}
       </div>
       {children}
     </div>
@@ -38,7 +35,6 @@ export function LiveTurnMessageFrame({ turn, sender, showSourceQuote, onNavigate
         <div className="app-message-hover-time-trigger min-w-0 flex-1">
           <div className="flex min-h-[18px] w-full items-center gap-1.5">
             <ThreadMessageHeader name={sender} msg={{ role: 'owned-agent', text: '', time, timestampMs }} />
-            {headerAccessory}
           </div>
           {children}
         </div>

@@ -268,3 +268,103 @@ async fn message_sends_are_budgeted_per_account() {
         "one account's budget does not affect another"
     );
 }
+
+fn leave_request(group_space_id: &str, token: &str) -> axum::http::Request<axum::body::Body> {
+    axum::http::Request::builder()
+        .method("DELETE")
+        .uri(format!("/v2/chat/group-spaces/{group_space_id}/members/me"))
+        .header("authorization", format!("Bearer {token}"))
+        .body(axum::body::Body::empty())
+        .unwrap()
+}
+
+async fn response_json(response: axum::response::Response) -> serde_json::Value {
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    serde_json::from_slice(&body).unwrap()
+}
+
+#[tokio::test]
+async fn members_leave_a_group_over_http_and_a_last_admin_is_refused() {
+    use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, GROUP_LEAVE_LIMIT};
+    use axum::http::StatusCode;
+    use tower::util::ServiceExt;
+
+    let Ok(url) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let pool = crate::pg::init_pool(&url).await.unwrap();
+    let (owner, owner_token) = signed_in_account(&pool, "leave_owner").await;
+    let (member, member_token) = signed_in_account(&pool, "leave_member").await;
+    sqlx_core::query::query(
+        "INSERT INTO cloud_contacts(account_id, peer_account_id, created_at) \
+         VALUES ($1, $2, now()::text), ($2, $1, now()::text)",
+    )
+    .bind(&owner)
+    .bind(&member)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let group = crate::chat_sync::store::create_conversation(
+        &pool,
+        &owner,
+        crate::chat_sync::models::CreateConversationRequest {
+            client_operation_id: Uuid::now_v7(),
+            kind: crate::chat_sync::models::ConversationKind::Group,
+            shared_title: None,
+            client_session_id: format!("session:group:{}", Uuid::now_v7()),
+            member_account_ids: vec![member.clone()],
+            organization_id: None,
+        },
+    )
+    .await
+    .unwrap()
+    .value;
+    let space = group.legacy_session_id.clone().unwrap();
+    let limiter = std::sync::Arc::new(CloudRateLimiter::memory(CloudRateLimitConfig::default()));
+    let state = std::sync::Arc::new(crate::server::ServerState::new(
+        pool,
+        crate::events::EventBus::noop(),
+    ));
+    let router = super::routes_with_runtime(state, ChatSyncRuntime { cursor_codec: None })
+        .layer(axum::Extension(limiter.clone()));
+
+    let refused = router
+        .clone()
+        .oneshot(leave_request(&space, &owner_token))
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), StatusCode::CONFLICT);
+    let body = response_json(refused).await;
+    assert_eq!(body["error"]["code"], "last_group_admin");
+    assert_eq!(
+        body["error"]["message"],
+        "Make someone else an admin before leaving."
+    );
+
+    let left = router
+        .clone()
+        .oneshot(leave_request(&space, &member_token))
+        .await
+        .unwrap();
+    assert_eq!(left.status(), StatusCode::OK);
+    let body = response_json(left).await;
+    assert_eq!(
+        body["left"]["group_space_id"],
+        space.trim_start_matches("group:")
+    );
+    assert_eq!(body["left"]["conversation_ids"], json!([group.id]));
+
+    for _ in 1..GROUP_LEAVE_LIMIT.limit {
+        limiter
+            .observe_account_limit(GROUP_LEAVE_LIMIT, &member)
+            .await;
+    }
+    let limited = router
+        .clone()
+        .oneshot(leave_request(&space, &member_token))
+        .await
+        .unwrap();
+    assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+}

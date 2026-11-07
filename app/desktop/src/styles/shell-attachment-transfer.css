@@ -50,10 +50,6 @@ button[data-attachment-file-chip]:hover:not(:disabled) {
   border-color: color-mix(in oklab, currentColor 16%, transparent);
 }
 button[data-attachment-file-chip]:active:not(:disabled) { transform: scale(0.988); }
-button[data-attachment-file-chip]:focus-visible {
-  outline: 2px solid var(--app-chat-accent);
-  outline-offset: 2px;
-}
 
 [data-attachment-file-chip][data-file-family='pdf'] { --attachment-file: var(--attachment-file-pdf); }
 [data-attachment-file-chip][data-file-family='doc'] { --attachment-file: var(--attachment-file-doc); }
@@ -169,14 +165,6 @@ button[data-attachment-file-chip]:hover:not(:disabled) .app-attachment-file-acti
   color: color-mix(in oklab, #16a34a 78%, currentColor);
 }
 
-.app-attachment-file-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: color-mix(in oklab, currentColor 62%, transparent);
-  font-size: 10px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   [data-attachment-file-chip],
   button[data-attachment-file-chip]:active:not(:disabled) {
@@ -237,7 +225,9 @@ button[data-attachment-file-chip]:hover:not(:disabled) .app-attachment-file-acti
   opacity: 0.78;
 }
 
-.app-attachment-image-media-ring-cancel:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 1px;
+/* The quiet button color is unlayered and would win over a utility, so the
+   failed-message retry keeps the shared error color here. */
+.app-button-quiet[data-message-retry-button='true'],
+.app-button-quiet[data-message-retry-button='true']:hover {
+  color: var(--app-error-text);
 }

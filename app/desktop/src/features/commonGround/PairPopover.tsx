@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Check, Copy } from 'lucide-react';
 
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
+
 import { pairLinkUrl } from './pairLink';
 import { PairQr } from './PairQr';
 import { CgPairSession, pairTimeLeft } from './pairSession';
@@ -63,10 +65,9 @@ function PairBody({ session, store, onClose }: { session: CgPairSession; store: 
           </button>
         </div>
         {view.phase === 'failed' ? (
-          <div className="cg-pair-sub is-error" role="alert">
-            {view.loadError}
-            <button type="button" className="cg-pair-retry" onClick={() => void session.refresh()}>Try again</button>
-          </div>
+          <ErrorLine className="mt-0.5" align="center" action={{ label: 'Try again', onClick: () => { void session.refresh(); } }}>
+            {withoutTryAgain(view.loadError ?? '')}
+          </ErrorLine>
         ) : (
           <div className="cg-pair-sub">{view.expiresAt ? `Valid for ${pairTimeLeft(view.expiresAt - now)}` : 'Getting your code'}</div>
         )}
@@ -99,7 +100,7 @@ function PairBody({ session, store, onClose }: { session: CgPairSession; store: 
           />
           <button type="submit" className="cg-mbtn is-primary" disabled={view.redeeming || !theirs.trim()}>Pair</button>
         </div>
-        {view.error ? <div className="cg-pop-error" role="alert">{view.error}</div> : null}
+        {view.error ? <ErrorLine className="mt-2.5">{view.error}</ErrorLine> : null}
       </form>
     </>
   );

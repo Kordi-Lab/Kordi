@@ -100,16 +100,14 @@ pub(super) fn store_error(context: &str, error: StoreError) -> Response {
             "The message changed on another device.",
             Some(json!({ "current_message": current })),
         ),
-        StoreError::CursorExpired => error_response(
+        StoreError::CursorExpired | StoreError::CursorAhead => error_response(
             StatusCode::CONFLICT,
             "SYNC_CURSOR_EXPIRED",
-            "The sync cursor is older than retained events.",
-            Some(json!({ "bootstrap_required": true })),
-        ),
-        StoreError::CursorAhead => error_response(
-            StatusCode::CONFLICT,
-            "SYNC_CURSOR_EXPIRED",
-            "The sync cursor is ahead of the server stream.",
+            if matches!(error, StoreError::CursorExpired) {
+                "The sync cursor is older than retained events."
+            } else {
+                "The sync cursor is ahead of the server stream."
+            },
             Some(json!({ "bootstrap_required": true })),
         ),
         StoreError::Database(error) => {
@@ -121,6 +119,7 @@ pub(super) fn store_error(context: &str, error: StoreError) -> Response {
                 None,
             )
         }
+        StoreError::Conflict { code, message } => channels::conflict_response(code, message),
         StoreError::InvariantViolation(message) => {
             eprintln!("[chat-sync] {context}: invariant violation: {message}");
             error_response(

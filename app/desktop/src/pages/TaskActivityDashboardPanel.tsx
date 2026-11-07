@@ -38,7 +38,7 @@ function statusCheckboxClass(tone: TaskDashboardTone) {
     case 'closed':
       return 'text-slate-400/80';
     case 'error':
-      return 'text-rose-400/90';
+      return 'text-[color:var(--app-error-text)]';
     case 'muted':
     default:
       return 'text-violet-300/85';

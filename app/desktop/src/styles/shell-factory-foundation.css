@@ -5,7 +5,7 @@
   --agent-studio-accent: oklch(72% 0.105 242);
   --agent-studio-accent-soft: color-mix(in oklab, var(--agent-studio-accent) 14%, transparent);
   --agent-studio-success: oklch(72% 0.12 156);
-  --agent-studio-danger: oklch(72% 0.14 25);
+  --agent-studio-danger: var(--app-error-text);
   --agent-studio-type-caption: 0.6875rem;
   --agent-studio-type-secondary: 0.75rem;
   --agent-studio-type-body: 0.8125rem;
@@ -29,7 +29,6 @@
   --agent-studio-accent: oklch(52% 0.115 242);
   --agent-studio-accent-soft: color-mix(in oklab, var(--agent-studio-accent) 10%, transparent);
   --agent-studio-success: oklch(48% 0.12 156);
-  --agent-studio-danger: oklch(54% 0.18 25);
 }
 
 .app-agent-studio-shell {
@@ -148,8 +147,8 @@
 
 .app-agent-studio-rail-search:focus-within,
 .app-agent-studio-search:focus-within {
-  border-color: color-mix(in oklab, var(--agent-studio-accent) 62%, var(--app-control-border));
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--agent-studio-accent) 12%, transparent);
+  border-color: var(--app-focus-border);
+  box-shadow: none;
 }
 
 .app-agent-studio-agent-list {
@@ -191,15 +190,9 @@
   line-height: 1;
 }
 
-.app-agent-studio-skill-index button:hover:not(:disabled),
-.app-agent-studio-skill-index button:focus-visible {
+.app-agent-studio-skill-index button:hover:not(:disabled) {
   background: color-mix(in oklab, var(--agent-studio-accent) 10%, transparent);
   color: var(--agent-studio-accent);
-}
-
-.app-agent-studio-skill-index button:focus-visible {
-  outline: 1px solid color-mix(in oklab, var(--agent-studio-accent) 42%, transparent);
-  outline-offset: -1px;
 }
 
 .app-agent-studio-skill-index button:disabled {

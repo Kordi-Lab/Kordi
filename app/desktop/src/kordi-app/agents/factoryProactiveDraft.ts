@@ -54,7 +54,8 @@ export function useCreationProactiveDraft(draftId: string | null) {
     input: (cooperative.enabled ? { enabled: true } : undefined) as CloudAgentProactive | undefined,
     personalEnabled: personal.enabled,
     setPersonalEnabled: personal.setEnabled,
-    personalInput: (personal.enabled ? { proactive: true } : undefined) as CloudAgentPersonalAgent | undefined,
+    // A new agent has no connector yet, so Proactive is turned on after it is created.
+    personalInput: undefined as CloudAgentPersonalAgent | undefined,
   };
 }
 
@@ -71,7 +72,7 @@ export type DefaultAgentProactive = ReturnType<typeof useDefaultAgentProactive>;
  */
 export function useDefaultAgentProactive(agent: Agent | undefined, cloudAccountId?: string | null) {
   const isDefault = Boolean(agent && usesDefaultLocalAgentSession(agent));
-  const [state, setState] = useState<{ agentId: string; enabled: boolean | null; personal: boolean | null } | null>(null);
+  const [state, setState] = useState<{ agentId: string; enabled: boolean | null; personal: boolean | null; connected?: boolean } | null>(null);
   useEffect(() => {
     if (!isDefault) return;
     let cancelled = false;
@@ -87,6 +88,7 @@ export function useDefaultAgentProactive(agent: Agent | undefined, cloudAccountI
         agentId,
         enabled: cooperative.status === 'fulfilled' ? cooperative.value.enabled : null,
         personal: personal.status === 'fulfilled' ? personal.value.proactive : null,
+        ...(personal.status === 'fulfilled' ? { connected: personal.value.connected } : {}),
       };
     })().then((next) => { if (!cancelled) setState(next); }, () => { if (!cancelled) setState(null); });
     return () => { cancelled = true; };
@@ -96,14 +98,14 @@ export function useDefaultAgentProactive(agent: Agent | undefined, cloudAccountI
     if (!session?.token || !session.accountId) throw new Error('Sign in to change Cooperative.');
     const agentId = defaultAgentProactiveId(session.accountId);
     const saved = await setProactiveSetting(session.token, agentId, enabled);
-    setState((current) => ({ agentId, enabled: saved.enabled, personal: current?.agentId === agentId ? current.personal : null }));
+    setState((current) => ({ ...(current?.agentId === agentId ? current : { personal: null }), agentId, enabled: saved.enabled }));
   }, []);
   const publishPersonal = useCallback(async (proactive: boolean) => {
     const session = await loadSession();
     if (!session?.token || !session.accountId) throw new Error('Sign in to change Proactive.');
     const agentId = defaultAgentProactiveId(session.accountId);
     const saved = await setPersonalAgentSetting(session.token, agentId, proactive);
-    setState((current) => ({ agentId, enabled: current?.agentId === agentId ? current.enabled : null, personal: saved.proactive }));
+    setState((current) => ({ agentId, enabled: current?.agentId === agentId ? current.enabled : null, personal: saved.proactive, connected: saved.connected }));
     // The Personal agent section lists only agents with Proactive on: show the change at once.
     requestPersonalAgentsRefresh();
   }, []);
@@ -112,6 +114,8 @@ export function useDefaultAgentProactive(agent: Agent | undefined, cloudAccountI
     agentId: current?.agentId ?? null,
     published: current ? current.enabled : null,
     personalPublished: current ? current.personal : null,
+    /** Whether the default agent has a connector to watch; undefined until known. */
+    personalConnected: current?.connected,
     publish,
     publishPersonal,
   };
@@ -174,16 +178,16 @@ export function factoryProactiveControl({ creating, creation, agent, config, set
   config: AgentStudioConfigDraft | null;
   setProactiveDraft: (agentId: string, enabled: boolean) => void;
   setPersonalProactiveDraft?: (agentId: string, enabled: boolean) => void;
-  defaultAgent?: Pick<DefaultAgentProactive, 'agentId' | 'published'> & Partial<Pick<DefaultAgentProactive, 'personalPublished'>>;
+  defaultAgent?: Pick<DefaultAgentProactive, 'agentId' | 'published'> & Partial<Pick<DefaultAgentProactive, 'personalPublished' | 'personalConnected'>>;
 }): AgentProactiveControl | undefined {
-  const personalRow = (enabled: boolean) => (agent && setPersonalProactiveDraft
-    ? { personal: { enabled: config?.personalProactive ?? enabled, onChange: (next: boolean) => setPersonalProactiveDraft(agent.id, next) } }
+  const personalRow = (enabled: boolean, agentId: string, connected?: boolean) => (agent && setPersonalProactiveDraft
+    ? { personal: { enabled: config?.personalProactive ?? enabled, onChange: (next: boolean) => setPersonalProactiveDraft(agent.id, next), agentId, ...(connected === undefined ? {} : { connected }) } }
     : {});
   if (creating) {
     return {
       enabled: creation.enabled,
       onChange: creation.setEnabled,
-      ...(creation.setPersonalEnabled ? { personal: { enabled: creation.personalEnabled === true, onChange: creation.setPersonalEnabled } } : {}),
+      ...(creation.setPersonalEnabled ? { personal: { enabled: false, agentId: null } } : {}),
     };
   }
   if (agent && !agent.cloudAgentId && defaultAgent?.agentId && defaultAgent.published !== null && usesDefaultLocalAgentSession(agent)) {
@@ -193,13 +197,13 @@ export function factoryProactiveControl({ creating, creation, agent, config, set
       enabled: config?.proactive?.enabled ?? published,
       onChange: (enabled) => setProactiveDraft(agent.id, enabled),
       activity: { agentId: defaultAgent.agentId, enabled: published },
-      ...(personalPublished === null ? {} : personalRow(personalPublished)),
+      ...(personalPublished === null ? {} : personalRow(personalPublished, defaultAgent.agentId, defaultAgent.personalConnected)),
     };
   }
   if (!agent?.cloudAgentId) return undefined;
   return {
     enabled: config?.proactive?.enabled ?? agent.cloudAgentProactive?.enabled === true,
     onChange: (enabled) => setProactiveDraft(agent.id, enabled),
-    ...personalRow(agent.cloudAgentPersonalAgent?.proactive === true),
+    ...personalRow(agent.cloudAgentPersonalAgent?.proactive === true, agent.cloudAgentId),
   };
 }

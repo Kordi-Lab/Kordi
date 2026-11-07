@@ -29,6 +29,8 @@ struct CloudGroupMessagePayload: Codable, Hashable {
     let messageKind: String?
     let voiceMessage: VoiceMessage?
     let structuredContent: CloudGroupStructuredContent?
+    /// Why a failed agent reply failed; only the agent's owner renders the reason.
+    var failureCode: String? = nil
 
     init(
         id: String,

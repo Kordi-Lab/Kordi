@@ -5,7 +5,7 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Copy, Settings, Share2 } from 'lucide-react';
+import { Check, ChevronRight as ChevronRightIcon, Copy, Settings, Share2, X } from 'lucide-react';
 
 import { cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { canonicalAvatarImageSource } from '@/features/cloud/canonicalAvatar';
@@ -26,7 +26,6 @@ import {
   accountPopoverLeft,
   buildCloudProfileRows,
 } from '@/pages/workspaceSidebar.profileModel';
-import { ChevronRight as ChevronRightIcon } from 'lucide-react';
 
 const CLOUD_PROFILE_COPY_RESET_MS = 1800;
 
@@ -141,36 +140,26 @@ function CloudAppInviteCopyRow({ onCreateInvite }: { onCreateInvite: () => Promi
     }
   };
 
-  const detail = status === 'copying'
+  // One dense row, like the Help menu: the status takes the label's place while it applies.
+  const label = status === 'copying'
     ? 'Creating invitation…'
     : status === 'copied'
       ? 'Invitation link copied'
       : status === 'error'
         ? 'Could not copy link'
-        : 'Copy personal invitation link';
+        : 'Invite to Kordi';
 
   return (
     <button
       type="button"
-      className="app-button-quiet app-transient-flat-action app-transient-action-row app-account-popover-row grid w-full grid-cols-[0.875rem_minmax(0,1fr)_1.75rem] items-center gap-x-2.5 rounded-[12px] px-2.5 py-2 text-left disabled:cursor-wait disabled:opacity-70"
+      className="app-dense-menu-row disabled:cursor-wait"
       onClick={() => { void handleCopy(); }}
       disabled={status === 'copying'}
       aria-label="Copy personal invitation link"
     >
-      <Share2 className="app-transient-action-icon app-transient-muted" aria-hidden="true" />
-      <span className="min-w-0">
-        <span className="app-transient-action-label block truncate">Invite to Kordi</span>
-        <span className="app-transient-metadata block truncate" aria-live="polite">
-          {detail}
-        </span>
-      </span>
-      <span className="grid h-7 w-7 place-items-center justify-self-end" aria-hidden="true">
-        {status === 'copied' ? (
-          <Check className="app-transient-action-icon text-emerald-300" />
-        ) : (
-          <Copy className="app-transient-action-icon app-transient-subtle" />
-        )}
-      </span>
+      <Share2 aria-hidden="true" />
+      <span className="truncate" aria-live="polite">{label}</span>
+      {status === 'copied' ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
     </button>
   );
 }
@@ -367,10 +356,7 @@ export function SidebarProfileControl({
               bottom: popoverAnchor.bottom,
               zIndex: 170,
             }}
-            className={cn(
-              'app-transient-surface app-popover app-profile-popover app-account-popover',
-              'rounded-[18px] border p-2.5 text-foreground',
-            )}
+            className="app-transient-surface app-dense-menu app-account-popover"
           >
             <OrganizationMenuLevels
               {...accountOrganizations}
@@ -378,21 +364,22 @@ export function SidebarProfileControl({
                 setIsProfileCardOpen(false);
                 openOrganizationJoinDialog();
               }}
+              onClose={() => setIsProfileCardOpen(false)}
             >
               {(organizationEntry) => (
                 <>
-                <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_1.75rem] items-center gap-x-2.5 px-2.5 py-2.5">
+                <div className="app-dense-menu-header app-account-identity">
                   <IdentityAvatar
                     kind="human"
                     seed={profileAvatarSeed}
                     isSelf
                     name={profileDisplayName}
                     imageUrl={profileImageUrl}
-                    className="h-10 w-10 border border-white/10"
+                    className="h-8 w-8"
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="app-transient-identity-title truncate">{profileDisplayName}</div>
-                    <div className="app-transient-metadata truncate tabular-nums">
+                    <div className="app-account-identity-name truncate">{profileDisplayName}</div>
+                    <div className="app-dense-menu-meta truncate">
                       {profileKordiHandle || 'Kordi ID unavailable'}
                     </div>
                   </div>
@@ -405,28 +392,25 @@ export function SidebarProfileControl({
                   ) : null}
                 </div>
                 {organizationEntry}
-                <div className="app-transient-divider mt-2 grid gap-1 border-t pt-2">
+                <div className="app-dense-menu-divider" />
+                <div className="app-dense-menu-items">
                   {onCreateAppInvite ? (
                     <CloudAppInviteCopyRow onCreateInvite={onCreateAppInvite} />
                   ) : null}
                   <button
                     type="button"
-                    className="app-button-quiet app-transient-flat-action app-transient-action-row app-account-popover-row grid grid-cols-[0.875rem_minmax(0,1fr)_1.75rem] items-center gap-x-2.5 rounded-[12px] px-2.5 py-2 text-left"
+                    className="app-dense-menu-row"
                     onClick={() => openCloudAccountDialog(hasDeviceReview ? 'devices' : 'profile')}
                     aria-label={hasDeviceReview ? 'Open settings to review a new device' : 'Open account settings'}
                   >
-                    <Settings className="app-transient-action-icon app-transient-muted" aria-hidden="true" />
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="app-transient-action-label truncate">Settings</span>
-                      {hasDeviceReview ? (
-                        <span className="rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-200">
-                          Review
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="grid h-7 w-7 place-items-center justify-self-end" aria-hidden="true">
-                      <ChevronRightIcon className="app-transient-action-icon app-transient-subtle" />
-                    </span>
+                    <Settings aria-hidden="true" />
+                    <span>Settings</span>
+                    {hasDeviceReview ? (
+                      <span className="app-dense-menu-meta rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-200">
+                        Review
+                      </span>
+                    ) : null}
+                    <ChevronRightIcon aria-hidden="true" />
                   </button>
                 </div>
                 </>
@@ -452,38 +436,33 @@ export function SidebarProfileControl({
               bottom: popoverAnchor.bottom,
               zIndex: 160,
             }}
-            className={cn(
-              'app-transient-surface app-popover app-profile-popover app-account-popover',
-              'rounded-[18px] border p-2.5 text-foreground',
-            )}
+            className="app-transient-surface app-dense-menu app-account-popover"
           >
-            <div className="app-transient-identity-title px-2.5 py-2">
-              <span>Profile</span>
-            </div>
-            <div className="grid gap-1">
-              <div className="app-transient-row rounded-[12px] px-2.5 py-2 transition">
-                <div className="app-transient-action-label truncate">{profileDisplayName}</div>
-                <div className="app-transient-metadata truncate">
+            <header className="app-dense-menu-header">
+              <h2>Profile</h2>
+              <button type="button" onClick={() => setIsProfileCardOpen(false)} aria-label="Close profile">
+                <X aria-hidden="true" />
+              </button>
+            </header>
+            <div className="app-dense-menu-items">
+              <div className="app-dense-menu-info">
+                <div className="truncate">{profileDisplayName}</div>
+                <div className="app-dense-menu-meta truncate">
                   {cloudAccount ? 'Account' : 'Local profile'}
                 </div>
               </div>
               {profileRows.length > 0 ? profileRows.map((row) => (
-                <div
-                  key={row.label}
-                  className="app-transient-row flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition"
-                >
+                <div key={row.label} className="app-dense-menu-info flex min-w-0 items-center gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="app-transient-action-label truncate">{row.label}</div>
-                    <div className="app-transient-metadata truncate">
-                      {row.value}
-                    </div>
+                    <div className="truncate">{row.label}</div>
+                    <div className="app-dense-menu-meta truncate">{row.value}</div>
                   </div>
                   {row.copyable ? (
                     <CloudProfileRowCopyButton label={row.label} value={row.value} />
                   ) : null}
                 </div>
               )) : (
-                <div className="app-transient-metadata rounded-[12px] px-2.5 py-2">
+                <div className="app-dense-menu-info app-dense-menu-meta">
                   Profile details are stored locally.
                 </div>
               )}

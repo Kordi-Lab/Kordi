@@ -16,10 +16,13 @@ const macDownload = params.has('macDownload');
 document.body.classList.add(`theme-${theme}`);
 document.documentElement.style.colorScheme = theme;
 
+const widePhoto = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="80"><rect width="240" height="80" fill="#9fb8d6"/><circle cx="120" cy="40" r="26" fill="#f2e3cc"/></svg>')}`;
 const contacts: Contact[] = ['Maya Chen', 'Ethan Park', 'Priya Shah'].map((name, index) => ({
   id: `preview-person-${index}`, name, initials: name.split(' ').map((part) => part[0]).join(''),
   classType: 'other-users', entityType: 'Person', subtitle: 'Kordi contact', collaborationSources: ['Cloud'],
-  status: 'Online', discoverableOn: [], detail: '', owner: name, avatarSeed: name, profileImageUrl: null,
+  status: 'Online', discoverableOn: [], detail: '', owner: name, avatarSeed: name,
+  // A wide photo for the first contact: rows must crop it into the avatar shape.
+  profileImageUrl: index === 0 ? widePhoto : null,
 }));
 const agents: Agent[] = [{
   id: 'agent:preview', name: 'Kordi', role: 'Coding partner', messaging: 'Available', status: 'Ready', tasks: 0,
@@ -71,7 +74,7 @@ function Fixture() {
       onClose={() => setCreateAnchor(null)}
       onStartPerson={(contact) => setStarted(`person:${contact.name}`)}
       onStartAgent={(agent) => setStarted(`agent:${agent.name}`)}
-      onCreateGroup={async (request) => { setStarted(`group:${request.contactIds.length}${request.inviteLink ? ':link' : ''}:${request.name ?? ''}`); return 'session:group:preview'; }}
+      onCreateGroup={async (request) => { setStarted(`group:${request.contactIds.length}:${request.name ?? ''}`); return 'session:group:preview'; }}
       onCreateGroupInvitation={async (input) => ({ invitationId: 'preview-invitation', inviteUrl: `https://kordi.ai/g/kordi_gi_preview_${input.groupSpaceId.length}`, expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString() })}
       onAddContact={() => setStarted('add-contact')}
     />

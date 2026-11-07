@@ -12,9 +12,17 @@ const SYSTEM_NOTICE_KIND: &str = "system-notice";
 /// `group_event.type` of the line posted when a group is created.
 pub const GROUP_CREATED_EVENT: &str = "group.created";
 
+/// `group_event.type` of the line posted when a member leaves a group.
+pub const GROUP_MEMBER_LEFT_EVENT: &str = "group.member_left";
+
 /// The line posted when `creator` creates a group.
 pub fn group_created_text(creator_name: &str) -> String {
     format!("{creator_name} created the group")
+}
+
+/// The line posted when `member` leaves a group.
+pub fn group_member_left_text(member_name: &str) -> String {
+    format!("{member_name} left the group")
 }
 
 fn group_event_message(
@@ -94,6 +102,40 @@ pub async fn post_group_created(
     .map(|_| ())
 }
 
+/// Posts "<Name> left the group" into the group's first conversation, in
+/// the leaving member's name, inside the transaction that removes them. It
+/// must run while they are still an active member.
+pub(super) async fn post_member_left(
+    transaction: &mut Transaction<'_, Postgres>,
+    conversation_id: Uuid,
+    account_id: &str,
+) -> Result<(), StoreError> {
+    let name: Option<(Option<String>,)> =
+        query_as("SELECT display_name FROM cloud_accounts WHERE account_id = $1")
+            .bind(account_id)
+            .fetch_optional(&mut **transaction)
+            .await?;
+    let Some((name,)) = name else {
+        return Ok(());
+    };
+    let name = crate::document_shares::access::clean_display_name(name.as_deref());
+    super::send_message_in_transaction(
+        transaction,
+        account_id,
+        conversation_id,
+        group_event_message(
+            // Someone may leave, rejoin and leave again: each leave is a new line.
+            Uuid::now_v7(),
+            GROUP_MEMBER_LEFT_EVENT,
+            account_id,
+            &name,
+            &group_member_left_text(&name),
+        ),
+    )
+    .await
+    .map(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,6 +143,11 @@ mod tests {
     #[test]
     fn created_line_names_the_creator() {
         assert_eq!(group_created_text("Ava"), "Ava created the group");
+    }
+
+    #[test]
+    fn left_line_names_the_member() {
+        assert_eq!(group_member_left_text("Ben"), "Ben left the group");
     }
 
     #[test]

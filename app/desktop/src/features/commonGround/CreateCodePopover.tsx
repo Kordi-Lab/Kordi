@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Check, Share } from 'lucide-react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 import { CardGlyph, CardSwatch } from './ProfileCard';
 import type { CgCardDesign, CgCardIcon } from './cardDesign';
@@ -95,7 +96,7 @@ export function CreateCodePopover({ cards, current, busy, notice, onCreate, onEn
             ))}
             {card ? <span className="cg-pop-pick">{card.name}</span> : null}
           </div>
-          {failed && notice ? <div className="cg-pop-error" role="alert">{notice}</div> : null}
+          {failed && notice ? <ErrorLine className="mt-2.5">{notice}</ErrorLine> : null}
           <div className="cg-pop-foot">
             <button type="submit" className="cg-mbtn is-primary" disabled={!ready}>Create</button>
           </div>

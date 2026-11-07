@@ -54,7 +54,7 @@ test('settings navigation is one shared searchable rail with grouped items and a
 
   assert.match(shellCss, /\.app-settings-nav-item\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;[\s\S]*?transition:\s*none;/);
   assert.match(shellCss, /\.app-settings-nav-item:hover\s*\{[\s\S]*?background:\s*var\(--app-quiet-control-hover-bg\)/);
-  assert.match(shellCss, /\.app-settings-nav-item:focus-visible\s*\{[\s\S]*?outline:\s*2px solid var\(--app-quiet-control-focus-ring\)/);
+  assert.doesNotMatch(shellCss, /\.app-settings-nav-item:focus-visible\s*\{[^}]*outline:\s*\d/);
   assert.match(shellCss, /\.app-settings-nav-item-active,[\s\S]*?\{[\s\S]*?background:\s*var\(--app-quiet-control-selected-bg\)/);
 });
 
@@ -85,7 +85,7 @@ test('notification settings use titled row sections with contained switches', ()
   assert.match(layout, /role="switch"/);
   assert.match(layout, /absolute left-0\.5 top-0\.5/);
   assert.match(layout, /enabled \? 'translate-x-\[18px\]' : 'translate-x-0'/);
-  assert.match(layout, /focus-visible:ring-\[var\(--app-quiet-control-focus-ring\)\]/);
+  assert.doesNotMatch(layout, /focus-visible:ring/);
 });
 
 test('dense provider feedback follows the pointer without a transition trail', () => {

@@ -226,6 +226,8 @@ type ComposerAttachmentAddMenuProps = {
   'data-companion-attachment-control'?: string;
 };
 
+const ADD_MENU_WIDTH = 196;
+
 export function ComposerAttachmentAddMenu({
   inputRef,
   onChooseFiles,
@@ -250,7 +252,8 @@ export function ComposerAttachmentAddMenu({
     const composerRect = trigger.closest('.app-composer-shell')?.getBoundingClientRect();
     const viewportPadding = 12;
     const anchorRect = composerRect ?? triggerRect;
-    const menuWidth = Math.min(anchorRect.width, window.innerWidth - (viewportPadding * 2));
+    // The Help menu's dense surface at the Start a chat width, opening from the composer's corner.
+    const menuWidth = Math.min(ADD_MENU_WIDTH, window.innerWidth - (viewportPadding * 2));
     const left = Math.min(
       Math.max(viewportPadding, anchorRect.left),
       Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
@@ -322,33 +325,31 @@ export function ComposerAttachmentAddMenu({
       aria-label="Add"
       data-composer-attachment-add-menu="true"
       className={cn(
-        'app-composer-attachment-add-menu app-transient-surface app-composer-model-menu-layer app-compact-model-menu-layer rounded-[14px] p-1.5',
+        'app-composer-attachment-add-menu app-transient-surface app-dense-menu app-composer-model-menu-layer app-compact-model-menu-layer',
         menuThemeClass,
       )}
       style={menuStyle}
     >
-      <div className="app-composer-attachment-add-menu-label app-transient-muted px-1.5 pb-1 pt-0.5 font-medium">
-        Add
-      </div>
+      <p className="app-composer-attachment-add-menu-label app-dense-menu-label">Add</p>
       <button
         ref={firstItemRef}
         type="button"
         role="menuitem"
         onClick={openFilePicker}
-        className="app-composer-attachment-add-menu-action app-transient-flat-action app-transient-action-row flex w-full items-center gap-2 rounded-[8px] px-1.5 py-1 text-left"
+        className="app-composer-attachment-add-menu-action app-dense-menu-row"
       >
-        <FolderOpen className="app-transient-action-icon" strokeWidth={1.8} aria-hidden="true" />
-        <span className="app-transient-action-label">Files and folders</span>
+        <FolderOpen aria-hidden="true" />
+        <span>Files and folders</span>
       </button>
       {onRecordVideo ? (
         <button
           type="button"
           role="menuitem"
           onClick={recordVideo}
-          className="app-composer-attachment-add-menu-action app-transient-flat-action app-transient-action-row flex w-full items-center gap-2 rounded-[8px] px-1.5 py-1 text-left"
+          className="app-composer-attachment-add-menu-action app-dense-menu-row"
         >
-          <Video className="app-transient-action-icon" strokeWidth={1.8} aria-hidden="true" />
-          <span className="app-transient-action-label">Record video</span>
+          <Video aria-hidden="true" />
+          <span>Record video</span>
         </button>
       ) : null}
     </div>

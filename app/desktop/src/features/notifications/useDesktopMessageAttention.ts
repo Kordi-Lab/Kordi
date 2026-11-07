@@ -164,7 +164,8 @@ export function useDesktopMessageAttention({
       : false;
     const qualifyingEvents = events.filter((event) => {
       if (presentedEventIdsRef.current.has(event.eventId)) return false;
-      const threadPanel=event.threadRootId ? Array.from(document.querySelectorAll<HTMLElement>('.app-thread-panel')).find(panel=>[panel.dataset.threadRootId,panel.dataset.threadRootClientId].includes(event.threadRootId)) : undefined;
+      // A discussion in a hidden side panel tab or a folded panel is not on screen.
+      const threadPanel=event.threadRootId ? Array.from(document.querySelectorAll<HTMLElement>('.app-thread-panel')).find(panel=>[panel.dataset.threadRootId,panel.dataset.threadRootClientId].includes(event.threadRootId) && panel.getClientRects().length>0 && !panel.closest('[inert]')) : undefined;
       const threadScroll=threadPanel?.querySelector<HTMLElement>('.app-chat-pane-transcript-scroll');
       const exactVisibleSession = appIsActive
         && isChatNavigation(activeNav)

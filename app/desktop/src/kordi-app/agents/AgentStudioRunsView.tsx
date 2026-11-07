@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Activity, Ban, Check, CircleAlert, Clock, EyeOff, LoaderCircle, Sparkles, X } from 'lucide-react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 import type { DesktopAgentBuilderStatus } from '@/lib/desktop';
 import { loadSession } from '@/features/cloud/session';
@@ -42,7 +43,7 @@ function ProactiveActivityList({ agentId, enabled, load, now }: { agentId: strin
     <section className="app-agent-studio-proactive-activity" aria-label="Cooperative activity">
       <WorkspaceHeading title="Cooperative" />
       {current.entries === null ? <div className="app-agent-studio-runtime-note"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Loading…</div>
-        : current.error ? <div className="app-agent-studio-file-feedback is-error">{current.error}</div>
+        : current.error ? <ErrorLine role="status" className="mt-0 px-2.5 py-[7px]">{current.error}</ErrorLine>
           : entries.length === 0 ? <div className="app-agent-studio-runtime-note">No activity yet.</div> : (
             <div className="app-agent-studio-simple-list">
               {entries.map((entry, index) => {

@@ -39,7 +39,7 @@
 .app-tool-file-link, .app-tool-file-name { overflow-wrap: anywhere; min-width: 0; font-size: 12px; color: var(--utility-foreground); }
 .app-tool-file-link { padding: 4px 0; border: 0; background: transparent; text-decoration: underline; text-decoration-color: var(--app-control-border); text-underline-offset: 3px; }
 .app-tool-file-link:hover { text-decoration-color: currentColor; }
-.app-tool-activity-line[data-failed] { color: var(--app-danger-text, #b45309); }
+.app-tool-activity-line[data-failed] { color: var(--app-error-text); }
 .app-tool-activity-error { font-size: 12px; }
 .app-tool-output { min-width: 0; margin: 0 0 9px 22px; }
 .app-tool-text { min-width: 0; }
@@ -48,7 +48,7 @@
 .app-tool-input-content pre, .app-tool-output-code pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .app-tool-detail-toggle { display: block; border: 0; background: transparent; padding: 5px 0; color: var(--utility-muted-text); font-size: 12px; text-align: left; text-decoration: underline; text-decoration-color: var(--app-control-border); text-underline-offset: 3px; }
 .app-tool-detail-toggle:hover { color: var(--utility-foreground); text-decoration-color: currentColor; }
-.app-turn-progress-summary:focus-visible, .app-turn-worked-header:focus-visible, .app-tool-detail-toggle:focus-visible, .app-tool-file-link:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: 3px; border-radius: 3px; }
+.app-turn-progress-summary:focus-visible, .app-turn-worked-header:focus-visible, .app-tool-detail-toggle:focus-visible, .app-tool-file-link:focus-visible { border-radius: 3px; }
 @media (pointer: coarse) { .app-tool-detail-toggle, .app-tool-file-link, .app-turn-worked-header { min-height: 44px; } }
 
 
@@ -64,7 +64,7 @@
 .app-turn-reasoning .app-turn-progress-details { margin: 0 0 6px 22px; }
 .app-turn-reasoning .app-transcript-thinking-markdown { display: grid; gap: 4px; }
 .app-turn-reasoning .app-transcript-thinking-markdown :is(p, li, h1, h2, h3, h4, h5, h6, strong) { font-size: 12px; line-height: 1.5; font-weight: 400; margin-block: 0; }
-.app-turn-status-label { display: inline-grid; width: 26ch; max-width: 100%; min-width: 0; }
+.app-turn-status-label { display: inline-grid; max-width: min(26ch, 100%); min-width: 0; }
 .app-turn-status-text { grid-area: 1 / 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 1; transition: opacity var(--app-motion-fast) var(--app-motion-ease); }
 @starting-style { .app-turn-status-text { opacity: .35; } }
 .app-turn-worked-header { min-width: 0; max-width: 100%; }
@@ -89,3 +89,11 @@
 }
 /* An open nested disclosure must not override its closed ancestor's visibility. */
 .app-progress-disclosure[data-expanded="false"] .app-progress-disclosure { visibility: inherit; }
+
+/* The running reply's Stop follows the elapsed time on the status line. */
+.app-turn-stop { margin-left: -2px; }
+/* Fork waits for a finished reply and shows while the pointer is over its row. */
+.app-message-fork-button { opacity: 0; }
+[data-transcript-message-root]:is(:hover, :focus-within) .app-message-fork-button:not(:disabled),
+.app-message-fork-button:focus-visible { opacity: 1; }
+@media (hover: none) { .app-message-fork-button:not(:disabled) { opacity: 1; } }

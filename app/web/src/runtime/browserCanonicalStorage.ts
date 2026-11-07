@@ -4,6 +4,7 @@ import type { CanonicalSessionState } from '@/kordi-app/types';
 import type { ChatSyncLocalState } from '@/lib/desktopChatSync';
 import { browserCanonicalCloudMessageId, emptyBrowserCanonicalState } from '@web/runtime/browserCanonicalProjection';
 import { applyBrowserCanonicalCommand } from '@web/runtime/browserCanonicalCommands';
+import { browserCanonicalCommandChanged } from '@web/runtime/browserCanonicalChanges';
 
 const DATABASE_NAME = 'kordi-browser-canonical-v1';
 const STORE_NAME = 'projections';
@@ -31,7 +32,7 @@ function openDatabase(): Promise<IDBDatabase> {
 }
 
 export async function updateBrowserStoredRecord<T, R>(key: string, initial: () => T,
-  update: (record: T) => R, readonly = false): Promise<R> {
+  update: (record: T) => R, readonly = false, shouldWrite: () => boolean = () => true): Promise<R> {
   const generation = storageGeneration;
   activeScopes.add(key);
   const db = await openDatabase();
@@ -46,7 +47,7 @@ export async function updateBrowserStoredRecord<T, R>(key: string, initial: () =
       try {
         const record = (request.result as T | undefined) ?? initial();
         result = update(record);
-        if (!readonly) store.put(record, key);
+        if (!readonly && shouldWrite()) store.put(record, key);
       } catch (error) { failure = error; transaction.abort(); }
     };
     transaction.onabort = () => reject(failure instanceof Error ? failure
@@ -65,9 +66,15 @@ export async function runBrowserCanonicalCommand(accountId: string, organization
   }
   const readonly = ['desktop_canonical_session_state', 'desktop_canonical_session_catalog',
     'desktop_canonical_session_messages', 'desktop_canonical_existing_message_sources'].includes(command);
-  const result = await updateBrowserStoredRecord(scope, () => emptyBrowserCanonicalState(accountId),
-    state => applyBrowserCanonicalCommand(state, command, args), readonly);
-  if (!readonly && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(BROWSER_CANONICAL_CHANGED_EVENT));
+  let changed = false;
+  const result = await updateBrowserStoredRecord(scope, () => emptyBrowserCanonicalState(accountId), state => {
+    const applied = browserCanonicalCommandChanged(state, command, () => applyBrowserCanonicalCommand(state, command, args));
+    changed = applied.changed;
+    return applied.result;
+  }, readonly, () => changed);
+  // A replay that changed nothing must not refresh the store: the refresh
+  // re-runs replay, which would otherwise write and refresh again forever.
+  if (!readonly && changed && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(BROWSER_CANONICAL_CHANGED_EVENT));
   return result;
 }
 

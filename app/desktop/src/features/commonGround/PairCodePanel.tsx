@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { ChevronRight, Hash } from 'lucide-react';
 
+import { ErrorLine } from '@/components/ui/ErrorLine';
+
 import { profileDesign } from './cardDesign';
 import { CreateCodePopover, type CgShareChoice } from './CreateCodePopover';
 import { NearbyRow } from './NearbyRow';
@@ -173,7 +175,7 @@ export function PairCodePanel({ state, store, nearby = false }: { state: CgState
           </button>
         )}
       </div>
-      {error ? <div className="cg-pair-error" role="alert">{error}</div> : null}
+      {error ? <ErrorLine className="-mt-1 pr-3.5 pb-2.5 pl-12">{error}</ErrorLine> : null}
       {nearby ? <NearbyRow state={state} store={store} /> : null}
       {creating ? (
         <CreateCodePopover

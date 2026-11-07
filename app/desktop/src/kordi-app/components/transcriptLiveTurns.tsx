@@ -9,19 +9,20 @@ import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { memo } from 'react';
 import {
   CheckCircle2,
-  CircleAlert,
   LoaderCircle,
 } from 'lucide-react';
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { useVisibleLiveTurn } from '@/features/chat/useVisibleLiveTurn';
-import { cloudAgentProviderFailureNeedsAuthentication, cloudAgentProviderFailureNotice } from '@/features/cloud/cloudAgentFailureNotices';
+import { cloudAgentProviderFailureActionLabel, cloudAgentProviderFailureNotice } from '@/features/cloud/cloudAgentFailureNotices';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { cn } from '@/lib/utils';
 import { SourceMessageQuoteRow } from './transcriptReplyAttribution';
 import { MarkdownContent } from './markdown';
 import { FoldableAssistantAnswer } from './transcriptAssistantAnswer';
 import { InlineChangedFiles } from './transcriptChangedFiles';
-import type { DesktopChatTurnSnapshot, MessageSourceReference } from '../types';
-import { AgentRequestHeaderStop, CollaborationAgentStopButton, TurnStopButton, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptTurnStopControls';
+import type { DesktopChatTurnSnapshot, Message, MessageSourceReference } from '../types';
+import { AgentRequestStop, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptTurnStopControls';
+import { replyAgentRequestStop } from '@/features/chat/agentRequestStop';
 
 function LiveChatTurnCardView({
   turn,
@@ -29,7 +30,7 @@ function LiveChatTurnCardView({
   hideSourceQuote = false,
   showReasoning = false,
   plainAgentResponse = false,
-  stopInHeader = false,
+  stopMessage,
   onStopCollaborationAgentRequest,
   onStopActiveTurn,
   onNavigateToMessage,
@@ -41,8 +42,8 @@ function LiveChatTurnCardView({
   hideSourceQuote?: boolean;
   showReasoning?: boolean;
   plainAgentResponse?: boolean;
-  /** The row header renders the stop control, so the card does not repeat it. */
-  stopInHeader?: boolean;
+  /** The reply's message, which decides whether the viewer may stop it. */
+  stopMessage?: Pick<Message, 'role' | 'senderOwnerName'>;
   onStopCollaborationAgentRequest?: StopCollaborationAgentRequestHandler;
   onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
@@ -75,11 +76,10 @@ function LiveChatTurnCardView({
   const hasOrderedContent = visibleTurn.segments?.some(segment => segment.kind === 'tool' || segment.text.trim()) ?? false;
   const hasThinking = visibleTurn.thinkingText.trim().length > 0;
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
-  const pendingCollaborationAgentRequest = visibleTurn.pendingCollaborationAgentRequest ?? null;
   const turnIsRunning = !historical && !visibleTurn.completed;
-  const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingCollaborationAgentRequest && !visibleTurn.id.startsWith('collaboration-live-turn:');
-  const cardStopAvailable = activeStopAvailable && !stopInHeader;
-  const cardCollaborationStop = stopInHeader ? null : pendingCollaborationAgentRequest;
+  // Stop sits at the end of the status line from admission until the terminal state.
+  const stopAction = replyAgentRequestStop({ turn, message: stopMessage, historical, onStopActiveTurn, onStopCollaborationAgentRequest });
+  const stop = stopAction ? <AgentRequestStop action={stopAction} /> : null;
   const showLiveProgress = turnIsRunning && !isCompressionStatus;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
   const changedFileRows = changedFileRowsFromTurn(visibleTurn);
@@ -98,41 +98,48 @@ function LiveChatTurnCardView({
       || changedFileRows.length > 0,
   );
   const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
-  const showOpenAuthAction = Boolean(onOpenAuthSettings && visibleTurn.error && cloudAgentProviderFailureNeedsAuthentication(visibleTurn.error));
-  if (!canDisplayAgentTurn(visibleTurn)) return null;
+  // The owner's link to the provider settings under Authentication.
+  const openAuthActionLabel = onOpenAuthSettings && visibleTurn.error ? cloudAgentProviderFailureActionLabel(visibleTurn.error) : null;
+  const showsTurnProgress = showResponsePanel && (showLiveProgress || hasOrderedContent || hasTimelineActivity || hasAssistant);
+  // Without a live status line (not yet started, or compressing), Stop keeps a line of its own.
+  const standaloneStop = stop && !(showsTurnProgress && !visibleTurn.completed)
+    ? <div className="app-turn-progress-line app-turn-header-line">{stop}</div> : null;
+  if (!canDisplayAgentTurn(visibleTurn)) {
+    return standaloneStop ? <div data-live-turn-status={visibleTurn.status} className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5">{standaloneStop}</div> : null;
+  }
   return (
     <div data-live-turn-status={visibleTurn.status} className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
         <div className={cn('app-live-turn-response-panel app-ordered-turn-surface', 'w-full max-w-[min(100%,58rem)] space-y-2.5')}>
-          {isCompressionStatus ? (
+          {visibleTurn.status === 'compaction_failed' ? (
+            // A failure with its own error shows once, in the error line below.
+            displayedError ? null : (
+              <ErrorLine className="app-compression-error mt-0 px-0.5" role={historical ? 'status' : 'alert'}>
+                {visibleTurn.message || 'Could not compress the conversation.'}
+              </ErrorLine>
+            )
+          ) : isCompressionStatus ? (
             <div className={cn(
-          'app-compression-card rounded-2xl px-4 py-3 text-sm',
-          visibleTurn.status === 'compaction_failed'
-            ? 'app-compression-card-error'
-            : visibleTurn.status === 'compacted'
-              ? 'app-compression-card-success'
-              : 'app-compression-card-active',
-        )}>
-          <div className="app-compression-title flex items-center gap-2 font-medium">
-            {visibleTurn.status === 'compacting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : visibleTurn.status === 'compacted' ? <CheckCircle2 className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
-            <span>{visibleTurn.status === 'compacting' ? 'Compressing conversation…' : visibleTurn.status === 'compacted' ? 'Conversation compressed' : 'Compression needs attention'}</span>
-          </div>
-          <div className="app-compression-detail mt-1.5 text-[12px] leading-5">
-            {visibleTurn.status === 'compacting'
-              ? 'Kordi is summarizing older history before sending the next model request. New messages will wait in the queue.'
-              : visibleTurn.status === 'compacted'
-                ? 'The preserved summary is in the session and Kordi is continuing with the queued request.'
-                : (visibleTurn.error ?? visibleTurn.message)}
-          </div>
-        </div>
-      ) : null}
+              'app-compression-card rounded-2xl px-4 py-3 text-sm',
+              visibleTurn.status === 'compacted' ? 'app-compression-card-success' : 'app-compression-card-active',
+            )}>
+              <div className="app-compression-title flex items-center gap-2 font-medium">
+                {visibleTurn.status === 'compacting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                <span>{visibleTurn.status === 'compacting' ? 'Compressing conversation…' : 'Conversation compressed'}</span>
+              </div>
+              <div className="app-compression-detail mt-1.5 text-[12px] leading-5">
+                {visibleTurn.status === 'compacting'
+                  ? 'Kordi is summarizing older history before sending the next model request. New messages will wait in the queue.'
+                  : 'The preserved summary is in the session and Kordi is continuing with the queued request.'}
+              </div>
+            </div>
+          ) : null}
 
-          {showLiveProgress || hasOrderedContent || hasTimelineActivity || hasAssistant ? (
+          {standaloneStop}
+          {showsTurnProgress ? (
             <TurnProgress turn={visibleTurn}
-              renderTool={tool => <ToolActivityRow key={tool.id} tool={tool} onOpenFile={onOpenArtifact} />}
-              trailing={cardCollaborationStop && onStopCollaborationAgentRequest ? (
-                <CollaborationAgentStopButton request={cardCollaborationStop} onStop={onStopCollaborationAgentRequest} />
-              ) : cardStopAvailable ? <TurnStopButton onStop={onStopActiveTurn} /> : null}
+              renderTool={tool => <ToolActivityRow key={tool.id} tool={tool} stateKey={`turn:${visibleTurn.id}:tool:${tool.id}`} onOpenFile={onOpenArtifact} />}
+              trailing={stop}
               legacyAnswer={hasAssistant ? <FoldableAssistantAnswer text={assistantText} foldable={!plainAgentResponse}
                 tone={visibleTurn.status === 'cancelled' && !ending ? 'cancelled' : 'default'} /> : null}
             />
@@ -149,18 +156,13 @@ function LiveChatTurnCardView({
           ) : null}
 
           {displayedError ? (
-            <div className="app-live-turn-error app-live-turn-error-text max-w-full break-words px-0.5 text-[12px] font-medium leading-5 text-rose-300 [&_.app-live-turn-auth-action]:whitespace-nowrap">
+            <ErrorLine
+              className="app-live-turn-error mt-0 px-0.5"
+              role={historical ? 'status' : 'alert'}
+              action={openAuthActionLabel && onOpenAuthSettings ? { label: openAuthActionLabel, onClick: onOpenAuthSettings } : null}
+            >
               {displayedError}
-              {showOpenAuthAction ? (
-                <button
-                  type="button"
-                  className="app-live-turn-auth-action ml-2 inline-flex p-0 text-[12px] font-semibold text-rose-100 underline decoration-rose-200/45 underline-offset-2 transition hover:text-rose-50 hover:decoration-rose-100"
-                  onClick={onOpenAuthSettings}
-                >
-                  Open authentication
-                </button>
-              ) : null}
-            </div>
+            </ErrorLine>
           ) : null}
 
           <InlineChangedFiles
@@ -182,7 +184,8 @@ export const LiveChatTurnCard = memo(
     && previous.hideSourceQuote === next.hideSourceQuote
     && previous.showReasoning === next.showReasoning
     && previous.plainAgentResponse === next.plainAgentResponse
-    && previous.stopInHeader === next.stopInHeader
+    && previous.stopMessage?.role === next.stopMessage?.role
+    && previous.stopMessage?.senderOwnerName === next.stopMessage?.senderOwnerName
     && previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
     && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
@@ -217,7 +220,6 @@ function LiveChatTurnMessageView({
       hideSourceQuote={threadLayout}
       showReasoning
       plainAgentResponse={plainAgentResponse}
-      stopInHeader
       onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
       onStopActiveTurn={onStopActiveTurn}
       onNavigateToMessage={onNavigateToMessage}
@@ -225,14 +227,7 @@ function LiveChatTurnMessageView({
       onOpenAuthSettings={onOpenAuthSettings}
     />
   );
-  const headerStop = (
-    <AgentRequestHeaderStop
-      turn={turn}
-      onStopActiveTurn={onStopActiveTurn}
-      onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
-    />
-  );
-  return <LiveTurnMessageFrame turn={turn} sender={sender} showSourceQuote={!plainAgentResponse} onNavigateToMessage={onNavigateToMessage} headerAccessory={headerStop}>{card}</LiveTurnMessageFrame>;
+  return <LiveTurnMessageFrame turn={turn} sender={sender} showSourceQuote={!plainAgentResponse} onNavigateToMessage={onNavigateToMessage}>{card}</LiveTurnMessageFrame>;
 }
 export const LiveChatTurnMessage = memo(
   LiveChatTurnMessageView,

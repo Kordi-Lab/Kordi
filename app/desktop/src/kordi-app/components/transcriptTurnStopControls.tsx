@@ -1,11 +1,12 @@
-import { agentRequestStopTarget, type AgentRequestStopHandler } from '@/features/chat/agentRequestStop';
+import type { AgentRequestStopAction, AgentRequestStopHandler } from '@/features/chat/agentRequestStop';
 import { Square } from 'lucide-react';
 import { useState } from 'react';
-import type { CollaborationAgentRequestControl, DesktopChatTurnSnapshot, Message } from '../types';
+import type { CollaborationAgentRequestControl } from '../types';
 
 export type StopCollaborationAgentRequestHandler = (request: CollaborationAgentRequestControl) => Promise<void> | void;
 export type StopActiveTurnHandler = AgentRequestStopHandler;
 
+/** A quiet "Stop" text button, the same shape as the background-session stop. */
 export function TurnStopButton({
   onStop,
   ariaLabel = 'Stop agent request',
@@ -21,7 +22,7 @@ export function TurnStopButton({
   return (
     <button
       type="button"
-      className="app-collaboration-agent-stop-button inline-grid h-[18px] w-[18px] place-items-center rounded-full border border-slate-500/25 bg-slate-800/30 text-slate-400 transition hover:border-rose-300/40 hover:bg-rose-400/[0.08] hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-55"
+      className="app-button-quiet app-turn-stop-button inline-flex h-[22px] shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium leading-none disabled:cursor-default"
       aria-label={stopping ? stoppingLabel : ariaLabel}
       title={stopping ? 'Stopping…' : ariaLabel}
       disabled={stopping}
@@ -36,45 +37,16 @@ export function TurnStopButton({
           .then((stopped) => { if (stopped === false) setStopping(false); }, () => setStopping(false));
       }}
     >
-      <Square className="h-2 w-2 fill-current" aria-hidden="true" />
+      <Square className="h-[9px] w-[9px] fill-current" aria-hidden="true" />
+      {stopping ? 'Stopping…' : 'Stop'}
     </button>
   );
 }
 
 /**
- * Stop beside the time in a running reply's header. It stays from admission
+ * Stop at the end of a running reply's status line. It stays from admission
  * until the terminal state, including while the reply streams text.
  */
-export function AgentRequestHeaderStop({
-  turn,
-  message,
-  historical = false,
-  onStopActiveTurn,
-  onStopCollaborationAgentRequest,
-}: {
-  turn: DesktopChatTurnSnapshot | null | undefined;
-  message?: Pick<Message, 'role' | 'senderOwnerName'>;
-  historical?: boolean;
-  onStopActiveTurn?: StopActiveTurnHandler;
-  onStopCollaborationAgentRequest?: StopCollaborationAgentRequestHandler;
-}) {
-  const target = historical ? null : agentRequestStopTarget(turn, message);
-  if (target?.kind === 'collaboration' && onStopCollaborationAgentRequest) {
-    return <span className="app-thread-message-stop inline-flex shrink-0 items-center" data-agent-request-stop="header"><TurnStopButton key={target.turnId} onStop={() => onStopCollaborationAgentRequest(target.request)} /></span>;
-  }
-  if (target?.kind === 'turn' && onStopActiveTurn) {
-    return <span className="app-thread-message-stop inline-flex shrink-0 items-center" data-agent-request-stop="header"><TurnStopButton key={target.turnId} onStop={onStopActiveTurn} /></span>;
-  }
-  return null;
-}
-
-export function CollaborationAgentStopButton({
-  request,
-  onStop,
-}: {
-  request: CollaborationAgentRequestControl;
-  onStop?: StopCollaborationAgentRequestHandler;
-}) {
-  if (!onStop) return null;
-  return <TurnStopButton onStop={() => onStop(request)} />;
+export function AgentRequestStop({ action }: { action: AgentRequestStopAction }) {
+  return <span className="app-turn-stop inline-flex shrink-0 items-center" data-agent-request-stop="status"><TurnStopButton key={action.requestKey} onStop={action.onStop} /></span>;
 }

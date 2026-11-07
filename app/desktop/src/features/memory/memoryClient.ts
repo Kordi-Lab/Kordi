@@ -1,3 +1,4 @@
+import type { CloudMemoryImportExtract, CloudMemoryImportExtraction } from '@/features/cloud/cloudMemoryClient';
 import { createAccountMemoryClient } from './accountMemoryClient';
 import { isMemoryCategory, type MemoryCategory } from './memoryCategory';
 import type { MemoryImportSave } from './memoryImport';
@@ -20,6 +21,8 @@ export type MemoryClient = {
   createLesson(target: MemoryAddTarget, text: string): Promise<MemoryLesson>;
   /** Saves a memory read from one of the person's agent files (source `import`). */
   importLesson?(save: MemoryImportSave): Promise<MemoryLesson>;
+  /** Reads one chosen file into memories with the server's model; saves nothing. */
+  extractImport?(input: CloudMemoryImportExtract): Promise<CloudMemoryImportExtraction>;
   updateLesson(lessonId: string, text: string): Promise<MemoryLesson>;
   archiveLesson(lessonId: string): Promise<void>;
   /** Changes a memory's category (`memoryVersion` 2). */

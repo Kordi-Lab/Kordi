@@ -166,7 +166,7 @@ test('ordered commentary keeps disclosures open through streaming and completion
   await page.goto('/tests/visual/processingTrajectory.html?ordered=1&count=2&phase=6');
   await page.locator('.app-turn-worked-header').click();
   const header = await page.locator('.app-turn-worked-header').elementHandle();
-  const first = page.locator('.app-tool-input-details > button').first();
+  const first = page.locator('.app-tool-activity-toggle').first();
   await expect(page.getByText('I will inspect the example before making a change.')).toBeVisible();
   await first.focus();
   await page.keyboard.press('Enter');
@@ -197,6 +197,8 @@ test('ordered activity opens output directly and local files in reusable side-pa
   await page.goto('/tests/visual/processingTrajectory.html?ordered=1&count=0&phase=7');
   await page.locator('.app-turn-worked-header').click();
   await expect(page.getByRole('button', { name: 'Details', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Synthetic result', { exact: true })).toHaveCount(0);
+  await page.locator('.app-tool-activity-toggle').first().click();
   await expect(page.getByText('Synthetic result', { exact: true })).toBeVisible();
   await expect(page.locator('.app-ordered-turn-surface')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await page.getByRole('button', { name: 'example.ts', exact: true }).click();
@@ -245,7 +247,12 @@ test('live actions change in place and reasoning stays separate from tool detail
   const label = page.locator('.app-turn-worked-header .app-turn-status-text');
   const timer = page.locator('.app-turn-worked-header .app-turn-progress-time');
   await expect(label).toHaveText('Reading files');
-  const initialTimer = await timer.boundingBox();
+  // The elapsed time follows the label instead of waiting at a fixed column.
+  const timerFollowsLabel = async () => {
+    const [labelBox, timerBox] = await Promise.all([page.locator('.app-turn-worked-header .app-turn-status-label').boundingBox(), timer.boundingBox()]);
+    expect(timerBox!.x - (labelBox!.x + labelBox!.width)).toBeLessThanOrEqual(10);
+  };
+  await timerFollowsLabel();
   await page.locator('.app-turn-worked-header').click();
   await expect(page.locator('.app-transcript-thinking-markdown')).toHaveCount(0);
   await page.getByRole('button', { name: 'Reasoning', exact: true }).click();
@@ -254,7 +261,7 @@ test('live actions change in place and reasoning stays separate from tool detail
   await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(7));
   await expect(label).toHaveText('Editing files');
   await expect(page.getByRole('button', { name: 'Reasoning', exact: true })).toHaveAttribute('aria-expanded', 'true');
-  expect(Math.abs((await timer.boundingBox())!.x - initialTimer!.x)).toBeLessThan(1);
+  await timerFollowsLabel();
   await expect(label).toHaveCSS('transition-property', 'opacity');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(label).toHaveCSS('transition-duration', '0s');
@@ -336,9 +343,9 @@ test('live progress starts as one line and unfolds recorded activity in order', 
   const sequence = await page.locator('.app-turn-trajectory > div').allTextContents();
   expect(sequence).toEqual([
     'I will inspect the example before making a change.',
-    expect.stringContaining('Synthetic result'),
+    expect.stringContaining('example.ts'),
     'The example needs one change. I will apply it now.',
-    expect.stringContaining('Updated the example.'),
+    expect.stringContaining('updated.ts'),
   ]);
   await page.getByRole('button', { name: 'Reasoning', exact: true }).click();
   await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();

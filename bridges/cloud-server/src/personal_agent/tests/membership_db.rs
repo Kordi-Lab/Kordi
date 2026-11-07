@@ -1,6 +1,8 @@
-//! Which agents are personal agents: the default agent is on until turned
-//! off, a definition is off until turned on, and turning one on makes its
-//! session ready at once (new, reused, unhidden, or replaced after a delete).
+//! Which agents are personal agents: none without a live connector granted
+//! to it; with one, the default agent is on until turned off, a definition
+//! is off until turned on, and turning one on makes its session ready at once
+//! (new, reused, unhidden, or replaced after a delete). Losing the last
+//! grant turns it off.
 
 use serde_json::{json, Value};
 use sqlx_core::query_as::query_as;
@@ -55,23 +57,40 @@ async fn events(f: &Fixture, event_type: &str) -> Vec<Value> {
 }
 
 #[tokio::test]
-async fn the_default_agent_is_on_until_turned_off_and_definitions_are_off() {
+async fn the_default_agent_is_on_with_a_connector_until_turned_off_and_definitions_are_off() {
     let Some(f) = fixture().await else { return };
     let default_agent = format!("cloud-agent:{}", f.owner);
     let (_, body) = f
         .send("GET", &setting_uri(&default_agent), &f.owner_token, None)
         .await;
-    assert_eq!(body, json!({"proactive": true}), "no row is on");
+    assert_eq!(
+        (body["proactive"].clone(), body["connected"].clone()),
+        (json!(false), json!(false)),
+        "nothing to watch: {body}"
+    );
+    assert!(
+        listed(&f).await.is_empty(),
+        "no session without a connector"
+    );
+    let (status, body) = f.set_proactive(&default_agent, true).await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(body["errorCode"], "personal_agent_needs_connector");
     let (_, body) = f
         .send("GET", &setting_uri(&f.agent_id), &f.owner_token, None)
         .await;
-    assert_eq!(body, json!({"proactive": false}), "a definition starts off");
-    assert_eq!(listed(&f).await, vec![default_agent.clone()]);
+    assert_eq!(body["proactive"], false, "a definition starts off");
+    assert_eq!(body["connected"], true);
 
-    // The sweep watches the default agent with no row once it has a granted
-    // connector, and stops once it is turned off.
+    // The default agent with no row is on once it has a granted connector;
+    // the sweep watches it, and stops once it is turned off.
     let mail = connector(&f.pool, &f.owner, "google_calendar").await;
     grant(&f.pool, &mail, &default_agent).await;
+    let (_, body) = f
+        .send("GET", &setting_uri(&default_agent), &f.owner_token, None)
+        .await;
+    assert_eq!(body["proactive"], true, "no row is on: {body}");
+    assert_eq!(body["sources"][0]["provider"], "google_calendar");
+    assert_eq!(listed(&f).await, vec![default_agent.clone()]);
     crate::personal_agent::sweep::seed(&f.pool).await.unwrap();
     sqlx_core::query::query(
         "UPDATE cloud_personal_agent_state SET cursor_received_at = now() - interval '1 hour', \
@@ -91,7 +110,10 @@ async fn the_default_agent_is_on_until_turned_off_and_definitions_are_off() {
     .await;
     assert!(picked(&f, &default_agent).await, "on with no row");
     let (status, body) = f.set_proactive(&default_agent, false).await;
-    assert_eq!((status.as_u16(), body), (200, json!({"proactive": false})));
+    assert_eq!(
+        (status.as_u16(), body["proactive"].clone()),
+        (200, json!(false))
+    );
     let (stored,): (bool,) =
         query_as("SELECT proactive FROM cloud_personal_agent_settings WHERE agent_id = $1")
             .bind(&default_agent)
@@ -104,7 +126,7 @@ async fn the_default_agent_is_on_until_turned_off_and_definitions_are_off() {
     let (_, body) = f
         .send("GET", &setting_uri(&default_agent), &f.owner_token, None)
         .await;
-    assert_eq!(body, json!({"proactive": false}), "off sticks");
+    assert_eq!(body["proactive"], false, "off sticks");
 }
 
 #[tokio::test]
@@ -164,28 +186,39 @@ async fn turning_on_makes_the_session_ready_at_once() {
     assert_eq!(f.messages(first).await.len(), 1, "the old chat stays");
     let mut agents = listed(&f).await;
     agents.sort();
-    let mut expected = vec![format!("cloud-agent:{}", f.owner), f.agent_id.clone()];
-    expected.sort();
-    assert_eq!(agents, expected);
+    assert_eq!(
+        agents,
+        vec![f.agent_id.clone()],
+        "the default agent has no connector"
+    );
 }
 
 #[tokio::test]
-async fn a_definition_created_on_has_its_session_at_once() {
+async fn a_definition_needs_a_connector_before_it_is_turned_on() {
     let Some(f) = fixture().await else { return };
+    let herald = json!({"name": "Herald", "role": "Helper", "systemPrompt": "Tell me."});
+    let mut created_on = herald.clone();
+    created_on["personalAgent"] = json!({"proactive": true});
     let (status, body) = f
-        .send(
-            "POST",
-            "/v1/cloud/agents",
-            &f.owner_token,
-            Some(json!({
-                "name": "Herald", "role": "Helper", "systemPrompt": "Tell me.",
-                "personalAgent": {"proactive": true},
-            })),
-        )
+        .send("POST", "/v1/cloud/agents", &f.owner_token, Some(created_on))
+        .await;
+    assert_eq!(status, 409, "a new agent has no connector: {body}");
+    assert_eq!(body["errorCode"], "personal_agent_needs_connector");
+    let (status, body) = f
+        .send("POST", "/v1/cloud/agents", &f.owner_token, Some(herald))
         .await;
     assert_eq!(status, 201, "{body}");
     let agent_id = body["agent"]["agentId"].as_str().unwrap().to_string();
-    assert!(binding(&f, &agent_id).await.is_some());
+    assert!(binding(&f, &agent_id).await.is_none());
+    let (status, body) = f
+        .send(
+            "PUT",
+            &format!("/v1/cloud/agents/{agent_id}"),
+            &f.owner_token,
+            Some(json!({"personalAgent": {"proactive": true}})),
+        )
+        .await;
+    assert_eq!(status, 409, "{body}");
     let (status, body) = f
         .send(
             "PUT",
@@ -229,4 +262,58 @@ async fn store_message(f: &Fixture, conversation_id: Uuid, text: &str) {
     )
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn losing_the_last_grant_turns_it_off() {
+    let Some(f) = fixture().await else { return };
+    f.set_proactive(&f.agent_id, true).await;
+    let (conversation_id, _) = binding(&f, &f.agent_id).await.expect("on");
+    // Another connector keeps it on while the first one is taken away.
+    let calendar = connector(&f.pool, &f.owner, "google_calendar").await;
+    grant(&f.pool, &calendar, &f.agent_id).await;
+    crate::connectors::store::replace_agent_grants(&f.pool, &f.connector_id, &[])
+        .await
+        .unwrap();
+    assert_eq!(listed(&f).await, vec![f.agent_id.clone()]);
+
+    // Disconnecting the last one turns it off as an explicit row, and the
+    // owner's devices drop the marker.
+    let record = crate::connectors::store::load_account_connector(&f.pool, &f.owner, &calendar)
+        .await
+        .unwrap()
+        .unwrap();
+    crate::connectors::store::disconnect(&f.pool, &record)
+        .await
+        .unwrap();
+    assert!(listed(&f).await.is_empty());
+    let (stored,): (bool,) =
+        query_as("SELECT proactive FROM cloud_personal_agent_settings WHERE agent_id = $1")
+            .bind(&f.agent_id)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert!(!stored);
+    let updated = events(&f, "conversation.updated").await;
+    let last = updated
+        .iter()
+        .rev()
+        .find(|payload| payload["conversation"]["id"] == conversation_id.to_string())
+        .expect("the session was announced");
+    assert!(
+        last["conversation"].get("personal_agent").is_none(),
+        "{last}"
+    );
+
+    // A new connector shows it off, ready to be turned on again.
+    let github = connector(&f.pool, &f.owner, "github").await;
+    grant(&f.pool, &github, &f.agent_id).await;
+    let (_, body) = f
+        .send("GET", &setting_uri(&f.agent_id), &f.owner_token, None)
+        .await;
+    assert_eq!(
+        (body["proactive"].clone(), body["connected"].clone()),
+        (json!(false), json!(true)),
+        "{body}"
+    );
 }

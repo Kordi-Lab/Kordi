@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { LoaderCircle, X } from 'lucide-react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { AgentModelRoutingDraft } from './factoryAgentUtils';
 
@@ -124,7 +125,7 @@ export function AgentStudioRoutingEditor({
           {thinkingLevels.map((level) => <option key={level} value={level}>{level}</option>)}
         </select>
       </label>
-      {error ? <div className="app-agent-studio-inline-error">{error}</div> : null}
+      {error ? <ErrorLine className="mt-0">{error}</ErrorLine> : null}
       <div className="app-agent-studio-popover-actions">
         <button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onClose} disabled={saving}>Cancel</button>
         <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={() => void save()} disabled={saving || !defaultModel}>

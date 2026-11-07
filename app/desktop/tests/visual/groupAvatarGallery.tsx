@@ -13,6 +13,10 @@ const portrait = (name: string, color: string) => 'data:image/svg+xml;base64,' +
 );
 const avatars = names.map((name, i) => ({ kind: 'human' as const, seed: name, imageUrl: portrait(name, colors[i]) }));
 
+// Menus portal to the body, so it carries the theme as the app shell does.
+const galleryTheme = new URLSearchParams(location.search).get('theme') === 'dark' ? 'dark' : 'light';
+document.body.classList.add(`theme-${galleryTheme}`);
+
 function Gallery() {
   const [image, setImage] = useState<string | null>(null);
   const dark = new URLSearchParams(location.search).get('theme') === 'dark';

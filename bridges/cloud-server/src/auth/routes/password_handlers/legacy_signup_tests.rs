@@ -106,10 +106,11 @@ async fn open_window_passes_the_code_gate_without_an_email_service() {
 
 #[tokio::test]
 async fn open_window_keeps_the_per_address_rate_limit() {
-    let limiter = CloudRateLimiter::memory(crate::auth::rate_limit::CloudRateLimitConfig {
-        per_ip_limit: 1,
-        ..crate::auth::rate_limit::CloudRateLimitConfig::production()
-    });
+    let limiter =
+        CloudRateLimiter::memory(crate::auth::rate_limit::CloudRateLimitConfig::production())
+            .with_budget_overrides(
+                crate::auth::rate_limit::BudgetOverrides::parse("signup-address=1/1m").unwrap(),
+            );
     let pool = sqlx_postgres::PgPoolOptions::new()
         .acquire_timeout(std::time::Duration::from_millis(200))
         .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
@@ -119,6 +120,30 @@ async fn open_window_keeps_the_per_address_rate_limit() {
     let router = routes_with_config(Arc::new(state), PasswordHasherConfig::for_tests(), limiter);
     let (first, _) = signup(router.clone(), json!({})).await;
     assert_eq!(first, StatusCode::INTERNAL_SERVER_ERROR);
-    let (second, _) = signup(router, json!({})).await;
+    let (second, body) = signup(router.clone(), json!({})).await;
     assert_eq!(second, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(body["errorCode"], "rate_limited");
+    let wait = body["retryAfterSeconds"].as_u64().unwrap();
+    assert!((1..=60).contains(&wait), "{body}");
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cloud/auth/signup")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "email": "legacy-signup@example.test",
+                        "password": "Correct-horse-7",
+                        "avatarSeed": "legacy_signup_test",
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    let retry_after = response.headers()["retry-after"].to_str().unwrap();
+    assert!((1..=60).contains(&retry_after.parse::<u64>().unwrap()));
 }

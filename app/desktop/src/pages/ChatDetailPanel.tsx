@@ -3,6 +3,10 @@ import { memo, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { formatPresenceLine } from '@/kordi-app/contactPresenceLine';
+import { usePresenceNow } from '@/kordi-app/contacts/usePresenceNow';
+import type { CloudAccount } from '@/features/cloud/authClient';
+import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import type { Conversation, DesktopChatTurnSnapshot, DetailTab, SessionArtifact } from '@/kordi-app/types';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { ChatMemoryTab } from '@/pages/ChatMemoryTab';
@@ -134,7 +138,39 @@ type ChatDetailPanelProps = {
   onOpenOutreachThread?: (conversationId: string) => void;
   /** Replaces the Info tab of a direct person chat; receives today's Info and the profile popover opener. */
   renderPersonInfo?: (legacy: ReactNode, openProfile: ChatSenderProfileOpener | null) => ReactNode;
+  /** Signed-in Cloud account whose presence store gives people in the Info list a presence line. */
+  cloudAccount?: CloudAccount | null;
 };
+
+/** Cloud account id of a person in the Info list, for the presence store. */
+function canonicalParticipantAccountId(participant: NonNullable<ActiveConversation['canonicalParticipants']>[number]) {
+  return participant.humanId?.trim() || participant.sourceIdentityId?.trim() || participant.id.replace(/^human:/, '').trim();
+}
+
+/** "online" in the accent, other presence lines muted, as in Contacts rows. */
+function ParticipantPresenceLine({ line }: { line: string | null }) {
+  if (!line) return null;
+  return (
+    <span className={line === 'online' ? 'block truncate text-[11px] app-contacts-presence-online' : 'block truncate text-[11px] text-slate-500'}>
+      {line}
+    </span>
+  );
+}
+
+type PresenceLineLookup = (participant: NonNullable<ActiveConversation['canonicalParticipants']>[number]) => string | null;
+
+/** Presence for the Info list; mounted only with the Info tab, so other tabs skip the store and clock. */
+function ParticipantPresenceScope({ cloudAccount, children }: {
+  cloudAccount: CloudAccount | null;
+  children: (presenceLineFor: PresenceLineLookup) => ReactNode;
+}) {
+  const presence = useCloudPresence(cloudAccount);
+  const now = usePresenceNow();
+  return <>{children((participant) => {
+    const record = presence.presenceForAccount(canonicalParticipantAccountId(participant));
+    return record ? formatPresenceLine(record.status, record.lastSeenAt, now) : null;
+  })}</>;
+}
 
 function countLabel(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
@@ -164,6 +200,7 @@ function ChatDetailPanelView({
   onOpenArtifact,
   onNavigateToResponse,
   renderPersonInfo,
+  cloudAccount = null,
 }: ChatDetailPanelProps) {
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeSessionId = activeConv.canonicalSessionId ?? activeConv.id;
@@ -211,6 +248,7 @@ function ChatDetailPanelView({
 
         <section className="app-detail-section">
           <div className="app-detail-kicker">Participants</div>
+          <ParticipantPresenceScope cloudAccount={cloudAccount}>{(presenceLineFor) => (
           <div className="app-inspector-list">
             {displayParticipants.length ? displayParticipants.map((participant) => {
               const isAgent = participant.kind === 'agent';
@@ -238,7 +276,7 @@ function ChatDetailPanelView({
                       <button
                         type="button"
                         data-info-participant-profile="true"
-                        className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--app-sidebar-accent)]"
+                        className="shrink-0 rounded-full"
                         aria-label={`Open ${displayName} profile`}
                         onClick={(event) => {
                           event.preventDefault();
@@ -251,7 +289,7 @@ function ChatDetailPanelView({
                     ) : avatar}
                     <span className="min-w-0">
                       <span className="block truncate text-[13px] text-[color:var(--utility-foreground)]">{displayName}</span>
-                      {ownerLabel ? <span className="block truncate text-[11px] text-slate-500">Owner: {ownerLabel}</span> : participant.presenceDetail ? <span className="block truncate text-[11px] text-slate-500">{participant.presenceDetail}</span> : null}
+                      {ownerLabel ? <span className="block truncate text-[11px] text-slate-500">Owner: {ownerLabel}</span> : participant.presenceDetail ? <span className="block truncate text-[11px] text-slate-500">{participant.presenceDetail}</span> : isAgent || isSelfHuman ? null : <ParticipantPresenceLine line={presenceLineFor(participant)} />}
                     </span>
                   </span>
                 </div>
@@ -271,8 +309,6 @@ function ChatDetailPanelView({
                       imageUrl={participantProfileImageUrl(activeConv, participant)}
                       name={displayName}
                       className="h-7 w-7 border border-white/10"
-                      presenceStatus="online"
-                      presenceLabel="Status: online"
                     />
                     <span className="truncate text-[13px] text-[color:var(--utility-foreground)]">{displayName}</span>
                   </span>
@@ -280,6 +316,7 @@ function ChatDetailPanelView({
               );
             })}
           </div>
+          )}</ParticipantPresenceScope>
         </section>
 
         {!activeConversationUsesCollaboration && activeSessionProject ? (
@@ -349,7 +386,8 @@ function ChatDetailPanelView({
             onSelectArtifact={onSelectArtifact}
             previewBaseRoot={artifactPreviewBaseRoot}
             participants={activeConv.canonicalParticipants}
-            emptyMessage={activeConversationUsesCollaboration ? 'No generated code or docs in this chat yet.' : 'No generated code or docs in this session yet.'}
+            // The entries above show the empty state, like the Memory tab.
+            emptyMessage={null}
           />
         </div>
       </div>
@@ -396,7 +434,8 @@ function chatDetailPanelPropsEqual(previous: ChatDetailPanelProps, next: ChatDet
     && previous.artifacts === next.artifacts
     && previous.activeArtifactId === next.activeArtifactId
     && previous.onOpenArtifact === next.onOpenArtifact
-    && previous.onNavigateToResponse === next.onNavigateToResponse;
+    && previous.onNavigateToResponse === next.onNavigateToResponse
+    && previous.cloudAccount?.accountId === next.cloudAccount?.accountId;
 }
 
 export const ChatDetailPanel = memo(ChatDetailPanelView, chatDetailPanelPropsEqual);

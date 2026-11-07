@@ -212,7 +212,7 @@ export function AttachmentImageCard({
 
   const previewSurfaceClassName = cn(
     'group relative overflow-hidden text-left outline-none',
-    !isSticker && 'transition focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/20',
+    !isSticker && 'transition focus-visible:brightness-[0.92]',
     intrinsicSingleImage
       ? reservedSize
         ? 'inline-flex h-auto max-w-full rounded-[16px]'

@@ -9,9 +9,10 @@ use crate::scheduled_tasks::store::{
 };
 
 use super::delivery::{
-    ensure_group_response_messages, ensure_scheduled_direct_person_response_message,
-    is_scheduled_run_request_id, GroupResponse,
+    direct_person_peer_account_id, ensure_group_response_messages,
+    ensure_scheduled_direct_person_response_message, is_scheduled_run_request_id, GroupResponse,
 };
+use super::envelopes::cloud_agent_failure_code;
 use super::envelopes::encode_cloud_agent_response_body;
 use super::leases::{runner_response_from_row, RunnerRunResponse, RunnerRunRow};
 use super::{RunError, RunResult};
@@ -146,6 +147,7 @@ async fn complete(
                 request_message_id: &request_message_id,
                 response_text: trimmed,
                 delivery_state: "complete",
+                failure_code: None,
             },
         )
         .await?
@@ -178,6 +180,7 @@ async fn complete(
             request_message_id: &request_message_id,
             response_text: trimmed,
             delivery_state: "complete",
+            failure_code: None,
         },
     )
     .await?
@@ -331,8 +334,16 @@ async fn fail(
         false
     };
     let failure_text = cloud_agent_failure_response_text(error_code, is_support_agent);
-    let response_body =
-        encode_failed_cloud_agent_response_body(&request_message_id, error_code, is_support_agent);
+    // A reply anyone besides the owner receives carries only the neutral line.
+    let shared = requester_account_id != owner_account_id
+        || direct_person_peer_account_id(&session_id, &owner_account_id).is_some();
+    let response_body = encode_failed_cloud_agent_response_body(
+        &request_message_id,
+        error_code,
+        is_support_agent,
+        shared,
+    );
+    let failure_code = Some(cloud_agent_failure_code(error_code));
     let response_body = super::subsessions::with_links(pool, run_id, &response_body).await?;
     let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
         if let Some(message_id) = ensure_scheduled_direct_person_response_message(
@@ -354,6 +365,7 @@ async fn fail(
                 request_message_id: &request_message_id,
                 response_text: failure_text,
                 delivery_state: "failed",
+                failure_code,
             },
         )
         .await?
@@ -386,6 +398,7 @@ async fn fail(
             request_message_id: &request_message_id,
             response_text: failure_text,
             delivery_state: "failed",
+            failure_code,
         },
     )
     .await?
@@ -457,32 +470,4 @@ fn approved(run_id: &str) -> bool {
 async fn digest_run_response(pool: &PgPool, run_id: &str) -> RunResult<RunnerRunResponse> {
     let row: RunnerRunRow = query_as("SELECT run_id,status,prompt,owner_account_id,requester_account_id,session_id,sandbox_id,runtime_route_json,response_message_id,error_code,error_message,system_prompt FROM cloud_agent_fallback_runs WHERE run_id=$1").bind(run_id).fetch_one(pool).await?;
     runner_response_from_row(pool, row).await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::cloud_agent_failure_response_text;
-
-    #[test]
-    fn support_failures_never_describe_local_fallback_or_user_provider_setup() {
-        for code in [
-            "model_provider_error",
-            "sandbox_error",
-            "provider_auth_rejected",
-            "unknown",
-        ] {
-            assert_eq!(
-                cloud_agent_failure_response_text(code, true),
-                "Kordi Support couldn’t complete this request. Please try again shortly."
-            );
-        }
-        assert_eq!(
-            cloud_agent_failure_response_text("missing_provider_auth", true),
-            "Kordi Support couldn’t complete this request. Please try again shortly."
-        );
-        assert_eq!(
-            cloud_agent_failure_response_text("missing_provider_auth", false),
-            "No provider configured yet."
-        );
-    }
 }

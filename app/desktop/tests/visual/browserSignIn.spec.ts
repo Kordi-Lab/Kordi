@@ -45,22 +45,27 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 // Opening the window focuses the first button without a key press. That
-// focus draws no ring; Tab does, in a neutral color rather than the accent.
+// focus shows nothing; Tab shows the neutral focus fill, never a ring.
 for (const theme of ['light', 'dark'] as const) {
-  test(`the welcome window shows a focus ring only for keyboard navigation in ${theme} mode`, async ({ page }) => {
+  test(`the welcome window shows focus only for keyboard navigation in ${theme} mode`, async ({ page }) => {
     await page.setViewportSize({ width: 760, height: 760 });
     await page.goto(`/tests/visual/browserSignIn.html?theme=${theme}`);
     const logIn = page.getByRole('button', { name: 'Log in', exact: true });
     await expect(logIn).toBeVisible();
-    const ring = (button: typeof logIn) => button.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return { visible: element.matches(':focus-visible'), style: style.outlineStyle, color: style.outlineColor };
-    });
+    const ring = async (button: typeof logIn) => {
+      // The fill transitions in and out; read the settled state.
+      await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== 'running'));
+      return button.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { visible: element.matches(':focus-visible'), style: style.outlineStyle, fill: /inset/.test(style.boxShadow) };
+      });
+    };
 
     await logIn.evaluate((element) => (element as HTMLElement).focus());
     const opened = await ring(logIn);
     expect(opened.visible, 'the browser would draw a ring for this focus').toBe(true);
     expect(opened.style).toBe('none');
+    expect(opened.fill).toBe(false);
 
     // WebKit only tabs to buttons when the system setting allows it, so move
     // focus directly after the key press.
@@ -68,12 +73,11 @@ for (const theme of ['light', 'dark'] as const) {
     const signUp = page.getByRole('button', { name: 'Sign up', exact: true });
     await signUp.evaluate((element) => (element as HTMLElement).focus());
     const tabbed = await ring(signUp);
-    expect(tabbed.style).toBe('solid');
-    const [red, green, blue] = (tabbed.color.match(/[\d.]+/g) ?? []).map(Number);
-    expect(Math.max(red, green, blue) - Math.min(red, green, blue), `neutral ring, got ${tabbed.color}`).toBeLessThanOrEqual(30);
+    expect(tabbed.style).toBe('none');
+    expect(tabbed.fill, 'keyboard focus shows the fill').toBe(true);
 
     await page.mouse.click(5, 5);
     await signUp.evaluate((element) => (element as HTMLElement).focus());
-    expect((await ring(signUp)).style, 'a click ends keyboard navigation').toBe('none');
+    expect((await ring(signUp)).fill, 'a click ends keyboard navigation').toBe(false);
   });
 }

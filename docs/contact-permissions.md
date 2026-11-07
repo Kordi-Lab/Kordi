@@ -27,6 +27,24 @@ The server checks every path where another account's request reaches one of your
 - **Requests already in flight.** Turning the switch off ends their waiting and running runs with the generic reply; a run leased later for them ends the same way. Saving a switch and admitting a run take the same lock, so no run slips in between.
 - **Your Mac.** When your Mac answers (the Mac-first route), it reads your restricted list (`GET /v1/cloud/contacts/permissions`, refreshed every 15 seconds and at once after you change a switch), never answers their requests, leaves their messages out of the context it builds, and posts nothing in the conversation when the server refuses a claim.
 
+## Agent access
+
+Every agent has an **Access** setting, the default Kordi agent included: the default agent is a ready-made Factory agent with the same setting.
+
+| Access | Who can use the agent |
+|---|---|
+| **People in my chats can mention it** (`participant_conversations`) | The owner, and people in the owner's direct and group chats. The default. |
+| **Only me** (`private`) | The owner only. |
+
+- **Defaults.** The default agent with nothing stored, and every new Factory agent, is open (`participant_conversations`). Existing Factory agents keep their stored value.
+- **How it combines.** Another person may use an agent only when its Access is open **and** the owner's "Use my agent" switch for that person is on. The owner is never refused.
+- **Every path.** The same check covers every path listed under "Use my agent" above: claims from their client and from your Mac, group @mentions, direct agent chats, shared and personal agents, agent exchanges and the `reach_out` directory, follow-up threads and the task-operator tool, `@agent` in documents (a public reader cannot ask a private default agent), and the shared-agent list. Runs leased later are re-checked.
+- **Private.** A refused request gets the same `403 agent_not_available` ("This agent isn't available.").
+- **Requests already in flight.** Changing an agent to "Only me" ends other people's waiting and running requests to that agent with the generic reply. Saving Access and admitting a run take the same owner lock, so no run slips in between.
+- **API.** `GET /v1/cloud/agents/:agent_id/access` → `{ "agentId", "accessScope" }`, and `PUT` with `{ "accessScope": "private" | "participant_conversations" }`, owner only. `agent_id` is a Factory agent id or the default agent, `cloud-agent:<account_id>`. Factory agents also keep `accessScope` on `PUT /v1/cloud/agents/:agent_id`.
+- **Data.** Factory agents: `cloud_agent_definitions.access_scope`. Default agent: `cloud_default_agent_profiles.access_scope` (migration 0186); `NULL` means `participant_conversations`.
+- **Mac.** The Factory shows the default agent's real Access with the same menu as Factory agents and publishes it through the route above.
+
 ## What "See my card" off hides
 
 Every Common ground read path: `people/:id`, match detail and Recent, room lobbies (`hasCard: false`) and room results and themes, pairing results, the Common ground card on the contact profile, Nearby lists, person pages and alerts, and Add, Chat and Meet through Grounding. Group intros and joined lines quote no topics when anyone they name has restricted another of them.

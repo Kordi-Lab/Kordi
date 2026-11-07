@@ -46,7 +46,7 @@ enum KordiPreviewModePersistence {
         "--preview-consent", "--preview-privacy-settings", "--preview-delete-account", "--preview-delete-account-confirm",
         "--preview-settings-about",
         "--preview-blocked", "--preview-report", "--preview-blocked-message",
-        "--preview-contact-permissions",
+        "--preview-contact-permissions", "--preview-contact-blocked",
     ]
 
     static func launchRequested(by arguments: [String]) -> Bool {
@@ -2234,9 +2234,15 @@ final class AppModel: ObservableObject {
         if let id = conversation.subsessionId {
             guard outgoingAttachments.isEmpty else { errorMessage = "This session supports text messages."; return }
             let messageId = retryMessage?.clientMessageId ?? UUID().uuidString.lowercased()
-            let mentions = retryMessage?.mentions ?? ComposerMentionTargetCatalog.mentions(in: text, selectedTarget: mentionTarget, targets: mentionTargets(for: conversation))
+            let typedMentions = retryMessage?.mentions ?? ComposerMentionTargetCatalog.mentions(in: text, selectedTarget: mentionTarget, targets: mentionTargets(for: conversation))
+            // The owner's plain message reaches their own agent, as on the Mac.
+            let addressed = retryMessage == nil
+                ? subsessions[id]?.ownerMessageToAgent(text: text, mentions: typedMentions, accountId: account.accountId)
+                : nil
+            let sentText = addressed?.text ?? text
+            let mentions = addressed?.mentions ?? typedMentions
             let optimistic = ChatMessage(id: messageId, clientMessageId: messageId, conversationId: conversation.id,
-                author: .me, authorName: "You", text: text, createdAt: retryMessage?.createdAt ?? Date(),
+                author: .me, authorName: "You", text: sentText, createdAt: retryMessage?.createdAt ?? Date(),
                 deliveryState: .sending, errorMessage: nil, requestMessageId: nil, mentions: mentions)
             messagesByConversation[conversation.id, default: []].removeAll { $0.id == retryMessage?.id }
             messagesByConversation[conversation.id, default: []].append(optimistic)
@@ -2246,7 +2252,7 @@ final class AppModel: ObservableObject {
             defer { conversationSendQueue.release(conversation.id) }
             guard self.account?.accountId == account.accountId else { return }
             do {
-                let result = try await api.sendSubsessionMessage(token: token, id: id, clientMessageId: messageId, text: text, mentions: mentions)
+                let result = try await api.sendSubsessionMessage(token: token, id: id, clientMessageId: messageId, text: sentText, mentions: mentions)
                 guard self.account?.accountId == account.accountId else { return }
                 if (subsessions[id]?.version ?? -1) <= result.version { subsessions[id] = result }
                 messagesByConversation[conversation.id]?.removeAll { $0.id == messageId }
@@ -4920,6 +4926,136 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    /// Drops a contact's row at once while its removal is sent; returns the
+    /// row and its position so a failed removal can put it back.
+    func removeContactLocally(accountId: String) -> (index: Int, contact: CloudContact)? {
+        guard let index = contacts.firstIndex(where: { $0.accountId == accountId }) else { return nil }
+        return (index, contacts.remove(at: index))
+    }
+
+    func restoreContactLocally(_ removed: (index: Int, contact: CloudContact)) {
+        guard !contacts.contains(where: { $0.accountId == removed.contact.accountId }) else { return }
+        contacts.insert(removed.contact, at: min(removed.index, contacts.count))
+    }
+
+    /// Dissolves the whole group for everyone: every member is removed and
+    /// every channel deleted. Group owners and admins only.
+    func dissolveGroupSpace(_ space: GroupSpaceSummary) async -> Bool {
+        guard let account, space.canManage(accountId: account.accountId) else {
+            errorMessage = "Only a group admin can dissolve this group."
+            return false
+        }
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await api.dissolveGroupSpace(token: token, groupSpaceId: space.preferenceId)
+            } catch {
+                errorMessage = userFacing(error, fallback: "Could not dissolve the group.")
+                return false
+            }
+        }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        pinnedGroupSpaceIds.remove(space.preferenceId)
+        for conversation in space.membershipSessions + space.sessions {
+            removeConversationLocally(conversation)
+        }
+        cacheCurrentConversations()
+        return true
+    }
+
+    /// Leaves every channel of the group. Returns nil when it worked, else
+    /// the message to show, such as the server's "Make someone else an admin
+    /// before leaving."
+    func leaveGroupSpace(_ space: GroupSpaceSummary) async -> String? {
+        if !previewMode {
+            guard let token else { return "Sign in to leave this group." }
+            do {
+                try await api.leaveGroupSpace(token: token, groupSpaceId: space.preferenceId)
+            } catch let error as CloudAPIError {
+                return error.message.nonEmpty ?? "Could not leave the group."
+            } catch {
+                return userFacing(error, fallback: "Could not leave the group.")
+            }
+        }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        pinnedGroupSpaceIds.remove(space.preferenceId)
+        for conversation in space.membershipSessions + space.sessions {
+            removeConversationLocally(conversation)
+        }
+        cacheCurrentConversations()
+        return nil
+    }
+
+    /// Whether this account may dissolve `conversation`: a group admin, and
+    /// never the group's first channel, which is the group itself.
+    func canDissolveChannel(_ conversation: ConversationSummary, in space: GroupSpaceSummary) -> Bool {
+        guard conversation.kind == .group, space.sessions.count > 1,
+              conversation.canManageGroup(accountId: account?.accountId),
+              space.sessions.contains(where: { normalizedGroupSpaceId($0.sessionId) == space.preferenceId })
+        else { return false }
+        return normalizedGroupSpaceId(conversation.sessionId) != space.preferenceId
+    }
+
+    func dissolveGroupChannel(_ conversation: ConversationSummary, in space: GroupSpaceSummary) async -> Bool {
+        guard canDissolveChannel(conversation, in: space) else {
+            errorMessage = "Only a group admin can dissolve this channel."
+            return false
+        }
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await api.dissolveGroupChannel(token: token, groupSpaceId: space.preferenceId, sessionId: conversation.sessionId)
+            } catch {
+                errorMessage = userFacing(error, fallback: "Could not dissolve the channel.")
+                return false
+            }
+        }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        removeConversationLocally(conversation)
+        cacheCurrentConversations()
+        return true
+    }
+
+    /// The group's live invitation link, or nil when it has none yet.
+    func activeGroupInviteLink(_ space: GroupSpaceSummary) async -> GroupInviteLinkInfo? {
+        if previewMode { return nil }
+        guard let token, space.canManage(accountId: account?.accountId) else { return nil }
+        return try? await api.activeGroupInviteLink(token: token, groupSpaceId: space.preferenceId)
+    }
+
+    /// Returns the group's live link, making one if needed. `reset` revokes
+    /// the current link first.
+    func groupInviteLink(_ space: GroupSpaceSummary, reset: Bool) async -> GroupInviteLinkInfo? {
+        guard space.canManage(accountId: account?.accountId) else {
+            errorMessage = "Only group admins can share a link."
+            return nil
+        }
+        if previewMode {
+            try? await Task.sleep(for: .milliseconds(250))
+            let expiry = ISO8601DateFormatter().string(from: Date().addingTimeInterval(30 * 86_400))
+            return GroupInviteLinkInfo(
+                invitationId: "preview-invitation",
+                inviteUrl: "https://kordi.ai/g/\(reset ? "pZ3kTn8wDeF9" : "pQ7pXr2mAbC4")",
+                expiresAt: expiry
+            )
+        }
+        guard let token else { return nil }
+        do {
+            return try await api.groupInviteLink(
+                token: token,
+                groupSpaceId: space.preferenceId,
+                groupTitle: space.displayName,
+                reset: reset
+            )
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not create a group link.")
+            return nil
+        }
+    }
+
     func archiveGroupSpace(_ space: GroupSpaceSummary) async -> Bool {
         let sessionIds = Set(space.sessions.map(\.sessionId).filter { !$0.isEmpty })
         guard !sessionIds.isEmpty else { return false }
@@ -6374,7 +6510,7 @@ final class AppModel: ObservableObject {
             author: author,
             authorName: author == .me ? "You" : KordiSystemIdentity.directAuthorName(
                 messageKind: messageKind, fromAccountId: message.fromAccountId, fallback: conversation.displayName),
-            text: CloudMessageCodec.displayText(message.body),
+            text: CloudMessageCodec.viewerText(message.body, viewerOwnsAgent: message.fromAccountId == ownAccountId, agentName: nil),
             createdAt: parseCloudDate(message.createdAt),
             editedAt: message.editedAt.map(parseCloudDate),
             cloudMessageVersion: message.version,
@@ -6551,7 +6687,15 @@ final class AppModel: ObservableObject {
                     ? "You"
                     : author == .agent ? agentName : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
                 senderOwnerName: author == .agent ? (payload.senderAccountId == ownAccountId ? "You" : ownerName) : nil,
-                text: payload.text,
+                // Only the agent's owner reads why a reply failed.
+                text: author == .agent && payload.deliveryState == "failed"
+                    ? AgentFailurePresentation.text(
+                        stored: payload.text,
+                        failureCode: payload.failureCode,
+                        viewerOwnsAgent: payload.senderAccountId == ownAccountId,
+                        agentName: agentName
+                    )
+                    : payload.text,
                 createdAt: Date(
                     timeIntervalSince1970: (
                         payload.requestId.flatMap { createdAtByMessageId[$0] }
@@ -7123,12 +7267,12 @@ final class AppModel: ObservableObject {
             throughSequence
         )
         conversations[index].lastReadSequence = lastReadSequence
-        let remaining = messagesByConversation[conversationID, default: []].filter { message in
+        let remaining = MessageThreadProjection(messages: messagesByConversation[conversationID, default: []]).mainMessages.filter { message in
             message.author != .me
                 && !message.isSystemNotice
                 && message.conversationSequence.map { $0 > lastReadSequence } == true
         }
-        conversations[index].unreadCount = remaining.count
+        conversations[index].unreadCount = remaining.count + (threadAttentionBySession[conversations[index].sessionId]?.threadUnreadCount ?? 0) // Discussion replies use thread cursors.
         conversations[index].unreadMentionCount = MentionAttention.pendingMessages(
             in: remaining,
             accountId: accountId,

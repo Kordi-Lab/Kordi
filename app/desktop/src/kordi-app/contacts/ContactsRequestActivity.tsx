@@ -1,3 +1,4 @@
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { ContactRequestRow } from '../components';
 import type { ContactRequest } from '../types';
 import { ContactsListSection } from './ContactsListSection';
@@ -43,9 +44,7 @@ export function ContactsRequestActivity({
         />
       ))}
       {requestActions.error ? (
-        <div className="app-error-text app-contacts-error mx-2 py-1 text-[12px] leading-5" aria-live="polite">
-          {requestActions.error}
-        </div>
+        <ErrorLine className="mx-2 mt-0 py-1">{requestActions.error}</ErrorLine>
       ) : null}
     </ContactsListSection>
   );

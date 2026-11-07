@@ -39,7 +39,7 @@ import {
   encodeCloudAgentResponse,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
-import { cloudAgentSharedReplyFailureNotice } from './cloudAgentFailureNotices';
+import { cloudAgentSharedFailure } from './cloudAgentFailureNotices';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
 import {
   registerCloudBackgroundFollowUpHandler,
@@ -391,20 +391,14 @@ export function useCloudDirectAgentExecution({
             }
             const replyText = cloudAgentTurnReplyText(finalTurn);
             const responseSucceeded = replyText.length > 0;
+            // Every member reads this row; the owner's own turn shows the reason and how to reconnect.
+            const sharedFailure = responseSucceeded || finalTurn.status === 'cancelled' ? null : cloudAgentSharedFailure(
+              finalTurn.error || finalTurn.message,
+              cloudAgentDefinitionsById[targetCloudAgentId ?? '']?.name || account.defaultAgent?.displayName,
+            );
             const responseText = responseSucceeded
               ? replyText
-              : finalTurn.status === 'cancelled'
-                ? 'Request stopped.'
-              // Every member reads this row; the owner's own turn shows how to reconnect.
-              : cloudAgentSharedReplyFailureNotice(
-                finalTurn.error || finalTurn.message,
-                cloudAgentDefinitionsById[targetCloudAgentId ?? '']?.name || account.defaultAgent?.displayName,
-              )
-                ?? `Failed: ${
-                  finalTurn.error
-                  || finalTurn.message
-                  || 'Cloud agent returned no text response'
-                }`;
+              : sharedFailure?.text ?? 'Request stopped.';
             const response = await lease.publisher.sendMessage(
               session.token,
               peerId,
@@ -412,6 +406,7 @@ export function useCloudDirectAgentExecution({
                 requestId: message.messageId,
                 text: responseText,
                 deliveryState: finalTurn.status === 'cancelled' ? 'cancelled' : responseSucceeded ? 'complete' : 'failed',
+                failureCode: sharedFailure?.failureCode,
                 backgroundSessions: cloudAgentBackgroundSessionsFromTurn(finalTurn),
                 messageAction: replyMessageAction,
               }),

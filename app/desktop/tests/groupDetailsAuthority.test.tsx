@@ -204,7 +204,8 @@ test('GroupDetailsDialog derives admins from group metadata instead of local sel
   assert.match(markup, /3 people · 1 admin/);
   assert.match(markup, /aria-label="Testuser2, admin"/);
   assert.match(markup, /aria-label="Testuser1, member"/);
-  assert.match(markup, /<button[^>]*disabled=""[^>]*aria-expanded="false"[^>]*>[\s\S]*?Group name/);
+  assert.doesNotMatch(markup, /aria-label="Rename /);
+  assert.doesNotMatch(markup, /app-group-name-pencil|>Manage</);
   assert.match(markup, /aria-label="Add people"/);
 });
 
@@ -236,5 +237,5 @@ test('GroupDetailsDialog falls back to canonical creator when admin metadata is 
 
   assert.match(markup, /3 people · 1 admin/);
   assert.match(markup, /aria-label="Testuser2, admin"/);
-  assert.doesNotMatch(markup, /<button[^>]*disabled=""[^>]*aria-expanded="false"[^>]*>[\s\S]*?Group name/);
+  assert.match(markup, /aria-label="Rename [^"]+"[^>]*>[\s\S]*?app-group-name-pencil/);
 });

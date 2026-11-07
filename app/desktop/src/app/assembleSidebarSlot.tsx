@@ -290,11 +290,6 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
           if (!session?.token) throw new Error('Account is not ready yet.');
           return cloudAuthClient.listGroupInvitations(session.token, groupSpaceId);
         },
-        onRevokeGroupInvite: async (invitationId) => {
-          const session = await loadSession();
-          if (!session?.token) throw new Error('Account is not ready yet.');
-          await cloudAuthClient.revokeGroupInvitation(session.token, invitationId);
-        },
       }}
     />
   );

@@ -123,7 +123,7 @@
 }
 .cg-textarea { display: block; width: 100%; min-height: 72px; padding: 10px 12px; border: 0; background: transparent; resize: vertical; }
 :is(.cg-input, .cg-textarea)::placeholder { color: var(--utility-muted-text); }
-.cg-input:focus { border-color: var(--app-quiet-control-focus-ring); }
+.cg-input:focus { border-color: var(--app-focus-border); }
 
 .cg-tags { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px; }
 .cg-tags.is-flat { padding: 0; }
@@ -166,8 +166,6 @@ button.cg-tag-text { cursor: pointer; }
 .cg-progress.is-inline .cg-mark { width: 20px; height: 20px; }
 
 
-.cg-notice { margin-top: 10px; color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 12.5px; }
-.cg-actions-end .cg-notice { margin: 0 0 4px; }
 .cg-hint { margin-top: 8px; color: var(--utility-muted-text); font-size: 12px; text-align: center; }
 .cg-next-step { margin: 14px 2px 0; color: var(--utility-muted-text); }
 
@@ -201,7 +199,7 @@ button.cg-member:hover { background: var(--cg-fill); }
 }
 .cg-meet-input { padding: 8px 10px; outline: none; }
 .cg-meet-input::placeholder { color: var(--utility-muted-text); }
-.cg-meet-input:focus { border-color: var(--app-quiet-control-focus-ring); }
+.cg-meet-input:focus { border-color: var(--app-focus-border); }
 .cg-meet-anchor { position: relative; }
 .cg-meet-stepper { display: flex; align-items: stretch; }
 .cg-meet-step { display: grid; place-items: center; width: 30px; flex: none; border: 0; border-radius: 6px; background: none; color: var(--utility-muted-text); cursor: pointer; }

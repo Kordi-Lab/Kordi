@@ -17,8 +17,6 @@
 }
 .app-document-tabs-header > button:disabled { opacity: .22; }
 .app-document-tabs-header > button:not(:disabled):hover { background: var(--app-control-hover); }
-.app-document-tabs-header > button:focus-visible,
-.app-document-tab-close:focus-visible { outline: 2px solid var(--app-nav-rail-focus-ring); outline-offset: -2px; }
 .app-document-strip-divider {
   height: 16px; width: 1px; flex: none; align-self: center; margin: 0 3px;
   background: color-mix(in srgb, var(--utility-foreground) 12%, transparent);
@@ -62,7 +60,6 @@
 }
 .app-document-tab:not([data-active='true']):not(:hover):not(:focus-within) > [role='tab'] { padding-right: 9px; }
 .app-document-tab > [role='tab'] > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-document-tab > [role='tab']:focus-visible { outline: 2px solid var(--app-nav-rail-focus-ring); outline-offset: -2px; }
 .app-document-tab svg { width: 15px; height: 15px; flex: none; opacity: .75; }
 .app-document-tab[data-active='true'] svg { opacity: 1; }
 .app-document-tab kbd { flex: none; font: 10px system-ui; color: var(--utility-muted-text); background: color-mix(in srgb, var(--utility-foreground) 5%, transparent); padding: 1px 4px; border-radius: 5px; }

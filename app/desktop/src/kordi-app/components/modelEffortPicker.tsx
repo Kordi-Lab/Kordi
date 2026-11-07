@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronLeft, ChevronRight, RotateCcw, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, RotateCcw, X } from 'lucide-react';
 import { composerModelChipLabels, modelDisplayName, modelEffortLabel } from '@/lib/modelDisplayName';
+import { ErrorLine, withoutTryAgain } from '@/components/ui/errors';
 import { cn } from '@/lib/utils';
 import { composerThinkingLevelsIncludingCurrent } from './composerThinking';
 import {
@@ -169,7 +170,7 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
     {option.value === selection.model ? <Check size={14} aria-hidden="true" /> : null}
   </button>;
   const menu = <div ref={menuRef} id={id} role="dialog" aria-label={view === 'thinking' ? 'Thinking effort' : view === 'provider' ? 'Choose account' : view === 'confirm' ? confirmTitle : 'Select model'}
-    aria-busy={saving} className={cn('app-transient-surface app-transient-scroll app-compact-model-menu app-composer-model-menu-layer app-model-picker', light && 'app-compact-model-menu-light', view === 'thinking' && 'app-model-picker-effort')} style={position}>
+    aria-busy={saving} className={cn('app-transient-surface app-transient-scroll app-compact-model-menu app-composer-model-menu-layer app-dense-menu app-model-picker', light && 'app-compact-model-menu-light', view === 'thinking' && 'app-model-picker-effort')} style={position}>
     {view === 'thinking' ? <>
       <div className="app-effort-heading"><div className="app-effort-identity"><strong>{modelEffortLabel(draftEffort)}</strong>
         <button type="button" onClick={() => setView('model')}><span className="truncate">{name}</span><ChevronRight size={11} aria-hidden="true" /></button></div>
@@ -184,9 +185,9 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
           onBlur={() => { if (draftEffort !== selection.thinking) commitEffort(draftEffort); }} />
       </div> : null}
     </> : <>
-      <div className="app-model-picker-heading">{view !== 'model' ? <button type="button" onClick={() => { setPending(null); setView('model'); }} aria-label="Back to models"><ChevronLeft size={16} /></button> : null}
+      <div className="app-model-picker-heading app-dense-menu-header">{view !== 'model' ? <button type="button" onClick={() => { setPending(null); setView('model'); }} aria-label="Back to models"><ArrowLeft size={16} /></button> : null}
         <strong>{view === 'provider' ? 'Choose account' : view === 'confirm' ? `${confirmTitle}?` : 'Select model'}</strong>
-        <button type="button" onClick={close} aria-label="Close model picker"><X size={15} /></button></div>
+        <button type="button" onClick={close} aria-label="Close model picker"><X size={16} /></button></div>
       {view === 'confirm' && pending ? <>
         <p className="app-model-picker-message">Use {pending.route.providerOption?.selectionLabel ?? pending.route.providerOption?.label} for future agent replies in this conversation?</p>
         <div className="app-model-picker-actions"><button type="button" onClick={close}>Cancel</button><button type="button" disabled={saving} onClick={() => void apply(pending.route, pending.type)}>Change account</button></div>
@@ -215,7 +216,9 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
         <button type="button" className="app-transient-action-row app-model-picker-row app-model-picker-account" onClick={() => { setAccountModel(null); setView('provider'); }}>{account?.selectionLabel ?? account?.label ?? 'Choose account'}<ChevronRight size={14} /></button>
       </>}
     </>}
-    {error ? <div role="alert" className="app-model-picker-message">{error}{retry ? <button type="button" onClick={() => void apply(retry.route, retry.type)} disabled={saving}>Retry</button> : null}</div> : null}
+    {error ? <ErrorLine className="m-1.5" action={retry ? { label: 'Try again', onClick: () => void apply(retry.route, retry.type), disabled: saving } : null}>
+      {retry ? withoutTryAgain(error) : error}
+    </ErrorLine> : null}
   </div>;
   if (onSignIn && !account?.unavailable && !providerOptions.some(composerProviderOptionUsable)) {
     return <div className="flex items-center gap-2 text-xs" data-composer-sign-in="true"><span>No account</span>

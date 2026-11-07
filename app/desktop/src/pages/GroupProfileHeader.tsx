@@ -30,12 +30,14 @@ function GroupProfileAction({
   onClick,
   disabled = false,
   title,
+  actionKey,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
   disabled?: boolean;
   title?: string;
+  actionKey?: string;
 }) {
   return (
     <button
@@ -44,6 +46,7 @@ function GroupProfileAction({
       onClick={onClick}
       disabled={disabled}
       title={title ?? label}
+      data-group-profile-action={actionKey}
     >
       {icon}
       <span className="max-w-full truncate text-[10px] font-medium">{label}</span>
@@ -56,8 +59,8 @@ export function GroupProfileHeader({
   memberCount,
   adminCount,
   canInvitePeople,
-  canManageGroup,
   avatarEditor,
+  titleSlot,
   onClose,
   onShowMembers,
   onAddPeople,
@@ -67,12 +70,14 @@ export function GroupProfileHeader({
   memberCount: number;
   adminCount: number;
   canInvitePeople: boolean;
-  canManageGroup: boolean;
   avatarEditor?: ReactNode;
+  /** Replaces the plain title, for example with the admin's inline rename. */
+  titleSlot?: ReactNode;
   onClose: () => void;
   onShowMembers: () => void;
   onAddPeople: () => void;
-  onManage: () => void;
+  /** Opens the admin-only Manage level; without it the action is hidden. */
+  onManage?: () => void;
 }) {
   const calls = useCloudCallContext();
   const callConversation = space.sessions.find((session) => (
@@ -112,9 +117,11 @@ export function GroupProfileHeader({
         {avatarEditor ?? <GroupProfileAvatar space={space} />}
       </div>
       <div className="mx-auto mt-2 min-w-0 max-w-[15rem]">
-        <div className="truncate text-[16px] font-semibold leading-5" title={space.title}>
-          {space.title}
-        </div>
+        {titleSlot ?? (
+          <div className="truncate text-[16px] font-semibold leading-5" title={space.title}>
+            {space.title}
+          </div>
+        )}
         <p className="mt-1 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">
           {memberCount} member{memberCount === 1 ? '' : 's'} · {groupCreatedLabel(space)}
           <span className="sr-only">
@@ -144,11 +151,12 @@ export function GroupProfileHeader({
             title={callBusyElsewhere ? 'Finish your current call first' : undefined}
           />
         ) : null}
-        {canManageGroup ? (
+        {onManage ? (
           <GroupProfileAction
             icon={<Settings2 className="h-4 w-4" aria-hidden="true" />}
             label="Manage"
             onClick={onManage}
+            actionKey="manage"
           />
         ) : null}
       </div>

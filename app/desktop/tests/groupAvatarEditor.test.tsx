@@ -19,7 +19,7 @@ test('a macOS pointer blur does not discard Upload photo before its click opens 
     });
     const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Edit group avatar"]')!;
     await act(async () => trigger.click());
-    const upload = host.querySelector<HTMLButtonElement>('[role="menuitem"]')!;
+    const upload = document.querySelector<HTMLButtonElement>('[role="menuitem"]')!;
     assert.equal(document.activeElement, upload);
 
     // macOS WebKit blurs buttons with no next focus target on pointer down.
@@ -30,7 +30,39 @@ test('a macOS pointer blur does not discard Upload photo before its click opens 
     host.querySelector<HTMLInputElement>('input[type="file"]')!.click = () => { pickerOpened += 1; };
     await act(async () => upload.click());
     assert.equal(pickerOpened, 1);
-    assert.equal(host.querySelector('[role="menu"]'), null);
+    assert.equal(document.querySelector('[role="menu"]'), null);
+  } finally {
+    await act(async () => root.unmount());
+    installed.restore();
+  }
+});
+
+test('the menu renders outside the editor so a clipping dialog cannot cut it off', async () => {
+  const installed = installDom();
+  const dialog = document.createElement('div');
+  dialog.setAttribute('role', 'dialog');
+  dialog.style.overflow = 'hidden';
+  document.body.append(dialog);
+  const root = createRoot(dialog);
+  try {
+    await act(async () => {
+      root.render(createElement(GroupAvatarEditor, {
+        avatars: [], name: 'Team', imageUrl: 'data:image/png;base64,AA==', onUpload: () => {}, onRemove: () => {},
+      }));
+    });
+    await act(async () => dialog.querySelector<HTMLButtonElement>('[aria-label="Edit group avatar"]')!.click());
+    const menu = document.querySelector<HTMLElement>('[role="menu"]')!;
+    assert.ok(menu, 'the menu opens');
+    assert.equal(dialog.contains(menu), false, 'the menu is not inside the clipping dialog');
+    assert.equal(menu.parentElement, document.body);
+    assert.ok(menu.classList.contains('app-dense-menu'), 'the menu uses the shared pop-up menu surface');
+    assert.ok(menu.classList.contains('fixed'));
+    assert.deepEqual(Array.from(menu.querySelectorAll('[role="menuitem"]'), (item) => item.className), ['app-dense-menu-row', 'app-dense-menu-row app-dense-menu-danger']);
+    assert.equal(document.activeElement, menu.querySelector('[role="menuitem"]'), 'focus moving into the portaled menu keeps it open');
+    await act(async () => {
+      document.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true }));
+    });
+    assert.equal(document.querySelector('[role="menu"]'), null, 'a pointer down outside closes it');
   } finally {
     await act(async () => root.unmount());
     installed.restore();
@@ -67,7 +99,7 @@ for (const failure of [null, 'Could not open the photo picker.']) {
       host.querySelector<HTMLInputElement>('input[type="file"]')!.click = () => { browserPickerOpened += 1; };
       await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Edit group avatar"]')!.click());
       await act(async () => {
-        host.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click();
+        document.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click();
         await invoked;
       });
       await flushReactUpdates();

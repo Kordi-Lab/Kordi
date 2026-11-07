@@ -2,6 +2,7 @@
 
 @import './styles/base.css';
 @import './styles/theme-tokens.css';
+@import './styles/error-line.css';
 @import './styles/chat-theme-tokens.css';
 @import './styles/shell.css';
 @import './styles/shell-scrollbars.css';
@@ -15,6 +16,7 @@
 @import './styles/shell-popovers.css';
 @import './styles/model-effort-picker.css';
 @import './styles/shell-profile-popovers.css';
+@import './styles/shell-group-info.css';
 @import './styles/shell-contact-shared-pages.css';
 @import './styles/shell-chat-person-info.css';
 @import './styles/shell-group-invitations.css';
@@ -42,6 +44,7 @@
 @import './styles/shell-media-lightbox.css';
 @import './styles/shell-transcript-timeline.css';
 @import './styles/shell-turn-progress.css';
+@import './styles/shell-tool-activity-fold.css';
 @import './styles/shell-message-actions.css';
 @import './styles/shell-message-forward.css';
 @import './styles/shell-live-answer.css';
@@ -88,3 +91,6 @@
 @import './styles/theme-palette.css';
 
 @import './styles/shell-compact.css';
+
+/* Last on purpose: the focus contract must win over every surface above. */
+@import './styles/focus.css';

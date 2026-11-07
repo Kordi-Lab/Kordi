@@ -44,6 +44,12 @@ pub enum StoreError {
     CursorExpired,
     CursorAhead,
     InvariantViolation(&'static str),
+    /// The request conflicts with the group's current state, such as a last
+    /// admin leaving. `code` is the stable error code clients read.
+    Conflict {
+        code: &'static str,
+        message: &'static str,
+    },
 }
 
 impl std::fmt::Display for StoreError {
@@ -66,6 +72,7 @@ impl std::fmt::Display for StoreError {
             Self::MessageVersionConflict(_) => formatter.write_str("message version conflict"),
             Self::CursorExpired => formatter.write_str("sync cursor expired"),
             Self::CursorAhead => formatter.write_str("sync cursor is ahead of the server"),
+            Self::Conflict { message, .. } => formatter.write_str(message),
         }
     }
 }
@@ -245,7 +252,12 @@ pub use channels::create_group_channel;
 mod dissolve;
 pub use dissolve::{dissolve_group, dissolve_group_channel, DissolveOutcome};
 mod group_events;
-pub use group_events::{group_created_text, post_group_created, GROUP_CREATED_EVENT};
+pub use group_events::{
+    group_created_text, group_member_left_text, post_group_created, GROUP_CREATED_EVENT,
+    GROUP_MEMBER_LEFT_EVENT,
+};
+mod group_leave;
+pub use group_leave::{leave_group, LeaveOutcome, LAST_GROUP_ADMIN_CODE, LAST_GROUP_MEMBER_CODE};
 mod cursors;
 mod grounding_origin;
 mod legacy_client_events;

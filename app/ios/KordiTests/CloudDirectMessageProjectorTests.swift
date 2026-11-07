@@ -936,11 +936,44 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         )
     }
 
+    func testOnlyTheAgentOwnerReadsWhyAReplyFailed() throws {
+        let shared = try agentResponse(
+            requestId: "msg_request",
+            text: "Pebble couldn't reply.",
+            deliveryState: "failed",
+            failureCode: "provider_auth_rejected"
+        )
+        XCTAssertEqual(
+            CloudMessageCodec.viewerText(shared, viewerOwnsAgent: true, agentName: "Pebble"),
+            "Your AI provider connection expired. [Reconnect](kordi://settings/authentication)"
+        )
+        XCTAssertEqual(
+            CloudMessageCodec.viewerText(shared, viewerOwnsAgent: false, agentName: "Pebble"),
+            "Pebble couldn't reply."
+        )
+
+        // A line older builds stored without a code.
+        let legacy = try agentResponse(
+            requestId: "msg_request",
+            text: "Sign in again to use this account.",
+            deliveryState: "failed"
+        )
+        XCTAssertEqual(
+            CloudMessageCodec.viewerText(legacy, viewerOwnsAgent: false, agentName: "Pebble"),
+            "Pebble couldn't reply."
+        )
+        XCTAssertFalse(CloudMessageCodec.viewerText(legacy, viewerOwnsAgent: true, agentName: "Pebble").contains("Sign in"))
+
+        let complete = try agentResponse(requestId: "msg_request", text: "Hello", deliveryState: "complete")
+        XCTAssertEqual(CloudMessageCodec.viewerText(complete, viewerOwnsAgent: false, agentName: "Pebble"), "Hello")
+    }
+
     private func agentResponse(
         requestId: String,
         text: String,
         deliveryState: String,
-        execution: [String: Any]? = nil
+        execution: [String: Any]? = nil,
+        failureCode: String? = nil
     ) throws -> String {
         var payload: [String: Any] = [
             "kind": "agent-response",
@@ -950,6 +983,9 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         ]
         if let execution {
             payload["execution"] = execution
+        }
+        if let failureCode {
+            payload["failureCode"] = failureCode
         }
         let data = try JSONSerialization.data(withJSONObject: payload)
         return CloudMessageCodec.agentResponsePrefix + data.base64EncodedString()

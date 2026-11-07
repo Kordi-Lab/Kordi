@@ -1,6 +1,26 @@
 import Foundation
 
 extension CloudAgentSubsession {
+    /// The owner's message in their own agent's background session asks that
+    /// agent to continue, as in any agent session, so it gets an agent mention
+    /// up front. A message that mentions someone keeps the shared rule: only
+    /// an explicit agent mention runs the agent. Mirrors the Mac's
+    /// `ownerMessageToAgent`.
+    func ownerMessageToAgent(
+        text: String,
+        mentions: [MessageMention],
+        accountId: String
+    ) -> (text: String, mentions: [MessageMention]) {
+        guard ownerAccountId == accountId, mentions.isEmpty,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let agent = mentionTargets(accountId: accountId).first(where: { $0.kind == .agent })
+        else { return (text, mentions) }
+        let addressed = "\(agent.mentionText) \(text)"
+        let agentMentions = ComposerMentionTargetCatalog.mentions(in: addressed, selectedTarget: agent, targets: [agent])
+        guard agentMentions.first?.startUtf16 == 0 else { return (text, mentions) }
+        return (addressed, agentMentions)
+    }
+
     var conversation: ConversationSummary {
         ConversationSummary(id: "subsession:\(sessionId)", kind: .agent,
             peerAccountId: ownerAccountId, agentId: agentId, ownerDisplayName: ownerDisplayName,

@@ -745,7 +745,7 @@ export type DesktopCollaborationConversationMessage = {
   mentions?: MessageMention[];
   messageAction?: MessageActionMetadata | null;
   messageKind?: string | null; voiceMessage?: Message['voiceMessage']; readReceiptSummary?: Message['readReceiptSummary']; planCard?: Message['planCard'];
-  localTurn?: DesktopChatTurnSnapshot | null; reactionConversationId?: string | null; reactionTargetMessageId?: string | null; cloudMessageVersion?: number | null; editedAt?: string | null; reactions?: Array<{ value: string; accountIds: string[] }>;
+  localTurn?: DesktopChatTurnSnapshot | null; reactionConversationId?: string | null; reactionTargetMessageId?: string | null; cloudMessageVersion?: number | null; editedAt?: string | null; reactions?: Array<{ value: string; accountIds: string[] }>; failureCode?: string | null;
 };
 export type DesktopCollaborationSessionThreadMessage = {
   role: Message['role'] | string;

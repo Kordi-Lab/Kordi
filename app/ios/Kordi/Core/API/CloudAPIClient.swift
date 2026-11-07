@@ -1124,6 +1124,21 @@ actor CloudAPIClient {
         )
     }
 
+    /// `DELETE /v2/chat/group-spaces/{groupSpaceId}/channels/{conversationId}`:
+    /// dissolves one channel other than the group's first. Admins only.
+    func dissolveGroupChannel(token: String, groupSpaceId: String, sessionId: String) async throws {
+        let conversation = try await threadReadConversation(token: token, sessionId: sessionId)
+        try await sendWithoutResponse(
+            path: "/v2/chat/group-spaces/\(escapedPath(groupSpaceId))/channels/\(escapedPath(conversation.id))",
+            method: "DELETE",
+            token: token,
+            fallback: "Could not dissolve the channel."
+        )
+        chatConversationsById.removeValue(forKey: conversation.id)
+        chatConversationsBySessionId.removeValue(forKey: sessionId)
+        if let legacy = conversation.legacySessionId?.nonEmpty { chatConversationsBySessionId.removeValue(forKey: legacy) }
+    }
+
     private func threadReadConversation(token: String, sessionId: String) async throws -> CloudChatConversation {
         if let cached = chatConversationsBySessionId[sessionId] ?? chatConversationsById[sessionId] { return cached }
         _ = try await bootstrapChat(token: token)

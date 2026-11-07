@@ -19,4 +19,32 @@ struct ContactPermissionsPreviewHost: View {
         }
     }
 }
+
+/// `--preview-contact-blocked`: Maya's profile while she is on the block
+/// list, so the More menu offers Unblock. Synthetic data only.
+struct ContactBlockedPreviewHost: View {
+    static let argument = "--preview-contact-blocked"
+
+    @EnvironmentObject private var model: AppModel
+    @State private var subject: ContactProfileSubject?
+
+    var body: some View {
+        NavigationStack {
+            ContactsView()
+                .contactProfileSheet(subject: $subject)
+        }
+        .task {
+            let accountId = ContactPermissionsAvailability.previewAccountId
+            let contact = model.contacts.first { $0.accountId == accountId }
+            model.previewMarkBlocked(CloudBlockedAccount(
+                accountId: accountId,
+                kordiId: contact?.kordiId ?? "284106395",
+                displayName: contact?.preferredName ?? "Maya Chen",
+                avatarUrl: contact?.avatarUrl
+            ))
+            subject = contact.map(ContactProfileSubject.init(contact:))
+                ?? ContactProfileSubject(accountId: accountId, name: "Maya Chen", kordiId: "284106395")
+        }
+    }
+}
 #endif

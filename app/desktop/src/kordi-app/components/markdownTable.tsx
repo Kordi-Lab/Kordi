@@ -115,7 +115,7 @@ export function MarkdownTable({ headers, rows, renderCell }: MarkdownTableProps)
   return (
     <div className="w-full min-w-0 overflow-hidden rounded-xl border border-[color:var(--app-divider)] bg-transparent">
       <div
-        className="max-w-full overflow-x-auto overscroll-x-contain focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--app-quiet-control-focus-ring)]"
+        className="max-w-full overflow-x-auto overscroll-x-contain"
         role="region"
         aria-label="Scrollable table"
         tabIndex={0}

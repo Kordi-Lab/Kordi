@@ -1,95 +1,23 @@
-.app-call-recovery {
+/* The call stage stays dark in both themes, so its error line uses the
+   dark error value and a light action. */
+.app-call-surface {
+  --app-error-text: rgb(253 164 175);
+  --app-error-action-text: rgb(248 249 255 / 0.94);
+}
+
+.app-call-surface .app-call-notice {
   position: absolute;
   z-index: 8;
-  bottom: 142px;
+  bottom: 128px;
   left: 50%;
-  display: flex;
   width: min(500px, calc(100% - 48px));
-  align-items: center;
-  gap: 12px;
-  padding: 12px 12px 12px 14px;
-  border: 1px solid rgb(255 194 148 / 0.22);
-  border-radius: 15px;
-  background: rgb(25 20 24 / 0.84);
-  box-shadow: 0 18px 42px rgb(0 0 0 / 0.28);
-  backdrop-filter: blur(22px) saturate(1.08);
+  margin: 0;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
   transform: translateX(-50%);
 }
 
-.app-call-recovery-icon {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: none;
-  place-items: center;
-  border-radius: 11px;
-  color: rgb(255 198 157);
-  background: rgb(255 151 83 / 0.13);
-}
-
-.app-call-recovery-icon svg {
-  width: 17px;
-  height: 17px;
-}
-
-.app-call-recovery-copy {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.app-call-recovery-copy strong {
-  color: rgb(255 250 247 / 0.96);
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.app-call-recovery-copy > span {
-  margin-top: 3px;
-  color: rgb(255 225 205 / 0.74);
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-.app-call-recovery-action,
-.app-call-recovery-dismiss {
-  flex: none;
-  border: 0;
-  cursor: pointer;
-}
-
-.app-call-recovery-action {
-  padding: 9px 12px;
-  border-radius: 10px;
-  color: rgb(32 26 24);
-  background: rgb(255 241 231);
-  font-size: 12px;
-  font-weight: 690;
-}
-
-.app-call-recovery-action:hover {
-  background: white;
-}
-
-.app-call-recovery-dismiss {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border-radius: 9px;
-  color: rgb(255 225 205 / 0.68);
-  background: transparent;
-}
-
-.app-call-recovery-dismiss:hover {
-  color: rgb(255 255 255 / 0.94);
-  background: rgb(255 255 255 / 0.08);
-}
-
-.app-call-recovery-dismiss svg {
-  width: 15px;
-  height: 15px;
+.app-call-notice .app-error-line-separator {
+  color: rgb(235 239 255 / 0.5);
 }
 
 .app-call-controls {

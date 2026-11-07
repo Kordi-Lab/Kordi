@@ -169,7 +169,8 @@ export class CommonGroundStore {
   back() {
     if (this.state.stack.length <= 1) return;
     this.set({ stack: this.state.stack.slice(0, -1), notice: null });
-    if (this.top().name === 'home') void this.loadRooms();
+    // A match opened on the way (Pair, a room, Nearby) belongs in Recent by now.
+    if (this.top().name === 'home') void this.loadActivity();
   }
 
   home({ reload = true }: { reload?: boolean } = {}) {

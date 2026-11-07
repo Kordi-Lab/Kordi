@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { applyCloudLoginWindowSize, type CloudLoginMode } from '@/features/cloud/loginWindow';
 import { CLOUD_LOGIN_WINDOW_DRAG_STYLE } from '@/app/windowDrag';
 import { CloudAuthError, type CloudOAuthProvider, type CloudSignupCodeChallenge, type CloudSignupInput } from '@/features/cloud/authClient';
@@ -14,7 +15,7 @@ import {
 } from '@/features/cloud/canonicalAvatar';
 
 import { GitHubMark, GoogleMark } from './CloudLoginMarks';
-import { cloudLoginErrorMessage, loginHeading, loginSubtitle, PASSWORD_RULE_HINT, passwordMeetsSignupRule } from './cloudLoginMessages';
+import { cloudLoginErrorMessage, loginHeading, loginSubtitle, PASSWORD_RULE_HINT, passwordMeetsSignupRule, submitErrorField } from './cloudLoginMessages';
 import { CloudSignupAvatarPicker } from './CloudSignupAvatarPicker';
 import { CloudSignupVerificationFields } from './CloudSignupVerificationFields';
 import { useCloudSignupVerification } from './useCloudSignupVerification';
@@ -42,7 +43,6 @@ const PAPER_SUNK = 'bg-[var(--app-cloud-login-sunk-bg)]';
 const PAPER_INPUT = 'bg-[var(--app-cloud-login-input-bg)]';
 const BORDER_SOFT = 'border-[var(--app-cloud-login-border)]';
 const BORDER_INNER = 'border-[var(--app-cloud-login-inner-border)]';
-const FOCUS_RING = 'focus:border-[var(--app-cloud-login-focus-border)] focus:shadow-[0_0_0_3px_var(--app-cloud-login-focus-ring)]';
 const INPUT_BASE_CLASS = [
   'app-cloud-login-input h-12 rounded-full border px-5 outline-none transition',
   'focus:bg-[var(--app-cloud-login-input-focus-bg)]',
@@ -50,13 +50,10 @@ const INPUT_BASE_CLASS = [
 const INPUT_ERROR_CLASS = [
   'border-[var(--app-cloud-login-danger-border)]',
   'focus:border-[var(--app-cloud-login-danger-border-strong)]',
-  'focus:shadow-[0_0_0_3px_var(--app-cloud-login-danger-ring)]',
 ].join(' ');
 const INPUT_HINT_CLASS = [
   'focus:border-[var(--app-cloud-login-hint-border)]',
-  'focus:shadow-[0_0_0_3px_var(--app-cloud-login-hint-ring)]',
 ].join(' ');
-const SMALL_FOCUS_RING = 'focus-visible:ring-2 focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)]';
 
 type SocialProvider = { id: 'google' | 'github'; label: string; Mark: ComponentType };
 const SOCIAL_LOGIN_PROVIDERS: ReadonlyArray<SocialProvider> = [
@@ -104,7 +101,7 @@ function CloudField({
       ? INPUT_ERROR_CLASS
       : validation === 'hint'
       ? `${BORDER_SOFT} ${INPUT_HINT_CLASS}`
-      : `${BORDER_SOFT} ${FOCUS_RING}`;
+      : BORDER_SOFT;
   return (
     <label className={`grid gap-1.5 ${TYPE_LABEL} ${INK_MUTED}`}>
       {label ? <span>{label}</span> : null}
@@ -170,6 +167,7 @@ export function CloudLoginPage({
   const [submitting, setSubmitting] = useState(false);
   const [socialProvider, setSocialProvider] = useState<CloudOAuthProvider | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [invalidField, setInvalidField] = useState<'email' | 'password' | null>(null);
   const { challenge, verificationCode, setVerificationCode, resendSeconds, sendCode, resetVerification } = useCloudSignupVerification(email, onRequestSignupCode);
   const isSignup = mode === 'signup';
   const isVerifying = isSignup && challenge !== null;
@@ -215,6 +213,7 @@ export function CloudLoginPage({
     if (!onSocialSignIn || isBusy || !enabledSocialProviders.includes(provider)) return;
     setSocialProvider(provider);
     setSubmitError(null);
+    setInvalidField(null);
     try {
       await onSocialSignIn(provider);
     } catch (caught) {
@@ -236,6 +235,7 @@ export function CloudLoginPage({
     if (isBusy || resendSeconds > 0) return;
     setSubmitting(true);
     setSubmitError(null);
+    setInvalidField(null);
     try { await sendCode(); }
     catch (caught) { setSubmitError(caught instanceof Error ? caught.message : 'Could not send code.'); }
     finally { setSubmitting(false); }
@@ -246,6 +246,7 @@ export function CloudLoginPage({
     setMode(next);
     resetVerification();
     setSubmitError(null);
+    setInvalidField(null);
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -253,6 +254,7 @@ export function CloudLoginPage({
     if (!canSubmit) return;
     setSubmitting(true);
     setSubmitError(null);
+    setInvalidField(null);
     try {
       if (isSignup) {
         if (!challenge) { await sendCode(); return; }
@@ -272,6 +274,7 @@ export function CloudLoginPage({
     } catch (caught) {
       if (caught instanceof CloudAuthError) {
         setSubmitError(cloudLoginErrorMessage(caught, showDebugAuthDiagnostics));
+        setInvalidField(submitErrorField(caught));
       } else if (caught instanceof Error) {
         setSubmitError(caught.message);
       } else {
@@ -341,7 +344,7 @@ export function CloudLoginPage({
                 onClick={() => void handleSocialSignIn(provider.id)}
                 className={[
                   'app-cloud-login-social-pill flex h-10 w-10 items-center justify-center rounded-full transition duration-150',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)]',
+                  'focus-visible:outline-none',
                   isAvailable
                     ? 'hover:scale-105 disabled:cursor-wait disabled:opacity-55'
                     : 'cursor-not-allowed opacity-35 grayscale',
@@ -424,9 +427,9 @@ export function CloudLoginPage({
             autoComplete="email"
             placeholder="you@company.com"
             value={email}
-            onChange={(next) => { setEmail(next); resetVerification(); }}
+            onChange={(next) => { setEmail(next); resetVerification(); if (invalidField) setInvalidField(null); }}
             disabled={isBusy || isVerifying}
-            validation={emailInvalid ? 'invalid' : undefined}
+            validation={emailInvalid || invalidField === 'email' ? 'invalid' : undefined}
             hint={emailInvalid ? 'Use a full email like name@example.com.' : undefined}
           />
           {!isVerifying ? <CloudField
@@ -435,9 +438,9 @@ export function CloudLoginPage({
             autoComplete={isSignup ? 'new-password' : 'current-password'}
             placeholder="••••••••"
             value={password}
-            onChange={setPassword}
+            onChange={(next) => { setPassword(next); if (invalidField) setInvalidField(null); }}
             disabled={isBusy}
-            validation={passwordTooWeak ? 'hint' : undefined}
+            validation={invalidField === 'password' ? 'invalid' : passwordTooWeak ? 'hint' : undefined}
             hint={passwordTooWeak ? PASSWORD_RULE_HINT : undefined}
           /> : null}
           <div
@@ -461,23 +464,12 @@ export function CloudLoginPage({
           </div>
           {isVerifying ? (
             <CloudSignupVerificationFields email={email} busy={isBusy} resendSeconds={resendSeconds}
-              onResend={() => void resendCode()} onChangeEmail={() => { resetVerification(); setSubmitError(null); }}>
+              onResend={() => void resendCode()} onChangeEmail={() => { resetVerification(); setSubmitError(null); setInvalidField(null); }}>
               <CloudField label="Email verification code" type="text" autoComplete="one-time-code"
                 inputMode="numeric" maxLength={6} placeholder="123456" value={verificationCode}
                 onChange={(next) => setVerificationCode(next.replace(/\D/g, '').slice(0, 6))} disabled={isBusy} />
             </CloudSignupVerificationFields>
           ) : isSignup ? <p className={`${TYPE_HINT} ${INK_MUTED}`}>We’ll email you a code to verify your address before creating your account.</p> : null}
-          {submitError ? (
-            <div
-              role="alert"
-              className={[
-                'app-cloud-login-error rounded-[14px] border px-4 py-2.5 normal-case tracking-normal',
-                TYPE_HINT,
-              ].join(' ')}
-            >
-              {submitError}
-            </div>
-          ) : null}
           <button
             type="submit"
             disabled={!canSubmit}
@@ -491,6 +483,7 @@ export function CloudLoginPage({
           >
             {submitLabel}
           </button>
+          {submitError ? <ErrorLine align="center" className="mt-0">{submitError}</ErrorLine> : null}
         </form>
       </main>
     </div>

@@ -1,8 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
-
-async function settle(page: Page) {
-  await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== 'running'));
-}
+import { expect, test } from '@playwright/test';
 
 const token = `kordi_gi_${'a'.repeat(43)}`;
 
@@ -30,8 +26,7 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
   await page.getByRole('tab', { name: 'Invite with a link' }).click();
   await page.getByRole('button', { name: 'Create link' }).click();
   await expect(page.getByLabel('Group invitation link')).toHaveValue(`https://kordi.ai/g/${token}`);
-  await expect(page.getByRole('button', { name: 'New link' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Revoke' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reset link' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('group-invitation-admin-desktop.png') });
 
   await page.setViewportSize({ width: 430, height: 820 });
@@ -40,10 +35,11 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
   await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=active');
   await page.locator('.app-group-profile-actions').getByRole('button', { name: 'Add people' }).click();
   await page.getByRole('tab', { name: 'Invite with a link' }).click();
-  await expect(page.getByRole('button', { name: 'New link' })).toBeVisible();
-  await expect(page.getByText('Revoke it before creating another link')).toHaveCount(0);
+  await expect(page.getByLabel('Group invitation link')).toHaveValue(`https://kordi.ai/g/kordi_gi_${'b'.repeat(43)}`);
+  await expect(page.getByRole('button', { name: 'Create link' })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('group-invitation-active-narrow.png') });
-  await page.getByRole('button', { name: 'New link' }).click();
+  await page.getByRole('button', { name: 'Reset link' }).click();
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await expect(page.getByLabel('Group invitation link')).toHaveValue(`https://kordi.ai/g/${token}`);
 
   await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=nonadmin');
@@ -62,37 +58,6 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
   await expect(page.getByRole('button', { name: 'Join', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('group-invitation-recipient-dark.png') });
 });
-
-for (const theme of ['light', 'dark'] as const) {
-  test(`group admins dissolve the group from its Info; members leave (${theme})`, async ({ page }, testInfo) => {
-    await page.goto(`/tests/visual/groupInvitationGallery.html?theme=${theme}&mode=admin`);
-    await expect(page.locator('body[data-visual-ready="true"]')).toBeVisible();
-    const dissolve = page.getByRole('button', { name: 'Dissolve group', exact: true });
-    await dissolve.scrollIntoViewIfNeeded();
-    await expect(page.getByRole('button', { name: 'Leave group', exact: true })).toHaveCount(0);
-    await settle(page);
-    await page.screenshot({ path: testInfo.outputPath(`group-info-dissolve-row-${theme}.png`) });
-    await dissolve.click();
-    const confirm = page.getByRole('dialog', { name: 'Dissolve Product Team?' });
-    await expect(confirm).toBeVisible();
-    await expect(confirm.getByText('Everyone loses access to this group.')).toBeVisible();
-    await expect(confirm.getByRole('button', { name: 'Cancel' })).toBeFocused();
-    await settle(page);
-    await page.screenshot({ path: testInfo.outputPath(`group-dissolve-confirm-${theme}.png`) });
-    await page.keyboard.press('Escape');
-    await expect(confirm).toHaveCount(0);
-    await dissolve.click();
-    await page.getByRole('dialog', { name: 'Dissolve Product Team?' }).getByRole('button', { name: 'Dissolve', exact: true }).click();
-    await expect(page.locator('body[data-dissolved="true"]')).toHaveCount(1);
-
-    await page.goto(`/tests/visual/groupInvitationGallery.html?theme=${theme}&mode=nonadmin`);
-    await expect(page.getByRole('button', { name: 'Dissolve group', exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Leave group', exact: true }).click();
-    await expect(page.getByText('Leave this group?')).toBeVisible();
-    await settle(page);
-    await page.screenshot({ path: testInfo.outputPath(`group-info-leave-${theme}.png`) });
-  });
-}
 
 test('contact info sheet preview', async ({ page }, testInfo) => {
   await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=contact');

@@ -23,7 +23,9 @@ pub(super) fn requested(
 }
 
 /// Stores a requested setting in the definition's transaction and shows it
-/// on `agent`, before the definition's sync event is written.
+/// on `agent`, before the definition's sync event is written. Turning it on
+/// needs a live connector granted to the agent, which a new definition never
+/// has.
 pub(super) async fn apply(
     transaction: &mut Transaction<'_, Postgres>,
     owner_account_id: &str,
@@ -33,6 +35,19 @@ pub(super) async fn apply(
     let Some(setting) = requested else {
         return Ok(());
     };
+    if setting.proactive
+        && !crate::personal_agent::setting::has_live_grant(
+            &mut **transaction,
+            owner_account_id,
+            &agent.agent_id,
+        )
+        .await?
+    {
+        return Err(CloudAgentStoreError::InvalidSetting(
+            "personal_agent_needs_connector",
+            "Connect a service and grant it to this agent before turning Proactive on.".into(),
+        ));
+    }
     crate::personal_agent::setting::store_in_transaction(
         transaction,
         owner_account_id,

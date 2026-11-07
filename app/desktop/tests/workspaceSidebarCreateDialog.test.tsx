@@ -177,7 +177,7 @@ test('ChatCreateDialog add contact mode shows visible non-contact Bridge users',
   assert.match(markup, /Request/);
 });
 
-test('ChatCreateDialog group picker needs a name, lets one person start a group and excludes agents', () => {
+test('ChatCreateDialog group picker needs a name, lets one person start a group, has no invite row and excludes agents', () => {
   const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
     isOpen: true,
     initialMode: 'group',
@@ -199,13 +199,12 @@ test('ChatCreateDialog group picker needs a name, lets one person start a group 
   assert.doesNotMatch(markup, /New group/);
   assert.doesNotMatch(markup, /verified group admin/);
   assert.match(markup, /placeholder="Group name"/);
-  // Nothing is picked, but a group of one is fine: only the empty name keeps both actions off.
+  // Nothing is picked, but a group of one is fine: only the empty name keeps Create group off.
   const submit = markup.match(/<button[^>]*type="submit"[^>]*>[^<]*<\/button>/)?.[0] ?? '';
   assert.match(submit, />Create group</);
   assert.match(submit, /\sdisabled(=""|\s|>)/);
-  const invite = markup.match(/<button[^>]*>(?:(?!<\/button>).)*Invite with a link(?:(?!<\/button>).)*<\/button>/)?.[0] ?? '';
-  assert.ok(invite, 'Invite with a link row renders');
-  assert.match(invite, /\sdisabled(=""|\s|>)/);
+  // The link is made with the group, so there is no separate invite row.
+  assert.doesNotMatch(markup, /Invite with a link/);
   assert.match(markup, /Alice/);
   assert.match(markup, /Bob/);
   assert.doesNotMatch(markup, /Helper Kordi/);

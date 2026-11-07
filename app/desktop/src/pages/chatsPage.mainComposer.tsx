@@ -4,6 +4,7 @@ import { CloudChatWorkspaceRow } from '@/features/projects/CloudChatWorkspaceRow
 import { useId, useRef, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
@@ -344,13 +345,11 @@ export function MainComposer({
               />
             </div>}
             {!editingMessage && collaborationRouting.enabled && collaborationRouting.error
-              ? <p className="app-error-text mt-1 text-[11px] leading-4 text-rose-500" role="alert">{collaborationRouting.error}</p> : null}
+              ? <ErrorLine className="mt-1">{collaborationRouting.error}</ErrorLine> : null}
             {!editingMessage && sendGate.notice
               ? <p className="mt-1 text-[11px] leading-4 text-[color:var(--utility-muted-text)]" role="status">{sendGate.notice}</p> : null}
             {messageEditError ? (
-              <p id={editErrorMessageId} className="app-error-text mt-1 text-[11px] leading-4 text-rose-500" role="alert">
-                {messageEditError}
-              </p>
+              <ErrorLine id={editErrorMessageId} className="mt-1">{messageEditError}</ErrorLine>
             ) : null}
           </div>
         </div>

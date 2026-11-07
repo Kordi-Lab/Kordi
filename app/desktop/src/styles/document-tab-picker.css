@@ -9,7 +9,7 @@
   border-bottom: 1px solid var(--app-control-border); color: var(--utility-muted-text);
 }
 .app-document-tab-search input { width: 0; flex: 1; font: 12px system-ui; background: transparent; border: 0; outline: none; color: var(--utility-foreground); }
-.app-document-tab-search:focus-within { border-bottom-color: var(--app-nav-rail-focus-ring); }
+.app-document-tab-search:focus-within { border-bottom-color: var(--app-focus-border); }
 .app-document-tab-search kbd { font: 10px system-ui; opacity: .7; }
 .app-document-menu-caption { display: flex; justify-content: space-between; font: 10px system-ui; color: var(--utility-muted-text); padding: 4px 9px 6px; }
 .app-document-menu [role='menu'] { max-height: min(400px, 60vh); overflow: auto; overscroll-behavior: contain; }
@@ -22,5 +22,4 @@
 .app-document-menu button[data-active='true'] { background: color-mix(in srgb, var(--utility-foreground) 5%, transparent); }
 .app-document-menu button:hover,
 .app-document-menu button:focus-visible { background: var(--app-control-hover); }
-.app-document-menu button:focus-visible { outline: 2px solid var(--app-nav-rail-focus-ring); outline-offset: -2px; }
 .app-document-no-results { padding: 16px; color: var(--utility-muted-text); font-size: 12px; }

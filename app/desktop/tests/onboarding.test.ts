@@ -86,3 +86,25 @@ test('coachmarks stay next to targets and within small viewports', () => {
     }
   }
 });
+
+test('coachmarks sit in open space beside the target instead of across the window', () => {
+  const viewport = { width: 1440, height: 900 };
+  // A wide card section with no room on its right: the panel goes below it, aligned with its start edge.
+  const section = helpTourGeometry({ left: 527, top: 197, width: 830, height: 114 }, viewport, { width: 320, height: 207 });
+  assert.equal(section.side, 'bottom');
+  assert.equal(section.left, 527);
+  assert.equal(section.top, 197 + 114 + 16);
+  assert.equal(section.arrow, 40);
+  // A small button with room on its right keeps the panel right next to it.
+  const button = helpTourGeometry({ left: 821, top: 573, width: 86, height: 42 }, viewport, { width: 320, height: 228 });
+  assert.equal(button.side, 'right');
+  assert.equal(button.left, 821 + 86 + 16);
+  // A target at the right edge with room below never sends the panel to the far left.
+  const edge = helpTourGeometry({ left: 1100, top: 100, width: 320, height: 60 }, viewport, { width: 320, height: 200 });
+  assert.equal(edge.side, 'bottom');
+  assert.ok(edge.left >= 1100 - 320);
+  // Left of the target only when there is no room to the right or below.
+  const low = helpTourGeometry({ left: 1200, top: 760, width: 200, height: 100 }, viewport, { width: 320, height: 200 });
+  assert.equal(low.side, 'left');
+  assert.equal(low.left, 1200 - 16 - 320);
+});

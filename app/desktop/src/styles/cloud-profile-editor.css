@@ -141,10 +141,3 @@
   font-size: 13px;
   line-height: 20px;
 }
-
-.app-cloud-profile-row-error {
-  margin-top: 2px;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--app-transient-danger-text);
-}

@@ -37,7 +37,7 @@ test('a failed save rolls the pick back with a notice', async ({ page }) => {
   // The picker stays open with the failure and a way to try again.
   const menu = page.getByRole('dialog', { name: 'Select model' });
   await expect(menu.getByRole('alert')).toBeVisible();
-  await menu.getByRole('button', { name: 'Retry' }).click();
+  await menu.getByRole('button', { name: 'Try again' }).click();
   await expect(pendingSaves(page)).toHaveAttribute('data-pending-saves', '1');
   await expect(pendingSaves(page)).toHaveAttribute('data-pending-saves', '0');
   await expect(modelButton(page)).toHaveText('6 Sol');

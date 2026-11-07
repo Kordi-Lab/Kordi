@@ -13,12 +13,15 @@
 //!
 //! # Algorithm
 //!
-//! * **Per-IP rate limit**: a fixed-window counter (`crl:ip:<ip>`) with
-//!   TTL = `per_ip_window`. INCR and `EXPIRE NX` run atomically on every
-//!   hit. If the counter exceeds the configured limit, the caller is told
-//!   to retry after the remaining TTL. Sliding-window behaviour would be
-//!   more accurate but a fixed window suffices for the abuse-prevention
-//!   threshold and keeps the implementation small.
+//! * **Named budgets**: every route charges its own budget for its own
+//!   subject: the account for authenticated routes, the client address and
+//!   the target identifier (such as an email) for unauthenticated ones. No
+//!   two routes share a counter, so loading avatars and profiles never spends
+//!   the budget for creating an invitation. See [`budgets`] for the routes
+//!   and [`buckets`] for the counters (`crl:<acct|addr|id>:<budget>:<subject>`
+//!   in Redis). Operators can replace any budget with [`BUDGETS_ENV`].
+//! * **Refusals** name the exact wait in `Retry-After` and the JSON body; see
+//!   [`rate_limited_response`].
 //! * **Per-email lockout**: failures are counted per email *and* client
 //!   address (`crl:email:client:<ip>:<email>:fail`) with TTL =
 //!   `per_email_lockout`; once that reaches `per_email_failure_limit` a
@@ -39,9 +42,8 @@
 //! * **Trusted networks**: clients inside an operator-configured range get
 //!   every per-address limit multiplied; see [`TrustedNetworks`].
 //!
-//! The memory backend mirrors these semantics in-process (with the
-//! original sliding-window IP behaviour, since there's no cost to
-//! tracking individual timestamps locally).
+//! The memory backend mirrors these semantics in-process, with sliding
+//! windows since there is no cost to tracking individual timestamps locally.
 
 use std::collections::{HashMap, VecDeque};
 use std::net::{IpAddr, Ipv6Addr};
@@ -52,7 +54,10 @@ use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 
 mod account_actions;
+mod buckets;
+pub mod budgets;
 mod email_lockout;
+mod response;
 mod trusted_networks;
 
 pub use account_actions::{
@@ -61,12 +66,21 @@ pub use account_actions::{
     DOCUMENT_PUBLIC_READ_LIMIT, DOCUMENT_PUBLIC_WRITE_LIMIT, EMAIL_VERIFICATION_LIMIT,
     MESSAGE_SEND_LIMIT, REPORT_SUBMIT_LIMIT,
 };
+pub use budgets::{
+    BudgetOverrides, APP_AUTHORIZE_ADDRESS_LIMIT, APP_INVITATION_CREATE_LIMIT,
+    APP_TOKEN_ADDRESS_LIMIT, AVATAR_RENDER_ADDRESS_LIMIT, BUDGETS_ENV,
+    GROUP_INVITATION_CREATE_LIMIT, GROUP_INVITATION_RESET_LIMIT, GROUP_LEAVE_LIMIT,
+    INVITATION_ACCEPT_LIMIT, INVITATION_PAGE_CLAIM_ADDRESS_LIMIT, INVITATION_VIEW_ADDRESS_LIMIT,
+    LOGIN_ADDRESS_LIMIT, LOGIN_EMAIL_LIMIT, MEMORY_IMPORT_EXTRACT_LIMIT, PROFILE_LOOKUP_LIMIT,
+    SIGNUP_ADDRESS_LIMIT, SIGNUP_CODE_ADDRESS_LIMIT, SIGNUP_CODE_EMAIL_LIMIT, SIGNUP_EMAIL_LIMIT,
+};
+pub use response::{
+    rate_limited_response, rate_limited_response_with, retry_after_seconds, RATE_LIMITED_CODE,
+};
 pub use trusted_networks::{TrustedNetworks, TRUSTED_MULTIPLIER_ENV, TRUSTED_NETWORKS_ENV};
 
 #[derive(Debug, Clone, Copy)]
 pub struct CloudRateLimitConfig {
-    pub per_ip_limit: u32,
-    pub per_ip_window: Duration,
     /// Failed logins allowed for one email from one client address.
     pub per_email_failure_limit: u32,
     pub per_email_lockout: Duration,
@@ -86,11 +100,6 @@ const MEMORY_FAMILIAR_CLIENT_PRUNE_THRESHOLD: usize = 10_000;
 impl CloudRateLimitConfig {
     pub const fn production() -> Self {
         Self {
-            // Only bursts are refused: people behind one address (an office,
-            // a household) sign in, refresh and open account pages without
-            // hitting this. Password guessing is bounded per email below.
-            per_ip_limit: 50,
-            per_ip_window: Duration::from_secs(60),
             per_email_failure_limit: 5,
             per_email_lockout: Duration::from_secs(15 * 60),
             per_email_global_failure_limit: 10,
@@ -125,7 +134,7 @@ impl std::fmt::Display for RateLimiterError {
 
 impl std::error::Error for RateLimiterError {}
 
-/// The address a client is counted under for rate limits and lockouts.
+/// The address a client is counted under for per-address budgets and lockouts.
 /// IPv4 and IPv4-mapped IPv6 addresses count on their own; other IPv6
 /// addresses count by their /64 prefix. Unknown clients share `0.0.0.0`, so
 /// hiding the address does not escape the limit.
@@ -150,11 +159,12 @@ struct EmailFailureWindow {
 
 #[derive(Debug)]
 struct MemoryStore {
-    per_ip: Mutex<HashMap<IpAddr, VecDeque<Instant>>>,
+    /// Every named budget's sliding window, keyed by namespace, budget, and
+    /// subject.
+    buckets: Mutex<HashMap<String, VecDeque<Instant>>>,
     per_email: Mutex<HashMap<String, EmailFailureWindow>>,
     /// Client scopes that signed in successfully, with their expiry.
     familiar_clients: Mutex<HashMap<String, Instant>>,
-    per_account_action: Mutex<HashMap<String, VecDeque<Instant>>>,
 }
 
 #[derive(Clone)]
@@ -182,6 +192,7 @@ pub struct CloudRateLimiter {
     config: CloudRateLimitConfig,
     backend: Backend,
     trusted: TrustedNetworks,
+    overrides: BudgetOverrides,
 }
 
 impl CloudRateLimiter {
@@ -191,11 +202,11 @@ impl CloudRateLimiter {
         Self {
             config,
             trusted: TrustedNetworks::none(),
+            overrides: BudgetOverrides::default(),
             backend: Backend::Memory(MemoryStore {
-                per_ip: Mutex::new(HashMap::new()),
+                buckets: Mutex::new(HashMap::new()),
                 per_email: Mutex::new(HashMap::new()),
                 familiar_clients: Mutex::new(HashMap::new()),
-                per_account_action: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -213,6 +224,7 @@ impl CloudRateLimiter {
         Ok(Self {
             config,
             trusted: TrustedNetworks::none(),
+            overrides: BudgetOverrides::default(),
             backend: Backend::Redis(RedisStore {
                 conn,
                 key_prefix: "crl".to_string(),
@@ -230,8 +242,10 @@ impl CloudRateLimiter {
         &self.trusted
     }
 
-    /// A per-address budget for `client`, multiplied when it is trusted. Use
-    /// it for every [`AccountActionLimit`] keyed by client address.
+    /// A per-address budget for `client`, multiplied when it is trusted, for
+    /// callers that count it under their own key. Prefer
+    /// [`Self::observe_address_limit`], which also applies operator overrides
+    /// before scaling.
     pub fn address_limit(
         &self,
         limit: AccountActionLimit,
@@ -254,100 +268,12 @@ impl CloudRateLimiter {
         }
     }
 
-    /// Returns `Allowed` and tracks the attempt, or `Limited` with a
-    /// retry hint, based on the per-IP window. On unknown peers (`None`)
-    /// the limiter still applies — keyed by `0.0.0.0` so unauthenticated
-    /// scrapers can't bypass simply by hiding their address.
-    pub async fn observe_ip(&self, peer: Option<IpAddr>) -> RateLimitDecision {
-        let key = rate_limit_client_key(peer);
-        let limit = self.trusted.scale(self.config.per_ip_limit, peer);
-        match &self.backend {
-            Backend::Memory(store) => self.observe_ip_memory(store, key, limit),
-            Backend::Redis(store) => self.observe_ip_redis(store, key, limit).await,
-        }
-    }
-
-    // ---- Memory backend ----
-
-    fn observe_ip_memory(&self, store: &MemoryStore, key: IpAddr, limit: u32) -> RateLimitDecision {
-        let mut buckets = store.per_ip.lock().expect("rate limiter poisoned");
-        let entry = buckets.entry(key).or_default();
-        let now = Instant::now();
-        let window_start = now.checked_sub(self.config.per_ip_window).unwrap_or(now);
-        while let Some(front) = entry.front() {
-            if *front < window_start {
-                entry.pop_front();
-            } else {
-                break;
-            }
-        }
-        if entry.len() as u32 >= limit {
-            let oldest = entry.front().copied().unwrap_or(now);
-            let retry_after = self
-                .config
-                .per_ip_window
-                .checked_sub(now.duration_since(oldest))
-                .unwrap_or(self.config.per_ip_window);
-            return RateLimitDecision::Limited { retry_after };
-        }
-        entry.push_back(now);
-        RateLimitDecision::Allowed
-    }
-
-    // ---- Redis backend ----
-    //
-    // Connection failures fall open (Allowed). The cloud-server has
-    // other defenses — auth itself, the audit log — so a Redis blip
-    // shouldn't lock everyone out. We log to stderr so operators see it.
-
-    async fn observe_ip_redis(
-        &self,
-        store: &RedisStore,
-        key: IpAddr,
-        limit: u32,
-    ) -> RateLimitDecision {
-        let mut conn = store.conn.clone();
-        let redis_key = format!("{}:ip:{}", store.key_prefix, key);
-        let window_secs = self.config.per_ip_window.as_secs().max(1) as i64;
-
-        // INCR and EXPIRE NX run in one MULTI/EXEC, so the window counter can
-        // never outlive its window, and a counter left without a TTL gets one.
-        let (count,): (i64,) = match redis::pipe()
-            .atomic()
-            .incr(&redis_key, 1)
-            .cmd("EXPIRE")
-            .arg(&redis_key)
-            .arg(window_secs)
-            .arg("NX")
-            .ignore()
-            .query_async(&mut conn)
-            .await
-        {
-            Ok(value) => value,
-            Err(err) => {
-                eprintln!("[rate_limit] redis INCR/EXPIRE {redis_key}: {err}");
-                return RateLimitDecision::Allowed;
-            }
-        };
-        if count > i64::from(limit) {
-            let pttl_ms: i64 = conn.pttl(&redis_key).await.unwrap_or(window_secs * 1000);
-            let retry_after = if pttl_ms > 0 {
-                Duration::from_millis(pttl_ms as u64)
-            } else {
-                self.config.per_ip_window
-            };
-            return RateLimitDecision::Limited { retry_after };
-        }
-        RateLimitDecision::Allowed
-    }
-
     #[cfg(test)]
     pub fn reset_for_tests(&self) {
         if let Backend::Memory(store) = &self.backend {
-            store.per_ip.lock().expect("poisoned").clear();
+            store.buckets.lock().expect("poisoned").clear();
             store.per_email.lock().expect("poisoned").clear();
             store.familiar_clients.lock().expect("poisoned").clear();
-            store.per_account_action.lock().expect("poisoned").clear();
         }
     }
 }
@@ -358,5 +284,9 @@ impl Default for CloudRateLimiter {
     }
 }
 
+#[cfg(test)]
+mod budget_tests;
+#[cfg(test)]
+mod redis_tests;
 #[cfg(test)]
 mod tests;

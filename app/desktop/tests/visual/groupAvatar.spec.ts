@@ -56,7 +56,8 @@ test('Upload photo opens the chooser inside the full group management dialog', a
   const dialog = page.getByRole('dialog', { name: 'Group management', exact: true });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Edit group avatar' }).click();
-  const upload = dialog.getByRole('menuitem', { name: 'Upload photo' });
+  // The menu renders outside the dialog so the dialog cannot clip it.
+  const upload = page.getByRole('menu', { name: 'Group avatar' }).getByRole('menuitem', { name: 'Upload photo' });
   await expect(upload).toBeVisible();
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser', { timeout: 5000 }),
@@ -82,7 +83,7 @@ test('the full group management dialog delivers Upload photo to the native picke
   const dialog = page.getByRole('dialog', { name: 'Group management', exact: true });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Edit group avatar' }).click();
-  await dialog.getByRole('menuitem', { name: 'Upload photo' }).click();
+  await page.getByRole('menu', { name: 'Group avatar' }).getByRole('menuitem', { name: 'Upload photo' }).click();
   await expect(page.locator('body')).toHaveAttribute('data-native-avatar-picker', 'opened');
   await expect(page.locator('body')).toHaveAttribute('data-avatar-updated', 'uploaded');
 });

@@ -19,13 +19,15 @@ type Props = {
   companionPane: ReactNode;
   /** Reader shown for the `document` view. */
   documentPane?: ReactNode;
+  /** The open message discussion, shown for the `discussion` view. */
+  discussionPane?: ReactNode;
   tabBar?: ReactNode;
   openedViews?: CompanionToolView[];
   children: ReactNode;
 };
 
 /** Own the split geometry and keep companion content alive through its exit. */
-export function ChatCompanionLayout({ containerRef, layout, view, accountId, companionPane, documentPane, tabBar, openedViews, children }: Props) {
+export function ChatCompanionLayout({ containerRef, layout, view, accountId, companionPane, documentPane, discussionPane, tabBar, openedViews, children }: Props) {
   const setTitlebarLayout = useContext(NativeChatTitlebarContext)?.setCompanionLayout;
   const { gridColumns, side, motionDuration } = layout;
   useLayoutEffect(() => {
@@ -71,6 +73,13 @@ export function ChatCompanionLayout({ containerRef, layout, view, accountId, com
           <div className="app-companion-tab-content" hidden={!layout.isPresent || view !== 'document'}>
             {documentPane}
           </div>
+          {discussionPane ? <Activity mode={layout.isPresent && view === 'discussion' ? 'visible' : 'hidden'}>
+            <div className="app-companion-tab-content" role={tabBar ? 'tabpanel' : undefined}
+              id={companionDocumentTabIds(companionViewTabId('discussion')).panel}
+              aria-labelledby={tabBar ? companionDocumentTabIds(companionViewTabId('discussion')).tab : undefined}>
+              {discussionPane}
+            </div>
+          </Activity> : null}
           {(['digest', 'calendar'] as const).filter(tool => openedViews ? openedViews.includes(tool) : view === tool).map(tool => {
             const ids = companionDocumentTabIds(companionViewTabId(tool));
             return <Activity key={tool} mode={layout.isPresent && view === tool ? 'visible' : 'hidden'}>

@@ -4,12 +4,10 @@ pub(crate) async fn accept_group_invitation(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
     axum::extract::Path(token): axum::extract::Path<String>,
 ) -> Response {
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(&headers, connect_info.as_ref()))
+        .observe_account_limit(INVITATION_ACCEPT_LIMIT, &session.account_id)
         .await
     {
         return limited_response(retry_after);
@@ -301,6 +299,16 @@ async fn redeem_in_transaction(
         return failed(
             "server_error",
             "Could not save the invitation acceptance. No changes were saved; try again.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+    if renew_group_invitation(tx, &record.invitation_id)
+        .await
+        .is_err()
+    {
+        return failed(
+            "server_error",
+            "Could not join the group. No changes were saved; try again.",
             StatusCode::INTERNAL_SERVER_ERROR,
         );
     }

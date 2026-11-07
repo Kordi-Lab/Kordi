@@ -232,16 +232,13 @@ export type AgentSaveFeedback = {
 
 export const AGENT_CONFIG_STORAGE_KEY = 'kordi.agent-config-drafts.v1';
 
+/** Every agent is open to people in the owner's chats unless "Only me" is stored. */
 export function cloudAgentAccessLabel(scope: CloudAgentAccessScope | undefined) {
-  return scope === 'participant_conversations'
-    ? 'People in my chats can mention it'
-    : 'Only me';
+  return scope === 'private' ? 'Only me' : 'People in my chats can mention it';
 }
 
 export function cloudAgentAccessDescription(scope: CloudAgentAccessScope | undefined) {
-  return scope === 'participant_conversations'
-    ? 'People in contact and group chats that include you can @mention this agent.'
-    : 'Only you can use this agent. It stays synced privately to your Cloud account.';
+  return scope === 'private' ? 'Only you can use it.' : 'People in your chats can @mention it.';
 }
 
 export function cloudAgentProactiveLabel(enabled: boolean | undefined) {

@@ -130,7 +130,8 @@ struct BackgroundAgentSession: Identifiable, Codable, Hashable {
                   seen.insert(session.sessionId).inserted else { return nil }
             return session
         }
-        .prefix(4)
+        // A long group folds into one summary line, as on the Mac.
+        .prefix(12)
         .map { $0 }
     }
 

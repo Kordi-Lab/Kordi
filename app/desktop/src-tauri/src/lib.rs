@@ -123,11 +123,6 @@ fn desktop_read_workspace_text_file(path: String) -> Result<String, String> {
     workspace::desktop_read_workspace_text_file(path)
 }
 
-#[tauri::command]
-fn desktop_write_workspace_text_file(path: String, contents: String) -> Result<String, String> {
-    workspace::desktop_write_workspace_text_file(path, contents)
-}
-
 fn run_external_command(command: &mut Command) -> Result<(), String> {
     let status = command.status().map_err(|err| err.to_string())?;
     if status.success() {
@@ -224,7 +219,7 @@ pub fn run() {
             app_icon::desktop_set_app_icon,
             desktop_workspace_status,
             desktop_read_workspace_text_file,
-            desktop_write_workspace_text_file,
+            workspace::desktop_write_workspace_text_file,
             desktop_open_external_url,
             desktop_reveal_in_finder,
             desktop_relaunch_after_update,
@@ -412,6 +407,7 @@ pub fn run() {
             chat::digest_run::desktop_digest_run,
             chat::background_tasks::snapshots::desktop_chat_subsession_ids,
             chat::background_tasks::snapshots::desktop_chat_subsession_snapshot,
+            chat::background_tasks::session_route::desktop_chat_background_session_route,
             chat::desktop_chat_run_skill_command,
             chat::desktop_chat_cancel_turn,
             chat::turns::desktop_chat_renew_execution_lease,

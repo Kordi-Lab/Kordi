@@ -1,7 +1,8 @@
-import { Brain, Plus } from 'lucide-react';
+import { Brain, Plus, Upload } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import {
   AppDialog,
   AppDialogActions,
@@ -54,6 +55,8 @@ export type MemoryListProps = {
   emptyStyle?: 'row' | 'centered';
   /** Extra classes for the centered empty state, such as a taller block on a full page. */
   emptyClassName?: string;
+  /** Shows Import beside Add memory, which opens the memory import. */
+  onImport?: () => void;
 };
 
 function lessonPrefix(text: string): string {
@@ -73,6 +76,7 @@ export function MemoryList({
   header,
   emptyStyle = 'row',
   emptyClassName,
+  onImport,
 }: MemoryListProps) {
   const [edit, setEdit] = useState<LessonEdit | null>(null);
   const [pendingDelete, setPendingDelete] = useState<MemoryLesson | null>(null);
@@ -151,10 +155,10 @@ export function MemoryList({
           className="app-input-shell app-flat-input block w-full resize-y rounded-lg px-3 py-2 text-[13px] leading-5 text-white outline-none placeholder:text-slate-500"
         />
         {current.error ? (
-          <p id={errorId} className="app-error-text m-0 mt-2 text-[12px] leading-5 text-rose-300" role="alert">{current.error}</p>
+          <ErrorLine id={errorId} className="mt-2">{current.error}</ErrorLine>
         ) : null}
         <div className="mt-2 flex items-center justify-between gap-3">
-          <span className={cn('text-[12px] tabular-nums', current.draft.length > LESSON_MAX_CHARS ? 'text-rose-300' : 'text-slate-400')}>
+          <span className={cn('text-[12px] tabular-nums', current.draft.length > LESSON_MAX_CHARS ? 'text-[color:var(--app-error-text)]' : 'text-slate-400')}>
             {current.draft.length} / {LESSON_MAX_CHARS}
           </span>
           <span className="flex gap-2">
@@ -177,19 +181,25 @@ export function MemoryList({
   const startAdd = () => setEdit({ lessonId: null, draft: '', error: null, busy: false });
   const adding = Boolean(addTarget) && edit?.lessonId === null;
   const centeredEmpty = emptyStyle === 'centered' && lessons.length === 0 && !adding;
+  const importButton = onImport && !adding ? (
+    <Button type="button" variant="quiet" className={cn(quietButtonClass, 'shrink-0 gap-1.5', !header && '-ml-2 px-2')} onClick={onImport}>
+      <Upload aria-hidden="true" className="h-3.5 w-3.5" />
+      Import
+    </Button>
+  ) : null;
   const addButton = addTarget && !adding ? (
     // Beside a header it lines up with the rows' Edit and Delete buttons; alone, its icon lines up with the text edge.
-    <Button type="button" variant="quiet" className={cn(quietButtonClass, 'shrink-0 gap-1.5', !header && '-ml-2 px-2')} onClick={startAdd}>
+    <Button type="button" variant="quiet" className={cn(quietButtonClass, 'shrink-0 gap-1.5', !header && !importButton && '-ml-2 px-2')} onClick={startAdd}>
       <Plus aria-hidden="true" className="h-3.5 w-3.5" />
       Add memory
     </Button>
   ) : null;
   const addRow: ReactNode = centeredEmpty ? null : (
     <>
-      {header || addButton ? (
+      {header || addButton || importButton ? (
         <div data-memory-add="" className={cn('flex min-h-8 items-center gap-3', header ? 'justify-between' : 'my-1')}>
           {header ? <div className="min-w-0 flex-1">{header}</div> : null}
-          {addButton}
+          {importButton || addButton ? <span className="flex shrink-0 items-center gap-1">{importButton}{addButton}</span> : null}
         </div>
       ) : null}
       {adding && edit ? renderEditor(null, edit, 'New memory') : null}
@@ -234,12 +244,20 @@ export function MemoryList({
     <div data-memory-empty="" className={cn('flex flex-col items-center justify-center px-6 py-6 text-center', emptyClassName)}>
       <Brain aria-hidden="true" className="h-5 w-5 text-[color:var(--utility-muted-text)] opacity-70" strokeWidth={1.75} />
       <p className="m-0 mt-2.5 text-[13px] leading-5 text-[color:var(--utility-muted-text)]">{emptyLabel}</p>
-      {addTarget ? (
-        <div data-memory-add="" className="mt-4">
-          <Button type="button" variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-[12px]" onClick={startAdd}>
-            <Plus aria-hidden="true" className="h-3.5 w-3.5" />
-            Add memory
-          </Button>
+      {addTarget || onImport ? (
+        <div data-memory-add="" className="mt-4 flex items-center gap-2">
+          {onImport ? (
+            <Button type="button" variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-[12px]" onClick={onImport}>
+              <Upload aria-hidden="true" className="h-3.5 w-3.5" />
+              Import
+            </Button>
+          ) : null}
+          {addTarget ? (
+            <Button type="button" variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-[12px]" onClick={startAdd}>
+              <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+              Add memory
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -251,9 +269,7 @@ export function MemoryList({
     <>
       <p className="sr-only" aria-live="polite">{statusMessage}</p>
       {error ? (
-        <p className="app-error-text my-2 rounded-[12px] bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100" role="alert">
-          {error}
-        </p>
+        <ErrorLine className="my-2">{error}</ErrorLine>
       ) : null}
       {addRow}
       {rows}

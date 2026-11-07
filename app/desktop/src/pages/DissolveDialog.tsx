@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { LoaderCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { AppDialog, AppDialogActions, AppDialogTitle, type AppDialogAnchor } from '@/components/ui/dialog';
 import { groupDissolveErrorMessage } from '@/features/chat/groupCreateCopy';
 
@@ -52,9 +53,7 @@ export function DissolveDialog({ scope, name, anchorRect = null, backdropClassNa
         Everyone loses access to this {scope}.
       </p>
       {error ? (
-        <div className="app-error-text mt-2 text-[11px] leading-4 text-rose-500" role="alert">
-          {error}
-        </div>
+        <ErrorLine className="mt-2">{error}</ErrorLine>
       ) : null}
       <AppDialogActions className="mt-3 gap-2">
         <Button variant="quiet" size="sm" className="rounded-[12px] px-3" autoFocus disabled={isDissolving} onClick={cancel}>Cancel</Button>

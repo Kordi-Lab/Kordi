@@ -59,6 +59,11 @@ async function fixture(invoke: (command: string, args?: Record<string, unknown>)
   return {
     async render(content: React.ReactNode) { await act(async () => root.render(content)); },
     host, dom, get opens() { return opens; },
+    // The row keeps Stop in its "…" menu.
+    async openMenu() {
+      const more = host.querySelector<HTMLButtonElement>('button[aria-label^="More actions"]');
+      if (more && more.getAttribute('aria-expanded') !== 'true') await act(async () => { more.click(); });
+    },
     buttons: () => [...host.querySelectorAll<HTMLButtonElement>('button')].filter(button => /^Stop(?:ping)? background/.test(button.getAttribute('aria-label') ?? '')),
     async close() {
       await act(async () => root.unmount());
@@ -90,7 +95,9 @@ test('card and thread Stop target the actual child turn and show Stopped only af
     throw Error(`Unexpected command: ${command}`);
   });
   try {
-    assert.equal(view.buttons().length, 2, 'Stop is visible on both surfaces');
+    assert.equal(view.buttons().length, 1, 'The row keeps Stop in its "…" menu');
+    await view.openMenu();
+    assert.equal(view.buttons().length, 2, 'Stop is available on both surfaces');
     assert.equal(view.host.querySelectorAll('button button').length, 0, 'Stop is separate from Open');
     await act(async () => { view.buttons()[0].click(); });
     await waitFor(() => cancelled.length === 1, 'Stop must reach the native cancellation command');
@@ -119,14 +126,15 @@ test('failed Stop remains retryable and the thread header can cancel independent
     throw Error(`Unexpected command: ${command}`);
   });
   try {
-    await act(async () => { view.buttons()[1].click(); });
+    const header = () => view.buttons().at(-1)!;
+    await act(async () => { header().click(); });
     await waitFor(() => Boolean(view.host.querySelector('[role="alert"]')), 'A failed cancellation must become retryable');
     assert.match(view.host.querySelector('[role="alert"]')?.textContent ?? '', /Could not stop this task/);
-    assert.equal(view.buttons()[1].disabled, false);
-    await act(async () => { view.buttons()[1].click(); });
+    assert.equal(header().disabled, false);
+    await act(async () => { header().click(); });
     await waitFor(() => attempts === 2, 'Retry must invoke native cancellation again');
     assert.equal(attempts, 2);
-    assert.equal(view.buttons()[1].disabled, true);
+    assert.equal(header().disabled, true);
   } finally { await view.close(); }
 });
 
@@ -140,7 +148,8 @@ test('remote status alone never offers a local Stop, and switching accounts clea
     assert.equal(view.buttons().length, 0);
     active = { ...initialTurn };
     await act(async () => { view.dom.window.dispatchEvent(new view.dom.window.Event(CLOUD_SESSION_CHANGED_EVENT)); });
-    await waitFor(() => view.buttons().length === 2, 'Account reset must load the current native execution');
+    await waitFor(() => view.buttons().length === 1, 'Account reset must load the current native execution');
+    await view.openMenu();
     assert.equal(view.buttons().length, 2);
     active = null;
     await act(async () => { view.dom.window.dispatchEvent(new view.dom.window.Event(CLOUD_SESSION_CHANGED_EVENT)); });
@@ -166,6 +175,7 @@ test('an owner can stop a task in another window through the shared endpoint', a
     return null;
   }, 'owner');
   try {
+    await view.openMenu();
     assert.equal(view.buttons().length, 2);
     await act(async () => { view.buttons()[0].click(); });
     await waitFor(() => stops === 1, 'Remote Stop must reach the server');

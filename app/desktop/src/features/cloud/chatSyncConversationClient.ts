@@ -120,10 +120,26 @@ export class ChatSyncConversationClient {
       { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
       'Could not dissolve the group.',
     );
+    this.forgetGroupSpace(space);
+  }
+
+  private forgetGroupSpace(space: string) {
     for (const conversation of [...this.state.conversationBySessionId.values()]) {
       const conversationSpace = (conversation.group_space_id ?? conversation.legacy_session_id ?? '').replace(/^(group:)+/, '');
       if (conversationSpace === space) this.state.forgetSession(conversation.legacy_session_id ?? conversation.id);
     }
+  }
+
+  /** Leaves every channel of a group. A last admin, or the last person, is refused (409). */
+  async leaveGroup(token: string, groupSpaceId: string): Promise<void> {
+    const space = groupSpaceId.trim().replace(/^(group:)+/, '');
+    if (!space) throw new Error('This group is unavailable.');
+    await this.state.send<unknown>(
+      `/v2/chat/group-spaces/${encodeURIComponent(space)}/members/me`,
+      { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
+      'Could not leave the group.',
+    );
+    this.forgetGroupSpace(space);
   }
 
   /** Dissolves one channel of a group other than its first. Group owners and admins only. */

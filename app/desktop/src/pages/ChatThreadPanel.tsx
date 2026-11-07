@@ -1,7 +1,5 @@
-import {MessagesSquare} from 'lucide-react';
 import {refreshThreadAttention} from '@/features/cloud/threadAttention';
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type PointerEvent as ReactPointerEvent } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
@@ -18,15 +16,15 @@ import { ChatSessionPane } from '@/pages/chatsPage.sessionPane';
 import type { ChatSessionPaneActions } from '@/pages/chatsPage.types';
 import { useComposerMentionMenu } from '@/pages/useComposerReferenceOptions';
 
+/** The open message discussion, shown as the side panel's Discussion tab. The
+ * tab strip supplies its title, close control and width. */
 export function ChatThreadPanel({
   conversation,
   thread,
-  navigationMessageId,firstUnreadMessageId,nextAfterSequence,onLoadMore,onNextUnread,unreadThreadCount,
-  replyCount,
+  navigationMessageId,firstUnreadMessageId,nextAfterSequence,onLoadMore,
   liveTurn,
   liveTurnSender,
   actions,
-  onClose,
   onSendStart,
   onSendSettled,
   onSend,
@@ -37,8 +35,6 @@ export function ChatThreadPanel({
   accountId,
   queuedMessages,
   onCancelQueuedMessage,
-  width,
-  onWidthChange,
   compactModelMenu,
   chatMentionTargetsForText,
   readCursors,
@@ -46,12 +42,10 @@ export function ChatThreadPanel({
 }: {
   conversation: Conversation;
   thread: MessageThread;
-  navigationMessageId?:string|null; firstUnreadMessageId?:string|null; nextAfterSequence?:number|null; onLoadMore?:()=>void; onNextUnread?:()=>void; unreadThreadCount?:number;
-  replyCount: number;
+  navigationMessageId?:string|null; firstUnreadMessageId?:string|null; nextAfterSequence?:number|null; onLoadMore?:()=>void;
   liveTurn?: DesktopChatTurnSnapshot | null;
   liveTurnSender: string;
   actions: ChatSessionPaneActions;
-  onClose: () => void;
   onSendStart: () => void;
   onSendSettled: () => void;
   onSend: (text: string, attachments?: AttachmentItem[]) => Promise<void> | void;
@@ -62,8 +56,6 @@ export function ChatThreadPanel({
   accountId?: string | null;
   queuedMessages: QueuedDesktopChatMessage[];
   onCancelQueuedMessage: (sessionId: string, queuedMessageId: string) => void;
-  width: number;
-  onWidthChange: (width: number) => void;
   compactModelMenu: Omit<ComponentProps<typeof CompactComposerModelMenu>, 'scope'>;
   chatMentionTargetsForText: (text: string, cursor?: number) => ComposerMentionOption[];
   readCursors?: Record<string,number> | null;
@@ -72,7 +64,6 @@ export function ChatThreadPanel({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const resizeCleanupRef = useRef<() => void>(() => {});
   const rootId = thread.root.id?.trim() || thread.root.entryId?.trim() || '';
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [attachmentsByRoot, setAttachmentsByRoot] = useState<Record<string, AttachmentItem[]>>({});
@@ -131,7 +122,6 @@ export function ChatThreadPanel({
     onSend: (text, voiceAttachments) => sendThread(text ?? '', voiceAttachments),
     focusComposer: () => textareaRef.current?.focus(),
   });
-  useEffect(() => () => resizeCleanupRef.current(), []);
   async function sendThread(text: string, nextAttachments?: AttachmentItem[]) {
     onSendStart();
     try {
@@ -176,59 +166,8 @@ export function ChatThreadPanel({
     onCancelQueuedMessage(sessionId, queuedMessageId);
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
-  const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = width;
-    const move = (nextEvent: PointerEvent) => {
-      onWidthChange(Math.min(640, Math.max(304, startWidth + startX - nextEvent.clientX)));
-    };
-    const cleanup = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', cleanup);
-      window.removeEventListener('pointercancel', cleanup);
-      resizeCleanupRef.current = () => {};
-    };
-    resizeCleanupRef.current();
-    resizeCleanupRef.current = cleanup;
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', cleanup);
-    window.addEventListener('pointercancel', cleanup);
-  };
-
   return (
-    <aside data-thread-root-id={readKey??undefined} data-thread-root-client-id={thread.root.clientMessageId} className="app-thread-panel relative flex h-full min-w-[19rem] max-w-[40rem] shrink-0 flex-col border-l border-[color:var(--app-divider)] bg-[color:var(--app-main-bg)]" style={{ width }} aria-label="Message discussion">
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize discussion panel"
-        aria-valuemin={304}
-        aria-valuemax={640}
-        aria-valuenow={Math.round(width)}
-        tabIndex={0}
-        className="group absolute inset-y-0 left-0 z-20 w-3 -translate-x-1.5 cursor-col-resize touch-none focus-visible:outline-none"
-        onPointerDown={beginResize}
-        onKeyDown={(event) => {
-          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-          event.preventDefault();
-          onWidthChange(Math.min(640, Math.max(304, width + (event.key === 'ArrowLeft' ? 16 : -16))));
-        }}
-      >
-        <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[color:var(--app-divider)] transition group-hover:bg-[color:var(--app-sidebar-accent)] group-focus-visible:bg-[color:var(--app-sidebar-accent)]" aria-hidden="true" />
-      </div>
-      <header className="app-page-header app-chat-pane-header relative flex shrink-0 items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="app-page-header-title-row app-chat-pane-title-row flex items-center">
-            <h2 className="truncate text-[17px] font-semibold text-[color:var(--utility-foreground)]">Discussion</h2>
-          </div>
-          <p className="text-[11px] leading-5 text-[color:var(--utility-muted-text)]">{replyCount} message{replyCount === 1 ? '' : 's'}</p>
-        </div>
-        {unreadThreadCount ? <button type="button" onClick={onNextUnread} aria-label="Jump to next unread discussion" title="Next unread discussion" className="app-button-quiet grid h-9 w-9 place-items-center rounded-full text-[color:var(--app-sidebar-accent)]"><MessagesSquare className="h-4 w-4"/></button>:null}
-        <button type="button" className="app-button-quiet grid h-9 w-9 place-items-center rounded-full" onClick={onClose} aria-label="Close discussion">
-          <X className="h-4 w-4" aria-hidden="true" />
-        </button>
-      </header>
+    <aside data-thread-root-id={readKey??undefined} data-thread-root-client-id={thread.root.clientMessageId} className="app-thread-panel flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[color:var(--app-main-bg)]" aria-label="Message discussion">
       <ChatSessionPane
         presentation={{
           firstUnreadMessageId: threadUnreadMarkerMessageId(thread, firstUnreadMessageId, readCursors),
@@ -244,21 +183,21 @@ export function ChatThreadPanel({
           messages,
           navigationRequest:navigationMessageId?{id:navigationMessageId,nonce:0,sessionKey:`${conversation.id}:thread:${rootId}`}:null,
           scrollRef,
-          scrollClassName: 'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain px-1',
+          scrollClassName: 'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain',
           queuedMessages,
           onEditQueuedMessage: editQueuedMessage,
           onCancelQueuedMessage,
           composer: (
-            <div className="shrink-0 px-3 pb-4 pt-3">
+            <div data-companion-composer-frame="true" className="shrink-0 px-5 pb-4 pt-3">
               {nextAfterSequence!=null?<button type="button" onClick={onLoadMore} className="app-button-quiet mb-2 w-full rounded-lg p-2 text-xs">Load more replies</button>:null}
-              <div className="app-composer-shell relative rounded-[26px] p-3">
+              <div className="app-composer-shell relative rounded-[26px] p-3" data-companion-composer-footer="true">
                 <ComposerMentionMenu
                   id={mentionMenuId}
                   items={mentionTargets}
                   selectedIndex={activeMentionIndex}
                   onSelect={acceptMention}
                 />
-                <div className="app-composer-input rounded-[18px] px-4 py-2.5 transition">
+                <div className={attachments.length > 0 ? 'app-composer-input rounded-[18px] px-3 pb-1.5 pt-1 transition' : 'app-composer-input rounded-[18px] px-4 py-2.5 transition'}>
                   <input
                     ref={inputRef}
                     type="file"
@@ -300,7 +239,7 @@ export function ChatThreadPanel({
                     aria-activedescendant={mentionActiveDescendant}
                   />
                 </div>
-                <div className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
+                <div data-companion-send-row="true" className="app-composer-meta mt-2 flex flex-nowrap items-center justify-between gap-3 pt-2.5">
                   <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
                     {!voice.surfaceActive ? <ComposerAttachmentAddMenu inputRef={inputRef} /> : null}
                     {!voice.surfaceActive ? <ComposerExpressivePicker
@@ -320,7 +259,7 @@ export function ChatThreadPanel({
                       onSendMedia={(attachment) => { void sendThread('', [attachment]).catch(() => undefined); }}
                     /> : null}
                   </div>
-                  <div className="flex min-w-0 items-center gap-2">
+                  <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-visible">
                     <CompactComposerModelMenu scope="chat" {...compactModelMenu} />
                     <VoiceComposerControls
                       voice={voice}

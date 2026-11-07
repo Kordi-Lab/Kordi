@@ -1,5 +1,6 @@
 import { clientDistribution } from '@/features/cloud/distribution';
 import type { CloudAuthError } from '@/features/cloud/authClient';
+import { rateLimitedMessage } from '@/features/cloud/cloudAuthError';
 
 export const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_RULE =
@@ -34,7 +35,7 @@ export function cloudLoginErrorMessage(
     case 'email_missing':
       return error.message || 'This account has no email address to verify.';
     case 'rate_limited':
-      return 'Too many attempts. Wait a moment, then try again.';
+      return rateLimitedMessage(error);
     case 'invalid_session':
     case 'account_missing':
       return 'Your session expired. Please sign in again.';
@@ -66,4 +67,11 @@ export function loginSubtitle(signup: boolean): string {
   const page = clientDistribution()?.loginPage;
   return (signup ? page?.signupSubtitle : page?.subtitle) ?? (signup
     ? 'Sign up for Next-generation Supercollaboration' : 'Building Next-generation Supercollaboration');
+}
+
+/** The field a refused sign-in or sign-up names, so its border shows the error too. */
+export function submitErrorField(error: CloudAuthError): 'email' | 'password' | null {
+  if (error.code === 'invalid_email' || error.code === 'email_in_use') return 'email';
+  if (error.code === 'invalid_credentials' || error.code === 'weak_password') return 'password';
+  return null;
 }

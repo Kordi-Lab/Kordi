@@ -46,7 +46,26 @@ const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES 
 // requester's ended runs add 3 kB, so it moves to 5.794 MB.
 // Group names before creating, dissolving groups and channels, the Link copied toast and
 // the group created line add 9 kB, so it moves to 5.803 MB.
-const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_803_000;
+// Resuming background sessions on their saved provider route and owner-sent replies add 6 kB.
+// The redesigned group Info panel and its Manage level add 3.5 kB.
+// Default agent access controls in the Factory add 1 kB.
+// Per-account rate limit wait times in sign-in and link errors add under 1 kB.
+// The discussion panel, artifacts tab alignment, border contrast and thread read state add 1.5 kB.
+// The dense popover help styles remove 5.5 kB, so it moves to 5.809 MB.
+// Folding long groups of background session rows adds 2.9 kB.
+// Running reply Stop on the status line with Fork on hover removes 1 kB, so it moves to 5.811 MB.
+// Remembered turn and tool disclosure state and the folded tool activity rows add 2.8 kB.
+// Memory import from chosen files (the browser picker, its limits and the server
+// extraction call) and Import in the Memory tab add 3.4 kB.
+// The community-profile build used by the browser tests is 0.6 kB larger, so it moves to 5.818 MB.
+// The separate Agent Chats entry and page for the personal agent add 7.4 kB.
+// Slower idle polling, the base64 cache and self-agent reconcile backoff add 0.7 kB, so it moves to 5.826 MB.
+// Refreshing Grounding Recent and the narrow-pane wallet layout add 0.7 kB.
+// Keeping a read session's explicit zero unread count adds 0.5 kB, so it moves to 5.827 MB.
+// One shared error line and the call permission dialog remove 8.2 kB.
+// Leaving a group through the server route on the Mac adds 0.8 kB.
+// Presence text in group Info, Add people and the Chat Info participants adds 0.9 kB, so it moves to 5.82 MB.
+const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_820_000;
 // The separate browser target adds cookie transport, IndexedDB projections and
 // URL navigation. Its bounded allowance does not change desktop packaging.
 // AI consent, blocking and per-person permissions add 12 kB to the browser target too.
@@ -54,7 +73,18 @@ const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIS
 // The tidied empty Memory tab adds under 1 kB to the browser target.
 // The dense menu and the dense Start group picker add the same 7 kB.
 // Reconciling a requester's ended agent runs and the cloud hand-back add 3 kB there too, so it moves to 5.826 MB.
-const MAX_WEB_APP_DIST_BYTES = 5_826_000;
+// The second launch fixes batch adds 8.3 kB there, as on the desktop target, before the items below.
+// Remembered turn and tool disclosure state and the folded tool activity rows add 2.8 kB there.
+// Memory import from chosen files adds 3.4 kB there.
+// The cloud-edition build used by the browser tests is 0.7 kB larger, so it moves to 5.831 MB.
+// The separate Agent Chats entry and page for the personal agent add 7.4 kB there.
+// Idle polling, the base64 cache and idempotent browser canonical writes add 1.5 kB there, so it moves to 5.84 MB.
+// Refreshing Grounding Recent and the narrow-pane wallet layout add 0.7 kB there.
+// Unread counts from browser chat sync without a badge flash add 2.5 kB there, so it moves to 5.843 MB.
+// One shared error line and the call permission dialog remove 8.4 kB there.
+// Leaving a group through the server route adds 0.8 kB there.
+// Presence text in group Info, Add people and the Chat Info participants adds 0.9 kB there, so it moves to 5.837 MB.
+const MAX_WEB_APP_DIST_BYTES = 5_837_000;
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;

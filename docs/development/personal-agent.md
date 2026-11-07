@@ -13,9 +13,11 @@ Two agent settings, two meanings:
   agent's personal session. Internally it is `personalAgent.proactive`
   (module `personal_agent/`, prefix `personal_agent_eval_`). The desktop
   already uses "outreach" and "reachout" for other things; do not use those
-  names. An agent is a personal agent, listed under Personal agent, only
-  while its Proactive is on. The owner's default agent ("<Name>'s Kordi")
-  is on by default; Factory agents are off by default.
+  names. An agent is a personal agent only while its Proactive is on, and
+  Proactive can be on only while the agent has a live connector granted to
+  it: a monitoring agent with nothing to watch is not set up. With a
+  connector, the owner's default agent ("<Name>'s Kordi") is on by default;
+  Factory agents are off by default.
 
 ## Settings API
 
@@ -39,11 +41,24 @@ Agent definition JSON (`/v1/cloud/agents` create, update, list, and the
 - `GET|PUT /v1/cloud/agents/{agent_id}/cooperative` is an alias of the
   existing `/proactive` routes (same handlers, same body `{enabled}`).
 - `GET|PUT /v1/cloud/agents/{agent_id}/personal-agent` with body
-  `{ "proactive": bool }` returns the same shape. Owner only (`403` for
-  another account, `404` for an unknown or archived definition). Works for
-  the default agent id `cloud-agent:<account_id>` and owned definitions.
-  `GET` returns the setting in effect: with no stored row, `true` for the
-  default agent (existing accounts included) and `false` for a definition.
+  `{ "proactive": bool }` answers
+  `{ "proactive", "connected", "sources": [{connectorId, provider, status}],
+  "checkedAt", "recent": [{at, text}] }`: the setting in effect, whether a
+  live (not revoked) connector is granted to the agent, the granted
+  connectors, the state row's `checked_at` while on, and the five newest
+  shares. Owner only (`403` for another account, `404` for an unknown or
+  archived definition). Works for the default agent id
+  `cloud-agent:<account_id>` and owned definitions. The setting in effect
+  is the stored row, else `true` for the default agent and `false` for a
+  definition, and in every case `false` without a live grant.
+- Turning it on without a live grant, through this `PUT` or a definition
+  create or update with `personalAgent.proactive: true`, is
+  `409 personal_agent_needs_connector`. A new definition has no grant, so
+  it is always created off.
+- Losing the last live grant (a disconnect, or
+  `PUT /v1/cloud/connectors/{id}/agents` without the agent) stores an explicit off row in the same
+  transaction, stops the agent's evaluations, and announces the session
+  without its marker. A new connector then shows it off, ready to turn on.
   `PUT` always stores an explicit row, so turning the default agent off
   sticks. The sweep, the list, the marker and the lock below all use the
   setting in effect.
@@ -89,8 +104,9 @@ it on again reuses it.
   definition is bound only while it is active, checked under a lock in the
   binding transaction, so a concurrent archive cannot leave a binding.
 - `GET /v1/cloud/personal-agents` lists the personal agents, the agents
-  whose Proactive is on, and makes any missing session ready in the same
-  request (idempotent, safe under concurrent calls). `proactive` is always
+  whose Proactive is on (so never one without a live grant), and makes any
+  missing session ready in the same request; no session is made for an
+  agent without a live grant (idempotent, safe under concurrent calls). `proactive` is always
   `true` here:
 
   ```json
@@ -295,15 +311,24 @@ run (`digest_`, `import_`, `pip_`, `cg_`, `proactive_eval_`,
   groups.", On "Watches the groups you are in and asks you before it
   helps.") and a new `Proactive` row under it (Off "Waits for you to write
   first.", On "Reaches out to you in Personal agent."; On by default for
-  the default agent, Off for Factory agents). The Runs view
+  the default agent, Off for Factory agents). Without a live grant, and
+  always for a new agent, the row reads `Not set up` with "Add a connector
+  to turn it on." and, for an existing agent, `Connect`. The Runs view
   heading for group offers becomes `Cooperative`.
-- Mac sidebar and iPhone Agents tab: a `Personal agent` section above
-  `Pinned` and `Recents`, one row per personal agent (Proactive on) from
-  `GET /v1/cloud/personal-agents` or the `personal_agent` marker, with the
-  agent's avatar (rounded square,
-  the app's agent radius) and an online dot, name, preview, time, unread.
-  Context menu: Mark as read/unread, Mute, and on Mac `Agent settings`
-  (opens the agent's Blueprint). No Rename, Pin, Archive, Delete.
+- Mac Agent Chats: a `Personal agent` entry under `New`, a status line and
+  not a chat (`Not set up`, `Off`, or `Watching N sources`). It opens the
+  Personal agent page in place of the chat pane for the default agent:
+  without a connector "Add a connector to turn it on." and `Connect`
+  (Settings › Connectors) with the switch disabled; otherwise the switch,
+  the status line with the last check, `Watching` (the granted connectors,
+  `Manage connectors`) and `Recent` (shares, each opening the agent's
+  chat). A personal session is an ordinary chat row once it has messages
+  and is left out of the list while empty; its context menu stays
+  restricted (Mark as read/unread, Mute, `Agent settings`; no Rename, Pin,
+  Archive, Delete).
+- iPhone Agents tab: a `Personal agent` section above `Pinned` and
+  `Recents`, one row per personal agent from
+  `GET /v1/cloud/personal-agents` or the `personal_agent` marker.
 - Session header: avatar, agent name, `Online`.
 - Agent messages with `sources` show the chips under the bubble.
 - The Mac claims `personal_agent.eval_requested` runs like proactive

@@ -60,16 +60,22 @@ pub async fn requester_can_target_owner(
     Ok(row.is_some())
 }
 
-/// False when the owner stopped the requester from using their agents
-/// (docs/contact-permissions.md).
+/// False when the owner stopped the requester from using their agents, or
+/// the agent this claim runs is not open to the requester under its Access
+/// (docs/contact-permissions.md). The owner is always allowed.
 pub async fn requester_may_use_owner_agents(
     pool: &PgPool,
     input: &ClaimRunRequest,
 ) -> RunResult<bool> {
-    Ok(crate::contact_permissions::agent_allowed(
+    if input.owner_account_id.trim() == input.requester_account_id.trim() {
+        return Ok(true);
+    }
+    let agent_id = execution_agent_id(pool, input).await?;
+    Ok(crate::agent_access::agent_usable(
         pool,
         &input.owner_account_id,
         &input.requester_account_id,
+        &agent_id,
     )
     .await?)
 }

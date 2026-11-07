@@ -605,7 +605,7 @@ export class CloudAuthClient {
   }
 
   async ensureChatConversation(token: string, input: ChatSyncConversationInput): Promise<ChatSyncConversation> { return this.chat.ensureConversation(token, input); }
-  dissolveGroup(token: string, groupSpaceId: string): Promise<void> { return this.chat.dissolveGroup(token, groupSpaceId); } dissolveGroupChannel(token: string, groupSpaceId: string, channelSessionId: string): Promise<void> { return this.chat.dissolveGroupChannel(token, groupSpaceId, channelSessionId); }
+  dissolveGroup(token: string, groupSpaceId: string): Promise<void> { return this.chat.dissolveGroup(token, groupSpaceId); } dissolveGroupChannel(token: string, groupSpaceId: string, channelSessionId: string): Promise<void> { return this.chat.dissolveGroupChannel(token, groupSpaceId, channelSessionId); } leaveGroup(token: string, groupSpaceId: string): Promise<void> { return this.chat.leaveGroup(token, groupSpaceId); }
 
   async sendMessage(token: string, peerAccountId: string, body: string, options: SendCloudMessageOptions = {}): Promise<CloudMessage> {
     return this.chat.sendMessage(token, peerAccountId, body, options);

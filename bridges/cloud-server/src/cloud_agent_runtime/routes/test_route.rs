@@ -28,7 +28,7 @@ const PROVIDER_CHECK_WINDOW: Duration = Duration::from_secs(10 * 60);
 
 async fn over_limit(
     limiter: &CloudRateLimiter,
-    action: &str,
+    action: &'static str,
     account_id: &str,
 ) -> Option<Response> {
     match limiter

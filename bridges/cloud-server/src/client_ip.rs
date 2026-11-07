@@ -9,6 +9,13 @@
 //! `KORDI_CLOUD_TRUSTED_PROXIES` lists trusted proxy addresses or CIDR ranges,
 //! separated by commas. When unset, only loopback peers are trusted. An empty
 //! value trusts no peer. Invalid entries are ignored with a warning.
+//!
+//! Every route resolves addresses here, avatars included. A proxy missing
+//! from the list fails safe: its forwarded headers are ignored, so clients
+//! cannot pick their own bucket, and the server logs a warning naming the
+//! setting the first time an untrusted internal peer forwards a client
+//! address, because every client behind that proxy then shares one address.
+//! Authenticated routes count per account and never depend on the address.
 
 use std::net::IpAddr;
 use std::sync::OnceLock;
@@ -115,6 +122,9 @@ impl TrustedProxies {
     pub fn client_ip(&self, headers: &HeaderMap, peer: Option<IpAddr>) -> Option<IpAddr> {
         let peer = peer?.to_canonical();
         if !self.contains(peer) {
+            if is_internal(peer) && forwards_client(headers) {
+                warn_untrusted_forwarder(peer);
+            }
             return Some(peer);
         }
         real_ip_header(headers)
@@ -141,6 +151,67 @@ impl TrustedProxies {
             }
         }
         None
+    }
+}
+
+/// Loopback, private, shared (carrier-grade NAT), link-local, and unique local
+/// addresses: where a reverse proxy in front of the server would connect from.
+pub(crate) fn is_internal(address: IpAddr) -> bool {
+    match address.to_canonical() {
+        IpAddr::V4(ip) => {
+            let [first, second, ..] = ip.octets();
+            ip.is_loopback()
+                || ip.is_private()
+                || ip.is_link_local()
+                || (first == 100 && (64..128).contains(&second))
+        }
+        IpAddr::V6(ip) => ip.is_loopback() || ip.is_unique_local() || ip.is_unicast_link_local(),
+    }
+}
+
+fn forwards_client(headers: &HeaderMap) -> bool {
+    headers.contains_key("x-real-ip") || headers.contains_key("x-forwarded-for")
+}
+
+/// Distinct untrusted forwarders warned about, bounded so a noisy network
+/// cannot grow the set.
+const MAX_WARNED_FORWARDERS: usize = 16;
+
+fn warn_untrusted_forwarder(peer: IpAddr) {
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+    static WARNED: OnceLock<Mutex<HashSet<IpAddr>>> = OnceLock::new();
+    let mut warned = WARNED
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if warned.len() >= MAX_WARNED_FORWARDERS || !warned.insert(peer) {
+        return;
+    }
+    eprintln!(
+        "[client-ip] WARNING: internal peer {peer} forwards a client address, but it is not in \
+         {TRUSTED_PROXIES_ENV}. Every client behind it shares one address for per-address \
+         rate limits and lockouts. If it is the reverse proxy that sets X-Real-IP (for k3s, \
+         the pod-network gateway), add it to {TRUSTED_PROXIES_ENV}."
+    );
+}
+
+/// Logs the trusted proxies at startup, with a warning when the server runs
+/// in Kubernetes yet trusts only loopback: a host proxy reaches the pod from
+/// the pod-network gateway, so every client would share that address.
+pub fn log_startup_configuration() {
+    let trusted = trusted_proxies();
+    let in_kubernetes = std::env::var_os("KUBERNETES_SERVICE_HOST").is_some();
+    if trusted.networks.is_empty() {
+        eprintln!(
+            "[client-ip] {TRUSTED_PROXIES_ENV} trusts no proxy; forwarded client addresses are ignored"
+        );
+    } else if in_kubernetes && trusted.networks.iter().all(|n| n.address.is_loopback()) {
+        eprintln!(
+            "[client-ip] WARNING: running in Kubernetes with only loopback in {TRUSTED_PROXIES_ENV}. \
+             If a host reverse proxy sets X-Real-IP, add the pod-network gateway it connects \
+             from, or every client shares one address for per-address rate limits."
+        );
     }
 }
 
@@ -284,5 +355,38 @@ mod tests {
             trusted.client_ip(&claimed, Some(ip("10.42.0.7"))),
             Some(ip("10.42.0.7"))
         );
+    }
+
+    #[test]
+    fn clients_behind_a_trusted_private_hop_keep_their_own_addresses() {
+        // A host proxy reaching the pod from the pod-network gateway: once the
+        // gateway is trusted, each client keeps its own address and bucket.
+        let (trusted, _) = TrustedProxies::parse("127.0.0.1/32,::1/128,fd00::1/128");
+        let hop = Some(ip("fd00::1"));
+        let alex = headers(&[("x-real-ip", "203.0.113.20")]);
+        let priya = headers(&[("x-real-ip", "198.51.100.30")]);
+        assert_eq!(trusted.client_ip(&alex, hop), Some(ip("203.0.113.20")));
+        assert_eq!(trusted.client_ip(&priya, hop), Some(ip("198.51.100.30")));
+        assert_ne!(
+            crate::auth::rate_limit::rate_limit_client_key(trusted.client_ip(&alex, hop)),
+            crate::auth::rate_limit::rate_limit_client_key(trusted.client_ip(&priya, hop)),
+        );
+    }
+
+    #[test]
+    fn an_untrusted_private_hop_fails_safe_to_its_own_address() {
+        // Loopback-only trust, as when the setting is missing: the hop's
+        // headers are ignored (and a warning names the setting), so nobody can
+        // pick a bucket, and authenticated routes still count per account.
+        let trusted = TrustedProxies::loopback();
+        let hop = Some(ip("fd00::1"));
+        let forwarded = headers(&[("x-real-ip", "203.0.113.20")]);
+        assert_eq!(trusted.client_ip(&forwarded, hop), hop);
+        assert!(is_internal(ip("fd00::1")));
+        assert!(is_internal(ip("127.0.0.1")));
+        assert!(!is_internal(ip("203.0.113.20")));
+        assert!(!is_internal(ip("2001:db8::1")));
+        assert!(forwards_client(&forwarded));
+        assert!(!forwards_client(&HeaderMap::new()));
     }
 }

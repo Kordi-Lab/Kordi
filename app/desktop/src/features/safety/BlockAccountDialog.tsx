@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorLine } from '@/components/ui/ErrorLine';
 import { AppDialog, AppDialogActions, AppDialogDescription, AppDialogTitle } from '@/components/ui/dialog';
 
 import { safetyErrorMessage } from './safetyCopy';
@@ -52,7 +53,7 @@ export function BlockAccountDialog({ mode, target, onConfirm, onDismiss }: Block
         <AppDialogDescription id={descriptionId}>They can&apos;t message, call or invite you.</AppDialogDescription>
       ) : null}
       {error ? (
-        <p role="alert" className="app-error-text mt-2 mb-0 text-[12px] leading-5 text-[color:var(--app-transient-danger-text)]">{error}</p>
+        <ErrorLine className="mt-2">{error}</ErrorLine>
       ) : null}
       <AppDialogActions>
         <Button variant="quiet" className="rounded-full px-4" autoFocus disabled={busy} onClick={onDismiss}>Cancel</Button>

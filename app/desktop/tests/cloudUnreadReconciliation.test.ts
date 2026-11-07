@@ -5,6 +5,7 @@ import type {
 } from '../src/kordi-app/types';
 import type { CloudMessage } from '../src/features/cloud/authClient';
 import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
+import { carryDerivedCloudUnreadCounts } from '../src/features/canonical/derivedCloudUnread';
 import {
   cloudOptimisticallyReadSessionIds,
   cloudUnreadCountsBySessionId,
@@ -72,8 +73,25 @@ test('unread reconciliation updates and clears only Cloud unread metadata', () =
   const cleared = patchCanonicalCloudUnreadCounts(unread, {});
   assert.deepEqual(
     cleared?.sessions[0]?.metadata,
-    { stable: true },
+    { stable: true, cloudUnreadCount: 0 },
   );
+  const neverUnread = stateWithUnread();
+  assert.equal(patchCanonicalCloudUnreadCounts(neverUnread, {}), neverUnread);
+});
+
+test('a catalog reload or replay result keeps the published unread count until reconciliation changes it', () => {
+  const published = patchCanonicalCloudUnreadCounts(stateWithUnread(), { 'session:one': 4 })!;
+  const reloaded = stateWithUnread();
+  const carried = carryDerivedCloudUnreadCounts(published, reloaded);
+  assert.deepEqual(carried?.sessions[0]?.metadata, { stable: true, cloudUnreadCount: 4 });
+  // Nothing to restore: the same object comes back.
+  const unchanged = stateWithUnread(4);
+  assert.equal(carryDerivedCloudUnreadCounts(published, unchanged), unchanged);
+  // Reconciliation clears with an explicit zero, which the carry respects.
+  const read = patchCanonicalCloudUnreadCounts(published, {})!;
+  assert.deepEqual(carryDerivedCloudUnreadCounts(published, read)?.sessions[0]?.metadata, { stable: true, cloudUnreadCount: 0 });
+  // A session the newer catalog dropped stays dropped.
+  assert.deepEqual(carryDerivedCloudUnreadCounts(published, { ...reloaded, sessions: [] })?.sessions, []);
 });
 
 test('unread reconciliation uses full history instead of the bounded renderer projection', () => {
@@ -290,4 +308,42 @@ test('switching sessions keeps the previous optimistic read hidden without clear
     optimisticSessionIds: new Set(),
     projectedUnreadBySessionId: { [firstSessionId]: 1 },
   })[firstSessionId], 1);
+});
+
+test('discussion replies are left to their thread read cursor', () => {
+  const sessionId = 'session:group:discussion';
+  const groupMessage = (id: string, extra: Record<string, unknown> = {}): CloudMessage => ({
+    messageId: `wire-${id}`,
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: encodeCloudGroupControl({
+      kind: 'group-message',
+      groupId: sessionId,
+      groupSpaceId: sessionId,
+      groupTitle: 'Discussion',
+      createdByAccountId: 'acct_peer',
+      actor: { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+      participants: [
+        { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'admin' },
+        { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+      ],
+      message: {
+        id, senderAccountId: 'acct_peer', senderDisplayName: 'Peer', senderKind: 'human',
+        text: id, createdAtMs: 1_000, ...extra,
+      } as never,
+    }),
+    createdAt: new Date(1_000).toISOString(),
+    deliveredAt: new Date(1_000).toISOString(),
+    readAt: null,
+    direction: 'incoming',
+    sessionId,
+  });
+  const thread = {
+    schemaVersion: 1, kind: 'thread',
+    source: { sourceSessionId: sessionId, sourceMessageId: 'root', senderLabel: 'Peer' },
+  };
+  assert.deepEqual(cloudUnreadCountsBySessionId({
+    accountId: 'acct_me',
+    messagesByPeer: { acct_peer: [groupMessage('root'), groupMessage('reply', { messageAction: thread })] },
+  }), { [sessionId]: 1 });
 });
