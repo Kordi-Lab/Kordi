@@ -18,7 +18,7 @@ async fn omp_real_worker_fixture(plugin: bool) -> Result<()> {
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir()?;
     let cwd = tempfile::tempdir()?;
     std::fs::write(cwd.path().join("sample.txt"), "synthetic tool output")?;

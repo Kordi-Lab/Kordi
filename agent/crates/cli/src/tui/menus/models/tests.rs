@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use kordi_core::agent_session::ThinkingLevel;
 use kordi_core::agent_session_runtime::{AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost};
@@ -16,7 +16,7 @@ use crate::session_bootstrap::{SessionRuntimeSetup, SessionUiOptions};
 use crate::tui::controller::TuiController;
 use crate::tui::{MODEL_AUTH_MENU_ID, MODEL_PROVIDER_MENU_ID};
 
-fn env_lock() -> &'static Mutex<()> {
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     crate::login::auth_test_env_lock()
 }
 
@@ -166,7 +166,7 @@ fn temp_project() -> tempfile::TempDir {
 
 #[test]
 fn exact_model_match_with_multiple_auth_sources_prompts_for_auth_selection() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let tempdir = temp_project();
     let _home = EnvVarGuard::set_path("HOME", tempdir.path());
     let _auth_path = EnvVarGuard::set_path("KORDI_AUTH_PATH", &tempdir.path().join("auth"));
@@ -217,7 +217,7 @@ fn exact_model_match_with_multiple_auth_sources_prompts_for_auth_selection() {
 
 #[test]
 fn model_auth_menu_distinguishes_multiple_saved_api_keys() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let tempdir = temp_project();
     let _home = EnvVarGuard::set_path("HOME", tempdir.path());
     let _auth_path = EnvVarGuard::set_path("KORDI_AUTH_PATH", &tempdir.path().join("auth"));
@@ -290,7 +290,7 @@ fn model_auth_menu_distinguishes_multiple_saved_api_keys() {
 
 #[test]
 fn ambiguous_exact_model_match_prompts_for_provider_selection() {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let tempdir = temp_project();
     let _home = EnvVarGuard::set_path("HOME", tempdir.path());
     let _auth_path = EnvVarGuard::set_path("KORDI_AUTH_PATH", &tempdir.path().join("auth"));

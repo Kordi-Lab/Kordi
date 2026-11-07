@@ -1,7 +1,7 @@
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn message_route_switches_an_anthropic_runtime_to_openai_oauth() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -56,7 +56,7 @@ async fn message_route_switches_an_anthropic_runtime_to_openai_oauth() -> Result
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn hosted_credential_is_ephemeral_and_keeps_local_runtime_provider() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir()?;
     let cwd = tempfile::tempdir()?;
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -118,7 +118,7 @@ async fn hosted_credential_is_ephemeral_and_keeps_local_runtime_provider() -> Re
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn request_routes_apply_to_one_turn_without_switch_entries() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir()?;
     let cwd = tempfile::tempdir()?;
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -170,7 +170,7 @@ async fn request_routes_apply_to_one_turn_without_switch_entries() -> Result<()>
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn explicit_config_on_new_canonical_runtime_survives_restart() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -278,7 +278,7 @@ async fn assert_runtime_request_model_context(
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn selecting_a_provider_without_a_sign_in_reports_a_credential_problem() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());

@@ -95,7 +95,7 @@ async fn omp_group_turn_offers_and_runs_the_leases_create_document() -> Result<(
 
 #[allow(clippy::await_holding_lock, reason = "serializes test-only environment changes")]
 async fn omp_group_turn_with_policy(policy: kordi_tools::ExecutionPolicy) -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir()?;
     let cwd = tempfile::tempdir()?;
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -131,7 +131,7 @@ async fn omp_group_turn_with_policy(policy: kordi_tools::ExecutionPolicy) -> Res
         Some(origin),
         Some("openai-completions"),
     )?;
-    let calls = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
+    let calls = std::sync::Arc::new(Mutex::new(Vec::<(String, serde_json::Value)>::new()));
     let recorded = calls.clone();
     use kordi_tools::connector_tools::{ConnectorToolGroup, ConnectorToolsRuntime, CREATE_DOCUMENT_TOOL};
     runtime.set_connector_tools_runtime(Some(ConnectorToolsRuntime {
@@ -140,7 +140,7 @@ async fn omp_group_turn_with_policy(policy: kordi_tools::ExecutionPolicy) -> Res
             document_lease_tool(CREATE_DOCUMENT_TOOL, ConnectorToolGroup::Act),
         ],
         call: std::sync::Arc::new(move |descriptor, args| {
-            recorded.lock().unwrap().push(format!("{}:{args}", descriptor.name));
+            recorded.lock().unwrap().push((descriptor.name, args));
             Box::pin(async { Ok(serde_json::json!({ "created": true })) })
         }),
         report_declined: None,
@@ -171,9 +171,14 @@ async fn omp_group_turn_with_policy(policy: kordi_tools::ExecutionPolicy) -> Res
         "create_document missing from the model's tools under {policy:?}: {offered:?}"
     );
     assert!(offered.iter().any(|name| name == "read_document"), "{offered:?}");
+    // Compare parsed arguments: serialized key order depends on whether the
+    // build unifies serde_json's `preserve_order` feature.
     assert_eq!(
         *calls.lock().unwrap(),
-        [format!("{CREATE_DOCUMENT_TOOL}:{{\"content\":\"# Launch plan\",\"title\":\"Launch plan\"}}")]
+        [(
+            CREATE_DOCUMENT_TOOL.to_string(),
+            serde_json::json!({ "title": "Launch plan", "content": "# Launch plan" })
+        )]
     );
     Ok(())
 }

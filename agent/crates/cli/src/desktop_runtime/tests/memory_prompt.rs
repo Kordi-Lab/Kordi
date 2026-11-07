@@ -1,7 +1,7 @@
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn refresh_memory_prompt_section_rereads_edited_lesson_files() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -59,7 +59,7 @@ async fn refresh_memory_prompt_section_rereads_edited_lesson_files() -> Result<(
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn refresh_memory_prompt_section_leaves_no_block_when_memory_is_off() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -179,7 +179,7 @@ const MONGO: &str =
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn memory_changes_are_recorded_as_hidden_update_notes() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -232,7 +232,7 @@ async fn memory_changes_are_recorded_as_hidden_update_notes() -> Result<()> {
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn memory_update_lists_every_memory_when_the_prompt_had_none() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -263,7 +263,7 @@ async fn memory_update_lists_every_memory_when_the_prompt_had_none() -> Result<(
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn memory_updates_are_not_recorded_when_memory_is_off() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -289,7 +289,7 @@ async fn memory_updates_are_not_recorded_when_memory_is_off() -> Result<()> {
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn frozen_identity_prompt_is_restored_unchanged() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -349,7 +349,7 @@ async fn global_only_group_runtime(
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn memories_missing_from_the_prompt_block_arrive_as_an_update() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -375,7 +375,7 @@ async fn memories_missing_from_the_prompt_block_arrive_as_an_update() -> Result<
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn a_prompt_block_matching_the_files_records_only_a_snapshot() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -404,7 +404,7 @@ async fn a_prompt_block_matching_the_files_records_only_a_snapshot() -> Result<(
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn freezing_the_identity_prompt_marks_the_session_started() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());

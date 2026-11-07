@@ -2,7 +2,7 @@
 #[tokio::test]
 async fn sync_context_messages_imports_cloud_history_once_as_native_session_context() -> Result<()>
 {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -86,7 +86,7 @@ async fn sync_context_messages_imports_cloud_history_once_as_native_session_cont
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn saved_owner_persona_refreshes_existing_sessions_and_stays_system_first() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
@@ -148,7 +148,7 @@ async fn saved_owner_persona_refreshes_existing_sessions_and_stays_system_first(
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn shared_context_is_bounded_and_does_not_include_the_member_directory() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let test_home = tempfile::tempdir()?;
     let _home = EnvVarGuard::set_path("HOME", test_home.path());
     let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
@@ -186,7 +186,7 @@ async fn shared_context_is_bounded_and_does_not_include_the_member_directory() -
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn runtime_identity_is_append_only_and_keeps_the_full_prompt_stable() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let test_home = tempfile::tempdir()?;
     let _home = EnvVarGuard::set_path("HOME", test_home.path());
     let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");

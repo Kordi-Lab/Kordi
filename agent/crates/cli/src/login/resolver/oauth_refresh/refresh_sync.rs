@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn an_anthropic_profile_refreshed_elsewhere_is_found_by_its_storage_key() {
-        let _lock = crate::login::auth_test_env_lock().lock().unwrap();
+        let _lock = crate::login::auth_test_env_lock();
         let home = tempfile::tempdir().expect("home tempdir");
         let _auth_path = EnvVarGuard::set("KORDI_AUTH_PATH", &home.path().join("auth.json"));
         let mut store = AuthStore::default();

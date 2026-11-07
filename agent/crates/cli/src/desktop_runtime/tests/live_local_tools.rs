@@ -11,7 +11,7 @@ async fn native_owner_local_tools_round_trip() -> Result<()> {
     let url = url::Url::parse(&endpoint)?;
     assert_eq!(url.scheme(), "http");
     assert_eq!(url.host_str(), Some("127.0.0.1"));
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir()?;
     let _home = EnvVarGuard::set_path("HOME", home.path());
     let _storage = EnvVarGuard::set_path("KORDI_STORAGE_ROOT", home.path());

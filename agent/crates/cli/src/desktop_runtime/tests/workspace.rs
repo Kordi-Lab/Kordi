@@ -4,7 +4,7 @@
 )]
 #[tokio::test]
 async fn owner_workspace_is_durable_and_shared_requests_cannot_select_it() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir()?;
     let _home = EnvVarGuard::set_path("HOME", home.path());
     let _storage = EnvVarGuard::set_path("APP_DATA_DIR", home.path());
@@ -96,7 +96,7 @@ fn directory_selection_is_unambiguous_and_does_not_consume_people_or_files() -> 
 
 #[test]
 fn project_reassignment_and_removal_replace_saved_workspace_without_losing_history() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let storage = tempfile::tempdir()?;
     let _storage = EnvVarGuard::set_path("KORDI_STORAGE_ROOT", storage.path());
     let chat = tempfile::tempdir()?;

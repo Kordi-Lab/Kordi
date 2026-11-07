@@ -1,9 +1,8 @@
 use super::*;
 use kordi_provider::anthropic::capabilities::ANTHROPIC_SUBSCRIPTION_MODEL_IDS;
 use kordi_provider::registry::ApiType;
-use std::sync::Mutex;
 
-fn env_lock() -> &'static Mutex<()> {
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     crate::login::auth_test_env_lock()
 }
 
@@ -123,7 +122,7 @@ fn merge_live_anthropic_models_keeps_curated_order_before_unknown_ids() {
 
 #[test]
 fn anthropic_oauth_live_legacy_model_is_shown_and_selectable() {
-    let _lock = env_lock().lock().expect("env lock");
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let _home_guard = EnvVarGuard::set_path("HOME", home.path());
     let _anthropic_api_key = EnvVarGuard::unset("ANTHROPIC_API_KEY");

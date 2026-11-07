@@ -537,9 +537,8 @@ mod tests {
     use kordi_core::settings::{ProviderOverride, Settings};
     use kordi_provider::registry::{ApiType, ModelRegistry};
     use std::collections::HashMap;
-    use std::sync::Mutex;
 
-    fn env_lock() -> &'static Mutex<()> {
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         crate::login::auth_test_env_lock()
     }
 
@@ -789,7 +788,7 @@ mod tests {
 
     #[test]
     fn provider_settings_override_base_url_headers_and_env_key() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = env_lock();
         let _api_key = EnvVarGuard::set_value("CORP_LLM_KEY", "test-key");
         let registry = ModelRegistry::new();
         let settings = Settings {

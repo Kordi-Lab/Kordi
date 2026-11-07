@@ -6,9 +6,8 @@ use kordi_provider::anthropic::capabilities::{
     ANTHROPIC_SUBSCRIPTION_MODEL_IDS, DEFAULT_ANTHROPIC_MODEL_ID,
 };
 use std::collections::HashMap;
-use std::sync::Mutex;
 
-fn env_lock() -> &'static Mutex<()> {
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     crate::login::auth_test_env_lock()
 }
 
@@ -139,7 +138,7 @@ fn local_default_model_does_not_double_prefix_provider() {
 
 #[test]
 fn openai_codex_oauth_candidates_exclude_platform_only_models() {
-    let _lock = env_lock().lock().expect("env lock");
+    let _lock = env_lock();
     let (_home, _home_guard, _openai_env, _anthropic_env, _anthropic_oauth_env) =
         isolated_auth_env();
     save_single_auth("openai-codex", ProviderAuthMethod::OAuth);
@@ -192,7 +191,7 @@ fn openai_codex_oauth_candidates_exclude_platform_only_models() {
 
 #[test]
 fn openai_api_key_candidates_keep_platform_models() {
-    let _lock = env_lock().lock().expect("env lock");
+    let _lock = env_lock();
     let (_home, _home_guard, _openai_env, _anthropic_env, _anthropic_oauth_env) =
         isolated_auth_env();
     save_single_auth("openai", ProviderAuthMethod::ApiKey);
@@ -210,7 +209,7 @@ fn openai_api_key_candidates_keep_platform_models() {
 
 #[test]
 fn anthropic_oauth_candidates_follow_shared_subscription_catalog() {
-    let _lock = env_lock().lock().expect("env lock");
+    let _lock = env_lock();
     let (_home, _home_guard, _openai_env, _anthropic_env, _anthropic_oauth_env) =
         isolated_auth_env();
     save_single_auth("anthropic", ProviderAuthMethod::OAuth);
@@ -255,7 +254,7 @@ fn anthropic_oauth_candidates_follow_shared_subscription_catalog() {
 
 #[test]
 fn anthropic_oauth_allows_safe_claude_ids_and_rejects_malformed_ids() {
-    let _lock = env_lock().lock().expect("env lock");
+    let _lock = env_lock();
     let (_home, _home_guard, _openai_env, _anthropic_env, _anthropic_oauth_env) =
         isolated_auth_env();
     save_single_auth("anthropic", ProviderAuthMethod::OAuth);
@@ -288,7 +287,7 @@ fn anthropic_oauth_allows_safe_claude_ids_and_rejects_malformed_ids() {
 
 #[test]
 fn anthropic_api_key_candidates_follow_shared_registry_and_default() {
-    let _lock = env_lock().lock().expect("env lock");
+    let _lock = env_lock();
     let (_home, _home_guard, _openai_env, _anthropic_env, _anthropic_oauth_env) =
         isolated_auth_env();
     save_single_auth("anthropic", ProviderAuthMethod::ApiKey);
@@ -329,7 +328,7 @@ fn anthropic_catalog_rank_uses_shared_subscription_order() {
 
 #[test]
 fn startup_fallback_uses_codex_compatible_model_when_openai_oauth_is_active() {
-    let _lock = env_lock().lock().expect("env lock");
+    let _lock = env_lock();
     let (_home, _home_guard, _openai_env, _anthropic_env, _anthropic_oauth_env) =
         isolated_auth_env();
     save_single_auth("openai-codex", ProviderAuthMethod::OAuth);

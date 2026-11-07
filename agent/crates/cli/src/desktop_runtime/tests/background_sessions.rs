@@ -16,7 +16,7 @@ fn session_prompt_context_strips_current_and_legacy_wrappers() {
 
 #[test]
 fn background_session_lookup_is_idempotent_for_one_parent_request() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
+    let _lock = env_lock();
     let home = tempfile::tempdir().expect("home tempdir");
     let cwd = tempfile::tempdir().expect("cwd tempdir");
     let _home = EnvVarGuard::set_path("HOME", home.path());
