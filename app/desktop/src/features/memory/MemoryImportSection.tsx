@@ -3,7 +3,6 @@ import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { CLOUD_AGENT_NO_PROVIDER_NOTICE } from '@/features/cloud/cloudAgentMessages';
 import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLayout';
 
 import { importMemoryBatch, memoryImportSummary, type MemoryImportClient } from './memoryImportBatch';
@@ -18,10 +17,22 @@ import { MemoryImportTree } from './MemoryImportTree';
 import { countLabel, memoryImportTree, withSelection, type ImportRowStatus as RowStatus } from './memoryImportTreeModel';
 
 const mutedClass = 'font-normal text-slate-400';
+const linkClass = 'font-normal text-white underline-offset-2 hover:underline';
 
 function errorLine(error: unknown): string {
   if (error instanceof Error) return error.message;
   return typeof error === 'string' ? error : '';
+}
+
+/** The footer line while Import waits for a provider; the link opens provider sign-in. */
+function ConnectProviderLine({ onConnect }: { onConnect?: () => void }) {
+  if (!onConnect) return <>Connect an AI provider to import.</>;
+  return (
+    <>
+      <button type="button" className={linkClass} onClick={onConnect}>Connect an AI provider</button>
+      {' to import.'}
+    </>
+  );
 }
 
 /** Settings › Memory › Import: reads the person's agent files into memories, one file at a time. */
@@ -31,12 +42,15 @@ export function MemoryImportSection({
   lessons,
   providerReady,
   onImported,
+  onConnectProvider,
 }: {
   client: MemoryImportClient;
   importer: MemoryImporter;
   lessons: ReadonlyArray<Pick<MemoryLesson, 'text'>>;
   providerReady: boolean;
   onImported: () => void;
+  /** Opens provider sign-in; the no-provider footer links to it. */
+  onConnectProvider?: () => void;
 }) {
   const [files, setFiles] = useState<AgentInstructionFile[] | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -107,7 +121,6 @@ export function MemoryImportSection({
   };
 
   const ready = providerReady || Boolean(importer.hostedModel);
-  const noticeLine = ready ? notice : CLOUD_AGENT_NO_PROVIDER_NOTICE;
   const status = files.length > 0 ? `${countLabel(selected.size, 'file')} selected` : importer.hostedModel ? 'No files chosen' : null;
 
   return (
@@ -131,7 +144,9 @@ export function MemoryImportSection({
           title={(
             <span className={mutedClass}>
               {status}
-              <span aria-live="polite">{noticeLine ? `${status ? ' · ' : ''}${noticeLine}` : ''}</span>
+              <span aria-live="polite">
+                {!ready ? <>{status ? ' · ' : ''}<ConnectProviderLine onConnect={onConnectProvider} /></> : notice ? `${status ? ' · ' : ''}${notice}` : ''}
+              </span>
             </span>
           )}
           control={(

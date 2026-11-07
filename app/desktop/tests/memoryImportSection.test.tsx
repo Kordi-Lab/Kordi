@@ -51,6 +51,9 @@ async function render(element: React.ReactElement) {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   return {
     container,
+    async rerender(next: React.ReactElement) {
+      await act(async () => { root.render(next); });
+    },
     async cleanup() {
       await act(async () => { root.unmount(); });
       env.restore();
@@ -77,8 +80,8 @@ const expand = async (container: HTMLElement, label: string) => {
 };
 const NOW = () => Date.parse('2026-10-20T10:00:00Z');
 
-function renderSection(overrides: Partial<React.ComponentProps<typeof MemoryImportSection>> = {}) {
-  return render(
+function sectionElement(overrides: Partial<React.ComponentProps<typeof MemoryImportSection>> = {}) {
+  return (
     <MemoryImportSection
       client={{ importLesson: async () => ({}) as MemoryLesson }}
       importer={createPreviewMemoryImporter({ latencyMs: 0, now: NOW })}
@@ -86,8 +89,12 @@ function renderSection(overrides: Partial<React.ComponentProps<typeof MemoryImpo
       providerReady
       onImported={() => undefined}
       {...overrides}
-    />,
+    />
   );
+}
+
+function renderSection(overrides: Partial<React.ComponentProps<typeof MemoryImportSection>> = {}) {
+  return render(sectionElement(overrides));
 }
 
 test('the list starts collapsed by app, all selected, and opens app, project and file layers', async () => {
@@ -228,10 +235,19 @@ test('importing rolls progress and results up to projects and apps', async () =>
 });
 
 test('without a provider the import cannot start; without files the section says so', async () => {
-  const noProvider = await renderSection({ providerReady: false });
+  let connects = 0;
+  const connect = { importer: createPreviewMemoryImporter({ latencyMs: 0, now: NOW }), onConnectProvider: () => { connects += 1; } };
+  const noProvider = await renderSection({ ...connect, providerReady: false });
   try {
-    assert.match(noProvider.container.textContent ?? '', /No provider configured yet\./);
-    assert.equal(importButton(noProvider.container)?.disabled, true);
+    const { container } = noProvider;
+    assert.match(container.textContent ?? '', /\d+ files? selected · Connect an AI provider to import\./);
+    assert.equal(container.textContent?.includes('No provider configured'), false);
+    assert.equal(importButton(container)?.disabled, true);
+    await act(async () => { button(container, 'Connect an AI provider')?.click(); });
+    assert.equal(connects, 1, 'the link opens provider sign-in');
+    await noProvider.rerender(sectionElement({ ...connect, providerReady: true }));
+    assert.equal(container.textContent?.includes('Connect an AI provider'), false, 'a connected provider clears the footer in place');
+    assert.equal(importButton(container)?.disabled, false);
   } finally {
     await noProvider.cleanup();
   }

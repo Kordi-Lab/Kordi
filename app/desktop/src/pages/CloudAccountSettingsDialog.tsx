@@ -303,6 +303,8 @@ export function CloudAccountSettingsDialog({
         isNativeShell={isNativeShell}
         importer={memoryImporter === undefined ? (isNativeShell ? nativeMemoryImporter : uploadImporter) : memoryImporter}
         providerReady={authStateSatisfiesStartupGate(desktopAuthState, hosted.accounts)}
+        // The Authentication tab, which the composer's no-provider gate also opens.
+        onConnectProvider={() => selectTab('auth')}
       />
     </div>
   ) : null;

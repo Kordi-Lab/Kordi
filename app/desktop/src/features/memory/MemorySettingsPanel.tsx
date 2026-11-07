@@ -41,6 +41,7 @@ export function MemorySettingsPanel({
   memoryVersion,
   importer = null,
   providerReady = false,
+  onConnectProvider,
 }: {
   accountId: string;
   client: MemoryClient;
@@ -49,6 +50,8 @@ export function MemorySettingsPanel({
   importer?: MemoryImporter | null;
   /** Whether a provider is signed in on this Mac, which the import turn needs. */
   providerReady?: boolean;
+  /** Opens provider sign-in from Import's no-provider footer. */
+  onConnectProvider?: () => void;
   /** The server's `memoryVersion`; defaults to the one the signed-in server reported. */
   memoryVersion?: number | null;
 }) {
@@ -210,6 +213,7 @@ export function MemorySettingsPanel({
               importer={importer}
               lessons={lessons}
               providerReady={providerReady}
+              onConnectProvider={onConnectProvider}
               onImported={() => { void refresh(); }}
             />
           ) : <HelpImportExample />}
