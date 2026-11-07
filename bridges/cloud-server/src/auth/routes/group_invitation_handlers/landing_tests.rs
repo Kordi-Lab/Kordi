@@ -33,6 +33,77 @@ fn signed_out_page_names_inviter_group_and_count_and_returns_after_sign_in() {
     assert!(page.contains(r#"<header class="wrap mast">"#));
     assert!(page.contains(r#"<nav aria-label="Footer">"#));
     assert!(!page.contains("Marcellus"));
+    // The card's actions, then the header's, return to this invitation.
+    let card = page.find(r#"<section class="x-auth-card">"#).unwrap();
+    let card_sign_up = page.find(r#"class="button button-primary""#).unwrap();
+    assert!(card < card_sign_up);
+    assert!(page.contains(&format!(
+        r#"<a class="nav-login" href="/login?{SIGN_IN_RETURN_PARAM}=%2Fg%2F{TOKEN}">Log in</a>"#
+    )));
+    assert!(page.contains(&format!(
+        r#"<a class="nav-signup" href="/register?{SIGN_IN_RETURN_PARAM}=%2Fg%2F{TOKEN}">Sign up</a>"#
+    )));
+}
+
+fn every_view() -> Vec<LandingView> {
+    vec![
+        LandingView::SignedOut {
+            inviter: "Maya Chen".to_string(),
+            group: "Reading group".to_string(),
+            member_count: 1,
+            token: TOKEN.to_string(),
+        },
+        LandingView::SignedIn {
+            group: "Reading group".to_string(),
+            viewer: None,
+            token: TOKEN.to_string(),
+            csrf: "csrf-value".to_string(),
+            download_url: None,
+            web: true,
+        },
+        LandingView::Member {
+            group: "Reading group".to_string(),
+            token: TOKEN.to_string(),
+            web: false,
+        },
+        LandingView::Expired,
+        LandingView::TooManyPending {
+            token: TOKEN.to_string(),
+            web: false,
+        },
+        LandingView::Retry {
+            token: TOKEN.to_string(),
+        },
+        LandingView::Unavailable,
+    ]
+}
+
+#[test]
+fn every_state_uses_the_sign_in_layout_with_the_home_page_lines() {
+    for view in every_view() {
+        let page = landing_document(&view);
+        assert!(page.contains(r#"<body class="interior-page x-auth-page">"#));
+        assert!(page.contains(r#"<main id="main" class="x-story">"#));
+        assert!(page.contains(
+            r#"<p class="x-story-headline">Build the next <span>supercollaboration.</span></p>"#
+        ));
+        assert!(page.contains(
+            "Every communication in one place, with AI that is proactive and cooperative."
+        ));
+        // The invitation sits in the card, after the story copy.
+        let copy = page.find(r#"class="x-story-copy""#).unwrap();
+        let card = page.find(r#"<section class="x-auth-card">"#).unwrap();
+        let heading = page.find("<h1>").unwrap();
+        assert!(copy < card && card < heading);
+        assert!(page.contains(r#"<div class="x-story-reel" aria-hidden="true" inert>"#));
+        assert!(page.contains(r#"<a href="https://github.com/Kordi-AI/Kordi">GitHub</a>"#));
+        assert!(!page.contains("<script"));
+        // Only signed-out visitors get the header's account links.
+        assert_eq!(
+            page.contains(r#"class="nav-login""#),
+            matches!(view, LandingView::SignedOut { .. })
+        );
+    }
 }
 
 #[test]

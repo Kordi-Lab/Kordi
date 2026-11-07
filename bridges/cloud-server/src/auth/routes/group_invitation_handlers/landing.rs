@@ -259,7 +259,13 @@ pub(super) fn landing_content(view: &LandingView) -> (String, String) {
 
 pub(super) fn landing_document(view: &LandingView) -> String {
     let (title, content) = landing_content(view);
-    super::landing_page::page_shell(&title, &content)
+    // Only a signed-out visitor is offered the header's Log in and Sign up,
+    // and they return to this invitation.
+    let return_to = match view {
+        LandingView::SignedOut { token, .. } => Some(format!("/g/{token}")),
+        _ => None,
+    };
+    super::landing_page::page_shell(&title, &content, return_to.as_deref())
 }
 
 pub(super) fn landing_response(status: StatusCode, view: &LandingView) -> Response {
