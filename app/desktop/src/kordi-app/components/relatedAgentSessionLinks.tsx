@@ -11,6 +11,7 @@ import {
   type RelatedAgentSessionRunStatus,
 } from '@/features/chat/relatedAgentSessions';
 import { cn } from '@/lib/utils';
+import { backgroundSessionGroupSummary, FOLDED_BACKGROUND_SESSION_ROWS } from '@/features/chat/backgroundSessionGroups';
 
 const STATUS: Record<RelatedAgentSessionRunStatus, { label: string; tone: string }> = {
   running: { label: 'Running', tone: 'text-[color:var(--app-sidebar-accent)]' },
@@ -19,8 +20,6 @@ const STATUS: Record<RelatedAgentSessionRunStatus, { label: string; tone: string
   stopped: { label: 'Stopped', tone: 'text-[color:var(--utility-muted-text)]' },
 };
 
-/** More rows than this start folded into one summary line. */
-export const FOLDED_BACKGROUND_SESSION_ROWS = 3;
 const foldedGroups = new Map<string, boolean>();
 const FOLD_STORAGE_KEY = 'kordi.backgroundSessionGroups.folded';
 
@@ -38,19 +37,6 @@ function rememberFold(key: string, folded: boolean) {
     const stored = JSON.parse(window.sessionStorage.getItem(FOLD_STORAGE_KEY) ?? '{}') as Record<string, boolean>;
     window.sessionStorage.setItem(FOLD_STORAGE_KEY, JSON.stringify({ ...stored, [key]: folded }));
   } catch { /* Folding still works for this page. */ }
-}
-
-/** The folded line: "5 background sessions · 2 running · 1 failed". */
-export function backgroundSessionGroupSummary(statuses: readonly RelatedAgentSessionRunStatus[]) {
-  const count = (status: RelatedAgentSessionRunStatus) => statuses.filter(value => value === status).length;
-  const running = count('running');
-  const failed = count('failed');
-  const parts = [`${statuses.length} background ${statuses.length === 1 ? 'session' : 'sessions'}`];
-  if (running) parts.push(`${running} running`);
-  if (failed) parts.push(`${failed} failed`);
-  const status: RelatedAgentSessionRunStatus = running ? 'running' : failed ? 'failed'
-    : count('stopped') ? 'stopped' : 'done';
-  return { text: parts.join(' · '), status };
 }
 
 /**

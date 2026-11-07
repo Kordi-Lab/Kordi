@@ -14,9 +14,9 @@ import {
  */
 export function useBackgroundSessionRoute(sessionId: string | null, enabled: boolean) {
   const [loaded, setLoaded] = useState<{ sessionId: string; route: DesktopBackgroundSessionRoute | null } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // An error belongs to the session it happened in, so switching sessions clears it.
+  const [failure, setFailure] = useState<{ sessionId: string; message: string } | null>(null);
   useEffect(() => {
-    setError(null);
     if (!sessionId || !enabled || !isNativeDesktopShell()) return undefined;
     let cancelled = false;
     void fetchDesktopBackgroundSessionRoute(sessionId)
@@ -30,12 +30,13 @@ export function useBackgroundSessionRoute(sessionId: string | null, enabled: boo
     try {
       const next = await setDesktopBackgroundSessionRoute(sessionId, model, thinking);
       setLoaded({ sessionId, route: next });
-      setError(null);
+      setFailure(null);
       return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setFailure({ sessionId, message: cause instanceof Error ? cause.message : String(cause) });
       return false;
     }
   }, [sessionId]);
+  const error = failure?.sessionId === sessionId ? failure.message : null;
   return { route, error, select };
 }

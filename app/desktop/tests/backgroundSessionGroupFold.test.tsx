@@ -4,7 +4,8 @@ import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { backgroundSessionGroupSummary, RelatedAgentSessionLinks } from '../src/kordi-app/components/relatedAgentSessionLinks';
+import { backgroundSessionGroupSummary } from '../src/features/chat/backgroundSessionGroups';
+import { RelatedAgentSessionLinks } from '../src/kordi-app/components/relatedAgentSessionLinks';
 import { __setSessionBackendForTests } from '../src/features/cloud/session';
 import type { RelatedAgentSession, RelatedAgentSessionRunStatus } from '../src/features/chat/relatedAgentSessions';
 
