@@ -226,3 +226,22 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(popover).toBeVisible();
   });
 }
+
+test('Start group contact rows keep square avatars, with photos cropped to fit', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 560 });
+  await page.goto(`${preview}?theme=dark&show=create&mode=group`);
+  const people = page.getByRole('group', { name: 'People' });
+  const rows = people.locator('button[aria-pressed]');
+  await expect(rows).toHaveCount(3);
+  await settle(page);
+  for (const row of await rows.all()) {
+    const avatar = await rowBox(row.locator('[data-identity-avatar]'));
+    expect(avatar.width).toBeCloseTo(20, 0);
+    expect(avatar.height).toBeCloseTo(20, 0);
+  }
+  const photo = rows.first().locator('[data-identity-avatar] img');
+  await expect(photo).toHaveCSS('object-fit', 'cover');
+  const photoBox = await rowBox(photo);
+  expect(photoBox.width).toBeCloseTo(20, 0);
+  expect(photoBox.height).toBeCloseTo(20, 0);
+});

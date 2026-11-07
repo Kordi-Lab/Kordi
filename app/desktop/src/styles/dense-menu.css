@@ -31,7 +31,8 @@
 :is(.app-dense-menu-items > button, .app-dense-menu-row) > svg, .app-dense-menu-row > .app-dense-menu-icon > svg { width: 14px; height: 14px; flex-shrink: 0; }
 .app-dense-menu-row > .app-dense-menu-icon { display: grid; place-items: center; flex-shrink: 0; width: 14px; height: 14px; }
 :is(.app-dense-menu-items > button, .app-dense-menu-row) > svg:last-child:not(:first-child) { width: 12px; height: 12px; color: var(--app-transient-subtle-text); }
-:is(.app-dense-menu-items > button, .app-dense-menu-row) > span:not([aria-hidden="true"], .app-dense-menu-meta) { flex: 1; min-width: 0; }
+/* The row label grows; an avatar in the row keeps its own size and shape. */
+:is(.app-dense-menu-items > button, .app-dense-menu-row) > span:not([aria-hidden="true"], .app-dense-menu-meta, [data-identity-avatar]) { flex: 1; min-width: 0; }
 /* Trailing detail on a row (a count, a status) stays quiet. */
 .app-dense-menu-meta { flex-shrink: 0; font-size: 11px; color: var(--app-transient-muted-text); font-variant-numeric: tabular-nums; }
 :is(.app-dense-menu-items > button, .app-dense-menu-row):hover:not(:disabled), .app-dense-menu-header > button:hover { background: var(--app-transient-hover-bg); }
