@@ -1,6 +1,6 @@
 import { filterGroupManagementMembers, normalizedSearch } from './groupManagementMembers';
 export { filterGroupManagementMembers } from './groupManagementMembers';
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, LoaderCircle, Plus, Search, Star, UserMinus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -227,7 +227,7 @@ export function GroupDetailsDialog({
   useEffect(() => {
     stepBackRef.current = () => {
       if (isEditingName) {
-        if (pendingAction !== 'rename') setIsEditingName(false);
+        if (pendingAction !== 'rename') { setIsEditingName(false); setActionError(null); }
         return true;
       }
       if (level.page !== 'manage') return false;
@@ -244,13 +244,6 @@ export function GroupDetailsDialog({
     )?.focus({ preventScroll: true });
   }, [level]);
 
-  useEffect(() => {
-    if (!isEditingName || typeof document === 'undefined') return;
-    const input = document.getElementById(nameInputId);
-    if (!(input instanceof HTMLInputElement)) return;
-    input.focus();
-    input.select();
-  }, [isEditingName, nameInputId]);
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined') return undefined;
     const updateViewport = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
@@ -327,12 +320,17 @@ export function GroupDetailsDialog({
     }
   };
 
-  const submitRename = (event: FormEvent) => {
-    event.preventDefault();
-    if (!canManageGroup) return;
+  // Enter, the check button or leaving the field: an empty name is refused, an unchanged one just closes.
+  const commitRename = () => {
     const name = nameDraft.trim();
-    if (!groupNameIsValid(name) || name === space.title.trim()) return;
-    void runAction('rename', () => onRename(groupSessionIds, name), () => setIsEditingName(false));
+    if (!canManageGroup || !isEditingName || pendingAction) return;
+    if (!groupNameIsValid(name)) {
+      setActionError('Enter a group name.');
+    } else if (name === space.title.trim()) {
+      setIsEditingName(false);
+    } else {
+      void runAction('rename', () => onRename(groupSessionIds, name), () => setIsEditingName(false));
+    }
   };
 
   const toggleAddContact = (contactId: string) => {
@@ -401,7 +399,8 @@ export function GroupDetailsDialog({
             canInvitePeople={canInvitePeople}
             titleSlot={(
               <GroupNameInline title={space.title} canRename={canManageGroup} isEditing={isEditingName} draft={nameDraft}
-                saving={pendingAction === 'rename'} inputId={nameInputId} onDraftChange={setNameDraft} onSubmit={submitRename}
+                saving={pendingAction === 'rename'} inputId={nameInputId} onCommit={commitRename}
+                onDraftChange={(value) => { setNameDraft(value); setActionError(null); }}
                 onStartEditing={() => { setNameDraft(space.title); setIsEditingName(true); setActionError(null); }} />
             )}
             avatarEditor={onUpdateAvatar && canManageGroup ? (

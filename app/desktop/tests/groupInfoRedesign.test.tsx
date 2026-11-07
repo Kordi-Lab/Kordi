@@ -65,6 +65,18 @@ async function renderGroupInfo({ admin }: { admin: boolean }) {
     calls,
     button,
     nameInput: () => doc.querySelector<HTMLInputElement>('input[aria-label="Group name"]'),
+    errorLines: () => [...doc.querySelectorAll('[role="alert"], .app-error-line')].map((line) => line.textContent?.trim()),
+    pressEnter: async () => {
+      const input = doc.querySelector<HTMLInputElement>('input[aria-label="Group name"]')!;
+      await act(async () => {
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      });
+      await flushReactUpdates();
+    },
+    blurName: async () => {
+      await act(async () => { doc.querySelector<HTMLInputElement>('input[type="search"]')!.focus(); });
+      await flushReactUpdates();
+    },
     layout: () => doc.querySelector<HTMLElement>('.app-group-management-level'),
     click: async (element: HTMLElement | undefined | null) => {
       assert.ok(element);
@@ -109,34 +121,70 @@ test('group Info drops the bottom Group name, Dissolve group and Leave group row
   }
 });
 
-test('admins rename the group in place: Save waits for a changed, non-empty name and Enter saves', async () => {
+test('admins rename the group by clicking the header name; Enter saves through onRename', async () => {
   const view = await renderGroupInfo({ admin: true });
   try {
     const title = view.button('Rename Launch crew');
-    assert.ok(title?.querySelector('.app-group-name-pencil svg'), 'the title carries a faint pencil');
+    assert.equal(title?.tagName, 'BUTTON', 'a native button, so Enter and Space start editing too');
+    assert.ok(title?.querySelector('.app-group-name-pencil svg'), 'the title carries a hover-only pencil');
     await view.click(title);
 
     const input = view.nameInput();
     assert.ok(input, 'the title becomes an input');
     assert.equal(input.value, 'Launch crew');
-    assert.equal(input.required, true);
+    assert.equal(input.required, false, 'no native validation bubble');
     assert.equal(view.doc.activeElement, input);
     assert.equal(view.button('Rename Launch crew'), undefined);
     const save = () => view.button('Save name')!;
     assert.equal(save().disabled, true, 'unchanged names cannot be saved');
 
-    await view.type('   ');
-    assert.equal(save().disabled, true, 'the name is required');
-    await act(async () => { input.form!.requestSubmit(); });
-    assert.equal(view.calls.renames.length, 0);
-
     await view.type('  Launch QA  ');
     assert.equal(save().disabled, false);
-    await act(async () => { view.nameInput()!.form!.requestSubmit(); });
-    await flushReactUpdates();
+    await view.pressEnter();
     assert.deepEqual(view.calls.renames.map(([, name]) => name), ['Launch QA']);
     assert.ok(view.calls.renames[0][0].length > 0, 'the rename reaches the group sessions');
     assert.equal(view.nameInput(), null, 'saving closes the editor');
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test('an empty group name is refused with one error line, and typing clears it', async () => {
+  const view = await renderGroupInfo({ admin: true });
+  try {
+    await view.click(view.button('Rename Launch crew'));
+    await view.type('   ');
+    assert.equal(view.button('Save name')!.disabled, true);
+    await view.pressEnter();
+    await view.pressEnter();
+    assert.equal(view.calls.renames.length, 0);
+    assert.deepEqual(view.errorLines(), ['Enter a group name.']);
+    assert.ok(view.nameInput(), 'the field stays open to fix the name');
+
+    await view.blurName();
+    assert.equal(view.calls.renames.length, 0, 'leaving an empty field does not save');
+    assert.deepEqual(view.errorLines(), ['Enter a group name.']);
+
+    await view.type('Launch QA');
+    assert.deepEqual(view.errorLines(), []);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test('leaving the name field saves a changed name and closes an unchanged one', async () => {
+  const view = await renderGroupInfo({ admin: true });
+  try {
+    await view.click(view.button('Rename Launch crew'));
+    await view.blurName();
+    assert.equal(view.calls.renames.length, 0, 'an unchanged name is not sent');
+    assert.equal(view.nameInput(), null);
+
+    await view.click(view.button('Rename Launch crew'));
+    await view.type('Launch QA');
+    await view.blurName();
+    assert.deepEqual(view.calls.renames.map(([, name]) => name), ['Launch QA']);
+    assert.equal(view.nameInput(), null);
   } finally {
     await view.cleanup();
   }
@@ -148,9 +196,10 @@ test('Escape cancels a rename before it closes group Info', async () => {
     await view.click(view.button('Rename Launch crew'));
     await view.type('Something else');
     await view.escape();
+    await flushReactUpdates();
     assert.equal(view.nameInput(), null);
     assert.equal(view.calls.closes, 0);
-    assert.equal(view.calls.renames.length, 0);
+    assert.equal(view.calls.renames.length, 0, 'Escape discards the draft');
     assert.ok(view.button('Rename Launch crew'));
     await view.escape();
     assert.equal(view.calls.closes, 1);
@@ -166,7 +215,11 @@ test('Manage opens a second level with Dissolve group; Escape and Back step back
     assert.equal(view.layout()?.dataset.direction, 'forward');
     assert.ok(view.doc.querySelector('[data-group-manage-page]'));
     assert.equal(view.doc.activeElement, view.button('Back'));
-    assert.equal(view.doc.querySelector('[role="group"][aria-label="Manage"]')?.textContent?.trim(), 'Dissolve group');
+    const manage = view.doc.querySelector('[role="group"][aria-label="Manage"]');
+    assert.equal(manage?.textContent?.trim(), 'Dissolve group');
+    assert.equal(manage?.querySelectorAll('button').length, 1, 'Manage holds only Dissolve group');
+    assert.doesNotMatch(view.doc.querySelector('[data-group-manage-page]')?.textContent ?? '', /Group name|Rename/);
+    assert.equal(view.nameInput(), null);
     assert.equal(view.doc.querySelector('input[type="search"]'), null, 'the member gallery is replaced');
 
     await view.escape();
@@ -229,6 +282,8 @@ test('group Info rename and Manage styles keep the title line and reuse the menu
   assert.match(index, /@import '\.\/styles\/shell-group-info\.css';/);
   assert.match(css, /\.app-group-name-form \{[^}]*margin: -3px auto;/);
   assert.match(css, /\.app-group-name-input \{[^}]*height: 26px;/);
+  assert.match(css, /\.app-group-name-pencil \{[^}]*opacity: 0;/, 'the pencil only shows on hover or keyboard focus');
+  assert.match(css, /\.app-group-name-button:hover \.app-group-name-pencil,\s*\.app-group-name-button:focus-visible \.app-group-name-pencil \{\s*opacity: 1;/);
   assert.match(css, /\[data-direction='forward'\] \{\s*animation: app-group-management-level-forward 180ms/);
   assert.match(css, /from \{ opacity: 0; transform: translate3d\(10px, 0, 0\); \}/);
   assert.match(css, /prefers-reduced-motion: reduce/);

@@ -35,12 +35,14 @@
   place-items: center;
   border-radius: 6px;
   color: var(--app-transient-subtle-text);
+  opacity: 0;
   transform: translateY(-50%);
 }
 
+/* The pencil is a hover hint only; at rest the title stands alone. */
 .app-group-name-button:hover .app-group-name-pencil,
 .app-group-name-button:focus-visible .app-group-name-pencil {
-  color: var(--app-transient-text);
+  opacity: 1;
 }
 
 /* A 26px input with -3px margins keeps the 20px title line, so nothing moves. */
